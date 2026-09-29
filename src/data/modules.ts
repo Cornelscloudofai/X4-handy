@@ -1,0 +1,78 @@
+// Stationsmodule mit echten Baumaterialien und Bauzeiten aus X4 (crissian/x4-Datensatz).
+// Die Kosten ergeben sich aus den Baumaterialien zum Durchschnittspreis.
+import buildCosts from './build-costs.json';
+import infrastructure from './infrastructure.json';
+import { WARES } from './wares';
+import type { ModuleDef, StorageType } from '../engine/types';
+
+interface RawVariant { id: string; name: string; method: string; time: number; materials: Record<string, number> }
+interface RawInfra extends RawVariant { category: string; capacity?: number; storageType?: string }
+
+const METHOD_PREFERENCE = ['Split', 'Universal', 'Argon', 'Teladi', 'Paranid', 'Terran', 'Boron'];
+const STARTER = new Set(['energycells', 'refinedmetals', 'graphene', 'siliconwafers', 'water', 'superfluidcoolant', 'antimattercells']);
+
+export function materialCost(materials: Record<string, number>): number {
+  let sum = 0;
+  for (const [id, n] of Object.entries(materials)) sum += n * (WARES[id]?.price.avg ?? 0);
+  return Math.round(sum);
+}
+
+function repFor(wareId: string, method: string): number {
+  if (STARTER.has(wareId)) return 0;
+  if (!['Split', 'Universal', 'Argon'].includes(method)) return 16;
+  const tier = WARES[wareId]?.tier ?? 1;
+  return tier <= 1 ? 3 : tier === 2 ? 7 : 12;
+}
+
+function buildModules(): ModuleDef[] {
+  const list: ModuleDef[] = [];
+  for (const [wareId, variants] of Object.entries(buildCosts as unknown as Record<string, RawVariant[]>)) {
+    if (!WARES[wareId]) continue;
+    const pick = [...variants].sort((a, b) => METHOD_PREFERENCE.indexOf(a.method) - METHOD_PREFERENCE.indexOf(b.method))[0];
+    const cost = materialCost(pick.materials);
+    const rep = repFor(wareId, pick.method);
+    list.push({
+      id: 'prod_' + wareId,
+      x4Id: pick.id,
+      kind: 'production',
+      name: wareId === 'energycells' ? 'Solarkraftwerk' : WARES[wareId].name + '-Fabrik',
+      ware: wareId,
+      buildTime: pick.time,
+      materials: pick.materials,
+      cost,
+      method: pick.method,
+      repRequired: rep,
+      blueprintCost: STARTER.has(wareId) ? 0 : Math.round((cost * 0.35) / 1000) * 1000,
+      starter: STARTER.has(wareId),
+    });
+  }
+  const infra = infrastructure as unknown as RawInfra[];
+  const storageNames: Record<string, string> = { Container: 'Containerlager S', Solid: 'Feststofflager S', Liquid: 'Flüssiglager S' };
+  for (const s of infra.filter((x) => x.category === 'Lager')) {
+    const type = s.storageType as StorageType;
+    list.push({
+      id: 'storage_' + type.toLowerCase(), x4Id: s.id, kind: 'storage', name: storageNames[type], storage: type,
+      capacity: s.capacity, buildTime: s.time, materials: s.materials, cost: materialCost(s.materials), method: 'Argon',
+      repRequired: 0, blueprintCost: 0, starter: true,
+    });
+  }
+  const dock = infra.find((x) => x.id === 'module_arg_dock_m_02');
+  if (dock) list.push({ id: 'dock_m', x4Id: dock.id, kind: 'dock', name: 'Dockbereich 3M6S', buildTime: dock.time, materials: dock.materials, cost: materialCost(dock.materials), method: 'Argon', repRequired: 0, blueprintCost: 0, starter: true });
+  const pier = infra.find((x) => x.id === 'module_spl_pier_l_01');
+  if (pier) list.push({ id: 'pier_l', x4Id: pier.id, kind: 'pier', name: 'Split 4-Dock-T-Pier', buildTime: pier.time, materials: pier.materials, cost: materialCost(pier.materials), method: 'Split', repRequired: 0, blueprintCost: 0, starter: true });
+  const core = infra.find((x) => x.id === 'module_arg_conn_base_01');
+  if (core) list.push({ id: 'core', x4Id: core.id, kind: 'core', name: 'Stationskern', buildTime: core.time, materials: core.materials, cost: materialCost(core.materials), method: 'Argon', repRequired: 0, blueprintCost: 0, starter: true });
+  return list;
+}
+
+export const MODULES: ModuleDef[] = buildModules();
+export const MODULE_MAP: Record<string, ModuleDef> = Object.fromEntries(MODULES.map((m) => [m.id, m]));
+
+export function moduleDef(id: string): ModuleDef {
+  const m = MODULE_MAP[id];
+  if (!m) throw new Error('Unbekanntes Modul: ' + id);
+  return m;
+}
+
+/** Grundstück und Baulizenz für eine neue Station (Spielwert) */
+export const PLOT_COST = 250_000;

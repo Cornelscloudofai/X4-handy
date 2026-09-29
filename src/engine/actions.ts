@@ -1,0 +1,219 @@
+// Spieleraktionen. Jede Aktion prüft ihre Voraussetzungen und liefert eine Meldung.
+import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
+import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, sector } from '../data/sectors';
+import { SHIP_MAP } from '../data/ships';
+import { WARES } from '../data/wares';
+import { defaultTradeRule, hasDockFor } from './economy';
+import { spawnCourier } from './npc';
+import { stationById } from './logistics';
+import { newModule, newShip, newStation } from './state';
+import type { GameState, RouteOrder, TradeRule } from './types';
+import { log } from './util';
+
+export interface Result { ok: boolean; msg: string }
+const ok = (msg: string): Result => ({ ok: true, msg });
+const fail = (msg: string): Result => ({ ok: false, msg });
+const cr = (n: number) => Math.round(n).toLocaleString('de-DE') + ' Cr';
+
+export function blueprintState(state: GameState, defId: string): 'owned' | 'buyable' | 'locked' {
+  if (state.blueprints.includes(defId)) return 'owned';
+  const d = moduleDef(defId);
+  return state.rep.frf >= d.repRequired ? 'buyable' : 'locked';
+}
+
+export function buyBlueprint(state: GameState, defId: string): Result {
+  const d = MODULE_MAP[defId];
+  if (!d) return fail('Unbekannter Bauplan.');
+  if (state.blueprints.includes(defId)) return fail('Bauplan bereits vorhanden.');
+  if (state.rep.frf < d.repRequired) return fail(`Benötigt Ruf ${d.repRequired} bei den Freien Familien.`);
+  if (state.credits < d.blueprintCost) return fail(`Es fehlen ${cr(d.blueprintCost - state.credits)}.`);
+  state.credits -= d.blueprintCost;
+  state.blueprints.push(defId);
+  log(state, `Bauplan erworben: ${d.name}.`, 'good');
+  return ok(`Bauplan „${d.name}“ gekauft.`);
+}
+
+export function queueModule(state: GameState, stationId: string, defId: string): Result {
+  const st = stationById(state, stationId);
+  const d = MODULE_MAP[defId];
+  if (!st || !d) return fail('Station oder Modul nicht gefunden.');
+  if (d.kind === 'core') return fail('Der Stationskern entsteht mit der Station.');
+  if (!state.blueprints.includes(defId)) return fail('Dafür fehlt der Bauplan.');
+  if (st.modules.length + st.queue.length + (st.build ? 1 : 0) >= 40) return fail('Höchstens 40 Module pro Station.');
+  if (state.credits < d.cost) return fail(`Es fehlen ${cr(d.cost - state.credits)}.`);
+  state.credits -= d.cost;
+  st.queue.push({ def: defId, paid: d.cost });
+  return ok(`${d.name} in Bauauftrag gegeben.`);
+}
+
+export function cancelQueued(state: GameState, stationId: string, index: number): Result {
+  const st = stationById(state, stationId);
+  if (!st) return fail('Station nicht gefunden.');
+  if (index === -1) {
+    if (!st.build) return fail('Kein laufender Bau.');
+    state.credits += st.build.paid;
+    st.build = null;
+    return ok('Bau abgebrochen, Kosten erstattet.');
+  }
+  const q = st.queue[index];
+  if (!q) return fail('Eintrag nicht gefunden.');
+  st.queue.splice(index, 1);
+  state.credits += q.paid;
+  return ok('Aus der Bauliste entfernt, Kosten erstattet.');
+}
+
+export function demolishModule(state: GameState, stationId: string, uid: number): Result {
+  const st = stationById(state, stationId);
+  if (!st) return fail('Station nicht gefunden.');
+  const i = st.modules.findIndex((m) => m.uid === uid);
+  if (i < 0) return fail('Modul nicht gefunden.');
+  const d = moduleDef(st.modules[i].def);
+  if (d.kind === 'core') return fail('Der Stationskern kann nicht abgerissen werden.');
+  st.modules.splice(i, 1);
+  const refund = Math.round(d.cost * 0.3);
+  state.credits += refund;
+  log(state, `${st.name}: ${d.name} abgerissen (${cr(refund)} Materialerlös).`, 'warn');
+  return ok(`${d.name} abgerissen. Materialerlös ${cr(refund)}.`);
+}
+
+export function stationCost(): number {
+  return PLOT_COST + moduleDef('core').cost;
+}
+
+export function canPlaceStation(state: GameState, sectorId: string, x: number, z: number): Result {
+  if (!state.sectors.includes(sectorId)) return fail('Für diesen Sektor fehlt die Baulizenz.');
+  if (!insideHex(x, z, SECTOR_RADIUS * 0.86)) return fail('Zu nah am Sektorrand.');
+  const s = SECTOR_MAP[sectorId];
+  if (Math.hypot(x - s.tradeStation.x, z - s.tradeStation.z) < 18) return fail('Zu nah am Handelsposten.');
+  for (const st of state.stations) if (st.sector === sectorId && Math.hypot(st.x - x, st.z - z) < 16) return fail('Zu nah an einer anderen Station.');
+  return ok('');
+}
+
+export function foundStation(state: GameState, sectorId: string, x: number, z: number): Result & { id?: string } {
+  const check = canPlaceStation(state, sectorId, x, z);
+  if (!check.ok) return check;
+  if (state.stations.length >= 20) return fail('Höchstens 20 Stationen.');
+  const cost = stationCost();
+  if (state.credits < cost) return fail(`Eine Station kostet ${cr(cost)}.`);
+  state.credits -= cost;
+  const names = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omikron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Ypsilon'];
+  const used = new Set(state.stations.map((s) => s.name));
+  const name = 'Station ' + (names.find((n) => !used.has('Station ' + n)) ?? state.stations.length + 1);
+  const st = newStation(state, name, sectorId, x, z);
+  st.build = { def: 'core', remaining: moduleDef('core').buildTime, total: moduleDef('core').buildTime, paid: moduleDef('core').cost };
+  state.stations.push(st);
+  log(state, `${name} in ${sector(sectorId).name} gegründet.`, 'good');
+  return { ok: true, msg: `${name} gegründet. Baue jetzt Lager, Dock und Produktion.`, id: st.id };
+}
+
+export function renameStation(state: GameState, stationId: string, name: string): Result {
+  const st = stationById(state, stationId);
+  const n = name.trim().slice(0, 32);
+  if (!st || !n) return fail('Name ungültig.');
+  st.name = n;
+  return ok('Umbenannt.');
+}
+
+export function buyShip(state: GameState, clsId: string, homeId: string): Result {
+  const c = SHIP_MAP[clsId];
+  const home = stationById(state, homeId);
+  if (!c || !home) return fail('Schiff oder Station nicht gefunden.');
+  if (state.ships.length >= 60) return fail('Höchstens 60 Schiffe.');
+  if (state.credits < c.price) return fail(`Es fehlen ${cr(c.price - state.credits)}.`);
+  state.credits -= c.price;
+  const ts = sector(home.sector).tradeStation;
+  const ship = newShip(state, clsId, home, { sector: home.sector, x: ts.x + 2, z: ts.z + 2 });
+  state.ships.push(ship);
+  log(state, `${ship.name} (${c.name}) gekauft – fliegt nach ${home.name}.`, 'good');
+  const warn = hasDockFor(home, c.size) ? '' : c.size === 'L' ? ' Achtung: Die Station braucht einen Pier.' : ' Achtung: Die Station braucht ein Dock.';
+  return ok(`${c.name} gekauft.${warn}`);
+}
+
+export function sellShip(state: GameState, shipId: string): Result {
+  const i = state.ships.findIndex((s) => s.id === shipId);
+  if (i < 0) return fail('Schiff nicht gefunden.');
+  const s = state.ships[i];
+  const value = Math.round(SHIP_MAP[s.cls].price * 0.6);
+  state.ships.splice(i, 1);
+  state.credits += value;
+  return ok(`${s.name} für ${cr(value)} verkauft.`);
+}
+
+export function setShipHome(state: GameState, shipId: string, homeId: string): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  const home = stationById(state, homeId);
+  if (!s || !home) return fail('Nicht gefunden.');
+  s.home = home.id;
+  s.job = null;
+  s.miningField = '';
+  if (!s.cargo) { s.phase = 'idle'; s.path = []; }
+  return ok(`${s.name} gehört jetzt zu ${home.name}.`);
+}
+
+export function setMinerWare(state: GameState, shipId: string, ware: string): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Schiff nicht gefunden.');
+  s.mineWare = ware;
+  return ok(ware ? `Baut jetzt ${WARES[ware].name} ab.` : 'Baut automatisch nach Bedarf ab.');
+}
+
+export function setTraderMode(state: GameState, shipId: string, mode: 'auto' | 'route', route?: RouteOrder): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Schiff nicht gefunden.');
+  if (mode === 'route') {
+    if (!route || !WARES[route.ware]) return fail('Route unvollständig.');
+    if (WARES[route.ware].storage !== SHIP_MAP[s.cls].storage) return fail('Diese Ware passt nicht in den Frachtraum.');
+    s.route = route;
+  }
+  s.mode = mode;
+  if (!s.cargo) { s.job = null; if (s.phase !== 'toTarget' && s.phase !== 'docking') s.phase = 'idle'; }
+  return ok(mode === 'auto' ? 'Autohandel aktiviert.' : 'Versorgungslinie eingerichtet.');
+}
+
+export function setTradeRule(state: GameState, stationId: string, ware: string, rule: Partial<TradeRule>): Result {
+  const st = stationById(state, stationId);
+  if (!st) return fail('Station nicht gefunden.');
+  const cur = st.trade[ware] ?? defaultTradeRule(st, ware);
+  st.trade[ware] = { ...cur, ...rule };
+  return ok('Handelsregel geändert.');
+}
+
+export function buyLicense(state: GameState, sectorId: string): Result {
+  const s = SECTOR_MAP[sectorId];
+  if (!s) return fail('Sektor unbekannt.');
+  if (state.sectors.includes(sectorId)) return fail('Baulizenz bereits vorhanden.');
+  if (!s.links.some((l) => state.sectors.includes(l))) return fail('Nur Nachbarsektoren deines Gebiets sind erreichbar.');
+  if (state.rep[s.faction] < s.repRequired) return fail(`Benötigt Ruf ${s.repRequired} bei ${FACTIONS[s.faction].name}.`);
+  if (state.credits < s.licenseCost) return fail(`Es fehlen ${cr(s.licenseCost - state.credits)}.`);
+  state.credits -= s.licenseCost;
+  state.sectors.push(sectorId);
+  log(state, `Baulizenz für ${s.name} erworben.`, 'good', true);
+  return ok(`Willkommen in ${s.name}!`);
+}
+
+/** Liefert Ware direkt aus einer Station per angeheuertem Kurier (10 % Gebühr vom Warenwert) */
+export function courierDeliver(state: GameState, contractId: number, stationId: string): Result {
+  const c = state.contracts.find((x) => x.id === contractId);
+  const st = stationById(state, stationId);
+  if (!c || c.status !== 'active' || !st) return fail('Auftrag oder Station nicht verfügbar.');
+  const have = st.inventory[c.ware] ?? 0;
+  const inTransit = state.npcs.filter((n) => n.contract === c.id).reduce((s, n) => s + n.amount, 0);
+  const n = Math.min(have, c.amount - c.delivered - inTransit);
+  if (n < 1) return fail(`${st.name} hat keine ${WARES[c.ware].name} für diesen Auftrag.`);
+  const fee = Math.round(n * WARES[c.ware].price.avg * 0.1);
+  if (state.credits < fee) return fail(`Kuriergebühr ${cr(fee)} nicht bezahlbar.`);
+  state.credits -= fee;
+  st.inventory[c.ware] = have - n;
+  spawnCourier(state, st.id, c.id, c.ware, n);
+  return ok(`Kurier unterwegs mit ${Math.round(n).toLocaleString('de-DE')} ${WARES[c.ware].name} (Gebühr ${cr(fee)}).`);
+}
+
+export function stationModulesSummary(stationId: string, state: GameState): { def: string; count: number }[] {
+  const st = stationById(state, stationId);
+  if (!st) return [];
+  const map = new Map<string, number>();
+  for (const m of st.modules) map.set(m.def, (map.get(m.def) ?? 0) + 1);
+  return [...map].map(([def, count]) => ({ def, count }));
+}
+
+export { newModule };

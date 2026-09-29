@@ -1,0 +1,21 @@
+{
+  "name": "x4-sektorbau",
+  "version": "1.0.0",
+  "private": true,
+  "description": "X4 Sektorbau – ein Wirtschafts- und Aufbauspiel im X4-Universum für das Handy",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.3",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.0.2"
+  }
+}

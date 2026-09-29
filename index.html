@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#050b14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>X4 Sektorbau</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Chakra+Petch:wght@500;600;700&display=swap">
+</head>
+<body>
+<div id="boot"><div><div class="logo">X4 SEKTORBAU</div><small>FAMILIE ZHIN</small></div></div>
+<div id="app">
+  <canvas id="map" aria-label="Sektorkarte"></canvas>
+  <header id="hud"></header>
+  <div id="bottom">
+    <div id="objective" hidden></div>
+    <section id="card" hidden></section>
+    <nav id="nav" aria-label="Hauptnavigation"></nav>
+  </div>
+  <section id="panel" hidden></section>
+  <div id="modal" hidden></div>
+  <div id="toasts" aria-live="polite"></div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
