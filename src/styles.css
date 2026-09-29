@@ -449,3 +449,4 @@ select.compact { width: auto; max-width: 52%; min-height: 38px; font-size: 13.5p
 
 /* Schmale Handys: Platz sparen statt abschneiden */
 @media (max-width: 380px) { .chip.sector > .ic { display: none; } .chip { padding: 0 7px; } .tabs button { padding: 8px 7px; font-size: 12.5px; } }
+.file-btn { margin-bottom: 10px; cursor: pointer; }

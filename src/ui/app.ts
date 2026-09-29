@@ -9,7 +9,7 @@ import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
 import { stationById } from '../engine/logistics';
 import { catchUp, step } from '../engine/sim';
-import { deserialize, loadLocal, newGame, saveLocal, clearLocal } from '../engine/state';
+import { deserialize, serialize, loadLocal, newGame, saveLocal, clearLocal } from '../engine/state';
 import { claimMission } from '../engine/story';
 import type { GameState, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
@@ -626,6 +626,20 @@ function onClick(e: MouseEvent): void {
         if (!navigator.clipboard) { t.select(); if (status) status.textContent = 'Text markiert – jetzt kopieren.'; }
         break;
       }
+      case 'download-export': {
+        const blob = new Blob([serialize(state)], { type: 'application/json' });
+        const a = document.createElement('a');
+        const day = Math.floor(state.time / 86400) + 1;
+        a.href = URL.createObjectURL(blob);
+        a.download = `x4-sektorbau-tag${day}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        const status = document.getElementById('copyStatus');
+        if (status) status.textContent = 'Datei gespeichert (Downloads).';
+        break;
+      }
       case 'import-modal': ui.modal = { type: 'import' }; refresh(); break;
       case 'import-do': {
         const t = (document.getElementById('importText') as HTMLTextAreaElement | null)?.value ?? '';
@@ -787,6 +801,12 @@ function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
+  if (field === 'import-file') {
+    const f = (el as unknown as HTMLInputElement).files?.[0];
+    const t = document.getElementById('importText') as HTMLTextAreaElement | null;
+    if (f && t) f.text().then((txt) => { t.value = txt; });
+    return;
+  }
   if (field === 'sell-amount' && ui.modal?.type === 'sell') {
     ui.modal = { ...ui.modal, amount: Math.floor(Number(el.value)) };
     refresh();

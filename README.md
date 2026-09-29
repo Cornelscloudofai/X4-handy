@@ -32,7 +32,7 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
 | Logistik | Miner fördern nach Bedarf; Transporter im Autohandel oder als feste Versorgungslinie; Flüge über Sprungtore |
 | Märkte | Preise folgen dem Bestand wie in X4 (Min–Max-Spanne), NPC-Händler besuchen deine Stationen, Nachfrageschwankungen |
 | Fortschritt | Kampagne mit 15 Kapiteln bis zur eigenen Werft, jedes mit Erklärung, wofür die Ware gebraucht wird; Lieferaufträge, Ruf bei Freien Familien und Zyarth-Patriarchat, Baupläne, Baulizenzen für 7 Sektoren |
-| Komfort | Zeitraffer ×1 bis ×60, Offline-Fortschritt (bis 8 h), automatisches Speichern, Spielstand als Text sichern, Rückgängig für Bauliste und Planer, Android-Zurück-Taste schließt Dialoge und Blätter |
+| Komfort | Zeitraffer ×1 bis ×60, Offline-Fortschritt (bis 8 h), automatisches Speichern, Spielstand als Text oder Datei sichern und laden, Rückgängig für Bauliste und Planer, Android-Zurück-Taste schließt Dialoge und Blätter |
 
 ## Offene Punkte
 
