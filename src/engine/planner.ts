@@ -3,6 +3,7 @@
 import { MODULE_MAP } from '../data/modules';
 import { WARES, inputsPerHour } from '../data/wares';
 import workforce from '../data/workforce.json';
+import type { Station } from './types';
 
 export interface PlanTarget { ware: string; modules: number }
 
@@ -16,6 +17,10 @@ export interface PlanSettings {
   buy: string[];
   /** Manuelle Korrektur der automatisch berechneten Modulzahl je Ware */
   extra: Record<string, number>;
+  /** Vorprodukte automatisch ergänzen (Entwurf). Aus: nur die angegebenen Module zählen (Stationsplanung). */
+  auto?: boolean;
+  /** Eigene Anordnung der Kästchen im Diagramm */
+  layout?: Record<string, { x: number; y: number }>;
 }
 
 export type NodeKind = 'module' | 'mined' | 'bought';
@@ -35,6 +40,16 @@ export interface PlanNode {
   net: number;
   column: number;
   row: number;
+  /** Zusätzliche Module, die für volle Versorgung der Verbraucher nötig wären */
+  recommend: number;
+  /** Versorgungsgrad der Eingangswaren 0..1 (1 = voll versorgt) */
+  eff: number;
+  /** Ware, die die Versorgung am stärksten begrenzt */
+  limiting: string;
+  /** Ausstoß unter Berücksichtigung der Versorgung */
+  effProd: number;
+  /** wird von keinem anderen Modul im Plan verbraucht */
+  endProduct: boolean;
 }
 
 export interface PlanEdge { from: string; to: string; amount: number }
@@ -112,25 +127,48 @@ export function computePlan(s: PlanSettings): PlanResult {
       const fixed = targets.get(id) ?? 0;
       const exact = rate > 0 ? demand / rate : 0;
       // Vorgegebene Endprodukt-Module decken zuerst den Bedarf der Kette
-      const auto = rate > 0 ? Math.max(0, Math.ceil(Math.max(0, demand - fixed * rate) / rate - 1e-9)) : 0;
+      const auto = s.auto !== false && rate > 0 ? Math.max(0, Math.ceil(Math.max(0, demand - fixed * rate) / rate - 1e-9)) : 0;
       const modules = Math.max(0, fixed + auto + (s.extra[id] ?? 0));
-      nodes[id] = { ware: id, kind: 'module', target: targets.has(id), modules, exact, rate, prod: rate * modules, use: demand, net: 0, column: 0, row: 0 };
+      nodes[id] = { ware: id, kind: 'module', target: targets.has(id), modules, exact, rate, prod: rate * modules, use: demand, net: 0, column: 0, row: 0, recommend: 0, eff: 1, limiting: '', effProd: 0, endProduct: false };
       for (const inp of inputsPerHour(id)) need[inp.ware] = (need[inp.ware] ?? 0) + inp.amount * modules;
     } else {
-      nodes[id] = { ware: id, kind: WARES[id].mined ? 'mined' : 'bought', target: false, modules: 0, exact: 0, rate: 0, prod: 0, use: demand, net: 0, column: 0, row: 0 };
+      nodes[id] = { ware: id, kind: WARES[id].mined ? 'mined' : 'bought', target: false, modules: 0, exact: 0, rate: 0, prod: 0, use: demand, net: 0, column: 0, row: 0, recommend: 0, eff: 1, limiting: '', effProd: 0, endProduct: false };
     }
   }
   for (const n of Object.values(nodes)) {
     n.use = need[n.ware] ?? 0;
     n.net = n.kind === 'module' ? n.prod - n.use : 0;
+    n.recommend = n.kind === 'module' && n.rate > 0 && n.net < -0.5 ? Math.ceil(-n.net / n.rate - 1e-9) : 0;
+  }
+  // Nicht beteiligte Waren (0 Module, kein Bedarf) ausblenden
+  for (const id of Object.keys(nodes)) {
+    const n = nodes[id];
+    if (!n.target && n.modules === 0 && n.use < 0.5) delete nodes[id];
+  }
+  // Versorgungsgrad: Rohstoffnahe zuerst, knappe Eingänge werden anteilig verteilt
+  for (const id of [...order].reverse()) {
+    const n = nodes[id];
+    if (!n) continue;
+    if (n.kind !== 'module') { n.effProd = Infinity; continue; }
+    let eff = 1;
+    for (const inp of WARES[id].inputs) {
+      const src = nodes[inp.ware];
+      if (!src || src.use <= 0) continue;
+      const avail = src.kind === 'module' ? src.effProd : Infinity;
+      const share = Math.min(1, avail / src.use);
+      if (share < eff) { eff = share; n.limiting = inp.ware; }
+    }
+    n.eff = eff;
+    n.effProd = n.prod * eff;
   }
 
   // Kanten: Ware fließt vom Erzeuger zum Verbraucher
   const edges: PlanEdge[] = [];
   for (const n of Object.values(nodes)) {
     if (n.kind !== 'module' || !n.modules) continue;
-    for (const inp of inputsPerHour(n.ware)) edges.push({ from: inp.ware, to: n.ware, amount: inp.amount * n.modules });
+    for (const inp of inputsPerHour(n.ware)) if (nodes[inp.ware]) edges.push({ from: inp.ware, to: n.ware, amount: inp.amount * n.modules });
   }
+  for (const n of Object.values(nodes)) n.endProduct = n.kind === 'module' && !edges.some((e) => e.from === n.ware);
 
   // Spalten: Rohstoffe links, Endprodukte rechts
   const col = (id: string, seen = new Set<string>()): number => {
@@ -186,4 +224,36 @@ function orderColumns(columns: string[][], edges: PlanEdge[], nodes: Record<stri
       c.forEach((id, i) => (nodes[id].row = i));
     }
   }
+}
+
+// ---------- Stationsplanung ----------
+
+export interface ModuleCount { built: number; building: number; planned: number }
+
+/** Produktionsmodule einer Station: gebaut, im Bau, geplant */
+export function stationModuleCounts(st: Station): Record<string, ModuleCount> {
+  const out: Record<string, ModuleCount> = {};
+  const get = (def: string) => {
+    const m = MODULE_MAP[def];
+    if (m?.kind !== 'production' || !m.ware) return null;
+    return (out[m.ware] ??= { built: 0, building: 0, planned: 0 });
+  };
+  for (const m of st.modules) { const c = get(m.def); if (c) c.built++; }
+  if (st.build) { const c = get(st.build.def); if (c) c.building++; }
+  for (const q of st.queue) { const c = get(q.def); if (c) c.planned++; }
+  return out;
+}
+
+/** Planvorgaben aus einer Station: genau ihre Module, keine automatische Ergänzung */
+export function stationPlan(st: Station, sunlight: number): PlanSettings {
+  const counts = stationModuleCounts(st);
+  return {
+    targets: Object.entries(counts).map(([ware, c]) => ({ ware, modules: c.built + c.building + c.planned })),
+    sunlight,
+    workforce: false,
+    buy: [],
+    extra: {},
+    auto: false,
+    layout: st.layout ?? {},
+  };
 }

@@ -22,6 +22,8 @@ const C = {
   npc: '#9fb4c8',
 };
 
+export const NPC_COLOR: Record<string, string> = { wharf: '#ffb547', defence: '#ff7a6b', factory: '#6fb6ff', habitat: '#8fe08a' };
+
 const FONT = '"Chakra Petch", "Barlow", system-ui, sans-serif';
 
 const SECTOR_TINT: Record<string, [string, string]> = {
@@ -159,6 +161,44 @@ export class SectorRenderer {
       const off = 24 + Math.min(40, cam.zoom * 2);
       this.labels.push({ text: ts.name, x: sx, ys: [sy + off, sy - off], size: 12, color: '#ffd9a0', weight: 600, prio: 3 });
       this.obstacles.push({ x: sx - 16, y: sy - 16, w: 32, h: 32 });
+    }
+
+    // NPC-Käuferstationen
+    for (const n of sec.npcStations) {
+      const [sx, sy] = cam.toScreen(n.x, n.z);
+      if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) continue;
+      const col = NPC_COLOR[n.kind];
+      const sel = ui.selection?.kind === 'npcst' && ui.selection.id === n.id;
+      const r = Math.max(8, Math.min(26, cam.zoom * 1.8));
+      ctx.save();
+      ctx.translate(sx, sy);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.2);
+      g.addColorStop(0, rgba(col, 0.28));
+      g.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.rotate(now / 14000);
+      ctx.fillStyle = '#0d1822';
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      if (sel) this.selectionRing(ctx, sx, sy, r + 4, now, col);
+      this.labels.push({ text: n.name, x: sx, ys: [sy + r + 12, sy - r - 12], size: 11, color: rgba(col, 0.95), weight: 600, prio: 2 });
+      this.obstacles.push({ x: sx - r, y: sy - r, w: r * 2, h: r * 2 });
     }
 
     // Versorgungslinien und Flugrouten
@@ -768,6 +808,7 @@ export class SectorRenderer {
     if (best) return (best as { sel: Selection }).sel;
     for (const s of state.ships) if (s.sector === ui.sector && docked(s)) consider({ kind: 'ship', id: s.id }, s.x, s.z, 12);
     consider({ kind: 'trade', id: sec.id }, sec.tradeStation.x, sec.tradeStation.z, Math.max(26, Math.min(60, cam.zoom * 3.5)));
+    for (const n of sec.npcStations) consider({ kind: 'npcst', id: n.id }, n.x, n.z, 24);
     for (const g of gatesOf(sec.id)) consider({ kind: 'gate', id: g.to }, g.x, g.z, 26);
     if (best) return (best as { sel: Selection }).sel;
     for (const f of sec.fields) consider({ kind: 'field', id: f.id }, f.x, f.z, Math.max(24, f.r * cam.zoom));

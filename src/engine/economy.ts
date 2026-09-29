@@ -1,6 +1,6 @@
 // Stationswirtschaft: Lager, Produktion, Bau und Sektormärkte.
 import { MODULE_MAP, moduleDef } from '../data/modules';
-import { SECTORS, sector } from '../data/sectors';
+import { NPC_STATIONS, SECTORS, marketInfo, sector } from '../data/sectors';
 import { WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
 import type { GameState, Market, Station, StorageType } from './types';
 import { clamp, emit, log, rand } from './util';
@@ -158,10 +158,20 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
   let guard = 0;
   while (left > 0 && guard++ < 20) {
     if (!st.build) {
-      const next = st.queue.shift();
-      if (!next) return;
+      const next = st.queue[0];
+      if (!next) { st.waiting = ''; return; }
       const d = moduleDef(next.def);
-      st.build = { def: next.def, remaining: d.buildTime, total: d.buildTime, paid: next.paid };
+      // Bezahlt wird erst beim Baustart – so lässt sich die Bauliste frei planen
+      const due = next.paid > 0 ? 0 : d.cost;
+      if (state.credits < due) {
+        if (st.waiting !== 'credits') log(state, `${st.name}: ${d.name} wartet auf Credits.`, 'warn');
+        st.waiting = 'credits';
+        return;
+      }
+      state.credits -= due;
+      st.queue.shift();
+      st.waiting = '';
+      st.build = { def: next.def, remaining: d.buildTime, total: d.buildTime, paid: next.paid + due };
     }
     const step = Math.min(left, st.build.remaining);
     st.build.remaining -= step;
@@ -202,45 +212,61 @@ export function initMarkets(state: GameState): void {
     }
     state.markets[s.id] = m;
   }
+  // Spezialisierte NPC-Käufer: kleine Lager, hungrig (hoher Preis), begrenzte Abnahme
+  for (const n of NPC_STATIONS) {
+    if (state.markets[n.id]) continue;
+    const m: Market = {};
+    for (const id of n.buys) {
+      if (!WARES[id]) continue;
+      const eq = 0.12 + rand(state) * 0.18;
+      const cap = baseDemand(id) * 2;
+      m[id] = { stock: cap * eq, cap, eq };
+    }
+    state.markets[n.id] = m;
+  }
 }
+
+/* Marktfunktionen: key = Sektor-ID (Handelsposten) oder ID einer NPC-Käuferstation */
 
 export function priceAt(id: string, ratio: number): number {
   const p = WARES[id].price;
   return p.min + (p.max - p.min) * (1 - clamp(ratio, 0, 1));
 }
 
-export function marketPrice(state: GameState, sectorId: string, id: string): number {
-  const m = state.markets[sectorId]?.[id];
+export function marketPrice(state: GameState, key: string, id: string): number {
+  const m = state.markets[key]?.[id];
   if (!m) return WARES[id].price.avg;
   return priceAt(id, m.stock / m.cap);
 }
 
 /** Wie viel der Markt aufnehmen kann (Einheiten), bevor er voll ist */
-export function marketRoom(state: GameState, sectorId: string, id: string): number {
-  const m = state.markets[sectorId]?.[id];
+export function marketRoom(state: GameState, key: string, id: string): number {
+  const m = state.markets[key]?.[id];
   return m ? Math.max(0, m.cap - m.stock) : 0;
 }
 
-export function marketStock(state: GameState, sectorId: string, id: string): number {
-  return state.markets[sectorId]?.[id]?.stock ?? 0;
+export function marketStock(state: GameState, key: string, id: string): number {
+  return state.markets[key]?.[id]?.stock ?? 0;
 }
 
 /** Wert eines Handels (positive Menge: Spieler verkauft an den Markt). Preis gemittelt über die Bestandsänderung. */
-export function marketTradeValue(state: GameState, sectorId: string, id: string, amount: number): number {
-  const m = state.markets[sectorId][id];
+export function marketTradeValue(state: GameState, key: string, id: string, amount: number): number {
+  const m = state.markets[key]?.[id];
+  if (!m) return 0;
   const before = priceAt(id, m.stock / m.cap);
   const after = priceAt(id, (m.stock + amount) / m.cap);
   return Math.abs(amount) * (before + after) / 2;
 }
 
-export function applyMarketTrade(state: GameState, sectorId: string, id: string, amount: number): number {
-  const value = marketTradeValue(state, sectorId, id, amount);
-  const m = state.markets[sectorId][id];
+export function applyMarketTrade(state: GameState, key: string, id: string, amount: number): number {
+  const value = marketTradeValue(state, key, id, amount);
+  const m = state.markets[key]?.[id];
+  if (!m) return 0;
   m.stock = clamp(m.stock + amount, 0, m.cap);
   if (amount > 0) {
     state.credits += value;
     state.totals.sold += value;
-    const f = sector(sectorId).faction;
+    const f = sector(marketInfo(key).sector).faction;
     // Handel bringt etwas Ruf, aber nur bis Stufe 10 – darüber zählen Aufträge.
     if (state.rep[f] < 10) state.rep[f] = Math.min(10, state.rep[f] + value / 8_000_000);
   } else {
@@ -252,8 +278,8 @@ export function applyMarketTrade(state: GameState, sectorId: string, id: string,
 
 export function stepMarkets(state: GameState, dt: number): void {
   const k = 1 - Math.exp(-dt / REVERT_SECONDS);
-  for (const s of SECTORS) {
-    const market = state.markets[s.id];
+  for (const key in state.markets) {
+    const market = state.markets[key];
     for (const id in market) {
       const m = market[id];
       m.stock += (m.eq * m.cap - m.stock) * k;

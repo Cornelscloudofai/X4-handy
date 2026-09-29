@@ -22,7 +22,9 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
 
 | Bereich | Umsetzung |
 | --- | --- |
-| Stationsplaner | Endprodukte wählen → komplette Modulkette mit exakten Mengen pro Stunde, Rundung auf ganze Module, Überschuss/Fehlbedarf, Zukauf statt Eigenproduktion, Sonnenlicht, Belegschaftsbonus, Baukosten, Fließdiagramm von Rohstoff (links) bis Endprodukt (rechts), Übernahme in eine Station |
+| Verkaufsentscheidung | Pro Ware im Stationslager: alle Käufer in bekannten Sektoren (Handelsposten, spezialisierte Werften/Wachstationen/Fabriken mit begrenzter Abnahme, Aufträge) mit Preis, tatsächlicher Abnahme, Entfernung, Flugzeit, Transportzyklus und Ertrag pro Stunde – passend zu Menge und gewähltem Schiff; sortierbar nach Preis, Ertrag/h oder Umschlag, mit Engpass-Hinweis; Auftrag direkt an einen Transporter oder als feste Route |
+| Baureihenfolge | Jede Position einzeln, Ziehen am Griff (auch per Touch), Pfeile, Einfügen zwischen Positionen, laufender Bau fest; bezahlt wird erst beim Baustart |
+| Stationsplaner | Endprodukte wählen → komplette Modulkette mit exakten Mengen pro Stunde, Rundung auf ganze Module, Überschuss/Fehlbedarf, Zukauf statt Eigenproduktion, Sonnenlicht, Belegschaftsbonus, Baukosten, Vollbild-Fließdiagramm (Zoomen, Verschieben, Kästchen anordnen, ± am Modul, Empfehlungen bei Unterversorgung) für Entwürfe oder echte Stationen – dort wirkt jede Änderung direkt auf die Baureihenfolge |
 | Produktion | 58 Waren mit echten X4-Rezepten (Zykluszeit, Ein- und Ausgangsmengen), Solarleistung abhängig vom Sonnenlicht des Sektors |
 | Stationsbau | Module mit echten Baumaterialien und Bauzeiten, Kosten aus Materialwert; Lager (Container/Feststoff/Flüssig), Dock, Pier |
 | Schiffe | Split-Schiffe mit Frachträumen aus der Egosoft-Wiki: Miner (Mineral/Gas, M/L), Kurier, Transporter, Großfrachter |
@@ -30,6 +32,15 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
 | Märkte | Preise folgen dem Bestand wie in X4 (Min–Max-Spanne), NPC-Händler besuchen deine Stationen, Nachfrageschwankungen |
 | Fortschritt | Kampagne mit 11 Kapiteln, Lieferaufträge, Ruf bei Freien Familien und Zyarth-Patriarchat, Baupläne, Baulizenzen für 7 Sektoren |
 | Komfort | Zeitraffer ×1 bis ×60, Offline-Fortschritt (bis 8 h), automatisches Speichern, Spielstand als Text sichern |
+
+## Offene Punkte
+
+- **Belegschaft:** Habitatmodule mit Verbrauch von Nahrung und Medizin, damit der Belegschaftsbonus im Planer und in der Simulation vollständig durchgerechnet wird.
+
+## Gesicherte Stände
+
+- Commit `39644ed` – Stand mit Stationsplaner und Fließdiagramm, vor Verkaufsentscheidung, Diagramm-Editor und neuer Baureihenfolge
+  (`git checkout 39644ed`, danach `npm install && npm run build`).
 
 ## Projektaufbau
 

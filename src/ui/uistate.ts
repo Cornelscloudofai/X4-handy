@@ -1,6 +1,7 @@
 import { defaultPlan, type PlanSettings } from '../engine/planner';
+import type { SellModal } from './sellView';
 
-export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc';
+export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc' | 'npcst';
 export interface Selection { kind: SelKind; id: string }
 
 const PLAN_KEY = 'x4-sektorbau-planer-v1';
@@ -9,7 +10,7 @@ export type PanelType = 'stations' | 'fleet' | 'missions' | 'market' | 'more' | 
 export interface Panel { type: PanelType; id?: string; tab?: string; back?: Panel | null }
 
 export type Modal =
-  | { type: 'modules'; station: string; cat: string }
+  | { type: 'modules'; station: string; cat: string; at?: number }
   | { type: 'buyShip'; station: string; role: 'miner' | 'trader' | 'all' }
   | { type: 'confirm'; title: string; text: string; action: string; args: Record<string, string>; danger?: boolean; label: string }
   | { type: 'rename'; station: string }
@@ -20,9 +21,10 @@ export type Modal =
   | { type: 'import'; error?: string }
   | { type: 'home'; ship: string }
   | { type: 'courier'; contract: number }
-  | { type: 'planPick'; group: string }
+  | { type: 'planPick'; group: string; back?: boolean }
   | { type: 'planBuild' }
-  | { type: 'planDiagram' };
+  | { type: 'planDiagram' }
+  | SellModal;
 
 export interface UIState {
   view: 'sector' | 'galaxy';
@@ -42,6 +44,9 @@ export interface UIState {
   planZoom: number;
   planFocus: string;
   planEnergy: boolean;
+  planSource: string;
+  planDetails: boolean;
+  dg: { x: number; y: number; k: number };
 }
 
 export const ui: UIState = {
@@ -62,6 +67,9 @@ export const ui: UIState = {
   planZoom: 0.8,
   planFocus: '',
   planEnergy: true,
+  planSource: 'draft',
+  planDetails: false,
+  dg: { x: 0, y: 0, k: 1 },
 };
 
 function loadPlan(): PlanSettings {

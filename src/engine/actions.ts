@@ -7,7 +7,7 @@ import { defaultTradeRule, hasDockFor } from './economy';
 import { spawnCourier } from './npc';
 import { stationById } from './logistics';
 import { newModule, newShip, newStation } from './state';
-import type { GameState, RouteOrder, TradeRule } from './types';
+import type { GameState, RouteOrder, TradeEndpoint, TradeRule } from './types';
 import { log } from './util';
 
 export interface Result { ok: boolean; msg: string }
@@ -33,33 +33,59 @@ export function buyBlueprint(state: GameState, defId: string): Result {
   return ok(`Bauplan „${d.name}“ gekauft.`);
 }
 
-export function queueModule(state: GameState, stationId: string, defId: string): Result {
+export const MAX_MODULES = 40;
+
+/** Plant ein Modul ein – am Ende oder an Position `at` der Bauliste. Bezahlt wird beim Baustart. */
+export function queueModule(state: GameState, stationId: string, defId: string, at?: number): Result & { uid?: number } {
   const st = stationById(state, stationId);
   const d = MODULE_MAP[defId];
   if (!st || !d) return fail('Station oder Modul nicht gefunden.');
   if (d.kind === 'core') return fail('Der Stationskern entsteht mit der Station.');
   if (!state.blueprints.includes(defId)) return fail('Dafür fehlt der Bauplan.');
-  if (st.modules.length + st.queue.length + (st.build ? 1 : 0) >= 40) return fail('Höchstens 40 Module pro Station.');
-  if (state.credits < d.cost) return fail(`Es fehlen ${cr(d.cost - state.credits)}.`);
-  state.credits -= d.cost;
-  st.queue.push({ def: defId, paid: d.cost });
-  return ok(`${d.name} in Bauauftrag gegeben.`);
+  if (st.modules.length + st.queue.length + (st.build ? 1 : 0) >= MAX_MODULES) return fail(`Höchstens ${MAX_MODULES} Module pro Station.`);
+  const item = { uid: state.nextId++, def: defId, paid: 0 };
+  const pos = at === undefined ? st.queue.length : Math.max(0, Math.min(st.queue.length, at));
+  st.queue.splice(pos, 0, item);
+  return { ...ok(`${d.name} als Position ${pos + 1} eingeplant.`), uid: item.uid };
 }
 
-export function cancelQueued(state: GameState, stationId: string, index: number): Result {
+/** Verschiebt eine geplante Position an einen neuen Index */
+export function moveQueued(state: GameState, stationId: string, uid: number, to: number): Result {
   const st = stationById(state, stationId);
   if (!st) return fail('Station nicht gefunden.');
-  if (index === -1) {
-    if (!st.build) return fail('Kein laufender Bau.');
-    state.credits += st.build.paid;
-    st.build = null;
-    return ok('Bau abgebrochen, Kosten erstattet.');
-  }
-  const q = st.queue[index];
-  if (!q) return fail('Eintrag nicht gefunden.');
-  st.queue.splice(index, 1);
+  const from = st.queue.findIndex((q) => q.uid === uid);
+  if (from < 0) return fail('Position nicht gefunden.');
+  const [item] = st.queue.splice(from, 1);
+  st.queue.splice(Math.max(0, Math.min(st.queue.length, to)), 0, item);
+  st.waiting = '';
+  return ok('Reihenfolge geändert.');
+}
+
+export function cancelQueued(state: GameState, stationId: string, uid: number): Result {
+  const st = stationById(state, stationId);
+  if (!st) return fail('Station nicht gefunden.');
+  const i = st.queue.findIndex((q) => q.uid === uid);
+  if (i < 0) return fail('Position nicht gefunden.');
+  const [q] = st.queue.splice(i, 1);
   state.credits += q.paid;
-  return ok('Aus der Bauliste entfernt, Kosten erstattet.');
+  st.waiting = '';
+  return ok(q.paid ? 'Position entfernt, Kosten erstattet.' : 'Position aus der Bauliste entfernt.');
+}
+
+export function cancelBuild(state: GameState, stationId: string): Result {
+  const st = stationById(state, stationId);
+  if (!st?.build) return fail('Kein laufender Bau.');
+  state.credits += st.build.paid;
+  st.build = null;
+  return ok('Bau abgebrochen, Kosten erstattet.');
+}
+
+/** Entfernt die letzte noch nicht begonnene Position eines Modultyps */
+export function unqueueLast(state: GameState, stationId: string, defId: string): Result {
+  const st = stationById(state, stationId);
+  if (!st) return fail('Station nicht gefunden.');
+  for (let i = st.queue.length - 1; i >= 0; i--) if (st.queue[i].def === defId) return cancelQueued(state, stationId, st.queue[i].uid);
+  return fail('Keine geplante Position mehr – gebaute Module reißt du in der Modulliste ab.');
 }
 
 export function demolishModule(state: GameState, stationId: string, uid: number): Result {
@@ -217,3 +243,34 @@ export function stationModulesSummary(stationId: string, state: GameState): { de
 }
 
 export { newModule };
+
+/**
+ * Verkaufsauftrag für ein bestimmtes Schiff: Ware an der Station abholen und beim gewählten Käufer abliefern.
+ * Ist das Schiff beschäftigt, wird der Auftrag nach der laufenden Fahrt ausgeführt.
+ * Mit `repeat` wird daraus eine feste Handelsroute.
+ */
+export function sellOrder(state: GameState, shipId: string, stationId: string, ware: string, amount: number, to: TradeEndpoint, contract?: number, repeat = false): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  const st = stationById(state, stationId);
+  if (!s || !st) return fail('Schiff oder Station nicht gefunden.');
+  const cls = SHIP_MAP[s.cls];
+  if (cls.role !== 'trader') return fail('Nur Transporter können verkaufen.');
+  if (WARES[ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
+  if (!hasDockFor(st, cls.size)) return fail(cls.size === 'L' ? 'Die Station braucht einen Pier.' : 'Die Station braucht ein Dock.');
+  const n = Math.min(amount, cls.capacity / WARES[ware].volume, st.inventory[ware] ?? 0);
+  if (n < 1) return fail('Nichts zu verladen.');
+  const job = { ware, amount: n, from: { kind: 'station' as const, id: st.id }, to, stage: 'pickup' as const, contract };
+  if (repeat) {
+    s.mode = 'route';
+    s.route = { from: { kind: 'station', id: st.id }, to, ware };
+  }
+  const busy = !!s.job || !!s.cargo || s.phase === 'toTarget' || s.phase === 'docking';
+  if (busy) {
+    s.orders = [...(s.orders ?? []), job];
+    return ok(`${s.name} übernimmt den Verkauf nach der laufenden Fahrt.`);
+  }
+  s.orders = [job, ...(s.orders ?? [])];
+  s.phase = 'idle';
+  s.path = [];
+  return ok(`${s.name} fliegt los: ${Math.round(n).toLocaleString('de-DE')} ${WARES[ware].name}.`);
+}

@@ -67,7 +67,7 @@ export function deserialize(text: string): GameState {
   state.stations = raw.stations.filter((s) => s && SECTOR_MAP[s.sector]).map((s) => ({
     ...s,
     modules: (s.modules ?? []).filter((m) => MODULE_MAP[m.def]),
-    queue: (s.queue ?? []).filter((q) => MODULE_MAP[q.def]),
+    queue: (s.queue ?? []).filter((q) => MODULE_MAP[q.def]).map((q) => ({ ...q, uid: q.uid ?? state.nextId++, paid: q.paid ?? 0 })),
     build: s.build && MODULE_MAP[s.build.def] ? s.build : null,
     inventory: s.inventory ?? {},
     trade: s.trade ?? {},

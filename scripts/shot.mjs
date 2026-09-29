@@ -31,7 +31,7 @@ if (scenario === 'start') {
   await page.click('text=Bauplan');
   await page.waitForTimeout(400);
   await shot('4-station-modules');
-  await page.click('text=Modul bauen');
+  await page.click('text=Modul einplanen');
   await page.waitForTimeout(400);
   await shot('5-module-picker');
 }

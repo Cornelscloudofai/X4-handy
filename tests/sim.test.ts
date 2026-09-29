@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newGame, serialize, deserialize } from '../src/engine/state';
 import { step } from '../src/engine/sim';
-import { buyShip, queueModule, foundStation, setTradeRule } from '../src/engine/actions';
+import { buyShip, cancelQueued, foundStation, moveQueued, queueModule, setTradeRule, unqueueLast } from '../src/engine/actions';
 import { freeUnits, marketPrice, priceAt, storageCap, wareLimit } from '../src/engine/economy';
 import { WARES, outputPerHour } from '../src/data/wares';
 import { MODULE_MAP } from '../src/data/modules';
@@ -120,5 +120,69 @@ describe('Aufträge', () => {
     step(s, 4 * 3600);
     expect(currentMission(s)?.progress(s).cur).toBe(1500);
     expect(missionComplete(s)).toBe(true);
+  });
+});
+
+describe('Bauliste', () => {
+  it('plant ohne Vorkasse, bezahlt beim Baustart und hält die Reihenfolge ein', () => {
+    const s = newGame(11);
+    const st = s.stations[0];
+    const c0 = s.credits;
+    const a = queueModule(s, st.id, 'prod_refinedmetals');
+    const b = queueModule(s, st.id, 'storage_container');
+    const c = queueModule(s, st.id, 'storage_liquid', 0); // vor alle anderen
+    expect(s.credits).toBe(c0);
+    expect(st.queue.map((q) => q.uid)).toEqual([c.uid, a.uid, b.uid]);
+    moveQueued(s, st.id, b.uid!, 1);
+    expect(st.queue.map((q) => q.def)).toEqual(['storage_liquid', 'storage_container', 'prod_refinedmetals']);
+    step(s, 1);
+    expect(st.build?.def).toBe('storage_liquid');
+    expect(s.credits).toBeLessThan(c0);
+  });
+
+  it('wartet auf Credits statt zu überziehen', () => {
+    const s = newGame(12);
+    const st = s.stations[0];
+    s.credits = 1000;
+    queueModule(s, st.id, 'prod_refinedmetals');
+    step(s, 10);
+    expect(st.build).toBeNull();
+    expect(st.waiting).toBe('credits');
+    expect(s.credits).toBeGreaterThanOrEqual(0);
+    s.credits = 5_000_000;
+    step(s, 1);
+    expect(st.build?.def).toBe('prod_refinedmetals');
+  });
+
+  it('entfernt geplante Positionen einzeln', () => {
+    const s = newGame(13);
+    const st = s.stations[0];
+    s.credits = 0; // nichts startet
+    queueModule(s, st.id, 'prod_graphene');
+    queueModule(s, st.id, 'prod_graphene');
+    expect(unqueueLast(s, st.id, 'prod_graphene').ok).toBe(true);
+    expect(st.queue.length).toBe(1);
+    expect(cancelQueued(s, st.id, st.queue[0].uid).ok).toBe(true);
+    expect(st.queue.length).toBe(0);
+  });
+});
+
+describe('Alte Spielstände', () => {
+  it('übernimmt bezahlte Bauaufträge ohne IDs und ohne NPC-Märkte', () => {
+    const s = newGame(41);
+    const st = s.stations[0];
+    const old = JSON.parse(serialize(s));
+    old.stations[0].queue = [{ def: 'prod_refinedmetals', paid: 102_000 }, { def: 'storage_liquid', paid: 147_000 }];
+    delete old.markets['zhin-werft'];
+    const loaded = deserialize(JSON.stringify(old));
+    const q = loaded.stations[0].queue;
+    expect(q.every((x) => typeof x.uid === 'number')).toBe(true);
+    expect(new Set(q.map((x) => x.uid)).size).toBe(2);
+    expect(loaded.markets['zhin-werft']).toBeDefined();
+    const credits = loaded.credits;
+    step(loaded, 1);
+    expect(loaded.stations[0].build?.def).toBe('prod_refinedmetals');
+    expect(loaded.credits).toBeGreaterThanOrEqual(credits - 1); // bereits bezahlt → keine zweite Zahlung
+    expect(st.id).toBe(loaded.stations[0].id);
   });
 });

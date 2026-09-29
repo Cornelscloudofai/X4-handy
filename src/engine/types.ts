@@ -63,6 +63,16 @@ export interface ShipClassDef {
 
 export interface FieldDef { id: string; ware: string; x: number; z: number; r: number; richness: number }
 
+export interface NpcStationDef {
+  id: string;
+  name: string;
+  kind: 'wharf' | 'defence' | 'factory' | 'habitat';
+  x: number;
+  z: number;
+  /** Waren, die diese Station ankauft (begrenzte Menge, meist über Durchschnittspreis) */
+  buys: string[];
+}
+
 export interface SectorDef {
   id: string;
   name: string;
@@ -72,6 +82,7 @@ export interface SectorDef {
   sunlight: number;
   fields: FieldDef[];
   tradeStation: { name: string; x: number; z: number };
+  npcStations: NpcStationDef[];
   links: string[];
   licenseCost: number;
   repRequired: number;
@@ -100,6 +111,8 @@ export interface ModuleInst {
   util: number;
 }
 
+export interface QueueItem { uid: number; def: string; paid: number }
+
 export interface TradeRule { buy: boolean; sell: boolean }
 
 export interface Station {
@@ -109,7 +122,12 @@ export interface Station {
   x: number;
   z: number;
   modules: ModuleInst[];
-  queue: { def: string; paid: number }[];
+  /** Geplante Baupositionen in Reihenfolge. Bezahlt wird beim Baustart (paid > 0: bereits bezahlt, alte Spielstände). */
+  queue: QueueItem[];
+  /** Grund, warum die nächste Position nicht startet */
+  waiting?: string;
+  /** Eigene Anordnung der Kästchen im Fließdiagramm */
+  layout?: Record<string, { x: number; y: number }>;
   build: { def: string; remaining: number; total: number; paid: number } | null;
   inventory: Record<string, number>;
   trade: Record<string, TradeRule>;
@@ -140,7 +158,8 @@ export interface TradeJob {
   contract?: number;
 }
 
-export type TradeEndpoint = { kind: 'station'; id: string } | { kind: 'market'; sector: string };
+/** market: Handelsposten eines Sektors (market fehlt) oder eine NPC-Käuferstation (market = deren ID) */
+export type TradeEndpoint = { kind: 'station'; id: string } | { kind: 'market'; sector: string; market?: string };
 
 export interface RouteOrder { from: TradeEndpoint; to: TradeEndpoint; ware: string }
 
@@ -164,6 +183,8 @@ export interface Ship {
   mode: 'auto' | 'route';
   route: RouteOrder | null;
   job: TradeJob | null;
+  /** Vom Spieler erteilte Einzelaufträge, werden vor dem Autohandel abgearbeitet */
+  orders?: TradeJob[];
   status: string;
   trips: number;
   earned: number;

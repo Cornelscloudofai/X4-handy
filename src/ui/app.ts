@@ -17,9 +17,13 @@ import { $, morph } from './dom';
 import { fmtCr } from './format';
 import { icon } from './icons';
 import { setSound, sfx, soundEnabled } from './sound';
+import { initDragLists, isDragging } from './dragList';
+import { defaultSellModal, shipClass } from './sellView';
+import { saleOffers } from '../engine/sales';
 import { SPEEDS, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
-import { buildOrder } from './plannerView';
+import { activePlan, buildOrder, diagramBounds, diagramEditor, nodePositions } from './plannerView';
+import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
 import { MODULE_MAP } from '../data/modules';
 import { WARES } from '../data/wares';
 import { cardHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml } from './views';
@@ -65,6 +69,14 @@ export function start(): void {
   attachInput(canvas, () => (ui.view === 'galaxy' ? galaxyCam : cam), { onTap, onLongPress });
   document.addEventListener('click', onClick);
   document.addEventListener('change', onChange);
+  initEditor();
+  // Schieberegler live nachführen
+  document.addEventListener('input', (e) => { if ((e.target as HTMLElement).dataset?.change === 'sell-amount') onChange(e); });
+  initDragLists((list, uid, to) => {
+    const st = list.dataset.st;
+    if (st) { A.moveQueued(state, st, Number(uid), to); sfx.tap(); }
+    refresh();
+  });
   for (const id of ['bottom', 'hud', 'panel', 'modal']) {
     const el = $(id);
     el.addEventListener('pointerdown', () => (pointerInUI = true));
@@ -74,7 +86,8 @@ export function start(): void {
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
   window.addEventListener('pagehide', save);
   onGameEvent((e) => {
-    if (e.type === 'toast') toast(e.text, e.kind);
+    // Während ein Dialog offen ist, stören reine Infomeldungen – sie stehen weiter im Ereignisprotokoll
+    if (e.type === 'toast' && !(ui.modal && e.kind === 'info')) toast(e.text, e.kind);
     if (e.type === 'sale' && e.sector === ui.sector && Math.abs(e.value) >= 1000 && ui.view === 'sector') {
       renderer.addFloat(e.sector, e.x, e.z, (e.value > 0 ? '+' : '') + fmtCr(e.value), e.value > 0 ? '#8ff5b0' : '#ffb4a0');
       if (e.value > 0) sfx.coin();
@@ -147,7 +160,7 @@ function frame(now: number): void {
   if (creditFlashTimer > 0) { creditFlashTimer -= dt; if (creditFlashTimer <= 0) { creditFlash = ''; dirtyUI = true; } }
   uiTimer -= dt;
   if (dirtyUI || uiTimer <= 0) {
-    if (!pointerInUI) { renderUI(); dirtyUI = false; }
+    if (!pointerInUI && !isDragging() && !editorBusy()) { renderUI(); dirtyUI = false; }
     uiTimer = 0.33;
   }
   saveTimer += dt;
@@ -185,7 +198,8 @@ function renderUI(): void {
   if (modal.dataset.key !== modalKey()) { modal.innerHTML = ''; modal.dataset.key = modalKey(); }
   morph(modal, modalContent);
   modal.hidden = !modalContent;
-  document.documentElement.style.setProperty('--bottom-stack', $('bottom').offsetHeight + 'px');
+  if (needFit && ui.modal?.type === 'planDiagram') { needFit = false; requestAnimationFrame(fitEditor); }
+  document.documentElement.style.setProperty('--bottom-stack', (ui.modal ? 96 : $('bottom').offsetHeight) + 'px');
 }
 
 function panelKey(): string {
@@ -297,34 +311,41 @@ function onClick(e: MouseEvent): void {
   else sfx.tap();
   switch (a) {
     case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
-    case 'plan-pick': ui.modal = { type: 'planPick', group: 'all' }; refresh(); break;
-    case 'plan-pick-group': ui.modal = { type: 'planPick', group: d.g! }; refresh(); break;
+    case 'plan-pick': ui.modal = { type: 'planPick', group: 'all', back: ui.modal?.type === 'planDiagram' }; refresh(); break;
+    case 'plan-pick-group': if (ui.modal?.type === 'planPick') { ui.modal = { ...ui.modal, group: d.g! }; refresh(); } break;
     case 'plan-add': {
-      const t = ui.plan.targets.find((x) => x.ware === d.ware);
-      if (t) t.modules++;
-      else ui.plan.targets.push({ ware: d.ware!, modules: 1 });
-      ui.plan.buy = ui.plan.buy.filter((x) => x !== d.ware);
-      ui.modal = null;
-      planChanged();
-      toast(`${WARES[d.ware!].name} zum Plan hinzugefügt.`, 'good');
+      const w = d.ware!;
+      const back = ui.modal?.type === 'planPick' && ui.modal.back;
+      const st = planStation();
+      if (st) {
+        // Stationsplanung: das Produkt kommt als neue Position in die Baureihenfolge
+        const r = A.queueModule(state, st.id, 'prod_' + w, smartInsert(st, w));
+        toast(r.ok ? `${WARES[w].name}-Fabrik in ${st.name} eingeplant.` : r.msg, r.ok ? 'good' : 'warn');
+      } else {
+        const t = ui.plan.targets.find((x) => x.ware === w);
+        if (t) t.modules++;
+        else ui.plan.targets.push({ ware: w, modules: 1 });
+        ui.plan.buy = ui.plan.buy.filter((x) => x !== w);
+        savePlan();
+        toast(`${WARES[w].name} zum Entwurf hinzugefügt.`, 'good');
+      }
+      ui.modal = back ? { type: 'planDiagram' } : null;
+      if (back) needFit = true;
+      refresh();
       break;
     }
-    case 'plan-target': {
-      const t = ui.plan.targets.find((x) => x.ware === d.ware);
-      if (!t) break;
-      t.modules += Number(d.d);
-      if (t.modules <= 0) ui.plan.targets = ui.plan.targets.filter((x) => x !== t);
-      planChanged();
-      break;
-    }
-    case 'plan-extra': {
-      const r = computePlan(ui.plan);
-      const n = r.nodes[d.ware!];
-      const cur = ui.plan.extra[d.ware!] ?? 0;
-      if (Number(d.d) < 0 && n && n.modules <= 0) break;
-      ui.plan.extra[d.ware!] = cur + Number(d.d);
-      if (!ui.plan.extra[d.ware!]) delete ui.plan.extra[d.ware!];
-      planChanged();
+    case 'plan-target': changeModules(d.ware!, Number(d.d)); break;
+    case 'plan-extra': changeModules(d.ware!, Number(d.d)); break;
+    case 'dg-mod': changeModules(d.ware!, Number(d.d)); break;
+    case 'dg-rec': {
+      const n = Number(d.n);
+      const st = planStation();
+      if (st) {
+        let ok = 0;
+        for (let i = 0; i < n; i++) if (A.queueModule(state, st.id, 'prod_' + d.ware, smartInsert(st, d.ware!)).ok) ok++;
+        toast(`${ok} × ${WARES[d.ware!].name}-Fabrik vor ihren Verbrauchern eingeplant.`, ok ? 'good' : 'warn');
+        refresh();
+      } else changeModules(d.ware!, n);
       break;
     }
     case 'plan-buy': {
@@ -335,32 +356,48 @@ function onClick(e: MouseEvent): void {
       break;
     }
     case 'plan-workforce': ui.plan.workforce = !ui.plan.workforce; planChanged(); break;
+    case 'plan-auto': ui.plan.auto = ui.plan.auto === false; ui.plan.extra = {}; planChanged(); break;
+    case 'plan-details': ui.planDetails = !ui.planDetails; refresh(); break;
     case 'plan-energy': ui.planEnergy = !ui.planEnergy; refresh(); break;
-    case 'plan-zoom': ui.planZoom = Math.max(0.4, Math.min(1.6, ui.planZoom * (Number(d.d) > 0 ? 1.25 : 0.8))); refresh(); break;
     case 'plan-focus': ui.planFocus = ui.planFocus === d.ware ? '' : d.ware!; refresh(); break;
-    case 'plan-reset': ui.plan = { targets: [], sunlight: 100, workforce: false, buy: [], extra: {} }; ui.planFocus = ''; planChanged(); break;
+    case 'plan-reset': ui.plan = { targets: [], sunlight: 100, workforce: false, buy: [], extra: {}, auto: true, layout: {} }; ui.planFocus = ''; planChanged(); break;
     case 'plan-from-ware': {
       if (!producible(d.ware!)) break;
-      ui.plan = { ...ui.plan, targets: [{ ware: d.ware!, modules: 1 }], buy: [], extra: {} };
+      ui.planSource = 'draft';
+      ui.plan = { ...ui.plan, targets: [{ ware: d.ware!, modules: 1 }], buy: [], extra: {}, layout: {} };
       ui.planFocus = '';
       savePlan();
       openPanel('planner');
       break;
     }
-    case 'plan-from-station': {
-      const st = stationById(state, d.st!);
-      if (!st) break;
-      const counts = new Map<string, number>();
-      for (const m of st.modules) { const w = MODULE_MAP[m.def]?.ware; if (w && MODULE_MAP[m.def].kind === 'production') counts.set(w, (counts.get(w) ?? 0) + 1); }
-      if (!counts.size) { toast('Die Station hat noch keine Produktionsmodule.', 'warn'); break; }
-      // Vorhandene Module als Vorgabe; der Planer zeigt, was für eine geschlossene Kette fehlt
-      ui.plan = { targets: [...counts].map(([ware, modules]) => ({ ware, modules })), sunlight: SECTOR_MAP[st.sector].sunlight, workforce: false, buy: [], extra: {} };
-      ui.planFocus = '';
-      savePlan();
-      openPanel('planner');
+    case 'plan-from-station': ui.planSource = d.st!; ui.planFocus = ''; openPanel('planner'); break;
+    case 'plan-station': ui.planSource = d.st!; ui.planFocus = ''; openEditor(); break;
+    case 'dg-fit': fitEditor(); break;
+    case 'dg-arrange': {
+      const st = planStation();
+      if (st) st.layout = {};
+      else { ui.plan.layout = {}; savePlan(); }
+      refresh();
+      fitEditor();
       break;
     }
-    case 'plan-full': ui.modal = { type: 'planDiagram' }; refresh(); break;
+    case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); refresh(); break;
+    case 'sell-ship': if (ui.modal?.type === 'sell') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, picked: '', amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
+    case 'sell-pick': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, picked: ui.modal.picked === d.id ? '' : d.id! }; refresh(); } break;
+    case 'sell-prio': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, prio: d.p as 'price' }; refresh(); } break;
+    case 'sell-amount': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, amount: Math.floor(Number(d.v)) }; refresh(); } break;
+    case 'sell-go': {
+      const m = ui.modal;
+      if (m?.type !== 'sell') break;
+      const cls = shipClass(state, m.ship);
+      const offer = saleOffers(state, m.station, m.ware, cls, m.amount).find((o) => o.id === m.picked);
+      if (!offer) { toast('Dieser Käufer ist nicht mehr verfügbar.', 'warn'); refresh(); break; }
+      const r = A.sellOrder(state, m.ship, m.station, m.ware, offer.accept, offer.endpoint, offer.contract, m.repeat);
+      if (r.ok) ui.modal = null;
+      result(r);
+      break;
+    }
+    case 'plan-full': openEditor(); break;
     case 'plan-build-modal': ui.modal = { type: 'planBuild' }; refresh(); break;
     case 'plan-build': {
       ui.modal = null;
@@ -448,11 +485,20 @@ function onClick(e: MouseEvent): void {
       refresh();
       break;
     }
-    case 'modal-modules': ui.modal = { type: 'modules', station: d.st!, cat: d.cat ?? 'production' }; refresh(); break;
+    case 'modal-modules': ui.modal = { type: 'modules', station: d.st!, cat: d.cat ?? 'production', at: d.at !== undefined ? Number(d.at) : undefined }; refresh(); break;
     case 'modules-cat': if (ui.modal?.type === 'modules') { ui.modal = { ...ui.modal, cat: d.cat! }; refresh(); } break;
-    case 'queue': result(A.queueModule(state, d.st!, d.def!)); break;
+    case 'queue': {
+      const at = d.at !== undefined ? Number(d.at) : undefined;
+      const r = A.queueModule(state, d.st!, d.def!, at);
+      // Eine Einfügestelle wird mit einem Modul belegt, danach zurück zur Liste
+      if (r.ok && ui.modal?.type === 'modules' && ui.modal.at !== undefined) ui.modal = null;
+      result(r);
+      break;
+    }
+    case 'q-move': result(A.moveQueued(state, d.st!, Number(d.uid), Number(d.to))); break;
+    case 'cancel-build': result(A.cancelBuild(state, d.st!)); break;
     case 'buy-bp': result(A.buyBlueprint(state, d.def!)); break;
-    case 'cancel-q': result(A.cancelQueued(state, d.st!, Number(d.i))); break;
+    case 'cancel-q': result(A.cancelQueued(state, d.st!, Number(d.uid))); break;
     case 'ask-demolish': ask('Modul abreißen?', 'Du erhältst 30 % der Baukosten als Materialerlös zurück. Lagerbestände über der neuen Grenze bleiben erhalten.', 'demolish', { st: d.st!, uid: d.uid! }, 'Abreißen', true); break;
     case 'ask-sell-ship': {
       const sh = state.ships.find((x) => x.id === d.id);
@@ -578,6 +624,92 @@ function parseEp(v: string): TradeEndpoint | null {
   return null;
 }
 
+// ---------- Planer und Fließdiagramm ----------
+
+/** Station, die gerade im Planer bearbeitet wird (sonst Entwurf) */
+function planStation() {
+  return ui.planSource !== 'draft' ? stationById(state, ui.planSource) ?? null : null;
+}
+
+/** Neue Fabrik vor dem ersten geplanten Verbraucher ihrer Ware einsortieren */
+function smartInsert(st: NonNullable<ReturnType<typeof planStation>>, ware: string): number | undefined {
+  const i = st.queue.findIndex((q) => { const w = MODULE_MAP[q.def]?.ware; return !!w && WARES[w].inputs.some((x) => x.ware === ware); });
+  return i >= 0 ? i : undefined;
+}
+
+/** + / − an einem Modul: in der Station als Bauposition, im Entwurf als Vorgabe */
+function changeModules(ware: string, delta: number): void {
+  const st = planStation();
+  if (st) {
+    if (delta > 0) {
+      let ok = 0, msg = '';
+      for (let i = 0; i < delta; i++) { const r = A.queueModule(state, st.id, 'prod_' + ware, smartInsert(st, ware)); if (r.ok) ok++; else msg = r.msg; }
+      if (!ok) toast(msg, 'warn');
+    } else {
+      for (let i = 0; i < -delta; i++) { const r = A.unqueueLast(state, st.id, 'prod_' + ware); if (!r.ok) { toast(r.msg, 'warn'); break; } }
+    }
+    refresh();
+    return;
+  }
+  const t = ui.plan.targets.find((x) => x.ware === ware);
+  if (t) {
+    t.modules += delta;
+    if (t.modules <= 0) ui.plan.targets = ui.plan.targets.filter((x) => x !== t);
+  } else {
+    const n = computePlan(ui.plan).nodes[ware];
+    if (delta < 0 && (!n || n.modules <= 0)) return;
+    ui.plan.extra[ware] = (ui.plan.extra[ware] ?? 0) + delta;
+    if (!ui.plan.extra[ware]) delete ui.plan.extra[ware];
+  }
+  planChanged();
+}
+
+let editorLayout: Record<string, { x: number; y: number }> | null = null;
+let needFit = false;
+
+function openEditor(): void {
+  ui.modal = { type: 'planDiagram' };
+  needFit = true;
+  refresh();
+}
+
+function currentPositions() {
+  const { settings } = activePlan(state, ui);
+  const r = computePlan(settings);
+  return nodePositions(r, { ...(settings.layout ?? {}), ...(editorLayout ?? {}) });
+}
+
+function fitEditor(): void {
+  const svg = document.querySelector<SVGSVGElement>('svg.dg-editor');
+  if (!svg) return;
+  ui.dg = fitView(svg, diagramBounds(currentPositions()));
+  refresh();
+}
+
+export function editorLayoutOverride() {
+  return editorLayout ?? undefined;
+}
+
+function initEditor(): void {
+  initDiagramEditor({
+    view: () => ui.dg,
+    setView: (v) => { ui.dg = v; },
+    nodePos: (w) => currentPositions().get(w) ?? null,
+    moveNode: (w, x, y, done) => {
+      editorLayout = { ...(editorLayout ?? {}), [w]: { x: Math.round(x), y: Math.round(y) } };
+      if (done) {
+        const st = planStation();
+        if (st) st.layout = { ...(st.layout ?? {}), ...editorLayout };
+        else { ui.plan.layout = { ...(ui.plan.layout ?? {}), ...editorLayout }; savePlan(); }
+        editorLayout = null;
+      }
+      const modal = document.getElementById('modal');
+      if (modal) morph(modal, diagramEditor(state, ui, editorLayout ?? undefined));
+    },
+    tapNode: (w) => { ui.planFocus = ui.planFocus === w ? '' : w; refresh(); },
+  });
+}
+
 function planChanged(): void {
   savePlan();
   refresh();
@@ -587,6 +719,22 @@ function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
+  if (field === 'sell-amount' && ui.modal?.type === 'sell') {
+    ui.modal = { ...ui.modal, amount: Math.floor(Number(el.value)) };
+    refresh();
+    return;
+  }
+  if (field === 'sell-repeat' && ui.modal?.type === 'sell') {
+    ui.modal = { ...ui.modal, repeat: (el as unknown as HTMLInputElement).checked };
+    refresh();
+    return;
+  }
+  if (field === 'plan-source') {
+    ui.planSource = el.value;
+    ui.planFocus = '';
+    refresh();
+    return;
+  }
   if (field === 'plan-sun') {
     ui.plan.sunlight = Number(el.value) || 100;
     planChanged();

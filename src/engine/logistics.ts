@@ -1,5 +1,5 @@
 // Bedarf, Überschuss, Reservierungen und Wegberechnung.
-import { SECTOR_MAP, gate, sector, sectorPath } from '../data/sectors';
+import { SECTOR_MAP, gate, marketInfo, sector, sectorPath } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { consumesWare, storageCap, stationWares, tradeRule, wareLimit } from './economy';
@@ -14,16 +14,22 @@ export function stationById(state: GameState, id: string): Station | undefined {
 
 export function endpointPlace(state: GameState, ep: TradeEndpoint): Place | null {
   if (ep.kind === 'market') {
-    const s = SECTOR_MAP[ep.sector];
-    return s ? { sector: s.id, x: s.tradeStation.x, z: s.tradeStation.z } : null;
+    if (!SECTOR_MAP[ep.sector]) return null;
+    const m = marketInfo(marketKey(ep));
+    return { sector: m.sector, x: m.x, z: m.z };
   }
   const st = stationById(state, ep.id);
   return st ? { sector: st.sector, x: st.x, z: st.z } : null;
 }
 
 export function endpointName(state: GameState, ep: TradeEndpoint): string {
-  if (ep.kind === 'market') return SECTOR_MAP[ep.sector]?.tradeStation.name ?? 'Markt';
+  if (ep.kind === 'market') return SECTOR_MAP[ep.sector] ? marketInfo(marketKey(ep)).name : 'Markt';
   return stationById(state, ep.id)?.name ?? 'Station';
+}
+
+/** Schlüssel des Marktes hinter einem Endpunkt (Handelsposten oder NPC-Station) */
+export function marketKey(ep: TradeEndpoint): string {
+  return ep.kind === 'market' ? ep.market ?? ep.sector : '';
 }
 
 /** Andockpunkt eines Schiffs rund um eine Station (damit sich Schiffe nicht stapeln) */
@@ -131,6 +137,7 @@ export function outgoing(state: GameState, stationId: string, wareId: string): n
   let n = 0;
   for (const s of state.ships) {
     if (s.job && s.job.stage === 'pickup' && s.job.ware === wareId && s.job.from.kind === 'station' && s.job.from.id === stationId) n += s.job.amount;
+    for (const o of s.orders ?? []) if (o.ware === wareId && o.from.kind === 'station' && o.from.id === stationId) n += o.amount;
   }
   for (const npc of state.npcs) if (npc.kind === 'buyer' && npc.station === stationId && npc.ware === wareId && npc.phase === 'in') n += npc.amount;
   return n;

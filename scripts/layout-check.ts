@@ -11,3 +11,7 @@ for (const s of SECTORS) {
     if (d < a.r + b.r + 18) console.log(s.id, a.n, `(${a.x},${a.z})`, b.n, `(${b.x},${b.z})`, 'd=' + Math.round(d));
   }
 }
+for (const s of SECTORS) for (const n of s.npcStations) {
+  const others = [...s.fields.map((f) => ({ n: f.ware, x: f.x, z: f.z, r: f.r })), ...gatesOf(s.id).map((g) => ({ n: 'gate', x: g.x, z: g.z, r: 12 })), { n: 'trade', x: s.tradeStation.x, z: s.tradeStation.z, r: 14 }, ...s.npcStations.filter((m) => m !== n).map((m) => ({ n: m.id, x: m.x, z: m.z, r: 12 }))];
+  for (const o of others) { const d = Math.hypot(o.x - n.x, o.z - n.z); if (d < o.r + 12 + 18) console.log('NPC', n.id, 'nah an', o.n, Math.round(d)); }
+}

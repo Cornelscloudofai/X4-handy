@@ -1,0 +1,47 @@
+// Handy-Test des Verkaufsdialogs: node scripts/sell-shot.mjs <outdir>
+import { chromium } from 'playwright';
+import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+const out = process.argv[2] ?? '.';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(pathToFileURL(path.resolve('dist/index.html')).href);
+await page.waitForTimeout(600);
+await page.click('text=Loslegen');
+await page.evaluate(() => {
+  const g = window.__game, A = g.actions, s = g.state;
+  s.credits = 20_000_000;
+  s.sectors.push('tkr');
+  const st = s.stations[0];
+  A.queueModule(s, st.id, 'prod_refinedmetals');
+  A.buyShip(s, 'boa', st.id);
+  A.buyShip(s, 'alligator_min', st.id);
+  g.step(2 * 3600);
+  st.inventory.refinedmetals = 9000;
+  g.ui.paused = true;
+  g.openPanel('station', st.id, 'storage');
+});
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${out}/sell-0-storage.png` });
+await page.click('[data-act="sell-open"][data-ware="refinedmetals"]');
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${out}/sell-1.png` });
+await page.evaluate(() => document.querySelector('#modal .offers').scrollIntoView());
+await page.screenshot({ path: `${out}/sell-2-offers.png` });
+await page.click('[data-act="sell-prio"][data-p="price"]');
+await page.waitForTimeout(200);
+await page.locator('.offer').first().click();
+await page.waitForTimeout(200);
+await page.screenshot({ path: `${out}/sell-3-picked.png` });
+await page.click('[data-act="sell-go"]');
+await page.waitForTimeout(300);
+const job = await page.evaluate(() => { const s = window.__game.state.ships.find((x) => x.cls === 'boa'); return { status: s.status, job: s.job, orders: s.orders }; });
+console.log(JSON.stringify(job).slice(0, 300));
+// Karte mit NPC-Station
+await page.evaluate(() => { const g = window.__game; g.ui.panel = null; g.ui.selection = { kind: 'npcst', id: 'zhin-werft' }; g.refresh(); });
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/sell-4-map.png` });
+console.log('errors', errors);
+await browser.close();

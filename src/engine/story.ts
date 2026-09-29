@@ -31,7 +31,7 @@ export const STORY: StoryMission[] = [
     title: 'Neuanfang in Zhin',
     story: 'Die Xenon haben die Werften der Familie Zhin schwer getroffen. Patriarchin Zhin bietet dir Baurechte – wenn du hilfst, den Sektor wieder aufzubauen. Veredelte Metalle sind die Grundlage für alles.',
     goal: 'Baue eine Fabrik für Veredelte Metalle',
-    hint: 'Öffne deine Station → „Module“ → „Modul bauen“. Dein Miner bringt Erz, das Solarkraftwerk Energiezellen.',
+    hint: 'Öffne deine Station → „Module“ → „Modul einplanen“. Dein Miner bringt Erz, das Solarkraftwerk Energiezellen.',
     progress: (s) => ({ cur: countModules(s, 'prod_refinedmetals'), target: 1 }),
     reward: { credits: 400_000, rep: { frf: 2 } },
   },

@@ -1,11 +1,11 @@
 // Verhalten der eigenen Schiffe: Miner fördern für ihre Heimatstation,
 // Transporter handeln automatisch oder fliegen feste Versorgungslinien.
-import { SECTOR_MAP, sector } from '../data/sectors';
+import { marketInfo, sector } from '../data/sectors';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, stationWares, wareLimit } from './economy';
+import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
 import {
-  dockPoint, endpointName, endpointPlace, fieldById, knownSectors, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
+  dockPoint, endpointName, endpointPlace, fieldById, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
   type Place,
 } from './logistics';
 import { contractDeliver } from './contracts';
@@ -226,11 +226,14 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup', contract: c.id }, score: (weight * (n * perUnit * 1.2 + finishes)) / travelTime(state, s, baseEp, to) });
       }
       for (const sec of nearbyMarkets) {
-        const room = marketRoom(state, sec, id);
-        const n = Math.min(qty, room);
-        if (n < minLoad(id)) continue;
-        const to: TradeEndpoint = { kind: 'market', sector: sec };
-        cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup' }, score: (weight * n * marketPrice(state, sec, id)) / travelTime(state, s, baseEp, to) });
+        // Handelsposten und spezialisierte NPC-Käufer im Sektor
+        for (const key of [sec, ...sector(sec).npcStations.filter((n) => n.buys.includes(id)).map((n) => n.id)]) {
+          const room = marketRoom(state, key, id);
+          const n = Math.min(qty, room);
+          if (n < minLoad(id)) continue;
+          const to: TradeEndpoint = key === sec ? { kind: 'market', sector: sec } : { kind: 'market', sector: sec, market: key };
+          cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup' }, score: (weight * marketTradeValue(state, key, id, n)) / travelTime(state, s, baseEp, to) });
+        }
       }
     }
 
@@ -286,15 +289,17 @@ function routeJob(state: GameState, s: Ship): TradeJob | null {
     // Eine Station, die die Ware selbst verbraucht, behält eine Reserve
     const limit = wareLimit(st, r.ware);
     have = Math.max(0, (st.inventory[r.ware] ?? 0) - reserveFor(st, r.ware, limit) - outgoing(state, st.id, r.ware));
+  } else if (r.from.kind === 'market' && r.from.market) {
+    have = 0; // NPC-Käuferstationen verkaufen nichts
   } else {
-    have = Math.min(marketStock(state, r.from.sector, r.ware) * 0.8, Math.max(0, state.credits - 50_000) / marketPrice(state, r.from.sector, r.ware));
+    have = Math.min(marketStock(state, marketKey(r.from), r.ware) * 0.8, Math.max(0, state.credits - 50_000) / marketPrice(state, marketKey(r.from), r.ware));
   }
   let room: number;
   if (r.to.kind === 'station') {
     const st = stationById(state, r.to.id);
     if (!st) return null;
     room = freeUnits(st, r.ware);
-  } else room = marketRoom(state, r.to.sector, r.ware);
+  } else room = marketRoom(state, marketKey(r.to), r.ware);
   const n = Math.min(units, have, room);
   if (n < Math.min(units * 0.2, 100)) return null;
   return { ware: r.ware, amount: n, from: r.from, to: r.to, stage: 'pickup' };
@@ -312,6 +317,9 @@ function stepTrader(state: GameState, s: Ship, dt: number): void {
         startLeg(state, s);
         return;
       }
+      // Vom Spieler erteilte Aufträge haben Vorrang
+      const order = s.orders?.shift();
+      if (order) { s.job = order; startLeg(state, s); return; }
       const job = s.mode === 'route' ? routeJob(state, s) : findTradeJob(state, s);
       if (!job) {
         s.status = s.mode === 'route' ? 'Route wartet auf Ware oder Platz' : home && !hasDockFor(home, cls.size) ? (cls.size === 'L' ? 'Heimat hat keinen Pier' : 'Heimat hat kein Dock') : 'Sucht Handelsgelegenheit';
@@ -371,10 +379,11 @@ function doTrade(state: GameState, s: Ship): void {
         addWare(st, job.ware, -n);
       }
     } else {
-      const price = marketPrice(state, job.from.sector, job.ware);
-      n = Math.min(job.amount, units, marketStock(state, job.from.sector, job.ware), Math.max(0, state.credits - 10_000) / price);
+      const key = marketKey(job.from);
+      const price = marketPrice(state, key, job.ware);
+      n = job.from.market ? 0 : Math.min(job.amount, units, marketStock(state, key, job.ware), Math.max(0, state.credits - 10_000) / price);
       if (n > 0) {
-        const cost = applyMarketTrade(state, job.from.sector, job.ware, -n);
+        const cost = applyMarketTrade(state, key, job.ware, -n);
         const home = stationById(state, s.home);
         if (home) home.expenses += cost;
         s.earned -= cost;
@@ -399,22 +408,23 @@ function doTrade(state: GameState, s: Ship): void {
       s.earned += n * w.price.avg * 0.1;
     }
   } else {
-    const sec = job.to.sector;
+    const key = marketKey(job.to);
     if (job.contract != null) {
       const used = contractDeliver(state, job.contract, s.cargo.ware, s.cargo.amount);
       s.cargo.amount -= used;
       state.totals.delivered += used;
     }
     if (s.cargo.amount > 0.5) {
-      const n = Math.min(s.cargo.amount, marketRoom(state, sec, s.cargo.ware) + s.cargo.amount * 0.2);
+      // NPC-Käufer nehmen nur, was in ihr Lager passt; der Handelsposten etwas mehr zum Mindestpreis
+      const n = Math.min(s.cargo.amount, marketRoom(state, key, s.cargo.ware) + (job.to.market ? 0 : s.cargo.amount * 0.2));
       if (n > 0) {
-        const value = applyMarketTrade(state, sec, s.cargo.ware, n);
+        const value = applyMarketTrade(state, key, s.cargo.ware, n);
         s.cargo.amount -= n;
         s.earned += value;
         const home = stationById(state, s.home);
         if (home) home.income += value;
-        const place = SECTOR_MAP[sec].tradeStation;
-        emit({ type: 'sale', station: '', sector: sec, x: place.x, z: place.z, value });
+        const place = marketInfo(key);
+        emit({ type: 'sale', station: '', sector: place.sector, x: place.x, z: place.z, value });
       }
     }
   }
