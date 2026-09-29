@@ -1,4 +1,7 @@
 // Steuerung: Spielschleife, Karte, Eingaben, Oberfläche und Speichern
+import { undo, withUndo } from './undo';
+import * as Y from '../engine/yard';
+import { acceptShipOrder, cancelShipBuild, queueShipBuild } from '../engine/yard';
 import { SECTOR_MAP, SECTOR_RADIUS } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
@@ -68,13 +71,14 @@ export function start(): void {
   new ResizeObserver(resize).observe(canvas);
   attachInput(canvas, () => (ui.view === 'galaxy' ? galaxyCam : cam), { onTap, onLongPress });
   document.addEventListener('click', onClick);
+  initBackButton();
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
   document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
-    if (st) { A.moveQueued(state, st, Number(uid), to); sfx.tap(); }
+    if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
     refresh();
   });
   for (const id of ['bottom', 'hud', 'panel', 'modal']) {
@@ -99,7 +103,7 @@ export function start(): void {
   renderUI();
   fitSector();
   // Zugriff für automatisierte Tests
-  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, claim: () => claimMission(state), openPanel, gotoSector };
+  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector };
   requestAnimationFrame(frame);
   const boot = document.getElementById('boot');
   if (boot) { boot.style.opacity = '0'; setTimeout(() => boot.remove(), 500); }
@@ -278,6 +282,44 @@ function onLongPress(sx: number, sy: number): void {
   refresh();
 }
 
+// ---------- Zurück-Taste (Android) und Escape ----------
+
+/** Schließt die oberste Ebene. false = nichts mehr offen */
+function goBack(): boolean {
+  if (ui.modal) {
+    if (ui.modal.type === 'welcome') return true;
+    if (ui.modal.type === 'planPick' && ui.modal.back) { ui.modal = { type: 'planDiagram' }; needFit = true; }
+    else ui.modal = null;
+  } else if (ui.placing) ui.placing = null;
+  else if (ui.panel) ui.panel = ui.panel.back ?? null;
+  else if (ui.selection) ui.selection = null;
+  else if (ui.view === 'galaxy') { gotoSector(ui.sector); return true; }
+  else return false;
+  refresh();
+  return true;
+}
+
+let exitArmed = false;
+
+function initBackButton(): void {
+  // Ein zusätzlicher Verlaufseintrag fängt die Zurück-Taste ab, statt die App zu verlassen
+  history.pushState({ x4: 1 }, '');
+  window.addEventListener('popstate', () => {
+    if (goBack()) { exitArmed = false; history.pushState({ x4: 1 }, ''); return; }
+    if (!exitArmed) {
+      exitArmed = true;
+      toast('Nochmal „Zurück“ zum Verlassen', 'info');
+      history.pushState({ x4: 1 }, '');
+      setTimeout(() => (exitArmed = false), 2500);
+      return;
+    }
+    history.back();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) goBack();
+  });
+}
+
 function focusOn(x: number, z: number, sectorId: string, zoom?: number): void {
   if (ui.sector !== sectorId) { ui.sector = sectorId; }
   ui.view = 'sector';
@@ -298,6 +340,12 @@ function gotoSector(id: string): void {
 
 // ---------- Aktionen ----------
 
+const UNDO_LABEL: Record<string, string> = {
+  queue: 'Modul einplanen', 'q-move': 'Verschieben', 'cancel-q': 'Position entfernen', 'plan-add': 'Produkt hinzufügen',
+  'plan-target': 'Ziel ändern', 'plan-extra': 'Module ändern', 'dg-mod': 'Module ändern', 'dg-rec': 'Empfehlung übernehmen',
+  'plan-buy': 'Zukauf ändern', 'plan-reset': 'Plan zurücksetzen', 'dg-arrange': 'Neu anordnen', 'plan-build': 'Plan einplanen',
+};
+
 function onClick(e: MouseEvent): void {
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
   if (!el) {
@@ -309,314 +357,329 @@ function onClick(e: MouseEvent): void {
   const a = d.act!;
   if (a.startsWith('open') || a === 'nav' || a.endsWith('modal')) sfx.open();
   else sfx.tap();
-  switch (a) {
+  const run = (): void => {
+    switch (a) {
+      case 'undo': {
+      const l = undo(state, (p) => { ui.plan = p; savePlan(); });
+      if (l) toast(`Rückgängig: ${l}`, 'info');
+      refresh();
+      break;
+    }
     case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
-    case 'plan-pick': ui.modal = { type: 'planPick', group: 'all', back: ui.modal?.type === 'planDiagram' }; refresh(); break;
-    case 'plan-pick-group': if (ui.modal?.type === 'planPick') { ui.modal = { ...ui.modal, group: d.g! }; refresh(); } break;
-    case 'plan-add': {
-      const w = d.ware!;
-      const back = ui.modal?.type === 'planPick' && ui.modal.back;
-      const st = planStation();
-      if (st) {
-        // Stationsplanung: das Produkt kommt als neue Position in die Baureihenfolge
-        const r = A.queueModule(state, st.id, 'prod_' + w, smartInsert(st, w));
-        toast(r.ok ? `${WARES[w].name}-Fabrik in ${st.name} eingeplant.` : r.msg, r.ok ? 'good' : 'warn');
-      } else {
-        const t = ui.plan.targets.find((x) => x.ware === w);
-        if (t) t.modules++;
-        else ui.plan.targets.push({ ware: w, modules: 1 });
-        ui.plan.buy = ui.plan.buy.filter((x) => x !== w);
-        savePlan();
-        toast(`${WARES[w].name} zum Entwurf hinzugefügt.`, 'good');
-      }
-      ui.modal = back ? { type: 'planDiagram' } : null;
-      if (back) needFit = true;
-      refresh();
-      break;
-    }
-    case 'plan-target': changeModules(d.ware!, Number(d.d)); break;
-    case 'plan-extra': changeModules(d.ware!, Number(d.d)); break;
-    case 'dg-mod': changeModules(d.ware!, Number(d.d)); break;
-    case 'dg-rec': {
-      const n = Number(d.n);
-      const st = planStation();
-      if (st) {
-        let ok = 0;
-        for (let i = 0; i < n; i++) if (A.queueModule(state, st.id, 'prod_' + d.ware, smartInsert(st, d.ware!)).ok) ok++;
-        toast(`${ok} × ${WARES[d.ware!].name}-Fabrik vor ihren Verbrauchern eingeplant.`, ok ? 'good' : 'warn');
+      case 'plan-pick': ui.modal = { type: 'planPick', group: 'all', back: ui.modal?.type === 'planDiagram' }; refresh(); break;
+      case 'plan-pick-group': if (ui.modal?.type === 'planPick') { ui.modal = { ...ui.modal, group: d.g! }; refresh(); } break;
+      case 'plan-add': {
+        const w = d.ware!;
+        const back = ui.modal?.type === 'planPick' && ui.modal.back;
+        const st = planStation();
+        if (st) {
+          // Stationsplanung: das Produkt kommt als neue Position in die Baureihenfolge
+          const r = A.queueModule(state, st.id, 'prod_' + w, smartInsert(st, w));
+          toast(r.ok ? `${WARES[w].name}-Fabrik in ${st.name} eingeplant.` : r.msg, r.ok ? 'good' : 'warn');
+        } else {
+          const t = ui.plan.targets.find((x) => x.ware === w);
+          if (t) t.modules++;
+          else ui.plan.targets.push({ ware: w, modules: 1 });
+          ui.plan.buy = ui.plan.buy.filter((x) => x !== w);
+          savePlan();
+          toast(`${WARES[w].name} zum Entwurf hinzugefügt.`, 'good');
+        }
+        ui.modal = back ? { type: 'planDiagram' } : null;
+        if (back) needFit = true;
         refresh();
-      } else changeModules(d.ware!, n);
-      break;
-    }
-    case 'plan-buy': {
-      const w = d.ware!;
-      ui.plan.buy = ui.plan.buy.includes(w) ? ui.plan.buy.filter((x) => x !== w) : [...ui.plan.buy, w];
-      delete ui.plan.extra[w];
-      planChanged();
-      break;
-    }
-    case 'plan-workforce': ui.plan.workforce = !ui.plan.workforce; planChanged(); break;
-    case 'plan-auto': ui.plan.auto = ui.plan.auto === false; ui.plan.extra = {}; planChanged(); break;
-    case 'plan-details': ui.planDetails = !ui.planDetails; refresh(); break;
-    case 'plan-energy': ui.planEnergy = !ui.planEnergy; refresh(); break;
-    case 'plan-focus': ui.planFocus = ui.planFocus === d.ware ? '' : d.ware!; refresh(); break;
-    case 'plan-reset': ui.plan = { targets: [], sunlight: 100, workforce: false, buy: [], extra: {}, auto: true, layout: {} }; ui.planFocus = ''; planChanged(); break;
-    case 'plan-from-ware': {
-      if (!producible(d.ware!)) break;
-      ui.planSource = 'draft';
-      ui.plan = { ...ui.plan, targets: [{ ware: d.ware!, modules: 1 }], buy: [], extra: {}, layout: {} };
-      ui.planFocus = '';
-      savePlan();
-      openPanel('planner');
-      break;
-    }
-    case 'plan-from-station': ui.planSource = d.st!; ui.planFocus = ''; openPanel('planner'); break;
-    case 'plan-station': ui.planSource = d.st!; ui.planFocus = ''; openEditor(); break;
-    case 'dg-fit': fitEditor(); break;
-    case 'dg-arrange': {
-      const st = planStation();
-      if (st) st.layout = {};
-      else { ui.plan.layout = {}; savePlan(); }
-      refresh();
-      fitEditor();
-      break;
-    }
-    case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware! }; refresh(); break;
-    case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
-    case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); refresh(); break;
-    case 'sell-ship': if (ui.modal?.type === 'sell') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, picked: '', amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
-    case 'sell-pick': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, picked: ui.modal.picked === d.id ? '' : d.id! }; refresh(); } break;
-    case 'sell-prio': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, prio: d.p as 'price' }; refresh(); } break;
-    case 'sell-amount': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, amount: Math.floor(Number(d.v)) }; refresh(); } break;
-    case 'sell-go': {
-      const m = ui.modal;
-      if (m?.type !== 'sell') break;
-      const cls = shipClass(state, m.ship);
-      const offer = saleOffers(state, m.station, m.ware, cls, m.amount).find((o) => o.id === m.picked);
-      if (!offer) { toast('Dieser Käufer ist nicht mehr verfügbar.', 'warn'); refresh(); break; }
-      const r = A.sellOrder(state, m.ship, m.station, m.ware, offer.accept, offer.endpoint, offer.contract, m.repeat);
-      if (r.ok) ui.modal = null;
-      result(r);
-      break;
-    }
-    case 'plan-full': openEditor(); break;
-    case 'plan-build-modal': ui.modal = { type: 'planBuild' }; refresh(); break;
-    case 'plan-build': {
-      ui.modal = null;
-      const st = stationById(state, d.st!);
-      if (!st) break;
-      const r = computePlan(ui.plan);
-      const have = (def: string) => st.modules.some((m) => m.def === def) || st.queue.some((q) => q.def === def) || st.build?.def === def;
-      const basics: string[] = [];
-      if (!have('storage_container')) basics.push('storage_container');
-      const mined = Object.values(r.nodes).filter((n) => n.kind === 'mined').map((n) => WARES[n.ware].storage);
-      if (mined.includes('Solid') && !have('storage_solid')) basics.push('storage_solid');
-      if (mined.includes('Liquid') && !have('storage_liquid')) basics.push('storage_liquid');
-      if (!have('dock_m')) basics.push('dock_m');
-      let queued = 0;
-      const skipped = new Map<string, string>();
-      for (const def of [...basics, ...buildOrder(r)]) {
-        const res = A.queueModule(state, st.id, def);
-        if (res.ok) queued++;
-        else skipped.set(MODULE_MAP[def].name, res.msg);
+        break;
       }
-      toast(skipped.size ? `${queued} Module beauftragt. Übersprungen: ${[...skipped.keys()].join(', ')} (${[...skipped.values()][0]})` : `${queued} Module in ${st.name} beauftragt.`, skipped.size ? 'warn' : 'good');
-      if (queued) { ui.selection = { kind: 'station', id: st.id }; openPanel('station', st.id, 'modules'); }
-      else refresh();
-      break;
-    }
-    case 'nav': {
-      ui.modal = null;
-      if (d.tab === 'map') { ui.panel = null; if (ui.view === 'galaxy') ui.view = 'sector'; refresh(); }
-      else openPanel(d.tab as PanelType);
-      break;
-    }
-    case 'close-panel': ui.panel = null; refresh(); break;
-    case 'back': ui.panel = ui.panel?.back ?? null; refresh(); break;
-    case 'open-station': ui.modal = null; openPanel('station', d.id, d.tab ?? 'overview', ui.panel?.type !== 'station'); ui.selection = { kind: 'station', id: d.id! }; break;
-    case 'open-ship': openPanel('ship', d.id, undefined, !!ui.panel); break;
-    case 'open-ware': ui.modal = null; openPanel('ware', d.id, undefined, !!ui.panel); break;
-    case 'open-sector': openPanel('sector', d.id, undefined, !!ui.panel); break;
-    case 'open-market': ui.marketSector = d.id!; openPanel('market'); break;
-    case 'station-tab': if (ui.panel) { ui.panel = { ...ui.panel, tab: d.tab }; refresh(); } break;
-    case 'select-clear': ui.selection = null; ui.galaxySel = null; refresh(); break;
-    case 'focus': {
-      const kind = d.kind, id = d.id!;
-      if (kind === 'station') { const st = stationById(state, id); if (st) { focusOn(st.x, st.z, st.sector); ui.selection = { kind: 'station', id }; } }
-      if (kind === 'ship') { const s = state.ships.find((x) => x.id === id); if (s) { focusOn(s.x, s.z, s.sector); ui.selection = { kind: 'ship', id }; } }
-      ui.panel = null;
-      refresh();
-      break;
-    }
-    case 'galaxy': {
-      ui.panel = null;
-      ui.placing = null;
-      if (ui.view === 'galaxy') { ui.view = 'sector'; }
-      else { ui.view = 'galaxy'; ui.galaxySel = ui.sector; fitGalaxy(); }
-      refresh();
-      break;
-    }
-    case 'goto-sector': gotoSector(d.id!); break;
-    case 'pause': ui.paused = !ui.paused; refresh(); break;
-    case 'speed': {
-      if (ui.paused) { ui.paused = false; }
-      else { const i = SPEEDS.indexOf(state.speed); state.speed = SPEEDS[(i + 1) % SPEEDS.length]; }
-      refresh();
-      break;
-    }
-    case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
-    case 'routes-toggle': ui.routes = !ui.routes; refresh(); break;
-    case 'zoom-in': cam.zoomAt(1.5, cam.w / 2, cam.h / 2); break;
-    case 'zoom-out': cam.zoomAt(1 / 1.5, cam.w / 2, cam.h / 2); break;
-    case 'place-start': {
-      if (!state.sectors.includes(ui.sector)) { toast('Für diesen Sektor fehlt die Baulizenz.', 'warn'); break; }
-      ui.panel = null;
-      ui.selection = null;
-      ui.view = 'sector';
-      ui.placing = { x: 0, z: 0, valid: false, msg: '', set: false };
-      refresh();
-      break;
-    }
-    case 'place-cancel': ui.placing = null; refresh(); break;
-    case 'place-confirm': {
-      const p = ui.placing;
-      if (!p?.set) break;
-      const r = A.foundStation(state, ui.sector, p.x, p.z);
-      if (r.ok && r.id) { ui.placing = null; ui.selection = { kind: 'station', id: r.id }; openPanel('station', r.id, 'modules'); }
-      toast(r.msg, r.ok ? 'good' : 'warn');
-      refresh();
-      break;
-    }
-    case 'modal-modules': ui.modal = { type: 'modules', station: d.st!, cat: d.cat ?? 'production', at: d.at !== undefined ? Number(d.at) : undefined }; refresh(); break;
-    case 'modules-cat': if (ui.modal?.type === 'modules') { ui.modal = { ...ui.modal, cat: d.cat! }; refresh(); } break;
-    case 'queue': {
-      const at = d.at !== undefined ? Number(d.at) : undefined;
-      const r = A.queueModule(state, d.st!, d.def!, at);
-      // Eine Einfügestelle wird mit einem Modul belegt, danach zurück zur Liste
-      if (r.ok && ui.modal?.type === 'modules' && ui.modal.at !== undefined) ui.modal = null;
-      result(r);
-      break;
-    }
-    case 'q-move': result(A.moveQueued(state, d.st!, Number(d.uid), Number(d.to))); break;
-    case 'cancel-build': result(A.cancelBuild(state, d.st!)); break;
-    case 'buy-bp': result(A.buyBlueprint(state, d.def!)); break;
-    case 'cancel-q': result(A.cancelQueued(state, d.st!, Number(d.uid))); break;
-    case 'ask-demolish': ask('Modul abreißen?', 'Du erhältst 30 % der Baukosten als Materialerlös zurück. Lagerbestände über der neuen Grenze bleiben erhalten.', 'demolish', { st: d.st!, uid: d.uid! }, 'Abreißen', true); break;
-    case 'ask-sell-ship': {
-      const sh = state.ships.find((x) => x.id === d.id);
-      if (sh) ask(`${sh.name} verkaufen?`, `Die Werft zahlt ${fmtCr(SHIP_MAP[sh.cls].price * 0.6)} (60 % des Neupreises). Ladung an Bord geht verloren.`, 'sell-ship', { id: sh.id }, 'Verkaufen', true);
-      break;
-    }
-    case 'ask-newgame': ask('Neues Spiel beginnen?', 'Der aktuelle Spielstand wird gelöscht. Sichere ihn vorher unter „Spielstand sichern“, wenn du ihn behalten möchtest.', 'newgame', {}, 'Neu beginnen', true); break;
-    case 'confirm': {
-      const m = ui.modal;
-      if (m?.type !== 'confirm') break;
-      ui.modal = null;
-      runConfirmed(m.action, m.args);
-      break;
-    }
-    case 'modal-close': ui.modal = null; refresh(); break;
-    case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all' }; refresh(); break;
-    case 'buyship': result(A.buyShip(state, d.cls!, d.st!)); break;
-    case 'trade-toggle': {
-      const st = stationById(state, d.st!);
-      if (!st) break;
-      const k = d.k as 'buy' | 'sell';
-      const rule = st.trade[d.ware!] ?? defaultTradeRule(st, d.ware!);
-      A.setTradeRule(state, st.id, d.ware!, { [k]: !rule[k] });
-      refresh();
-      break;
-    }
-    case 'miner-ware': result(A.setMinerWare(state, d.id!, d.ware ?? '')); break;
-    case 'trader-mode': {
-      const s = state.ships.find((x) => x.id === d.id);
-      if (!s) break;
-      if (d.mode === 'route' && !s.route) {
-        const home = stationById(state, s.home)!;
-        s.route = { from: { kind: 'station', id: home.id }, to: { kind: 'market', sector: home.sector }, ware: 'energycells' };
+      case 'plan-target': changeModules(d.ware!, Number(d.d)); break;
+      case 'plan-extra': changeModules(d.ware!, Number(d.d)); break;
+      case 'dg-mod': changeModules(d.ware!, Number(d.d)); break;
+      case 'dg-rec': {
+        const n = Number(d.n);
+        const st = planStation();
+        if (st) {
+          let ok = 0;
+          for (let i = 0; i < n; i++) if (A.queueModule(state, st.id, 'prod_' + d.ware, smartInsert(st, d.ware!)).ok) ok++;
+          toast(`${ok} × ${WARES[d.ware!].name}-Fabrik vor ihren Verbrauchern eingeplant.`, ok ? 'good' : 'warn');
+          refresh();
+        } else changeModules(d.ware!, n);
+        break;
       }
-      result(A.setTraderMode(state, s.id, d.mode as 'auto' | 'route', s.route ?? undefined));
-      break;
-    }
-    case 'home-modal': ui.modal = { type: 'home', ship: d.id! }; refresh(); break;
-    case 'set-home': ui.modal = null; result(A.setShipHome(state, d.id!, d.st!)); break;
-    case 'rename-modal': ui.modal = { type: 'rename', station: d.st! }; refresh(); setTimeout(() => (document.getElementById('renameInput') as HTMLInputElement | null)?.focus(), 50); break;
-    case 'rename-save': {
-      const v = (document.getElementById('renameInput') as HTMLInputElement | null)?.value ?? '';
-      ui.modal = null;
-      result(A.renameStation(state, d.st!, v));
-      break;
-    }
-    case 'accept': result(acceptContract(state, Number(d.id))); break;
-    case 'courier-modal': ui.modal = { type: 'courier', contract: Number(d.id) }; refresh(); break;
-    case 'courier': ui.modal = null; result(A.courierDeliver(state, Number(d.c), d.st!)); break;
-    case 'claim': result(claimMission(state)); break;
-    case 'license': {
-      const r = A.buyLicense(state, d.id!);
-      result(r);
-      if (r.ok) gotoSector(d.id!);
-      break;
-    }
-    case 'market-sector': ui.marketSector = d.id!; refresh(); break;
-    case 'market-group': ui.marketGroup = d.g!; refresh(); break;
-    case 'export': save(); ui.modal = { type: 'export' }; refresh(); break;
-    case 'copy-export': {
-      const t = document.getElementById('exportText') as HTMLTextAreaElement | null;
-      const status = document.getElementById('copyStatus');
-      if (!t) break;
-      navigator.clipboard?.writeText(t.value).then(() => { if (status) status.textContent = 'In die Zwischenablage kopiert.'; }).catch(() => { t.select(); if (status) status.textContent = 'Text markiert – jetzt kopieren.'; });
-      if (!navigator.clipboard) { t.select(); if (status) status.textContent = 'Text markiert – jetzt kopieren.'; }
-      break;
-    }
-    case 'import-modal': ui.modal = { type: 'import' }; refresh(); break;
-    case 'import-do': {
-      const t = (document.getElementById('importText') as HTMLTextAreaElement | null)?.value ?? '';
-      try {
-        state = deserialize(t.trim());
+      case 'plan-buy': {
+        const w = d.ware!;
+        ui.plan.buy = ui.plan.buy.includes(w) ? ui.plan.buy.filter((x) => x !== w) : [...ui.plan.buy, w];
+        delete ui.plan.extra[w];
+        planChanged();
+        break;
+      }
+      case 'plan-workforce': ui.plan.workforce = !ui.plan.workforce; planChanged(); break;
+      case 'plan-auto': ui.plan.auto = ui.plan.auto === false; ui.plan.extra = {}; planChanged(); break;
+      case 'plan-details': ui.planDetails = !ui.planDetails; refresh(); break;
+      case 'plan-energy': ui.planEnergy = !ui.planEnergy; refresh(); break;
+      case 'plan-focus': ui.planFocus = ui.planFocus === d.ware ? '' : d.ware!; refresh(); break;
+      case 'plan-reset': ui.plan = { targets: [], sunlight: 100, workforce: false, buy: [], extra: {}, auto: true, layout: {} }; ui.planFocus = ''; planChanged(); break;
+      case 'plan-from-ware': {
+        if (!producible(d.ware!)) break;
+        ui.planSource = 'draft';
+        ui.plan = { ...ui.plan, targets: [{ ware: d.ware!, modules: 1 }], buy: [], extra: {}, layout: {} };
+        ui.planFocus = '';
+        savePlan();
+        openPanel('planner');
+        break;
+      }
+      case 'plan-from-station': ui.planSource = d.st!; ui.planFocus = ''; openPanel('planner'); break;
+      case 'plan-station': ui.planSource = d.st!; ui.planFocus = ''; openEditor(); break;
+      case 'dg-fit': fitEditor(); break;
+      case 'dg-arrange': {
+        const st = planStation();
+        if (st) st.layout = {};
+        else { ui.plan.layout = {}; savePlan(); }
+        refresh();
+        fitEditor();
+        break;
+      }
+      case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware! }; refresh(); break;
+      case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
+      case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); refresh(); break;
+      case 'sell-ship': if (ui.modal?.type === 'sell') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, picked: '', amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
+      case 'sell-pick': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, picked: ui.modal.picked === d.id ? '' : d.id! }; refresh(); } break;
+      case 'sell-prio': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, prio: d.p as 'price' }; refresh(); } break;
+      case 'sell-amount': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, amount: Math.floor(Number(d.v)) }; refresh(); } break;
+      case 'sell-go': {
+        const m = ui.modal;
+        if (m?.type !== 'sell') break;
+        const cls = shipClass(state, m.ship);
+        const offer = saleOffers(state, m.station, m.ware, cls, m.amount).find((o) => o.id === m.picked);
+        if (!offer) { toast('Dieser Käufer ist nicht mehr verfügbar.', 'warn'); refresh(); break; }
+        const r = A.sellOrder(state, m.ship, m.station, m.ware, offer.accept, offer.endpoint, offer.contract, m.repeat);
+        if (r.ok) ui.modal = null;
+        result(r);
+        break;
+      }
+      case 'plan-full': openEditor(); break;
+      case 'plan-build-modal': ui.modal = { type: 'planBuild' }; refresh(); break;
+      case 'plan-build': {
         ui.modal = null;
+        const st = stationById(state, d.st!);
+        if (!st) break;
+        const r = computePlan(ui.plan);
+        const have = (def: string) => st.modules.some((m) => m.def === def) || st.queue.some((q) => q.def === def) || st.build?.def === def;
+        const basics: string[] = [];
+        if (!have('storage_container')) basics.push('storage_container');
+        const mined = Object.values(r.nodes).filter((n) => n.kind === 'mined').map((n) => WARES[n.ware].storage);
+        if (mined.includes('Solid') && !have('storage_solid')) basics.push('storage_solid');
+        if (mined.includes('Liquid') && !have('storage_liquid')) basics.push('storage_liquid');
+        if (!have('dock_m')) basics.push('dock_m');
+        let queued = 0;
+        const skipped = new Map<string, string>();
+        for (const def of [...basics, ...buildOrder(r)]) {
+          const res = A.queueModule(state, st.id, def);
+          if (res.ok) queued++;
+          else skipped.set(MODULE_MAP[def].name, res.msg);
+        }
+        toast(skipped.size ? `${queued} Module beauftragt. Übersprungen: ${[...skipped.keys()].join(', ')} (${[...skipped.values()][0]})` : `${queued} Module in ${st.name} beauftragt.`, skipped.size ? 'warn' : 'good');
+        if (queued) { ui.selection = { kind: 'station', id: st.id }; openPanel('station', st.id, 'modules'); }
+        else refresh();
+        break;
+      }
+      case 'nav': {
+        ui.modal = null;
+        if (d.tab === 'map') { ui.panel = null; if (ui.view === 'galaxy') ui.view = 'sector'; refresh(); }
+        else openPanel(d.tab as PanelType);
+        break;
+      }
+      case 'close-panel': ui.panel = null; refresh(); break;
+      case 'back': ui.panel = ui.panel?.back ?? null; refresh(); break;
+      case 'open-station': ui.modal = null; openPanel('station', d.id, d.tab ?? 'overview', ui.panel?.type !== 'station'); ui.selection = { kind: 'station', id: d.id! }; break;
+      case 'open-ship': openPanel('ship', d.id, undefined, !!ui.panel); break;
+      case 'open-ware': ui.modal = null; openPanel('ware', d.id, undefined, !!ui.panel); break;
+      case 'open-sector': openPanel('sector', d.id, undefined, !!ui.panel); break;
+      case 'open-market': ui.marketSector = d.id!; openPanel('market'); break;
+      case 'station-tab': if (ui.panel) { ui.panel = { ...ui.panel, tab: d.tab }; refresh(); } break;
+      case 'select-clear': ui.selection = null; ui.galaxySel = null; refresh(); break;
+      case 'focus': {
+        const kind = d.kind, id = d.id!;
+        if (kind === 'station') { const st = stationById(state, id); if (st) { focusOn(st.x, st.z, st.sector); ui.selection = { kind: 'station', id }; } }
+        if (kind === 'ship') { const s = state.ships.find((x) => x.id === id); if (s) { focusOn(s.x, s.z, s.sector); ui.selection = { kind: 'ship', id }; } }
+        ui.panel = null;
+        refresh();
+        break;
+      }
+      case 'galaxy': {
+        ui.panel = null;
+        ui.placing = null;
+        if (ui.view === 'galaxy') { ui.view = 'sector'; }
+        else { ui.view = 'galaxy'; ui.galaxySel = ui.sector; fitGalaxy(); }
+        refresh();
+        break;
+      }
+      case 'goto-sector': gotoSector(d.id!); break;
+      case 'pause': ui.paused = !ui.paused; refresh(); break;
+      case 'speed': {
+        if (ui.paused) { ui.paused = false; }
+        else { const i = SPEEDS.indexOf(state.speed); state.speed = SPEEDS[(i + 1) % SPEEDS.length]; }
+        refresh();
+        break;
+      }
+      case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
+      case 'routes-toggle': ui.routes = !ui.routes; refresh(); break;
+      case 'zoom-in': cam.zoomAt(1.5, cam.w / 2, cam.h / 2); break;
+      case 'zoom-out': cam.zoomAt(1 / 1.5, cam.w / 2, cam.h / 2); break;
+      case 'place-start': {
+        if (!state.sectors.includes(ui.sector)) { toast('Für diesen Sektor fehlt die Baulizenz.', 'warn'); break; }
         ui.panel = null;
         ui.selection = null;
-        ui.sector = state.stations[0]?.sector ?? 'zhin';
+        ui.view = 'sector';
+        ui.placing = { x: 0, z: 0, valid: false, msg: '', set: false };
+        refresh();
+        break;
+      }
+      case 'place-cancel': ui.placing = null; refresh(); break;
+      case 'place-confirm': {
+        const p = ui.placing;
+        if (!p?.set) break;
+        const r = A.foundStation(state, ui.sector, p.x, p.z);
+        if (r.ok && r.id) { ui.placing = null; ui.selection = { kind: 'station', id: r.id }; openPanel('station', r.id, 'modules'); }
+        toast(r.msg, r.ok ? 'good' : 'warn');
+        refresh();
+        break;
+      }
+      case 'modal-modules': ui.modal = { type: 'modules', station: d.st!, cat: d.cat ?? 'production', at: d.at !== undefined ? Number(d.at) : undefined }; refresh(); break;
+      case 'modules-cat': if (ui.modal?.type === 'modules') { ui.modal = { ...ui.modal, cat: d.cat! }; refresh(); } break;
+      case 'queue': {
+        const at = d.at !== undefined ? Number(d.at) : undefined;
+        const r = A.queueModule(state, d.st!, d.def!, at);
+        // Eine Einfügestelle wird mit einem Modul belegt, danach zurück zur Liste
+        if (r.ok && ui.modal?.type === 'modules' && ui.modal.at !== undefined) ui.modal = null;
+        result(r);
+        break;
+      }
+      case 'q-move': result(A.moveQueued(state, d.st!, Number(d.uid), Number(d.to))); break;
+      case 'cancel-build': result(A.cancelBuild(state, d.st!)); break;
+      case 'buy-bp': result(A.buyBlueprint(state, d.def!)); break;
+      case 'cancel-q': result(A.cancelQueued(state, d.st!, Number(d.uid))); break;
+      case 'ask-demolish': ask('Modul abreißen?', 'Du erhältst 30 % der Baukosten als Materialerlös zurück. Lagerbestände über der neuen Grenze bleiben erhalten.', 'demolish', { st: d.st!, uid: d.uid! }, 'Abreißen', true); break;
+      case 'ask-sell-ship': {
+        const sh = state.ships.find((x) => x.id === d.id);
+        if (sh) ask(`${sh.name} verkaufen?`, `Die Werft zahlt ${fmtCr(SHIP_MAP[sh.cls].price * 0.6)} (60 % des Neupreises). Ladung an Bord geht verloren.`, 'sell-ship', { id: sh.id }, 'Verkaufen', true);
+        break;
+      }
+      case 'ask-newgame': ask('Neues Spiel beginnen?', 'Der aktuelle Spielstand wird gelöscht. Sichere ihn vorher unter „Spielstand sichern“, wenn du ihn behalten möchtest.', 'newgame', {}, 'Neu beginnen', true); break;
+      case 'confirm': {
+        const m = ui.modal;
+        if (m?.type !== 'confirm') break;
+        ui.modal = null;
+        runConfirmed(m.action, m.args);
+        break;
+      }
+      case 'modal-close': ui.modal = null; refresh(); break;
+      case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all' }; refresh(); break;
+      case 'buyship': result(A.buyShip(state, d.cls!, d.st!)); break;
+      case 'trade-toggle': {
+        const st = stationById(state, d.st!);
+        if (!st) break;
+        const k = d.k as 'buy' | 'sell';
+        const rule = st.trade[d.ware!] ?? defaultTradeRule(st, d.ware!);
+        A.setTradeRule(state, st.id, d.ware!, { [k]: !rule[k] });
+        refresh();
+        break;
+      }
+      case 'miner-ware': result(A.setMinerWare(state, d.id!, d.ware ?? '')); break;
+      case 'trader-mode': {
+        const s = state.ships.find((x) => x.id === d.id);
+        if (!s) break;
+        if (d.mode === 'route' && !s.route) {
+          const home = stationById(state, s.home)!;
+          s.route = { from: { kind: 'station', id: home.id }, to: { kind: 'market', sector: home.sector }, ware: 'energycells' };
+        }
+        result(A.setTraderMode(state, s.id, d.mode as 'auto' | 'route', s.route ?? undefined));
+        break;
+      }
+      case 'home-modal': ui.modal = { type: 'home', ship: d.id! }; refresh(); break;
+      case 'set-home': ui.modal = null; result(A.setShipHome(state, d.id!, d.st!)); break;
+      case 'rename-modal': ui.modal = { type: 'rename', station: d.st! }; refresh(); setTimeout(() => (document.getElementById('renameInput') as HTMLInputElement | null)?.focus(), 50); break;
+      case 'rename-save': {
+        const v = (document.getElementById('renameInput') as HTMLInputElement | null)?.value ?? '';
+        ui.modal = null;
+        result(A.renameStation(state, d.st!, v));
+        break;
+      }
+      case 'accept': result(acceptContract(state, Number(d.id))); break;
+      case 'order-accept': result(acceptShipOrder(state, Number(d.id), d.st!)); break;
+      case 'yard-build': result(queueShipBuild(state, d.st!, d.cls!)); break;
+      case 'yard-cancel': result(cancelShipBuild(state, d.st!, Number(d.uid))); break;
+      case 'courier-modal': ui.modal = { type: 'courier', contract: Number(d.id) }; refresh(); break;
+      case 'courier': ui.modal = null; result(A.courierDeliver(state, Number(d.c), d.st!)); break;
+      case 'claim': result(claimMission(state)); break;
+      case 'license': {
+        const r = A.buyLicense(state, d.id!);
+        result(r);
+        if (r.ok) gotoSector(d.id!);
+        break;
+      }
+      case 'market-sector': ui.marketSector = d.id!; refresh(); break;
+      case 'market-group': ui.marketGroup = d.g!; refresh(); break;
+      case 'export': save(); ui.modal = { type: 'export' }; refresh(); break;
+      case 'copy-export': {
+        const t = document.getElementById('exportText') as HTMLTextAreaElement | null;
+        const status = document.getElementById('copyStatus');
+        if (!t) break;
+        navigator.clipboard?.writeText(t.value).then(() => { if (status) status.textContent = 'In die Zwischenablage kopiert.'; }).catch(() => { t.select(); if (status) status.textContent = 'Text markiert – jetzt kopieren.'; });
+        if (!navigator.clipboard) { t.select(); if (status) status.textContent = 'Text markiert – jetzt kopieren.'; }
+        break;
+      }
+      case 'import-modal': ui.modal = { type: 'import' }; refresh(); break;
+      case 'import-do': {
+        const t = (document.getElementById('importText') as HTMLTextAreaElement | null)?.value ?? '';
+        try {
+          state = deserialize(t.trim());
+          ui.modal = null;
+          ui.panel = null;
+          ui.selection = null;
+          ui.sector = state.stations[0]?.sector ?? 'zhin';
+          fitSector();
+          save();
+          toast('Spielstand geladen.', 'good');
+        } catch {
+          ui.modal = { type: 'import', error: 'Das ist kein gültiger Spielstand.' } as Modal;
+        }
+        refresh();
+        break;
+      }
+    }
+  }
+
+  function ask(title: string, text: string, action: string, args: Record<string, string>, label: string, danger = false): void {
+    ui.modal = { type: 'confirm', title, text, action, args, label, danger };
+    refresh();
+  }
+
+  function runConfirmed(action: string, args: Record<string, string>): void {
+    switch (action) {
+      case 'demolish': result(A.demolishModule(state, args.st, Number(args.uid))); break;
+      case 'sell-ship': {
+        const r = A.sellShip(state, args.id);
+        if (r.ok) { ui.panel = ui.panel?.back ?? null; if (ui.selection?.id === args.id) ui.selection = null; }
+        result(r);
+        break;
+      }
+      case 'newgame': {
+        clearLocal();
+        state = newGame();
+        ui.panel = null;
+        ui.selection = null;
+        ui.sector = 'zhin';
+        ui.view = 'sector';
+        ui.modal = { type: 'welcome' };
         fitSector();
         save();
-        toast('Spielstand geladen.', 'good');
-      } catch {
-        ui.modal = { type: 'import', error: 'Das ist kein gültiger Spielstand.' } as Modal;
+        refresh();
+        break;
       }
-      refresh();
-      break;
     }
-  }
-}
 
-function ask(title: string, text: string, action: string, args: Record<string, string>, label: string, danger = false): void {
-  ui.modal = { type: 'confirm', title, text, action, args, label, danger };
-  refresh();
-}
-
-function runConfirmed(action: string, args: Record<string, string>): void {
-  switch (action) {
-    case 'demolish': result(A.demolishModule(state, args.st, Number(args.uid))); break;
-    case 'sell-ship': {
-      const r = A.sellShip(state, args.id);
-      if (r.ok) { ui.panel = ui.panel?.back ?? null; if (ui.selection?.id === args.id) ui.selection = null; }
-      result(r);
-      break;
-    }
-    case 'newgame': {
-      clearLocal();
-      state = newGame();
-      ui.panel = null;
-      ui.selection = null;
-      ui.sector = 'zhin';
-      ui.view = 'sector';
-      ui.modal = { type: 'welcome' };
-      fitSector();
-      save();
-      refresh();
-      break;
-    }
-  }
+  };
+  const label = UNDO_LABEL[a];
+  if (label) withUndo(state, () => ui.plan, label, run);
+  else run();
 }
 
 function parseEp(v: string): TradeEndpoint | null {
@@ -701,8 +764,11 @@ function initEditor(): void {
       editorLayout = { ...(editorLayout ?? {}), [w]: { x: Math.round(x), y: Math.round(y) } };
       if (done) {
         const st = planStation();
-        if (st) st.layout = { ...(st.layout ?? {}), ...editorLayout };
-        else { ui.plan.layout = { ...(ui.plan.layout ?? {}), ...editorLayout }; savePlan(); }
+        const moved = editorLayout;
+        withUndo(state, () => ui.plan, 'Kästchen verschieben', () => {
+          if (st) st.layout = { ...(st.layout ?? {}), ...moved };
+          else { ui.plan.layout = { ...(ui.plan.layout ?? {}), ...moved }; savePlan(); }
+        });
         editorLayout = null;
       }
       const modal = document.getElementById('modal');

@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit",
     "artifact": "vite build && node scripts/artifact.mjs",
     "balance": "tsx scripts/balance.ts",
-    "shots": "vite build && node scripts/tour.mjs"
+    "shots": "vite build && node scripts/tour.mjs",
+    "e2e": "vite build && node scripts/yard-shot.mjs /tmp 390 && node scripts/yard-shot.mjs /tmp 360",
+    "perf": "tsx scripts/perf.ts"
   },
   "devDependencies": {
     "playwright": "^1.63.0",

@@ -1,9 +1,10 @@
 // Handy-Test des Verkaufsdialogs: node scripts/sell-shot.mjs <outdir>
 import { chromium } from 'playwright';
+import { launchOpts } from './browser.mjs';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 const out = process.argv[2] ?? '.';
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));

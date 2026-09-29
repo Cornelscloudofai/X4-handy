@@ -23,7 +23,7 @@ export interface WareDef {
   estimated?: boolean;
 }
 
-export type ModuleKind = 'production' | 'storage' | 'dock' | 'pier' | 'core';
+export type ModuleKind = 'production' | 'storage' | 'dock' | 'pier' | 'core' | 'shipyard';
 
 export interface ModuleDef {
   id: string;
@@ -42,6 +42,8 @@ export interface ModuleDef {
   repRequired: number;
   blueprintCost: number;
   starter: boolean;
+  /** Werftmodul: größte Schiffsklasse, die hier gebaut werden kann */
+  yardSize?: 'M' | 'L';
 }
 
 export type ShipRole = 'miner' | 'trader';
@@ -148,6 +150,24 @@ export interface Station {
   income: number;
   expenses: number;
   founded: number;
+  /** Schiffsfertigung (nur mit Werftmodul) */
+  yard?: { queue: YardJob[]; build: (YardJob & { remaining: number; total: number }) | null; waiting?: string };
+}
+
+/** Schiffsbau-Auftrag einer eigenen Werft: für die eigene Flotte oder für einen Kunden */
+export interface YardJob { uid: number; cls: string; order?: number }
+
+/** Bestellung eines Schiffs durch eine Fraktion */
+export interface ShipOrder {
+  id: number;
+  faction: FactionId;
+  sector: string;
+  cls: string;
+  price: number;
+  rep: number;
+  deadline: number;
+  status: 'offer' | 'active' | 'done' | 'failed';
+  station?: string;
 }
 
 export type ShipPhase =
@@ -256,8 +276,10 @@ export interface GameState {
   blueprints: string[];
   rep: Record<FactionId, number>;
   contracts: Contract[];
+  shipOrders?: ShipOrder[];
+  shipOrderTimer?: number;
   story: { index: number; claimed: boolean; startedAt: number; base: Record<string, number>; contractFloor: number };
-  totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number };
+  totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number };
   log: LogEntry[];
   nextId: number;
   npcTimer: Record<string, number>;

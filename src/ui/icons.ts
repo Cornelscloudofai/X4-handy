@@ -22,6 +22,8 @@ const P: Record<string, string> = {
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   factory: '<path d="M3.5 20V10l5 3V10l5 3V6h7v14z"/><path d="M16 9.5h2"/>',
   storage: '<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  yard: '<path d="M4 20h16M6 20V9l6-5 6 5v11"/><path d="M9 20v-5h6v5M9 11h6"/>',
   dock: '<path d="M4 12h8M12 6v12M12 12l8-5M12 12l8 5"/>',
   miner: '<path d="M3.5 15.5 14 10l-2 7z"/><path d="m14 10 6.5-5M16.5 15l3 3"/>',
   trader: '<rect x="3.5" y="8" width="11" height="8" rx="1"/><path d="M14.5 10.5h3l3 3v2.5h-6"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/>',

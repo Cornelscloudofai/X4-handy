@@ -2,7 +2,7 @@
 import { SECTOR_MAP, gate, marketInfo, sector, sectorPath } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { consumesWare, storageCap, stationWares, tradeRule, wareLimit } from './economy';
+import { consumesWare, storageCap, stationWares, tradeRule, wareLimit, yardNeeds } from './economy';
 import type { GameState, Ship, Station, TradeEndpoint, Vec } from './types';
 import { hashStr } from './util';
 
@@ -163,7 +163,8 @@ export function fieldById(fieldId: string) {
 export function reserveFor(st: Station, wareId: string, limit: number): number {
   const set = st.reserve?.[wareId];
   if (set !== undefined) return set;
-  return consumesWare(st, wareId) ? limit * 0.4 : 0;
+  const yard = st.yard?.queue.length ? yardNeeds(st)[wareId] ?? 0 : 0;
+  return Math.max(yard, consumesWare(st, wareId) ? limit * 0.4 : 0);
 }
 
 /** Bestand über der Reserve – das darf die Station abgeben */

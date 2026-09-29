@@ -10,8 +10,10 @@ import { shipEta } from '../engine/fleet';
 import { endpointName, fieldById, knownSectors, reserveFor, stationById } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { STORY, currentMission, missionComplete } from '../engine/story';
+import { SHIP_BUILD_TIME, hasYard, materialValue, missingFor, yardSizes, yardStations } from '../engine/yard';
 import type { GameState, Ship, Station, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
+import { canUndo, undoLabel } from './undo';
 import { fmtAmount, fmtClock, fmtCr, fmtDur, fmtInt, fmtNum, pct } from './format';
 import { icon, wareDot } from './icons';
 import { soundEnabled } from './sound';
@@ -24,6 +26,11 @@ import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
 
 const act = (a: string, data: Record<string, string | number> = {}) =>
   `data-act="${a}"` + Object.entries(data).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
+
+/** Symbol für Module ohne Produkt */
+function moduleIcon(kind: string): string {
+  return kind === 'storage' ? 'storage' : kind === 'core' ? 'station' : kind === 'shipyard' ? 'yard' : 'dock';
+}
 
 function wareTile(id: string): string {
   const w = WARES[id];
@@ -288,11 +295,14 @@ function stationsPanel(state: GameState): string {
 
 function stationPanel(state: GameState, st: Station, p: Panel): string {
   const tab = p.tab ?? 'overview';
-  const tabs = `<div class="tabs">${[['overview', 'Übersicht'], ['modules', 'Module'], ['storage', 'Lager'], ['ships', 'Schiffe']].map(([t, l]) => `<button class="${tab === t ? 'active' : ''}" ${act('station-tab', { tab: t })}>${l}</button>`).join('')}</div>`;
+  const yardTab = hasYard(st) || !!st.yard?.queue.length || st.queue.some((q) => MODULE_MAP[q.def]?.kind === 'shipyard') || MODULE_MAP[st.build?.def ?? '']?.kind === 'shipyard';
+  const tabList = [['overview', yardTab ? 'Info' : 'Übersicht'], ['modules', 'Module'], ['storage', 'Lager'], ['ships', 'Schiffe'], ...(yardTab ? [['yard', 'Werft']] : [])];
+  const tabs = `<div class="tabs">${tabList.map(([t, l]) => `<button class="${tab === t ? 'active' : ''}" ${act('station-tab', { tab: t })}>${l}</button>`).join('')}</div>`;
   let body = '';
   if (tab === 'overview') body = stationOverview(state, st);
   else if (tab === 'modules') body = stationModules(state, st);
   else if (tab === 'storage') body = stationStorage(state, st);
+  else if (tab === 'yard') body = stationYard(state, st);
   else body = stationShips(state, st);
   const right = `<button class="icon-btn" ${act('focus', { kind: 'station', id: st.id })} aria-label="Auf Karte zeigen">${icon('target', 20)}</button>`;
   return sheet(st.name, sector(st.sector).name, body, { back: !!p.back, tabs, right });
@@ -358,6 +368,51 @@ function hintFor(state: GameState, st: Station, wareId: string): string {
   return `Baue eine ${w.name}-Fabrik oder lass Händler zukaufen.`;
 }
 
+function stationYard(state: GameState, st: Station): string {
+  const sizes = yardSizes(st);
+  if (!sizes.size) {
+    return `<div class="section"><div class="box empty">Diese Station hat noch keine Schiffsfertigung. Sobald das Werftmodul fertig ist, baust du hier Schiffe aus eigenen Waren.<br>
+      <button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'shipyard' })}>${icon('yard', 18)}Werftmodul einplanen</button></div></div>`;
+  }
+  const y = st.yard;
+  const orderOf = (id?: number) => (id ? state.shipOrders?.find((o) => o.id === id) : undefined);
+  const jobLabel = (order?: number) => {
+    const o = orderOf(order);
+    return o ? `Bestellung ${FACTIONS[o.faction].short} · ${fmtCr(o.price)} · Frist ${fmtDur(o.deadline - state.time)}` : 'Für die eigene Flotte';
+  };
+  const current = y?.build ? (() => {
+    const c = SHIP_MAP[y.build.cls];
+    return `<div class="row build-row locked">${icon('yard', 20, 'muted')}<div class="grow"><div class="title">${esc(c.name)}</div>
+      <div class="sub">${esc(jobLabel(y.build.order))} · noch ${fmtDur(y.build.remaining)}</div>${bar(1 - y.build.remaining / y.build.total, 'amber')}</div></div>`;
+  })() : '';
+  const rows = (y?.queue ?? []).map((j, i) => {
+    const c = SHIP_MAP[j.cls];
+    const lack = missingFor(st, j.cls);
+    const waiting = i === 0 && !y!.build && y!.waiting;
+    return `<div class="row" data-key="yq${j.uid}"><span class="pos-no num">${i + 1}</span><div class="grow"><div class="title">${esc(c.name)}</div>
+      <div class="sub wrap">${esc(jobLabel(j.order))}</div>
+      ${waiting ? `<div class="sub wrap warn-text">${esc(y!.waiting!)}</div>` : ''}
+      ${Object.keys(lack).length ? `<div class="flow" style="margin-top:6px">${Object.entries(lack).map(([id, n]) => `<span class="io">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)} fehlt</span>`).join('')}</div>` : ''}</div>
+      <button class="icon-btn sm ghost-x" ${act('yard-cancel', { st: st.id, uid: j.uid })} aria-label="Aus der Warteschlange entfernen">${icon('close', 16)}</button></div>`;
+  }).join('');
+  const cards = SHIP_CLASSES.filter((c) => sizes.has(c.size)).map((c) => {
+    const mv = materialValue(c.id);
+    const mats = Object.entries(c.materials).map(([id, n]) => {
+      const have = st.inventory[id] ?? 0;
+      return `<span class="io ${have >= n ? '' : 'lack'}">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`;
+    }).join('');
+    return `<div class="module-card box" data-key="yc${c.id}"><span class="ware-tile" style="--c:#8fb7c4">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
+      <div style="min-width:0"><div class="title" style="font-weight:600">${esc(c.name)}</div><div class="small muted">${c.size} · ${fmtInt(c.capacity)} m³ · ${fmtNum(c.speed, 1)} km/s</div></div>
+      <div class="flow" style="grid-column:1/-1">${mats}</div>
+      <div class="meta" style="grid-column:1/-1"><span>Material <b>${fmtCr(mv)}</b></span><span>Kaufpreis <b>${fmtCr(c.price)}</b></span><span>Bauzeit <b>${fmtDur(SHIP_BUILD_TIME[c.size])}</b></span></div>
+      <div class="actions"><button class="btn small primary" ${act('yard-build', { st: st.id, cls: c.id })}>${icon('plus', 16)}Bauen</button></div></div>`;
+  }).join('');
+  return `<div class="section"><h3>Fertigung</h3>
+    ${current || rows ? `<div class="box rows">${current}${rows}</div>` : '<div class="box empty">Die Werft ist frei. Wähle unten ein Schiff.</div>'}
+    <p class="small muted" style="margin:6px 0 0">Gebaut wird aus dem Lager dieser Station. Fehlendes Material kaufen Transporter im Autohandel automatisch ein, solange ein Schiff wartet.</p></div>
+    <div class="section"><h3>Schiff bauen</h3><div style="display:grid;gap:10px">${cards}</div></div>`;
+}
+
 function stationModules(state: GameState, st: Station): string {
   // Laufender Bau ist fest, geplante Positionen lassen sich verschieben
   let eta = st.build ? st.build.remaining : 0;
@@ -369,7 +424,7 @@ function stationModules(state: GameState, st: Station): string {
     eta += d.buildTime;
     total += x.paid > 0 ? 0 : d.cost;
     const waiting = i === 0 && !st.build && st.waiting === 'credits';
-    const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(d.kind === 'storage' ? 'storage' : 'dock', 18)}</span>`;
+    const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
     return `${slot(i)}<div class="row build-row" data-uid="${x.uid}" data-key="q${x.uid}">
       <button class="drag-handle" data-drag-handle aria-label="Position ${i + 1} verschieben">${icon('more', 18)}</button>
       <span class="pos-no num">${i + 1}</span>${lead}
@@ -384,7 +439,7 @@ function stationModules(state: GameState, st: Station): string {
   const build = st.build ? (() => {
     const d = MODULE_MAP[st.build.def];
     const f = 1 - st.build.remaining / st.build.total;
-    return `<div class="row build-row locked">${icon('lock', 18, 'muted')}<span class="pos-no num">–</span>${d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon('storage', 18)}</span>`}
+    return `<div class="row build-row locked">${icon('lock', 18, 'muted')}<span class="pos-no num">–</span>${d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`}
       <div class="grow"><div class="title">${esc(d.name)}</div><div class="sub">Im Bau · noch ${fmtDur(st.build.remaining)}</div>${bar(f, 'amber')}</div>
       <button class="btn small ghost" ${act('cancel-build', { st: st.id })}>Stopp</button></div>`;
   })() : '';
@@ -398,9 +453,9 @@ function stationModules(state: GameState, st: Station): string {
   }
   const built = [...groups].map(([def, g]) => {
     const d = MODULE_MAP[def];
-    const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(d.kind === 'storage' ? 'storage' : d.kind === 'core' ? 'station' : 'dock', 18)}</span>`;
-    const sub = d.kind === 'production' ? `${pct(g.util / g.n)} Auslastung` : d.kind === 'storage' ? `${fmtInt((d.capacity ?? 0) * g.n)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'M- und S-Schiffe' : d.kind === 'pier' ? 'L-Schiffe' : 'Verbindet alle Module';
-    return `<div class="row">${lead}<div class="grow"><div class="title">${esc(d.name)} <span class="muted small">× ${g.n}</span></div><div class="sub">${esc(sub)}</div></div>
+    const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
+    const sub = d.kind === 'production' ? `${pct(g.util / g.n)} Auslastung` : d.kind === 'storage' ? `${fmtInt((d.capacity ?? 0) * g.n)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'M- und S-Schiffe' : d.kind === 'pier' ? 'L-Schiffe' : d.kind === 'shipyard' ? (d.yardSize === 'L' ? 'Baut L-Schiffe' : 'Baut S- und M-Schiffe · Dock für S/M') : 'Verbindet alle Module';
+    return `<div class="row">${lead}<div class="grow"><div class="title">${esc(d.name)} <span class="muted small">× ${g.n}</span></div><div class="sub wrap">${esc(sub)}</div></div>
       ${d.kind !== 'core' ? `<button class="icon-btn" ${act('ask-demolish', { st: st.id, uid: g.uids[g.uids.length - 1] })} aria-label="Modul abreißen">${icon('trash', 18)}</button>` : ''}</div>`;
   }).join('');
   const needDock = !hasDockFor(st, 'M') && !st.queue.some((q) => q.def === 'dock_m') && st.build?.def !== 'dock_m';
@@ -409,7 +464,7 @@ function stationModules(state: GameState, st: Station): string {
   const summary = st.queue.length ? `<p class="small muted" style="margin:0 0 8px">${st.queue.length} Position${st.queue.length === 1 ? '' : 'en'} geplant · noch zu bezahlen ${fmtCr(total)} · fertig in ${fmtDur(eta)}. Bezahlt wird jeweils beim Baustart.</p>` : '';
   return `
     <div class="section"><h3>Baureihenfolge</h3>
-    <div class="card-actions" style="margin-bottom:10px"><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 16)}Modul einplanen</button><button class="btn small" ${act('plan-station', { st: st.id })}>${icon('planner', 16)}Fließdiagramm</button></div>
+    <div class="card-actions" style="margin-bottom:10px"><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 16)}Modul einplanen</button><button class="btn small" ${act('plan-station', { st: st.id })}>${icon('planner', 16)}Fließdiagramm</button>${canUndo() ? `<button class="btn small" ${act('undo')} title="${esc(undoLabel())}">${icon('undo', 16)}Rückgängig</button>` : ''}</div>
     ${summary}
     ${build || rows ? `<div class="box build-list" data-draglist data-st="${st.id}">${build}${rows}${rows ? slot(st.queue.length) : ''}</div>
       <p class="small muted" style="margin:6px 0 0">Am Griff ${icon('more', 12, 'inline')} ziehen oder mit den Pfeilen umsortieren. ${icon('plus', 12, 'inline')} zwischen zwei Positionen fügt dort ein Modul ein. Das laufende Modul ist fest.</p>` : `<div class="box empty">Keine Positionen geplant. Plane Module ein – sie werden der Reihe nach gebaut und erst beim Baustart bezahlt.</div>`}</div>
@@ -445,7 +500,7 @@ function shipRow(_state: GameState, s: Ship): string {
   const c = SHIP_MAP[s.cls];
   return `<div class="row tap" ${act('open-ship', { id: s.id })} data-key="${s.id}">
     <span class="ware-tile" style="--c:${c.role === 'miner' ? '#ffc45e' : '#5ff0d8'}">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
-    <div class="grow"><div class="title">${esc(s.name)} <span class="muted small">${esc(c.name)}</span></div><div class="sub">${esc(s.status)}${s.cargo ? ` · ${fmtAmount(s.cargo.amount)} ${esc(WARES[s.cargo.ware].name)}` : ''}</div></div>
+    <div class="grow"><div class="title">${esc(s.name)}</div><div class="sub wrap"><span class="muted">${esc(c.name)}</span> · ${esc(s.status)}${s.cargo ? ` · ${fmtAmount(s.cargo.amount)} ${esc(WARES[s.cargo.ware].name)}` : ''}</div></div>
     ${icon('chev', 20, 'chev')}</div>`;
 }
 
@@ -529,6 +584,7 @@ function missionsPanel(state: GameState): string {
     story = `<div class="story-card">
       <div class="eyebrow">Kampagne · Kapitel ${idx} von ${STORY.length}</div>
       <h2>${esc(m.title)}</h2><p>${esc(m.story)}</p>
+      ${m.about ? `<p class="about"><b>Wofür?</b> ${esc(m.about)}</p>` : ''}
       <div class="goal">${icon(done ? 'check' : 'target', 20)}<div style="flex:1;min-width:0"><b>${esc(m.goal)}</b>
         <div class="small muted" style="margin:4px 0 6px">${fmtAmount(Math.min(p.cur, p.target))} / ${fmtAmount(p.target)}</div>${bar(p.cur / p.target, done ? '' : 'amber')}</div></div>
       <p class="hint">${icon('info', 16)}<span>${esc(m.hint)}</span></p>
@@ -556,8 +612,27 @@ function missionsPanel(state: GameState): string {
     <div class="section">${story}</div>
     <div class="section"><h3>Aktive Lieferaufträge</h3>${active.length ? `<div class="box rows">${active.map((c) => contractRow(c, false)).join('')}</div>` : '<div class="box empty">Keine aktiven Aufträge. Transporter im Autohandel liefern automatisch für angenommene Aufträge.</div>'}</div>
     <div class="section"><h3>Angebote</h3>${offers.length ? `<div class="box rows">${offers.map((c) => contractRow(c, true)).join('')}</div>` : '<div class="box empty">Gerade keine Angebote. Neue kommen etwa alle 30–50 Minuten Spielzeit.</div>'}</div>
+    ${shipOrdersSection(state)}
     <div class="section"><h3>Ruf</h3><div class="kv">${(['frf', 'zya'] as const).map((f) => `<div><small>${esc(FACTIONS[f].name)}</small><b>${fmtNum(state.rep[f], 1)}</b>${bar(Math.max(0, state.rep[f]) / 30, 'amber')}</div>`).join('')}</div>
     <p class="small muted">Ruf öffnet Baupläne und Baulizenzen. Handel bringt Ruf bis Stufe 10, darüber zählen Aufträge.</p></div>`);
+}
+
+function shipOrdersSection(state: GameState): string {
+  const yards = yardStations(state);
+  const list = (state.shipOrders ?? []).filter((o) => o.status === 'offer' || o.status === 'active');
+  if (!yards.length && !list.length) return '';
+  const rows = list.map((o) => {
+    const c = SHIP_MAP[o.cls];
+    const able = yards.filter((st) => yardSizes(st).has(c.size));
+    const tools = o.status === 'active'
+      ? `<span class="small muted" style="margin-right:auto;align-self:center">Baut: ${esc(stationById(state, o.station ?? '')?.name ?? '–')} · Frist ${fmtDur(o.deadline - state.time)}</span>`
+      : `<span class="small muted" style="margin-right:auto;align-self:center">läuft ab in ${fmtDur(o.deadline - state.time)}</span>${able.length ? able.map((st) => `<button class="btn small primary" ${act('order-accept', { id: o.id, st: st.id })}>${able.length > 1 ? esc(st.name) : 'Annehmen'}</button>`).join('') : `<span class="small warn-text">Braucht ${c.size === 'L' ? 'L' : 'S/M'}-Werft</span>`}`;
+    return `<div class="row" data-key="so${o.id}" style="flex-wrap:wrap"><span class="ware-tile" style="--c:#8fb7c4">${icon('yard', 18)}</span><div class="grow"><div class="title">${esc(c.name)}</div>
+      <div class="sub wrap">${esc(FACTIONS[o.faction].name)} · Material ca. ${fmtCr(materialValue(c.id))}</div></div>
+      <div class="right"><b class="pos">${fmtCr(o.price)}</b><div class="small muted">Ruf +${o.rep}</div></div>
+      <div style="width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap">${tools}</div></div>`;
+  }).join('');
+  return `<div class="section"><h3>Schiffsbestellungen</h3>${rows ? `<div class="box rows">${rows}</div>` : '<div class="box empty">Gerade keine Bestellungen. Mit eigener Werft kommen etwa alle 1–2 Stunden neue.</div>'}</div>`;
 }
 
 function courierButtons(_state: GameState, contractId?: number): string {
@@ -760,9 +835,9 @@ function modalShell(title: string, body: string, foot: string, eyebrow = ''): st
 function modulesModal(state: GameState, m: Extract<Modal, { type: 'modules' }>): string {
   const st = stationById(state, m.station);
   if (!st) return '';
-  const cats: [string, string][] = [['production', 'Produktion'], ['storage', 'Lager'], ['dock', 'Andocken']];
+  const cats: [string, string][] = [['production', 'Produktion'], ['storage', 'Lager'], ['dock', 'Andocken'], ['shipyard', 'Werft']];
   const sun = sector(st.sector).sunlight;
-  const list = MODULES.filter((d) => (m.cat === 'production' ? d.kind === 'production' : m.cat === 'storage' ? d.kind === 'storage' : d.kind === 'dock' || d.kind === 'pier'))
+  const list = MODULES.filter((d) => (m.cat === 'production' || m.cat === 'storage' || m.cat === 'shipyard' ? d.kind === m.cat : d.kind === 'dock' || d.kind === 'pier'))
     .sort((a, b) => {
       const sa = blueprintState(state, a.id), sb = blueprintState(state, b.id);
       const order = { owned: 0, buyable: 1, locked: 2 };
@@ -776,8 +851,9 @@ function modulesModal(state: GameState, m: Extract<Modal, { type: 'modules' }>):
       const ins = inputsPerHour(d.ware);
       io = `<div class="flow" style="grid-column:1/-1">${ins.map((i) => `<span class="io">${wareDot(WARES[i.ware].color, 7)}<b>${fmtAmount(i.amount)}</b>${esc(WARES[i.ware].name)}</span>`).join('')}${ins.length ? `<span class="arrow">${icon('arrowRight', 16)}</span>` : ''}<span class="io" style="border-color:${WARES[d.ware].color}">${wareDot(WARES[d.ware].color, 7)}<b>${fmtAmount(outputPerHour(d.ware, sun))}</b>${esc(WARES[d.ware].name)} / h</span></div>`;
     }
-    const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(d.kind === 'storage' ? 'storage' : 'dock', 18)}</span>`;
-    const desc = d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
+    const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
+    if (d.kind === 'shipyard') io = `<div class="flow" style="grid-column:1/-1">${Object.entries(d.materials).map(([id, n]) => `<span class="io">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`).join('')}</div>`;
+    const desc = d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
     const action = bp === 'owned'
       ? `${afford ? '' : '<span class="small muted" style="margin-right:auto">startet, sobald Credits reichen</span>'}<button class="btn small primary" ${act('queue', m.at === undefined ? { st: st.id, def: d.id } : { st: st.id, def: d.id, at: m.at })}>${icon('plus', 16)}${m.at === undefined ? 'Einplanen' : `An Position ${m.at + 1}`}</button>`
       : bp === 'buyable'

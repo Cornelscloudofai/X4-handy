@@ -52,6 +52,7 @@ export type GameEvent =
   | { type: 'moduleDone'; station: string; module: string }
   | { type: 'contractDone'; id: number }
   | { type: 'story' }
+  | { type: 'shipBuilt'; station: string; cls: string }
   | { type: 'sale'; station: string; sector: string; x: number; z: number; value: number };
 
 const listeners: ((e: GameEvent) => void)[] = [];

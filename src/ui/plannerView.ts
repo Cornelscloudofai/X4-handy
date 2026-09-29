@@ -1,4 +1,5 @@
 // Stationsplaner: Entwurf oder echte Station planen, Kette als Fließdiagramm bearbeiten
+import { canUndo, undoLabel } from './undo';
 import { MODULE_MAP } from '../data/modules';
 import { SECTORS, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
@@ -108,7 +109,7 @@ export function plannerPanel(state: GameState, p: PlannerUI): string {
       <button class="details-toggle" ${act('plan-details')} aria-expanded="${p.planDetails}">${icon(p.planDetails ? 'up' : 'down', 16)}Stückliste, Rohstoffe und Baumaterial</button>
       ${p.planDetails ? detailsBlock(state, r, !!st) : ''}</div>` : '';
 
-  const actions = !st && hasPlan ? `<div class="section card-actions"><button class="btn primary" ${act('plan-build-modal')}>${icon('wrench', 18)}In Station übernehmen</button><button class="btn" ${act('plan-reset')}>Zurücksetzen</button></div>` : '';
+  const actions = !st && hasPlan ? `<div class="section card-actions"><button class="btn primary" ${act('plan-build-modal')}>${icon('wrench', 18)}In Station übernehmen</button><button class="btn" ${act('plan-reset')}>Zurücksetzen</button>${canUndo() ? `<button class="btn" ${act('undo')}>${icon('undo', 18)}Rückgängig</button>` : ''}</div>` : '';
 
   return `${source}${summary}${preview}${controls}${details}${actions}`;
 }
@@ -278,6 +279,7 @@ export function diagramEditor(state: GameState, p: PlannerUI, layoutOverride?: R
     <div class="dg-toolbar">
       <button class="btn small" ${act('plan-pick')}>${icon('plus', 16)}Produkt</button>
       <button class="icon-btn sm ${p.planEnergy ? 'on' : ''}" ${act('plan-energy')} aria-label="Energiezellen-Linien ein- oder ausblenden" title="Energie-Linien">${icon('energy', 17)}</button>
+      <button class="icon-btn sm" ${act('undo')} ${canUndo() ? '' : 'disabled'} aria-label="Rückgängig" title="Rückgängig${canUndo() ? ': ' + esc(undoLabel()) : ''}">${icon('undo', 17)}</button>
       <button class="icon-btn sm" ${act('dg-fit')} aria-label="Alles einpassen" title="Einpassen">${icon('target', 17)}</button>
       <button class="icon-btn sm" ${act('dg-arrange')} aria-label="Anordnung zurücksetzen" title="Automatisch anordnen">${icon('routes', 17)}</button>
       <span class="dg-legend">${problems ? `<b class="neg">${problems} ${problems === 1 ? 'Engpass' : 'Engpässe'}</b>` : '<b class="pos">voll versorgt</b>'} · ${r.totalModules} Module</span>

@@ -1,5 +1,6 @@
 // Stationswirtschaft: Lager, Produktion, Bau und Sektormärkte.
 import { MODULE_MAP, moduleDef } from '../data/modules';
+import { SHIP_MAP } from '../data/ships';
 import { NPC_STATIONS, SECTORS, marketInfo, sector } from '../data/sectors';
 import { WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
 import type { GameState, Market, Station, StorageType } from './types';
@@ -27,6 +28,15 @@ export function usedVolume(st: Station): Record<StorageType, number> {
   return used;
 }
 
+/** Material, das die eigene Werft für die geplanten Schiffe noch braucht (Einheiten je Ware) */
+export function yardNeeds(st: Station): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const j of st.yard?.queue ?? []) {
+    for (const [id, n] of Object.entries(SHIP_MAP[j.cls]?.materials ?? {})) out[id] = (out[id] ?? 0) + n;
+  }
+  return out;
+}
+
 /** Waren, die für die Station relevant sind (Produktion, Verbrauch, Handelsregeln, Bestand) */
 export function stationWares(st: Station, includePlanned = true): string[] {
   const set = new Set<string>();
@@ -42,6 +52,7 @@ export function stationWares(st: Station, includePlanned = true): string[] {
     for (const i of ware(d.ware).inputs) set.add(i.ware);
   }
   for (const [id, r] of Object.entries(st.trade)) if (r.buy || r.sell) set.add(id);
+  for (const id of Object.keys(yardNeeds(st))) set.add(id);
   for (const [id, n] of Object.entries(st.inventory)) if (n > 0.5) set.add(id);
   return [...set].filter((id) => WARES[id]);
 }
@@ -64,7 +75,10 @@ export function storageShare(st: Station, id: string, wares = stationWares(st)):
 export function wareLimit(st: Station, id: string, cap = storageCap(st), wares = stationWares(st)): number {
   const w = WARES[id];
   if (!w) return 0;
-  return (cap[w.storage] * storageShare(st, id, wares).share) / w.volume;
+  const byShare = (cap[w.storage] * storageShare(st, id, wares).share) / w.volume;
+  // Werftmaterial darf seinen Bedarf immer einlagern (sonst könnte das Schiff nie starten)
+  const need = st.yard?.queue.length ? yardNeeds(st)[id] ?? 0 : 0;
+  return need > byShare ? Math.min(need, cap[w.storage] / w.volume) : byShare;
 }
 
 export function freeUnits(st: Station, id: string): number {
@@ -88,6 +102,7 @@ export function producesWare(st: Station, id: string): boolean {
 }
 
 export function consumesWare(st: Station, id: string, includePlanned = false): boolean {
+  if (st.yard?.queue.length && (yardNeeds(st)[id] ?? 0) > 0) return true;
   const defs = st.modules.map((m) => m.def);
   if (includePlanned) {
     for (const q of st.queue) defs.push(q.def);
@@ -203,7 +218,8 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
 
 export function hasDockFor(st: Station, size: 'S' | 'M' | 'L'): boolean {
   const kind = size === 'L' ? 'pier' : 'dock';
-  return st.modules.some((m) => MODULE_MAP[m.def]?.kind === kind);
+  // Die S/M-Schiffsfertigung hat eigene Andockplätze für S- und M-Schiffe
+  return st.modules.some((m) => MODULE_MAP[m.def]?.kind === kind || (size !== 'L' && m.def === 'yard_m'));
 }
 
 // ---------- Märkte ----------

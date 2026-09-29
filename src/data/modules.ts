@@ -62,8 +62,15 @@ function buildModules(): ModuleDef[] {
   if (pier) list.push({ id: 'pier_l', x4Id: pier.id, kind: 'pier', name: 'Split 4-Dock-T-Pier', buildTime: pier.time, materials: pier.materials, cost: materialCost(pier.materials), method: 'Split', repRequired: 0, blueprintCost: 0, starter: true });
   const core = infra.find((x) => x.id === 'module_arg_conn_base_01');
   if (core) list.push({ id: 'core', x4Id: core.id, kind: 'core', name: 'Stationskern', buildTime: core.time, materials: core.materials, cost: materialCost(core.materials), method: 'Argon', repRequired: 0, blueprintCost: 0, starter: true });
+  // Werftmodule (echte Baumaterialien und Bauzeiten, Universal-Methode)
+  for (const y of YARDS) list.push({ ...y, kind: 'shipyard', cost: materialCost(y.materials), method: 'Universal', starter: false });
   return list;
 }
+
+const YARDS: Omit<ModuleDef, 'kind' | 'cost' | 'method' | 'starter'>[] = [
+  { id: 'yard_m', x4Id: 'module_gen_build_dockarea_m_01', name: 'S/M-Schiffsfertigung', yardSize: 'M', buildTime: 1298, materials: { claytronics: 3312, energycells: 6620, hullparts: 12112 }, repRequired: 10, blueprintCost: 12_000_000 },
+  { id: 'yard_l', x4Id: 'module_gen_build_l_01', name: 'L-Schiffsfertigung', yardSize: 'L', buildTime: 731, materials: { claytronics: 1866, energycells: 3731, hullparts: 6826 }, repRequired: 15, blueprintCost: 20_000_000 },
+];
 
 export const MODULES: ModuleDef[] = buildModules();
 export const MODULE_MAP: Record<string, ModuleDef> = Object.fromEntries(MODULES.map((m) => [m.id, m]));

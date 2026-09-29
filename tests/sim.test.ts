@@ -232,3 +232,61 @@ describe('Lager und Reserve', () => {
     expect(boa.orders![0].amount).toBeLessThanOrEqual(500);
   });
 });
+
+describe('Werft', () => {
+  it('hat echte Baumaterialien und baut Schiffe aus dem Stationslager', async () => {
+    const { queueShipBuild, stepShipOrders, acceptShipOrder, missingFor } = await import('../src/engine/yard');
+    expect(MODULE_MAP.yard_m.materials).toEqual({ claytronics: 3312, energycells: 6620, hullparts: 12112 });
+    expect(MODULE_MAP.yard_m.buildTime).toBe(1298);
+    const s = newGame(61);
+    const st = s.stations[0];
+    st.modules.push({ uid: s.nextId++, def: 'yard_m', t: 0, running: false, stall: '', util: 0 });
+    expect(queueShipBuild(s, st.id, 'buffalo').ok).toBe(false); // L braucht L-Werft
+    expect(queueShipBuild(s, st.id, 'boa').ok).toBe(true);
+    step(s, 10);
+    expect(st.yard!.waiting).toMatch(/Material fehlt/);
+    // Werftbedarf zählt als Verbrauch: Transporter kaufen ihn ein, Lager hat Platz dafür
+    expect(wareLimit(st, 'hullparts')).toBeGreaterThanOrEqual(348);
+    for (const [id, n] of Object.entries(missingFor(st, 'boa'))) st.inventory[id] = (st.inventory[id] ?? 0) + n;
+    const ships = s.ships.length;
+    step(s, 13 * 60);
+    expect(s.ships.length).toBe(ships + 1);
+    expect(s.totals.shipsBuilt).toBe(1);
+    expect(st.inventory.hullparts ?? 0).toBeLessThan(1);
+    // Schiffsbestellung einer Fraktion
+    s.shipOrderTimer = 0;
+    stepShipOrders(s, 1);
+    const o = s.shipOrders!.find((x) => x.status === 'offer')!;
+    expect(o).toBeDefined();
+    expect(acceptShipOrder(s, o.id, st.id).ok).toBe(true);
+    for (const [id, n] of Object.entries(missingFor(st, o.cls))) st.inventory[id] = (st.inventory[id] ?? 0) + n;
+    const c0 = s.credits;
+    step(s, 13 * 60);
+    expect(o.status).toBe('done');
+    expect(s.credits - c0).toBeGreaterThanOrEqual(o.price * 0.99);
+    expect(s.totals.shipsSold).toBe(1);
+  });
+});
+
+describe('Rückgängig', () => {
+  it('stellt Bauliste wieder her, ohne gestartete Positionen zu verdoppeln', async () => {
+    const { withUndo, undo, canUndo } = await import('../src/ui/undo');
+    const s = newGame(71);
+    const st = s.stations[0];
+    s.credits = 0;
+    const plan = { targets: [], auto: true, extra: {}, buy: [] } as never;
+    withUndo(s, () => plan, 'a', () => queueModule(s, st.id, 'prod_refinedmetals'));
+    withUndo(s, () => plan, 'b', () => queueModule(s, st.id, 'storage_liquid'));
+    withUndo(s, () => plan, 'c', () => cancelQueued(s, st.id, st.queue[0].uid));
+    expect(st.queue.map((q) => q.def)).toEqual(['storage_liquid']);
+    expect(undo(s, () => {})).toBe('c');
+    expect(st.queue.map((q) => q.def)).toEqual(['prod_refinedmetals', 'storage_liquid']);
+    // Erste Position startet, dann Rückgängig: sie darf nicht erneut in der Liste auftauchen
+    s.credits = 5e6;
+    step(s, 1);
+    expect(st.build?.def).toBe('prod_refinedmetals');
+    expect(undo(s, () => {})).toBe('b');
+    expect(st.queue.length).toBe(0);
+    expect(canUndo()).toBe(true);
+  });
+});
