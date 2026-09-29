@@ -17,7 +17,11 @@ import { $, morph } from './dom';
 import { fmtCr } from './format';
 import { icon } from './icons';
 import { setSound, sfx, soundEnabled } from './sound';
-import { SPEEDS, ui, type Modal, type Panel, type PanelType } from './uistate';
+import { SPEEDS, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
+import { computePlan, producible } from '../engine/planner';
+import { buildOrder } from './plannerView';
+import { MODULE_MAP } from '../data/modules';
+import { WARES } from '../data/wares';
 import { cardHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml } from './views';
 
 let state: GameState;
@@ -175,6 +179,7 @@ function renderUI(): void {
   if (panel.dataset.key !== panelKey()) { panel.innerHTML = ''; panel.dataset.key = panelKey(); const b = panel.querySelector('.sheet-body'); if (b) b.scrollTop = 0; }
   morph(panel, panelContent);
   panel.hidden = !panelContent;
+  panel.classList.toggle('wide', ui.panel?.type === 'planner');
   const modal = $('modal');
   const modalContent = modalHtml(state, ui);
   if (modal.dataset.key !== modalKey()) { modal.innerHTML = ''; modal.dataset.key = modalKey(); }
@@ -292,6 +297,95 @@ function onClick(e: MouseEvent): void {
   else sfx.tap();
   switch (a) {
     case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
+    case 'plan-pick': ui.modal = { type: 'planPick', group: 'all' }; refresh(); break;
+    case 'plan-pick-group': ui.modal = { type: 'planPick', group: d.g! }; refresh(); break;
+    case 'plan-add': {
+      const t = ui.plan.targets.find((x) => x.ware === d.ware);
+      if (t) t.modules++;
+      else ui.plan.targets.push({ ware: d.ware!, modules: 1 });
+      ui.plan.buy = ui.plan.buy.filter((x) => x !== d.ware);
+      ui.modal = null;
+      planChanged();
+      toast(`${WARES[d.ware!].name} zum Plan hinzugefügt.`, 'good');
+      break;
+    }
+    case 'plan-target': {
+      const t = ui.plan.targets.find((x) => x.ware === d.ware);
+      if (!t) break;
+      t.modules += Number(d.d);
+      if (t.modules <= 0) ui.plan.targets = ui.plan.targets.filter((x) => x !== t);
+      planChanged();
+      break;
+    }
+    case 'plan-extra': {
+      const r = computePlan(ui.plan);
+      const n = r.nodes[d.ware!];
+      const cur = ui.plan.extra[d.ware!] ?? 0;
+      if (Number(d.d) < 0 && n && n.modules <= 0) break;
+      ui.plan.extra[d.ware!] = cur + Number(d.d);
+      if (!ui.plan.extra[d.ware!]) delete ui.plan.extra[d.ware!];
+      planChanged();
+      break;
+    }
+    case 'plan-buy': {
+      const w = d.ware!;
+      ui.plan.buy = ui.plan.buy.includes(w) ? ui.plan.buy.filter((x) => x !== w) : [...ui.plan.buy, w];
+      delete ui.plan.extra[w];
+      planChanged();
+      break;
+    }
+    case 'plan-workforce': ui.plan.workforce = !ui.plan.workforce; planChanged(); break;
+    case 'plan-energy': ui.planEnergy = !ui.planEnergy; refresh(); break;
+    case 'plan-zoom': ui.planZoom = Math.max(0.4, Math.min(1.6, ui.planZoom * (Number(d.d) > 0 ? 1.25 : 0.8))); refresh(); break;
+    case 'plan-focus': ui.planFocus = ui.planFocus === d.ware ? '' : d.ware!; refresh(); break;
+    case 'plan-reset': ui.plan = { targets: [], sunlight: 100, workforce: false, buy: [], extra: {} }; ui.planFocus = ''; planChanged(); break;
+    case 'plan-from-ware': {
+      if (!producible(d.ware!)) break;
+      ui.plan = { ...ui.plan, targets: [{ ware: d.ware!, modules: 1 }], buy: [], extra: {} };
+      ui.planFocus = '';
+      savePlan();
+      openPanel('planner');
+      break;
+    }
+    case 'plan-from-station': {
+      const st = stationById(state, d.st!);
+      if (!st) break;
+      const counts = new Map<string, number>();
+      for (const m of st.modules) { const w = MODULE_MAP[m.def]?.ware; if (w && MODULE_MAP[m.def].kind === 'production') counts.set(w, (counts.get(w) ?? 0) + 1); }
+      if (!counts.size) { toast('Die Station hat noch keine Produktionsmodule.', 'warn'); break; }
+      // Vorhandene Module als Vorgabe; der Planer zeigt, was für eine geschlossene Kette fehlt
+      ui.plan = { targets: [...counts].map(([ware, modules]) => ({ ware, modules })), sunlight: SECTOR_MAP[st.sector].sunlight, workforce: false, buy: [], extra: {} };
+      ui.planFocus = '';
+      savePlan();
+      openPanel('planner');
+      break;
+    }
+    case 'plan-full': ui.modal = { type: 'planDiagram' }; refresh(); break;
+    case 'plan-build-modal': ui.modal = { type: 'planBuild' }; refresh(); break;
+    case 'plan-build': {
+      ui.modal = null;
+      const st = stationById(state, d.st!);
+      if (!st) break;
+      const r = computePlan(ui.plan);
+      const have = (def: string) => st.modules.some((m) => m.def === def) || st.queue.some((q) => q.def === def) || st.build?.def === def;
+      const basics: string[] = [];
+      if (!have('storage_container')) basics.push('storage_container');
+      const mined = Object.values(r.nodes).filter((n) => n.kind === 'mined').map((n) => WARES[n.ware].storage);
+      if (mined.includes('Solid') && !have('storage_solid')) basics.push('storage_solid');
+      if (mined.includes('Liquid') && !have('storage_liquid')) basics.push('storage_liquid');
+      if (!have('dock_m')) basics.push('dock_m');
+      let queued = 0;
+      const skipped = new Map<string, string>();
+      for (const def of [...basics, ...buildOrder(r)]) {
+        const res = A.queueModule(state, st.id, def);
+        if (res.ok) queued++;
+        else skipped.set(MODULE_MAP[def].name, res.msg);
+      }
+      toast(skipped.size ? `${queued} Module beauftragt. Übersprungen: ${[...skipped.keys()].join(', ')} (${[...skipped.values()][0]})` : `${queued} Module in ${st.name} beauftragt.`, skipped.size ? 'warn' : 'good');
+      if (queued) { ui.selection = { kind: 'station', id: st.id }; openPanel('station', st.id, 'modules'); }
+      else refresh();
+      break;
+    }
     case 'nav': {
       ui.modal = null;
       if (d.tab === 'map') { ui.panel = null; if (ui.view === 'galaxy') ui.view = 'sector'; refresh(); }
@@ -484,10 +578,20 @@ function parseEp(v: string): TradeEndpoint | null {
   return null;
 }
 
+function planChanged(): void {
+  savePlan();
+  refresh();
+}
+
 function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
+  if (field === 'plan-sun') {
+    ui.plan.sunlight = Number(el.value) || 100;
+    planChanged();
+    return;
+  }
   if (field === 'buy-home') {
     if (ui.modal?.type === 'buyShip') ui.modal = { ...ui.modal, station: el.value };
     refresh();

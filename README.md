@@ -22,6 +22,7 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
 
 | Bereich | Umsetzung |
 | --- | --- |
+| Stationsplaner | Endprodukte wählen → komplette Modulkette mit exakten Mengen pro Stunde, Rundung auf ganze Module, Überschuss/Fehlbedarf, Zukauf statt Eigenproduktion, Sonnenlicht, Belegschaftsbonus, Baukosten, Fließdiagramm von Rohstoff (links) bis Endprodukt (rechts), Übernahme in eine Station |
 | Produktion | 58 Waren mit echten X4-Rezepten (Zykluszeit, Ein- und Ausgangsmengen), Solarleistung abhängig vom Sonnenlicht des Sektors |
 | Stationsbau | Module mit echten Baumaterialien und Bauzeiten, Kosten aus Materialwert; Lager (Container/Feststoff/Flüssig), Dock, Pier |
 | Schiffe | Split-Schiffe mit Frachträumen aus der Egosoft-Wiki: Miner (Mineral/Gas, M/L), Kurier, Transporter, Großfrachter |
@@ -45,7 +46,9 @@ Nützliche Befehle: `npm test`, `npm run typecheck`, `npm run balance` (simulier
 
 ## Datenquellen
 
-Rezepte und Preisspannen: Community-Datensatz *X4Foundations_FactoryStationsTracker*.
+Rezepte und Preisspannen: Community-Datensatz *X4Foundations_FactoryStationsTracker* (gepflegt nach Roguey's X4-Seite, Stand August 2026);
+abgeglichen mit den Spieldaten aus *crissian/x4* – alle 57 Rezepte stimmen überein. Solarkraftwerk (175 Energiezellen je 60 s)
+und Belegschaftsbonus je Ware aus *crissian/x4*.
 Modul-Baukosten und Bauzeiten: *crissian/x4*. Schiffsfrachträume und Lagermodule: Egosoft-Wiki.
 Spielwerte (nicht aus X4): Schiffspreise, Fluggeschwindigkeiten, Abbauraten, Lage der Felder,
 Nachbarsektoren und der Nividium-Preis.

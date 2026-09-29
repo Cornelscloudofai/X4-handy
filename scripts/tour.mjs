@@ -63,6 +63,7 @@ await act('[data-act="nav"][data-tab="market"]');
 await shot('10-market');
 await act('[data-act="open-ware"][data-id="hullparts"]');
 await shot('11-ware');
+await act('[data-act="close-panel"]');
 await act('[data-act="nav"][data-tab="more"]');
 await shot('12-more');
 await act('[data-act="nav"][data-tab="map"]');

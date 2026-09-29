@@ -15,6 +15,8 @@ import { esc } from './dom';
 import { fmtAmount, fmtClock, fmtCr, fmtDur, fmtInt, fmtNum, pct } from './format';
 import { icon, wareDot } from './icons';
 import { soundEnabled } from './sound';
+import { buildModal, pickerModal, planDiagram, plannerPanel } from './plannerView';
+import { computePlan, producible } from '../engine/planner';
 import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
 
 // ---------- Hilfen ----------
@@ -61,9 +63,10 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string): str
     <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${state.sectors.length} von ${SECTORS.length} Sektoren` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
-  ${inGalaxy ? '' : `<div class="tool-row">
+  ${inGalaxy ? `<div class="tool-row"><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button></div>` : `<div class="tool-row">
     <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 20)}Station</button>
     <button class="btn ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${icon('routes', 20)}Routen</button>
+    <button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button>
     <div class="zoom"><button ${act('zoom-in')} aria-label="Hineinzoomen">${icon('plus', 20)}</button><button ${act('zoom-out')} aria-label="Herauszoomen">${icon('minus', 20)}</button></div>
   </div>`}`;
 }
@@ -82,15 +85,15 @@ export function objectiveHtml(state: GameState, ui: UIState): string {
 }
 
 export function navHtml(state: GameState, ui: UIState): string {
-  const active = ui.panel ? ({ stations: 'stations', station: 'stations', fleet: 'fleet', ship: 'fleet', missions: 'missions', market: 'market', ware: 'market', more: 'more', sector: 'map' } as Record<string, string>)[ui.panel.type] : 'map';
+  const active = ui.panel ? ({ stations: 'stations', station: 'stations', fleet: 'fleet', ship: 'fleet', missions: 'missions', market: 'market', ware: 'market', more: 'map', sector: 'map', planner: 'planner' } as Record<string, string>)[ui.panel.type] : 'map';
   const offers = state.contracts.filter((c) => c.status === 'offer').length + (missionComplete(state) ? 1 : 0);
   const items: [string, string, string, number][] = [
     ['map', 'sector', 'Sektor', 0],
     ['stations', 'station', 'Stationen', 0],
     ['fleet', 'fleet', 'Flotte', 0],
+    ['planner', 'planner', 'Planer', 0],
     ['missions', 'missions', 'Aufträge', offers],
     ['market', 'market', 'Handel', 0],
-    ['more', 'more', 'Mehr', 0],
   ];
   return items.map(([tab, ic, label, badge]) => `<button class="${active === tab ? 'active' : ''}" ${act('nav', { tab })} aria-label="${label}">${icon(ic, 23)}<span>${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`).join('');
 }
@@ -235,6 +238,7 @@ export function panelHtml(state: GameState, ui: UIState): string {
     case 'ware': return warePanel(state, p.id ?? 'ore', p);
     case 'sector': return sectorPanel(state, p.id ?? 'zhin', p);
     case 'more': return morePanel(state, ui);
+    case 'planner': return sheet('Stationsplaner', 'Produktionsketten nach X4', plannerPanel(state, ui));
   }
 }
 
@@ -321,7 +325,7 @@ function stationOverview(state: GameState, st: Station): string {
     <div class="section"><h3>Produktion</h3>${prodRows ? `<div class="box rows">${prodRows}</div>` : `<div class="box empty">Noch keine Produktionsmodule.<br><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 18)}Modul bauen</button></div>`}</div>
     ${balance ? `<div class="section"><h3>Stundenbilanz bei voller Leistung</h3><div class="box rows">${balance}</div></div>` : ''}
     <div class="section"><h3>Lager</h3><div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr))">${stor}</div></div>
-    <div class="section"><button class="btn ghost block" ${act('rename-modal', { st: st.id })}>Station umbenennen</button></div>`;
+    <div class="section card-actions"><button class="btn" ${act('plan-from-station', { st: st.id })}>${icon('planner', 18)}Im Planer prüfen</button><button class="btn ghost" ${act('rename-modal', { st: st.id })}>Umbenennen</button></div>`;
 }
 
 function hintFor(state: GameState, st: Station, wareId: string): string {
@@ -573,6 +577,7 @@ function warePanel(state: GameState, id: string, p: Panel): string {
       <div><small>Volumen</small><b>${w.volume} m³</b></div><div><small>Lager</small><b style="font-size:15px">${esc(STORAGE_LABEL[w.storage])}</b></div>
     </div>${w.estimated ? '<p class="small muted">Preis geschätzt – nicht im Datensatz.</p>' : ''}</div>
     ${recipe}${module}${chain}
+    ${producible(id) ? `<div class="section"><button class="btn outline-teal block" ${act('plan-from-ware', { ware: id })}>${icon('planner', 20)}Im Stationsplaner öffnen</button></div>` : ''}
     ${users.length ? `<div class="section"><h3>Wird verbraucht für</h3><div class="pills">${users.map((u) => `<button class="pill" ${act('open-ware', { id: u })}>${wareDot(WARES[u].color, 8)}${esc(WARES[u].name)}</button>`).join('')}</div></div>` : ''}
     <div class="section"><h3>Preise in bekannten Sektoren</h3><div class="box rows">${prices}</div></div>`, { back: !!p.back });
 }
@@ -680,6 +685,11 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const s = state.ships.find((x) => x.id === m.ship);
       return modalShell('Heimatstation wählen', `<div class="box rows">${state.stations.map((st) => `<div class="row tap" ${act('set-home', { id: m.ship, st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${esc(sector(st.sector).name)}</div></div>${s?.home === st.id ? icon('check', 20, 'pos') : ''}</div>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
     }
+    case 'planPick': return modalShell('Endprodukt wählen', pickerModal(m.group), `<button class="btn" ${act('modal-close')}>Fertig</button>`, 'Stationsplaner');
+    case 'planDiagram': return `<div class="modal full" role="dialog" aria-modal="true" aria-label="Fließdiagramm"><div class="sheet-head"><h1><span class="eyebrow">Stationsplaner</span>Fließdiagramm</h1>
+      <button class="icon-btn" ${act('plan-energy')} aria-label="Energie-Linien">${icon('energy', 20)}</button><button class="icon-btn" ${act('plan-zoom', { d: -1 })} aria-label="Verkleinern">${icon('minus', 20)}</button><button class="icon-btn" ${act('plan-zoom', { d: 1 })} aria-label="Vergrößern">${icon('plus', 20)}</button>
+      <button class="icon-btn" ${act('modal-close')} aria-label="Schließen">${icon('close', 22)}</button></div><div class="diagram-wrap full">${planDiagram(computePlan(ui.plan), ui)}</div></div>`;
+    case 'planBuild': return modalShell('Plan in Station bauen', buildModal(state, computePlan(ui.plan)), `<button class="btn" ${act('modal-close')}>Abbrechen</button>`, 'Stationsplaner');
     case 'courier': {
       const c = state.contracts.find((x) => x.id === m.contract);
       if (!c) return '';
