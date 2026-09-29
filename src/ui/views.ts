@@ -27,6 +27,11 @@ import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
 const act = (a: string, data: Record<string, string | number> = {}) =>
   `data-act="${a}"` + Object.entries(data).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
 
+/** In eingebetteten Vorschauen (iframe) sind Downloads meist gesperrt – dann nur Text kopieren */
+function canDownload(): boolean {
+  try { return window.self === window.top; } catch { return false; }
+}
+
 /** Symbol für Module ohne Produkt */
 function moduleIcon(kind: string): string {
   return kind === 'storage' ? 'storage' : kind === 'core' ? 'station' : kind === 'shipyard' ? 'yard' : 'dock';
@@ -775,7 +780,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const alerts = allAlerts(state);
       return modalShell('Engpässe & Hinweise', alerts.length ? `<div class="box rows">${alerts.map((a) => `<div class="row tap" ${act('open-station', { id: a.station, tab: 'overview' })}>${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text)}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, stationById(state, a.station)!, a.ware))}</div>` : ''}</div>${icon('chev', 20, 'chev')}</div>`).join('')}</div>` : '<div class="empty">Alles läuft. Keine Engpässe.</div>', `<button class="btn" ${act('modal-close')}>Schließen</button>`);
     }
-    case 'export': return modalShell('Spielstand sichern', `<p class="lead">Kopiere diesen Text und bewahre ihn auf. Mit „Spielstand laden“ kannst du ihn später wieder einfügen.</p><textarea id="exportText" readonly>${esc(JSON.stringify(state))}</textarea><p class="small muted" id="copyStatus"></p>`, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn" ${act('download-export')}>${icon('save', 18)}Als Datei</button><button class="btn primary" ${act('copy-export')}>Kopieren</button>`);
+    case 'export': return modalShell('Spielstand sichern', `<p class="lead">Kopiere diesen Text und bewahre ihn auf. Mit „Spielstand laden“ kannst du ihn später wieder einfügen.</p><textarea id="exportText" readonly>${esc(JSON.stringify(state))}</textarea><p class="small muted" id="copyStatus"></p>`, `<button class="btn" ${act('modal-close')}>Schließen</button>${canDownload() ? `<button class="btn" ${act('download-export')}>${icon('save', 18)}Als Datei</button>` : ''}<button class="btn primary" ${act('copy-export')}>Kopieren</button>`);
     case 'import': return modalShell('Spielstand laden', `<p class="lead">Füge einen gesicherten Spielstand ein. Der aktuelle Stand wird ersetzt.</p><label class="btn block file-btn">${icon('save', 18)}Datei wählen …<input type="file" id="importFile" accept=".json,.txt,application/json,text/plain" data-change="import-file" hidden></label><textarea id="importText" placeholder="{&quot;version&quot;:1, …}"></textarea>${m.error ? `<p class="small neg">${esc(m.error)}</p>` : ''}`, `<button class="btn" ${act('modal-close')}>Abbrechen</button><button class="btn primary" ${act('import-do')}>Laden</button>`);
     case 'home': {
       const s = state.ships.find((x) => x.id === m.ship);
