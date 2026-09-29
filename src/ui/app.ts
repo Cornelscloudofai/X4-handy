@@ -71,7 +71,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { if ((e.target as HTMLElement).dataset?.change === 'sell-amount') onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { A.moveQueued(state, st, Number(uid), to); sfx.tap(); }
@@ -381,6 +381,8 @@ function onClick(e: MouseEvent): void {
       fitEditor();
       break;
     }
+    case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware! }; refresh(); break;
+    case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
     case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); refresh(); break;
     case 'sell-ship': if (ui.modal?.type === 'sell') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, picked: '', amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
     case 'sell-pick': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, picked: ui.modal.picked === d.id ? '' : d.id! }; refresh(); } break;
@@ -726,6 +728,13 @@ function onChange(e: Event): void {
   }
   if (field === 'sell-repeat' && ui.modal?.type === 'sell') {
     ui.modal = { ...ui.modal, repeat: (el as unknown as HTMLInputElement).checked };
+    refresh();
+    return;
+  }
+  if (field === 'storage-share' || field === 'storage-reserve' || field === 'sell-reserve') {
+    const v = Number(el.value);
+    if (field === 'storage-share') A.setStorageShare(state, el.dataset.st!, el.dataset.ware!, v / 100);
+    else A.setReserve(state, el.dataset.st!, el.dataset.ware!, v);
     refresh();
     return;
   }

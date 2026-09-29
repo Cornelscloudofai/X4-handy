@@ -91,33 +91,27 @@ export class SectorRenderer {
       const [sx, sy] = cam.toScreen(f.x, f.z);
       const rad = f.r * cam.zoom;
       if (sx + rad * 1.4 < 0 || sx - rad * 1.4 > W || sy + rad * 1.4 < 0 || sy - rad * 1.4 > H) continue;
+      // Felder ohne Umrandung: weich auslaufende Wolken bzw. Gesteinshaufen
       const spr = fieldSprite(f.id, f.ware, hashStr(f.id));
       const size = rad * 2 * 1.3;
+      const color = WARES[f.ware].color;
+      const sel = ui.selection?.kind === 'field' && ui.selection.id === f.id;
+      if (sel) {
+        const g = ctx.createRadialGradient(sx, sy, rad * 0.2, sx, sy, rad * 1.25);
+        g.addColorStop(0, rgba(color, 0.22));
+        g.addColorStop(1, rgba(color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(sx, sy, rad * 1.25, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.save();
       ctx.translate(sx, sy);
       ctx.rotate(ui.reducedMotion ? 0 : now / 400000);
+      ctx.globalAlpha = sel ? 1 : 0.92;
       ctx.drawImage(spr, -size / 2, -size / 2, size, size);
       ctx.restore();
-      const color = WARES[f.ware].color;
-      const sel = ui.selection?.kind === 'field' && ui.selection.id === f.id;
-      ctx.setLineDash([5, 6]);
-      ctx.lineDashOffset = -now / 120;
-      ctx.strokeStyle = rgba(color, sel ? 0.9 : 0.5);
-      ctx.lineWidth = sel ? 2 : 1.2;
-      ctx.beginPath();
-      ctx.arc(sx, sy, rad, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      // Kern und Beschriftung
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      const off = Math.max(14, rad * 0.75);
-      this.labels.push({ text: WARES[f.ware].name, x: sx, ys: [sy - off, sy + off, sy - 14], size: 13, color: C.text, weight: 600, prio: 2,
+      this.labels.push({ text: WARES[f.ware].name, x: sx, ys: [sy + rad * 0.15, sy - rad * 0.55, sy + rad * 0.7], size: 12, color: rgba(color, 0.95), weight: 600, prio: 2,
         sub: f.richness !== 1 && cam.zoom > 1.4 ? { text: `Ertrag ${Math.round(f.richness * 100)} %`, color: C.muted } : undefined });
     }
 

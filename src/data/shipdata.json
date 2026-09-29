@@ -1,0 +1,507 @@
+{
+ "source": "crissian/x4 (dev), Spieldaten-Auszug",
+ "ships": {
+  "tuatara": {
+   "x4Id": "ship_spl_s_trans_container_01_a",
+   "name": "Tuatara",
+   "size": "small",
+   "hull": 2300,
+   "crew": 4,
+   "cargo": 1350,
+   "cargoType": "container",
+   "hullPrice": 247800,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 67
+    },
+    {
+     "ware": "hullparts",
+     "amount": 232
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_s_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 3,
+     "price": 5119,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 22
+      },
+      {
+       "ware": "engineparts",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_s_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 1528,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 1
+      }
+     ]
+    }
+   ],
+   "speed": 314,
+   "travelSpeed": 2513,
+   "slots": {
+    "engines": 3,
+    "shields": 1,
+    "weapons": 2,
+    "turrets": 0
+   }
+  },
+  "boa": {
+   "x4Id": "ship_spl_m_trans_container_01_a",
+   "name": "Boa",
+   "size": "medium",
+   "hull": 7400,
+   "crew": 20,
+   "cargo": 7500,
+   "cargoType": "container",
+   "hullPrice": 373740,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 126
+    },
+    {
+     "ware": "hullparts",
+     "amount": 348
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_m_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 2,
+     "price": 12654,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 25
+      },
+      {
+       "ware": "engineparts",
+       "amount": 10
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 14227,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 48
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 1
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 7
+      }
+     ]
+    }
+   ],
+   "speed": 304,
+   "travelSpeed": 1522,
+   "slots": {
+    "engines": 2,
+    "shields": 1,
+    "weapons": 0,
+    "turrets": 2
+   }
+  },
+  "buffalo": {
+   "x4Id": "ship_spl_l_trans_container_01_a",
+   "name": "Buffalo",
+   "size": "large",
+   "hull": 37000,
+   "crew": 59,
+   "cargo": 16000,
+   "cargoType": "container",
+   "hullPrice": 2938525,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 666
+    },
+    {
+     "ware": "hullparts",
+     "amount": 2761
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_l_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 3,
+     "price": 368448,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 129
+      },
+      {
+       "ware": "energycells",
+       "amount": 37
+      },
+      {
+       "ware": "engineparts",
+       "amount": 101
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 8,
+     "price": 14227,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 48
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 1
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 7
+      }
+     ]
+    }
+   ],
+   "speed": 215,
+   "travelSpeed": 2585,
+   "slots": {
+    "engines": 3,
+    "shields": 8,
+    "weapons": 0,
+    "turrets": 9
+   }
+  },
+  "alligator_min": {
+   "x4Id": "ship_spl_m_miner_solid_01_a",
+   "name": "Alligator (Mineral)",
+   "size": "medium",
+   "hull": 4800,
+   "crew": 8,
+   "cargo": 7000,
+   "cargoType": "solid",
+   "hullPrice": 236300,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 80
+    },
+    {
+     "ware": "hullparts",
+     "amount": 220
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_m_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 2,
+     "price": 12654,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 25
+      },
+      {
+       "ware": "engineparts",
+       "amount": 10
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 14227,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 48
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 1
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_mining_01_mk1",
+     "name": "Abbauturm M Mk1",
+     "count": 4,
+     "price": 17203,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 18
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 10
+      }
+     ]
+    }
+   ],
+   "speed": 619,
+   "travelSpeed": 3093,
+   "slots": {
+    "engines": 2,
+    "shields": 1,
+    "weapons": 2,
+    "turrets": 2
+   }
+  },
+  "alligator_gas": {
+   "x4Id": "ship_spl_m_miner_liquid_01_a",
+   "name": "Alligator (Gas)",
+   "size": "medium",
+   "hull": 4300,
+   "crew": 8,
+   "cargo": 7600,
+   "cargoType": "liquid",
+   "hullPrice": 212670,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 72
+    },
+    {
+     "ware": "hullparts",
+     "amount": 198
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_m_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 2,
+     "price": 12654,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 25
+      },
+      {
+       "ware": "engineparts",
+       "amount": 10
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 14227,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 48
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 1
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 7
+      }
+     ]
+    }
+   ],
+   "speed": 669,
+   "travelSpeed": 3347,
+   "slots": {
+    "engines": 2,
+    "shields": 1,
+    "weapons": 0,
+    "turrets": 2
+   }
+  },
+  "wyvern_min": {
+   "x4Id": "ship_spl_l_miner_solid_01_a",
+   "name": "Wyvern (Mineral)",
+   "size": "large",
+   "hull": 21000,
+   "crew": 29,
+   "cargo": 20000,
+   "cargoType": "solid",
+   "hullPrice": 1610285,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 365
+    },
+    {
+     "ware": "hullparts",
+     "amount": 1513
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_l_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 3,
+     "price": 368448,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 129
+      },
+      {
+       "ware": "energycells",
+       "amount": 37
+      },
+      {
+       "ware": "engineparts",
+       "amount": 101
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 8,
+     "price": 14227,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 48
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 1
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_l_mining_01_mk1",
+     "name": "Abbauturm L Mk1",
+     "count": 2,
+     "price": 50969,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 47
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 30
+      }
+     ]
+    }
+   ],
+   "speed": 417,
+   "travelSpeed": 5002,
+   "slots": {
+    "engines": 3,
+    "shields": 8,
+    "weapons": 0,
+    "turrets": 10
+   }
+  },
+  "wyvern_gas": {
+   "x4Id": "ship_spl_l_miner_liquid_01_a",
+   "name": "Wyvern (Gas)",
+   "size": "large",
+   "hull": 21000,
+   "crew": 29,
+   "cargo": 22000,
+   "cargoType": "liquid",
+   "hullPrice": 1610285,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 365
+    },
+    {
+     "ware": "hullparts",
+     "amount": 1513
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_l_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 3,
+     "price": 368448,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 129
+      },
+      {
+       "ware": "energycells",
+       "amount": 37
+      },
+      {
+       "ware": "engineparts",
+       "amount": 101
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 8,
+     "price": 14227,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 48
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 1
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 7
+      }
+     ]
+    }
+   ],
+   "speed": 417,
+   "travelSpeed": 5002,
+   "slots": {
+    "engines": 3,
+    "shields": 8,
+    "weapons": 0,
+    "turrets": 8
+   }
+  }
+ }
+}

@@ -59,6 +59,14 @@ export interface ShipClassDef {
   miningRate: number;
   price: number;
   description: string;
+  /** Höchstgeschwindigkeit ohne Reiseantrieb in m/s */
+  maxSpeed: number;
+  hullPrice: number;
+  /** Grundausstattung mit Stückpreis */
+  parts: { name: string; count: number; price: number }[];
+  /** Baumaterial für Rumpf und Ausrüstung (Eigenbau in einer Werft) */
+  materials: Record<string, number>;
+  crew: number;
 }
 
 export interface FieldDef { id: string; ware: string; x: number; z: number; r: number; richness: number }
@@ -126,6 +134,10 @@ export interface Station {
   queue: QueueItem[];
   /** Grund, warum die nächste Position nicht startet */
   waiting?: string;
+  /** Eingestellter Anteil am Lagerraum seiner Lagerart je Ware (0..1); nicht gesetzt = automatisch */
+  limits?: Record<string, number>;
+  /** Einheiten, die nicht verkauft werden (für die eigene Produktion); nicht gesetzt = automatisch */
+  reserve?: Record<string, number>;
   /** Eigene Anordnung der Kästchen im Fließdiagramm */
   layout?: Record<string, { x: number; y: number }>;
   build: { def: string; remaining: number; total: number; paid: number } | null;

@@ -3,9 +3,9 @@
 import { marketInfo, sector } from '../data/sectors';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
+import { addWare, applyMarketTrade, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
 import {
-  dockPoint, endpointName, endpointPlace, fieldById, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
+  dockPoint, sellableStock, endpointName, endpointPlace, fieldById, fieldWare, incoming, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
   type Place,
 } from './logistics';
 import { contractDeliver } from './contracts';
@@ -30,28 +30,43 @@ export function stepShip(state: GameState, s: Ship, dt: number): void {
 
 // ---------- Miner ----------
 
-function chooseMining(state: GameState, s: Ship): { ware: string; field: string } | null {
+type MiningChoice = { ware: string; field: string } | { reason: string };
+
+/**
+ * Welchen Rohstoff soll der Miner holen? Zuerst, was die Heimat verbraucht – dabei zählt auch,
+ * was während des Flugs verbraucht wird. Ohne Verbrauch wird für den Verkauf gefördert.
+ * Liefert sonst den tatsächlichen Grund, warum der Miner wartet.
+ */
+export function chooseMining(state: GameState, s: Ship): MiningChoice {
   const cls = SHIP_MAP[s.cls];
   const home = stationById(state, s.home);
-  if (!home) return null;
+  if (!home) return { reason: 'Keine Heimatstation' };
   const sec = sector(home.sector);
-  const fields = sec.fields.filter((f) => WARES[f.ware].storage === cls.storage);
-  const options: { ware: string; field: string; score: number }[] = [];
-  const unitsPerTrip = cls.capacity / 10;
+  const typeName = cls.storage === 'Liquid' ? 'Gas' : 'Mineral';
+  const fields = sec.fields.filter((f) => WARES[f.ware].storage === cls.storage && (!s.mineWare || f.ware === s.mineWare));
+  if (!fields.length) return { reason: s.mineWare ? `Kein ${WARES[s.mineWare].name}-Feld in ${sec.name}` : `Kein ${typeName}-Feld in ${sec.name}` };
+  if (storageCap(home)[cls.storage] <= 0) return { reason: cls.storage === 'Liquid' ? 'Heimat hat kein Flüssiglager' : 'Heimat hat kein Feststofflager' };
+  const rates = stationRates(home);
+  const production: { ware: string; field: string; score: number }[] = [];
+  const sale: { ware: string; field: string; score: number }[] = [];
+  let full = false;
   for (const f of fields) {
-    if (s.mineWare && f.ware !== s.mineWare) continue;
-    let need: number;
-    if (s.mineWare) {
-      need = freeUnits(home, f.ware);
-    } else {
-      need = wanted(state, home, f.ware);
-    }
-    if (need < Math.min(unitsPerTrip * 0.25, 300)) continue;
-    const d = Math.hypot(f.x - home.x, f.z - home.z);
-    options.push({ ware: f.ware, field: f.id, score: need / (1 + d / 100) });
+    const w = WARES[f.ware];
+    const load = cls.capacity / w.volume;
+    const dist = Math.hypot(f.x - home.x, f.z - home.z);
+    const trip = (2 * dist) / cls.speed + cls.capacity / (cls.miningRate * f.richness) + DOCK_TIME[cls.size];
+    const use = Math.max(0, (rates[f.ware]?.use ?? 0) - (rates[f.ware]?.prod ?? 0));
+    // Freier Platz, abzüglich anderer Miner mit derselben Ware (ohne dieses Schiff), plus Verbrauch während der Fahrt
+    const others = incoming(state, home.id, f.ware) - (s.miningField && fieldWare(s.miningField) === f.ware && !s.cargo ? load : 0);
+    const room = freeUnits(home, f.ware) - others + (use * trip) / 3600;
+    if (room < load * 0.25) { full = true; continue; }
+    const score = Math.min(room, load) / (1 + dist / 100);
+    if (use > 0 || s.mineWare) production.push({ ware: f.ware, field: f.id, score: score * (1 + use / 1000) });
+    else sale.push({ ware: f.ware, field: f.id, score: score * w.price.avg });
   }
-  options.sort((a, b) => b.score - a.score);
-  return options[0] ?? null;
+  const best = (production.length ? production : sale).sort((a, b) => b.score - a.score)[0];
+  if (best) return { ware: best.ware, field: best.field };
+  return { reason: full ? 'Lager voll – wartet auf Platz' : 'Kein Rohstoffbedarf' };
 }
 
 function stepMiner(state: GameState, s: Ship, dt: number): void {
@@ -62,8 +77,8 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
     case 'idle': {
       if (s.cargo) { goTo(s, home, s.id); s.phase = 'toHome'; s.status = 'Rückflug mit Ladung'; return; }
       const choice = chooseMining(state, s);
-      if (!choice) {
-        s.status = s.mineWare ? `Lager für ${WARES[s.mineWare].name} voll` : 'Kein Rohstoffbedarf';
+      if ('reason' in choice) {
+        s.status = choice.reason;
         s.phase = 'waiting';
         s.timer = 30;
         if (s.sector !== home.sector || Math.hypot(s.x - home.x, s.z - home.z) > 8) goTo(s, home, s.id), (s.phase = 'toHome');
@@ -375,7 +390,7 @@ function doTrade(state: GameState, s: Ship): void {
     if (job.from.kind === 'station') {
       const st = stationById(state, job.from.id);
       if (st) {
-        n = Math.min(job.amount, units, st.inventory[job.ware] ?? 0);
+        n = Math.min(job.amount, units, sellableStock(st, job.ware));
         addWare(st, job.ware, -n);
       }
     } else {

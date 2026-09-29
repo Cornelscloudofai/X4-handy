@@ -2,8 +2,8 @@
 import { FACTIONS, SECTOR_MAP } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { hasDockFor } from '../engine/economy';
-import { stationById } from '../engine/logistics';
+import { hasDockFor, wareLimit } from '../engine/economy';
+import { reserveFor, stationById } from '../engine/logistics';
 import { offerBadges, saleAdvice, saleContext, saleOffers, sortOffers, type SaleOffer, type SalePriority } from '../engine/sales';
 import type { GameState, ShipClassDef } from '../engine/types';
 import { esc } from './dom';
@@ -56,7 +56,10 @@ export function sellModalHtml(state: GameState, m: SellModal): { title: string; 
   const cls = shipClass(state, m.ship);
   const realShip = m.ship.startsWith('cls:') ? null : state.ships.find((x) => x.id === m.ship) ?? null;
   const ctx = saleContext(state, st.id, m.ware, cls);
-  const maxLoad = Math.floor(Math.min(ctx.stock, ctx.shipUnits));
+  const limit = wareLimit(st, m.ware);
+  const reserve = Math.min(ctx.stock, reserveFor(st, m.ware, limit));
+  const sellable = Math.max(0, ctx.stock - reserve);
+  const maxLoad = Math.floor(Math.min(sellable, ctx.shipUnits));
   const amount = Math.max(0, Math.min(m.amount, maxLoad));
   const offers = saleOffers(state, st.id, m.ware, cls, amount);
   const sorted = sortOffers(offers, m.prio);
@@ -115,13 +118,18 @@ export function sellModalHtml(state: GameState, m: SellModal): { title: string; 
       ${realShip && (realShip.job || realShip.cargo) ? `<p class="small muted" style="margin:6px 0 0">${esc(realShip.name)} ist unterwegs (${esc(realShip.status)}) und startet danach.</p>` : ''}
       ${!dockOk ? `<p class="small warn-text" style="margin:6px 0 0">${esc(st.name)} braucht ${cls.size === 'L' ? 'einen Pier' : 'ein Dock'} für dieses Schiff.</p>` : ''}
     </div>
+    <div class="section"><h3>Für eigene Produktion behalten</h3>
+      <input type="range" id="sellReserve" data-change="sell-reserve" data-st="${st.id}" data-ware="${m.ware}" min="0" max="${Math.max(1, Math.round(Math.max(limit, ctx.stock)))}" step="${Math.max(1, Math.round(Math.max(limit, ctx.stock) / 100))}" value="${Math.round(reserveFor(st, m.ware, limit))}" aria-label="Reserve">
+      <div class="amount-meta"><b class="num">${fmtInt(reserveFor(st, m.ware, limit))}</b> bleiben im Lager · verkaufbar <b class="num">${fmtInt(sellable)}</b>${st.reserve?.[m.ware] === undefined ? ' <span class="muted">(automatisch)</span>' : ''}</div>
+      <p class="small muted" style="margin:4px 0 0">Gilt dauerhaft für diese Station – auch für Händler und Autohandel.</p>
+    </div>
     <div class="section"><h3>Menge<span class="small muted" style="text-transform:none;letter-spacing:0">${fmtAmount(amount * w.volume)} von ${fmtAmount(cls.capacity)} m³ Laderaum</span></h3>
       <div class="amount-row">
         <button class="icon-btn" ${act('sell-amount', { v: Math.max(0, amount - Math.ceil(maxLoad / 10)) })} aria-label="Weniger">${icon('minus', 18)}</button>
         <input type="range" id="sellAmount" data-change="sell-amount" min="0" max="${maxLoad}" step="1" value="${amount}" aria-label="Menge">
         <button class="icon-btn" ${act('sell-amount', { v: Math.min(maxLoad, amount + Math.ceil(maxLoad / 10)) })} aria-label="Mehr">${icon('plus', 18)}</button>
       </div>
-      <div class="amount-meta"><b class="num">${fmtInt(amount)}</b> ${esc(w.name)}${ctx.stock > ctx.shipUnits ? ` · Lager reicht für ${fmtInt(ctx.stock / ctx.shipUnits)} Ladungen` : ''}
+      <div class="amount-meta"><b class="num">${fmtInt(amount)}</b> ${esc(w.name)}${sellable > ctx.shipUnits ? ` · verkaufbar für ${fmtInt(sellable / ctx.shipUnits)} Ladungen` : ''}
         <button class="linkish" ${act('sell-amount', { v: maxLoad })}>volle Ladung</button></div>
     </div>
     <div class="section"><h3>Was zählt gerade?</h3>

@@ -186,3 +186,49 @@ describe('Alte Spielstände', () => {
     expect(st.id).toBe(loaded.stations[0].id);
   });
 });
+
+describe('Miner', () => {
+  it('mehrere Miner arbeiten bei hohem Verbrauch statt „Kein Rohstoffbedarf“ zu melden', () => {
+    const s = newGame(6);
+    s.credits = 20e6;
+    const st = s.stations[0];
+    for (const d of ['prod_refinedmetals', 'prod_refinedmetals']) queueModule(s, st.id, d);
+    buyShip(s, 'alligator_min', st.id);
+    buyShip(s, 'alligator_min', st.id);
+    step(s, 3 * 3600);
+    let idle = 0;
+    for (let i = 0; i < 12; i++) { step(s, 300); idle += s.ships.filter((m) => m.status === 'Kein Rohstoffbedarf').length; }
+    expect(idle).toBe(0);
+  });
+
+  it('fördert ohne Verbraucher für den Verkauf und nennt fehlende Lager beim Namen', () => {
+    const s = newGame(7);
+    step(s, 120);
+    expect(s.ships[0].status).toMatch(/Baut|Fliegt/);
+    buyShip(s, 'alligator_gas', s.stations[0].id);
+    step(s, 600);
+    expect(s.ships.find((m) => m.cls === 'alligator_gas')!.status).toBe('Heimat hat kein Flüssiglager');
+  });
+});
+
+describe('Lager und Reserve', () => {
+  it('eingestellte Anteile gehen vor, der Rest wird verteilt', async () => {
+    const { setStorageShare, setReserve, sellOrder } = await import('../src/engine/actions');
+    const { storageShare } = await import('../src/engine/economy');
+    const s = newGame(51);
+    const st = s.stations[0];
+    queueModule(s, st.id, 'prod_refinedmetals');
+    step(s, 3600);
+    setStorageShare(s, st.id, 'energycells', 0.2);
+    expect(storageShare(st, 'energycells').share).toBeCloseTo(0.2);
+    expect(storageShare(st, 'refinedmetals').share).toBeCloseTo(0.8);
+    expect(wareLimit(st, 'energycells')).toBeCloseTo(20000);
+    // Reserve schützt vor dem Verkauf
+    st.inventory.energycells = 9000;
+    setReserve(s, st.id, 'energycells', 8500);
+    buyShip(s, 'boa', st.id);
+    const boa = s.ships.find((x) => x.cls === 'boa')!;
+    expect(sellOrder(s, boa.id, st.id, 'energycells', 7500, { kind: 'market', sector: 'zhin' }).ok).toBe(true);
+    expect(boa.orders![0].amount).toBeLessThanOrEqual(500);
+  });
+});

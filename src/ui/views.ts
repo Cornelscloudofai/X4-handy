@@ -5,9 +5,9 @@ import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { GROUP_LABEL, STORAGE_LABEL, WARES, WARE_IDS, inputsPerHour, outputPerHour } from '../data/wares';
 import { blueprintState, stationCost } from '../engine/actions';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
-import { hasDockFor, marketPrice, marketRoom, marketStock, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
+import { consumesWare, hasDockFor, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { shipEta } from '../engine/fleet';
-import { endpointName, fieldById, knownSectors, stationById } from '../engine/logistics';
+import { endpointName, fieldById, knownSectors, reserveFor, stationById } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { STORY, currentMission, missionComplete } from '../engine/story';
 import type { GameState, Ship, Station, TradeEndpoint } from '../engine/types';
@@ -420,7 +420,7 @@ function stationModules(state: GameState, st: Station): string {
     <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="box rows">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;
 }
 
-function stationStorage(state: GameState, st: Station): string {
+function stationStorage(_state: GameState, st: Station): string {
   const wares = stationWares(st).sort((a, b) => WARES[a].tier - WARES[b].tier || WARES[a].name.localeCompare(WARES[b].name));
   const cap = storageCap(st);
   const wl = stationWares(st);
@@ -429,14 +429,16 @@ function stationStorage(state: GameState, st: Station): string {
     const have = st.inventory[id] ?? 0;
     const limit = wareLimit(st, id, cap, wl);
     const rule = tradeRule(st, id);
+    const share = storageShare(st, id, wl);
+    const reserve = reserveFor(st, id, limit);
     return `<div class="row" data-key="${id}">${wareTile(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(w.name)}</div>
-      <div class="sub">${fmtAmount(have)} / ${fmtAmount(limit)} · ${fmtInt(marketPrice(state, st.sector, id))} Cr</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
-      ${have >= 1 && w.storage === 'Container' ? `<button class="linkish" ${act('sell-open', { st: st.id, ware: id })}>Käufer vergleichen und verkaufen</button>` : ''}</div>
+      <div class="sub">${fmtAmount(have)} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
+      <div class="row-links"><button class="linkish" ${act('storage-open', { st: st.id, ware: id })}>Lager einstellen</button>${have >= 1 && w.storage === 'Container' ? `<button class="linkish" ${act('sell-open', { st: st.id, ware: id })}>Verkaufen …</button>` : ''}</div></div>
       <div class="toggle"><button class="buy ${rule.buy ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'buy' })} aria-pressed="${rule.buy}">Kauf</button><button class="sell ${rule.sell ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'sell' })} aria-pressed="${rule.sell}">Verkauf</button></div></div>`;
   }).join('');
-  return `<p class="lead">Kauf: NPC-Händler und deine Transporter liefern diese Ware an. Verkauf: Überschüsse werden abgegeben – Waren, die die Station selbst verbraucht, behalten 40 % Reserve.</p>
+  return `<p class="lead">Kauf: Händler und deine Transporter liefern an. Verkauf: Überschüsse werden abgegeben, die Reserve bleibt für die eigene Produktion.</p>
     <div class="section"><div class="box rows">${rows || '<div class="empty">Das Lager ist leer.</div>'}</div></div>
-    <p class="small muted">Der Lagerraum wird gleichmäßig auf alle Waren einer Lagerart verteilt. Mehr Lagermodule erhöhen die Grenzen.</p>`;
+    <p class="small muted">Ohne Einstellung teilen sich alle Waren einer Lagerart den Platz gleichmäßig („auto“). Eingestellte Anteile gehen vor, der Rest wird verteilt.</p>`;
 }
 
 function shipRow(_state: GameState, s: Ship): string {
@@ -704,6 +706,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const s = state.ships.find((x) => x.id === m.ship);
       return modalShell('Heimatstation wählen', `<div class="box rows">${state.stations.map((st) => `<div class="row tap" ${act('set-home', { id: m.ship, st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${esc(sector(st.sector).name)}</div></div>${s?.home === st.id ? icon('check', 20, 'pos') : ''}</div>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
     }
+    case 'storage': return storageModal(state, m.station, m.ware);
     case 'planPick': return modalShell('Endprodukt wählen', pickerModal(m.group), `<button class="btn" ${act('modal-close')}>Fertig</button>`, 'Stationsplaner');
     case 'sell': {
       const v = sellModalHtml(state, m);
@@ -722,6 +725,32 @@ export function modalHtml(state: GameState, ui: UIState): string {
       return modalShell('Per Kurier liefern', `<p class="lead">Ein angeheuerter Kurier bringt die Ware sofort los. Gebühr: 10 % des Warenwerts.</p><div class="box rows">${rows}</div>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
     }
   }
+}
+
+function storageModal(state: GameState, stationId: string, ware: string): string {
+  const st = stationById(state, stationId);
+  if (!st) return '';
+  const w = WARES[ware];
+  const cap = storageCap(st);
+  const wl = stationWares(st);
+  const share = storageShare(st, ware, wl);
+  const limit = wareLimit(st, ware, cap, wl);
+  const reserve = reserveFor(st, ware, limit);
+  const consumed = consumesWare(st, ware);
+  const others = wl.filter((x) => x !== ware && WARES[x].storage === w.storage);
+  const seg = [ware, ...others].map((x) => { const s = storageShare(st, x, wl); return `<i style="width:${(s.share * 100).toFixed(1)}%;background:${WARES[x].color}" title="${esc(WARES[x].name)}"></i>`; }).join('');
+  return modalShell(`Lager: ${w.name}`, `
+    <p class="lead" style="margin-bottom:10px">${esc(STORAGE_LABEL[w.storage])}-Lager dieser Station: ${fmtAmount(cap[w.storage])} m³. Im Lager: ${fmtAmount(st.inventory[ware] ?? 0)} Einheiten.</p>
+    <div class="stack-bar">${seg}</div>
+    <div class="small muted" style="margin:6px 0 16px">${[ware, ...others].map((x) => `${esc(WARES[x].name)} ${Math.round(storageShare(st, x, wl).share * 100)} %`).join(' · ')}</div>
+    <div class="field"><label for="storShare">Anteil am Lagerraum · ${Math.round(share.share * 100)} % = ${fmtAmount(limit)} Einheiten${share.auto ? ' (automatisch)' : ''}</label>
+      <input type="range" id="storShare" min="0" max="100" step="1" value="${Math.round(share.share * 100)}" data-change="storage-share" data-st="${st.id}" data-ware="${ware}">
+      ${share.auto ? '' : `<button class="linkish" ${act('storage-auto', { st: st.id, ware, k: 'share' })}>wieder automatisch verteilen</button>`}</div>
+    <div class="field" style="margin-top:16px"><label for="storReserve">Für eigene Produktion behalten · ${fmtAmount(reserve)} Einheiten${st.reserve?.[ware] === undefined ? ' (automatisch)' : ''}</label>
+      <input type="range" id="storReserve" min="0" max="${Math.max(1, Math.round(limit))}" step="${Math.max(1, Math.round(limit / 100))}" value="${Math.round(Math.min(reserve, limit))}" data-change="storage-reserve" data-st="${st.id}" data-ware="${ware}">
+      <p class="small muted" style="margin:4px 0 0">${consumed ? 'Die Station verbraucht diese Ware selbst. Verkäufe und Händler greifen nur auf den Teil über der Reserve zu.' : 'Die Station verbraucht diese Ware nicht – eine Reserve ist meist unnötig.'}</p>
+      ${st.reserve?.[ware] === undefined ? '' : `<button class="linkish" ${act('storage-auto', { st: st.id, ware, k: 'reserve' })}>Reserve automatisch (${consumed ? '40 % der Grenze' : 'keine'})</button>`}</div>`,
+    `<button class="btn primary" ${act('modal-close')}>Fertig</button>`, st.name);
 }
 
 function modalShell(title: string, body: string, foot: string, eyebrow = ''): string {
@@ -772,11 +801,12 @@ function buyShipModal(state: GameState, m: Extract<Modal, { type: 'buyShip' }>):
     const afford = state.credits >= c.price;
     return `<div class="module-card box" data-key="${c.id}"><span class="ware-tile" style="--c:${c.role === 'miner' ? '#ffc45e' : '#5ff0d8'}">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
       <div style="min-width:0"><div class="title" style="font-weight:600">${esc(c.name)} <span class="pill" style="padding:1px 7px">${c.size}</span></div><div class="small muted">${esc(c.description)}</div></div>
-      <div class="meta" style="grid-column:1/-1"><span>Fracht <b>${fmtInt(c.capacity)} m³</b> ${esc(STORAGE_LABEL[c.storage])}</span><span>Tempo <b>${fmtNum(c.speed, 1)} km/s</b></span>${c.miningRate ? `<span>Abbau <b>${c.miningRate} m³/s</b></span>` : ''}</div>
+      <div class="meta" style="grid-column:1/-1"><span>Fracht <b>${fmtInt(c.capacity)} m³</b> ${esc(STORAGE_LABEL[c.storage])}</span><span>Reise <b>${fmtNum(c.speed, 1)} km/s</b></span><span>max <b>${fmtInt(c.maxSpeed)} m/s</b></span>${c.miningRate ? `<span>Abbau <b>${c.miningRate} m³/s</b>*</span>` : ''}</div>
+      <div class="price-breakdown" style="grid-column:1/-1"><span>Rumpf <b>${fmtCr(c.hullPrice)}</b></span>${c.parts.map((p) => `<span>${p.count}× ${esc(p.name)} <b>${fmtCr(p.count * p.price)}</b></span>`).join('')}</div>
       <div class="actions">${dock ? '' : `<span class="small warn-text" style="margin-right:auto">${c.size === 'L' ? 'Pier fehlt' : 'Dock fehlt'}</span>`}<button class="btn small ${afford ? 'primary' : 'disabled'}" ${act('buyship', { st: st.id, cls: c.id })}>Kaufen · ${fmtCr(c.price)}</button></div></div>`;
   }).join('');
   const picker = state.stations.length > 1 ? `<div class="field" style="margin-bottom:12px"><label>Heimatstation</label><select data-change="buy-home">${state.stations.map((x) => `<option value="${x.id}" ${x.id === st.id ? 'selected' : ''}>${esc(x.name)} · ${esc(sector(x.sector).name)}</option>`).join('')}</select></div>` : '';
-  return modalShell('Schiff kaufen', `${picker}<div style="display:grid;gap:10px">${cards}</div>`, `<button class="btn" ${act('modal-close')}>Fertig</button>`, `Split-Werft · ${fmtCr(state.credits)} verfügbar`);
+  return modalShell('Schiff kaufen', `${picker}<div style="display:grid;gap:10px">${cards}</div><p class="small muted" style="margin-top:10px">Preis = Rumpf + Grundausstattung (Triebwerke, Schilde, bei Mineral-Minern Abbautürme) zu X4-Durchschnittspreisen; ohne Waffen. Tempo aus Schub und Luftwiderstand. *Abbaurate ist ein Spielwert.</p>`, `<button class="btn" ${act('modal-close')}>Fertig</button>`, `Split-Werft · ${fmtCr(state.credits)} verfügbar`);
 }
 
 function welcomeModal(): string {

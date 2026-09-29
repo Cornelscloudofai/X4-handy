@@ -36,53 +36,70 @@ function canvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
 const GAS = new Set(['hydrogen', 'helium', 'methane']);
 const cache = new Map<string, HTMLCanvasElement>();
 
-/** Sprite eines Rohstofffelds, Größe 512 px entspricht dem Felddurchmesser × 1,3 */
+/**
+ * Sprite eines Rohstofffelds (512 px ≙ Felddurchmesser × 1,3). Die Form ist unregelmäßig
+ * (mehrere Ballungen) und läuft zum Rand weich aus – keine harte Kreisgrenze.
+ */
 export function fieldSprite(id: string, ware: string, seed: number): HTMLCanvasElement {
-  const key = id;
-  const hit = cache.get(key);
+  const hit = cache.get(id);
   if (hit) return hit;
   const size = 512;
   const [c, ctx] = canvas(size);
   const color = WARES[ware]?.color ?? '#999999';
   const r = rng(seed);
   const cx = size / 2, R = size / 2 / 1.3;
+  // Ballungszentren bestimmen die Form des Feldes
+  const clusters = Array.from({ length: 3 + Math.floor(r() * 3) }, () => {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * R * 0.6;
+    return { x: cx + Math.cos(a) * d, y: cx + Math.sin(a) * d, s: R * (0.45 + r() * 0.35) };
+  });
+  const around = () => {
+    const k = clusters[Math.floor(r() * clusters.length)];
+    const a = r() * Math.PI * 2, d = Math.abs(gauss(r)) * k.s;
+    return { x: k.x + Math.cos(a) * d, y: k.y + Math.sin(a) * d };
+  };
   if (GAS.has(ware)) {
     ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 70; i++) {
-      const a = r() * Math.PI * 2;
-      const d = Math.pow(r(), 0.7) * R * 0.95;
-      const x = cx + Math.cos(a) * d, y = cx + Math.sin(a) * d;
-      const rad = R * (0.18 + r() * 0.4);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    for (let i = 0; i < 130; i++) {
+      const p = around();
+      const rad = R * (0.14 + r() * 0.36);
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad);
       const tone = r() < 0.3 ? shade(color, 0.45) : color;
-      g.addColorStop(0, rgbaFrom(tone, 0.13 + r() * 0.08));
+      g.addColorStop(0, rgbaFrom(tone, 0.09 + r() * 0.08));
       g.addColorStop(1, rgbaFrom(tone, 0));
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
       ctx.fill();
     }
-    for (let i = 0; i < 90; i++) {
-      const a = r() * Math.PI * 2, d = Math.sqrt(r()) * R;
-      ctx.fillStyle = `rgba(255,255,255,${0.2 + r() * 0.5})`;
-      ctx.fillRect(cx + Math.cos(a) * d, cx + Math.sin(a) * d, 1.4, 1.4);
+    for (let i = 0; i < 110; i++) {
+      const p = around();
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + r() * 0.45})`;
+      ctx.fillRect(p.x, p.y, 1.3, 1.3);
     }
     ctx.globalCompositeOperation = 'source-over';
   } else {
-    // Staubschleier
-    const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, R);
-    g.addColorStop(0, rgba(color, 0.2));
-    g.addColorStop(0.7, rgba(color, 0.06));
-    g.addColorStop(1, rgba(color, 0));
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
+    // Staubschleier je Ballung
+    for (const k of clusters) {
+      const g = ctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, k.s * 1.4);
+      g.addColorStop(0, rgba(color, 0.26));
+      g.addColorStop(0.5, rgba(color, 0.1));
+      g.addColorStop(1, rgba(color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, size, size);
+    }
     const rocks: { x: number; y: number; s: number }[] = [];
-    const n = ware === 'nividium' ? 30 : 46;
+    const n = ware === 'nividium' ? 45 : 85;
     for (let i = 0; i < n; i++) {
-      const a = r() * Math.PI * 2;
-      const d = Math.pow(r(), 0.65) * R * 0.92;
-      const big = r() < 0.12;
-      rocks.push({ x: cx + Math.cos(a) * d, y: cx + Math.sin(a) * d, s: big ? 20 + r() * 22 : 5 + r() * 12 });
+      const p = around();
+      const big = r() < 0.1;
+      rocks.push({ x: p.x, y: p.y, s: big ? 20 + r() * 22 : 5 + r() * 12 });
+    }
+    // feiner Schutt
+    for (let i = 0; i < 260; i++) {
+      const p = around();
+      ctx.fillStyle = rgba(color, 0.3 + r() * 0.4);
+      ctx.fillRect(p.x, p.y, 2.2, 2.2);
     }
     rocks.sort((a, b) => a.y - b.y);
     for (const k of rocks) {
@@ -90,8 +107,21 @@ export function fieldSprite(id: string, ware: string, seed: number): HTMLCanvasE
       else drawRock(ctx, k.x, k.y, k.s, ware === 'silicon' ? '#8f99a8' : ware === 'nividium' ? '#6b5a3a' : shade(color, -0.35), color, r, ware === 'nividium');
     }
   }
-  cache.set(key, c);
+  // Weicher Rand: nach außen ausblenden
+  ctx.globalCompositeOperation = 'destination-in';
+  const mask = ctx.createRadialGradient(cx, cx, R * 0.6, cx, cx, size / 2);
+  mask.addColorStop(0, 'rgba(0,0,0,1)');
+  mask.addColorStop(0.6, 'rgba(0,0,0,0.6)');
+  mask.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'source-over';
+  cache.set(id, c);
   return c;
+}
+
+function gauss(r: () => number): number {
+  return (r() + r() + r() - 1.5) / 1.5;
 }
 
 function rgbaFrom(css: string, a: number): string {

@@ -4,7 +4,7 @@ import { SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
 import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, stationWares } from './economy';
 import { contractDeliver } from './contracts';
-import { dockPoint, stationById, surplus, wanted } from './logistics';
+import { dockPoint, sellableStock, stationById, surplus, wanted } from './logistics';
 import type { GameState, NpcShip } from './types';
 import { emit, pick, rand, randRange, weightedPick } from './util';
 
@@ -123,7 +123,7 @@ function npcTrade(state: GameState, n: NpcShip): void {
   const st = stationById(state, n.station);
   if (!st) return;
   if (n.kind === 'buyer') {
-    const qty = Math.min(n.amount, st.inventory[n.ware] ?? 0, marketRoom(state, n.sector, n.ware) + n.amount * 0.1);
+    const qty = Math.min(n.amount, sellableStock(st, n.ware), marketRoom(state, n.sector, n.ware) + n.amount * 0.1);
     if (qty < 1) return;
     addWare(st, n.ware, -qty);
     const value = applyMarketTrade(state, n.sector, n.ware, qty);

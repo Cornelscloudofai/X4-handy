@@ -5,7 +5,7 @@ import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { defaultTradeRule, hasDockFor } from './economy';
 import { spawnCourier } from './npc';
-import { stationById } from './logistics';
+import { sellableStock, stationById } from './logistics';
 import { newModule, newShip, newStation } from './state';
 import type { GameState, RouteOrder, TradeEndpoint, TradeRule } from './types';
 import { log } from './util';
@@ -257,8 +257,8 @@ export function sellOrder(state: GameState, shipId: string, stationId: string, w
   if (cls.role !== 'trader') return fail('Nur Transporter können verkaufen.');
   if (WARES[ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
   if (!hasDockFor(st, cls.size)) return fail(cls.size === 'L' ? 'Die Station braucht einen Pier.' : 'Die Station braucht ein Dock.');
-  const n = Math.min(amount, cls.capacity / WARES[ware].volume, st.inventory[ware] ?? 0);
-  if (n < 1) return fail('Nichts zu verladen.');
+  const n = Math.min(amount, cls.capacity / WARES[ware].volume, sellableStock(st, ware));
+  if (n < 1) return fail('Nichts über der Reserve zu verladen.');
   const job = { ware, amount: n, from: { kind: 'station' as const, id: st.id }, to, stage: 'pickup' as const, contract };
   if (repeat) {
     s.mode = 'route';
@@ -273,4 +273,24 @@ export function sellOrder(state: GameState, shipId: string, stationId: string, w
   s.phase = 'idle';
   s.path = [];
   return ok(`${s.name} fliegt los: ${Math.round(n).toLocaleString('de-DE')} ${WARES[ware].name}.`);
+}
+
+/** Lageranteil einer Ware festlegen (0..1) oder mit null wieder automatisch verteilen */
+export function setStorageShare(state: GameState, stationId: string, ware: string, share: number | null): Result {
+  const st = stationById(state, stationId);
+  if (!st || !WARES[ware]) return fail('Nicht gefunden.');
+  st.limits ??= {};
+  if (share === null) delete st.limits[ware];
+  else st.limits[ware] = Math.max(0, Math.min(1, share));
+  return ok('Lagergrenze geändert.');
+}
+
+/** Reserve für die eigene Produktion festlegen (Einheiten) oder mit null automatisch */
+export function setReserve(state: GameState, stationId: string, ware: string, units: number | null): Result {
+  const st = stationById(state, stationId);
+  if (!st || !WARES[ware]) return fail('Nicht gefunden.');
+  st.reserve ??= {};
+  if (units === null) delete st.reserve[ware];
+  else st.reserve[ware] = Math.max(0, Math.round(units));
+  return ok('Reserve geändert.');
 }

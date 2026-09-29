@@ -46,12 +46,25 @@ export function stationWares(st: Station, includePlanned = true): string[] {
   return [...set].filter((id) => WARES[id]);
 }
 
-/** Mengenobergrenze einer Ware: Lagerraum wird gleichmäßig auf die Waren derselben Lagerart verteilt */
+/** Anteil einer Ware am Lagerraum ihrer Lagerart: eingestellt oder gleichmäßiger Rest */
+export function storageShare(st: Station, id: string, wares = stationWares(st)): { share: number; auto: boolean } {
+  const w = WARES[id];
+  const same = wares.filter((x) => WARES[x].storage === w.storage);
+  if (!same.includes(id)) same.push(id);
+  const set = same.filter((x) => st.limits?.[x] !== undefined);
+  const setSum = set.reduce((a, x) => a + (st.limits![x] ?? 0), 0);
+  const scale = setSum > 1 ? 1 / setSum : 1;
+  if (st.limits?.[id] !== undefined) return { share: st.limits[id] * scale, auto: false };
+  const rest = Math.max(0, 1 - setSum * scale);
+  const autoCount = same.length - set.length;
+  return { share: autoCount ? rest / autoCount : 0, auto: true };
+}
+
+/** Mengenobergrenze einer Ware in Einheiten */
 export function wareLimit(st: Station, id: string, cap = storageCap(st), wares = stationWares(st)): number {
   const w = WARES[id];
   if (!w) return 0;
-  const n = Math.max(1, wares.filter((x) => WARES[x].storage === w.storage).length);
-  return cap[w.storage] / n / w.volume;
+  return (cap[w.storage] * storageShare(st, id, wares).share) / w.volume;
 }
 
 export function freeUnits(st: Station, id: string): number {
@@ -89,6 +102,8 @@ export function consumesWare(st: Station, id: string, includePlanned = false): b
 /** Standard-Handelsregeln: Eingangswaren kaufen, Produkte verkaufen */
 export function defaultTradeRule(st: Station, id: string): { buy: boolean; sell: boolean } {
   const consumed = consumesWare(st, id, true);
+  // Selbst geförderte Rohstoffe ohne Verbraucher werden verkauft (Bergbaustation)
+  if (WARES[id]?.mined && !consumed) return { buy: false, sell: (st.inventory[id] ?? 0) > 0 };
   const produced = st.modules.some((m) => MODULE_MAP[m.def]?.ware === id) || st.queue.some((q) => MODULE_MAP[q.def]?.ware === id) || st.build?.def === 'prod_' + id;
   return { buy: consumed && !produced, sell: produced };
 }

@@ -22,6 +22,7 @@ export type Modal =
   | { type: 'home'; ship: string }
   | { type: 'courier'; contract: number }
   | { type: 'planPick'; group: string; back?: boolean }
+  | { type: 'storage'; station: string; ware: string }
   | { type: 'planBuild' }
   | { type: 'planDiagram' }
   | SellModal;

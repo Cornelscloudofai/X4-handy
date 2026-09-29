@@ -161,7 +161,14 @@ export function fieldById(fieldId: string) {
 
 /** Reserve, die eine Station für die eigene Produktion zurückhält */
 export function reserveFor(st: Station, wareId: string, limit: number): number {
+  const set = st.reserve?.[wareId];
+  if (set !== undefined) return set;
   return consumesWare(st, wareId) ? limit * 0.4 : 0;
+}
+
+/** Bestand über der Reserve – das darf die Station abgeben */
+export function sellableStock(st: Station, wareId: string): number {
+  return Math.max(0, (st.inventory[wareId] ?? 0) - reserveFor(st, wareId, wareLimit(st, wareId)));
 }
 
 /** Wie viel die Station noch einkaufen möchte (abzüglich bereits unterwegs befindlicher Ware) */
