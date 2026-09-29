@@ -254,6 +254,8 @@ textarea { padding: 10px 12px; min-height: 120px; font-family: ui-monospace, mon
 .module-card .actions { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .module-card.locked { opacity: 0.6; }
 
+.chain .row { padding-top: 8px; padding-bottom: 8px; }
+.chain .tree { color: var(--muted); font-family: var(--font-display); margin-right: -4px; }
 .empty { padding: 22px 16px; text-align: center; color: var(--muted); font-size: 14px; }
 .empty .btn { margin-top: 12px; }
 

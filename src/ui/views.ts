@@ -14,6 +14,7 @@ import type { GameState, Ship, Station, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
 import { fmtAmount, fmtClock, fmtCr, fmtDur, fmtInt, fmtNum, pct } from './format';
 import { icon, wareDot } from './icons';
+import { soundEnabled } from './sound';
 import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
 
 // ---------- Hilfen ----------
@@ -563,15 +564,37 @@ function warePanel(state: GameState, id: string, p: Panel): string {
     </div>${bp === 'buyable' ? `<button class="btn amber block" style="margin-top:10px" ${act('buy-bp', { def: d.id })}>Bauplan kaufen · ${fmtCr(d.blueprintCost)}</button>` : ''}</div>`;
   }
   const users = WARE_IDS.filter((x) => WARES[x].inputs.some((i) => i.ware === id));
+  const chain = w.cycle && w.inputs.length ? `<div class="section"><h3>Produktionskette für 1 Modul</h3><div class="box chain">${chainRows(id, 1, 0, new Set())}</div>
+    <p class="small muted" style="margin-top:6px">Modulzahlen bei 100 % Auslastung, Energiezellen bei 100 % Sonnenlicht. Rohstoffe in m³ pro Stunde – ein M-Miner schafft grob 30.000–40.000 m³/h, je nach Flugweg.</p></div>` : '';
   const prices = known.map((sec) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(SECTOR_MAP[sec].name)}</div><div class="sub">Bestand ${fmtAmount(marketStock(state, sec, id))}</div></div><div class="right"><b>${fmtInt(marketPrice(state, sec, id))} Cr</b></div></div>`).join('');
   return sheet(w.name, `${GROUP_LABEL[w.group]} · Stufe ${w.tier}`, `
     <div class="section"><div class="kv">
       <div><small>Ø-Preis</small><b>${fmtInt(w.price.avg)} Cr</b></div><div><small>Spanne</small><b style="font-size:15px">${fmtInt(w.price.min)} – ${fmtInt(w.price.max)}</b></div>
       <div><small>Volumen</small><b>${w.volume} m³</b></div><div><small>Lager</small><b style="font-size:15px">${esc(STORAGE_LABEL[w.storage])}</b></div>
     </div>${w.estimated ? '<p class="small muted">Preis geschätzt – nicht im Datensatz.</p>' : ''}</div>
-    ${recipe}${module}
+    ${recipe}${module}${chain}
     ${users.length ? `<div class="section"><h3>Wird verbraucht für</h3><div class="pills">${users.map((u) => `<button class="pill" ${act('open-ware', { id: u })}>${wareDot(WARES[u].color, 8)}${esc(WARES[u].name)}</button>`).join('')}</div></div>` : ''}
     <div class="section"><h3>Preise in bekannten Sektoren</h3><div class="box rows">${prices}</div></div>`, { back: !!p.back });
+}
+
+/** Rekursiver Bedarfsbaum: welche Vorprodukte in welcher Menge */
+function chainRows(id: string, modules: number, depth: number, seen: Set<string>): string {
+  let html = '';
+  for (const inp of inputsPerHour(id)) {
+    const need = inp.amount * modules;
+    const iw = WARES[inp.ware];
+    const pad = `style="padding-left:${12 + depth * 18}px"`;
+    if (iw.cycle) {
+      const mods = need / outputPerHour(inp.ware);
+      html += `<div class="row" ${pad}>${depth ? '<span class="tree">└</span>' : ''}${wareDot(iw.color)}<div class="grow"><div class="title" style="font-weight:500">${esc(iw.name)}</div><div class="sub">${fmtInt(need)} / h</div></div>
+        <div class="right"><b>${fmtNum(mods, mods < 10 ? 2 : 1)}</b><div class="small muted">Module</div></div></div>`;
+      if (!seen.has(inp.ware) && depth < 4) html += chainRows(inp.ware, mods, depth + 1, new Set([...seen, id]));
+    } else {
+      html += `<div class="row" ${pad}>${depth ? '<span class="tree">└</span>' : ''}${wareDot(iw.color)}<div class="grow"><div class="title" style="font-weight:500">${esc(iw.name)}</div><div class="sub">${fmtInt(need)} / h</div></div>
+        <div class="right"><b>${fmtAmount(need * iw.volume)}</b><div class="small muted">m³/h abbauen</div></div></div>`;
+    }
+  }
+  return html;
 }
 
 // ---- Sektor ----
@@ -617,8 +640,10 @@ function morePanel(state: GameState, ui: UIState): string {
       <div><span class="n">3</span><div><b>Versorgungsketten</b>Transporter verbinden Stationen und Märkte. Im Autohandel entscheiden sie selbst, Versorgungslinien pendeln fest zwischen zwei Punkten.</div></div>
       <div><span class="n">4</span><div><b>Handeln und wachsen</b>Märkte reagieren auf Angebot und Nachfrage. Aufträge bringen Ruf, Ruf öffnet Baupläne und neue Sektoren.</div></div>
     </div></div></div>
-    <div class="section"><h3>Anzeige</h3><div class="box rows"><div class="row"><div class="grow"><div class="title" style="font-weight:500">Routen auf der Karte</div><div class="sub">Flugwege und Versorgungslinien</div></div>
-      <div class="toggle"><button class="plain ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${ui.routes ? 'An' : 'Aus'}</button></div></div></div></div>
+    <div class="section"><h3>Einstellungen</h3><div class="box rows"><div class="row"><div class="grow"><div class="title" style="font-weight:500">Routen auf der Karte</div><div class="sub">Flugwege und Versorgungslinien</div></div>
+      <div class="toggle"><button class="plain ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${ui.routes ? 'An' : 'Aus'}</button></div></div>
+      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
+      <div class="toggle"><button class="plain ${soundEnabled() ? 'on' : ''}" ${act('sound-toggle')}>${soundEnabled() ? 'An' : 'Aus'}</button></div></div></div></div>
     <div class="section"><h3>Ereignisse</h3><div class="box rows">${logRows}</div></div>
     <div class="section"><h3>Daten & Quellen</h3><div class="box" style="padding:14px"><p class="small" style="margin:0 0 8px;color:var(--text-2)">Rezepte, Preisspannen, Warenvolumen und Lagerarten aus dem Community-Datensatz X4Foundations_FactoryStationsTracker. Baumaterialien und Bauzeiten der Module aus crissian/x4. Frachträume der Split-Schiffe und Lagermodule aus der Egosoft-Wiki.</p>
       <p class="small muted" style="margin:0">Spielwerte: Schiffspreise, Fluggeschwindigkeiten, Abbauraten, Kartenlage der Felder, die Nachbarsektoren sowie der Nividium-Preis. Belegschaft und Kampf sind nicht Teil dieses Spiels. X4: Foundations ist ein Spiel von Egosoft; dies ist ein inoffizielles Fanprojekt.</p></div></div>`);

@@ -51,7 +51,8 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
     for (const id of stationWares(st)) {
       const w = WARES[id];
       const units = NPC_CAPACITY / w.volume;
-      const have = surplus(state, st, id);
+      // Ware für aktive Aufträge wird nicht an NPC-Händler verkauft
+      const have = surplus(state, st, id) - contractNeed(state, id);
       const room = marketRoom(state, sectorId, id);
       const sell = Math.min(have, units, room);
       if (sell >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'buyer', amount: sell }, w: sell * marketPrice(state, sectorId, id) });
@@ -66,6 +67,12 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
   const st = stationById(state, o.st)!;
   const dp = dockPoint(st, 'npc' + state.nextId);
   state.npcs.push(makeNpc(state, { sector: sectorId, kind: o.kind, tx: dp.x, tz: dp.z, station: st.id, ware: o.ware, amount: o.amount }));
+}
+
+function contractNeed(state: GameState, wareId: string): number {
+  let n = 0;
+  for (const c of state.contracts) if (c.status === 'active' && c.ware === wareId) n += Math.max(0, c.amount - c.delivered);
+  return n;
 }
 
 function spawnTraffic(state: GameState, sectorId: string): void {

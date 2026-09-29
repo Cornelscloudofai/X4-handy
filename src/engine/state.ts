@@ -80,6 +80,7 @@ export function deserialize(text: string): GameState {
   initMarkets(state);
   state.rep = { ...base.rep, ...(raw.rep ?? {}) };
   state.totals = { ...base.totals, ...(raw.totals ?? {}) };
+  state.story = { ...base.story, ...(raw.story ?? {}) };
   state.contracts = (raw.contracts ?? []).map((c) => ({ ...c, deadline: c.deadline ?? 0 }));
   return state;
 }

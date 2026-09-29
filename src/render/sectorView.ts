@@ -777,7 +777,7 @@ export class SectorRenderer {
 
 /** Stationen werden überhöht gezeichnet, damit ihre Module schon bei mittlerem Zoom erkennbar sind */
 function stationScale(zoom: number): number {
-  return Math.min(22, zoom * 2.2);
+  return Math.min(36, zoom * 2.2);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

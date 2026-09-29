@@ -6,6 +6,7 @@ import { freeUnits, marketPrice, priceAt, storageCap, wareLimit } from '../src/e
 import { WARES, outputPerHour } from '../src/data/wares';
 import { MODULE_MAP } from '../src/data/modules';
 import { insideHex, sectorPath } from '../src/data/sectors';
+import * as storyApi from '../src/engine/story';
 import { claimMission, currentMission, missionComplete } from '../src/engine/story';
 
 describe('Daten', () => {
@@ -98,5 +99,26 @@ describe('Simulation', () => {
     expect(copy.time).toBe(s.time);
     expect(copy.stations[0].inventory).toEqual(s.stations[0].inventory);
     expect(marketPrice(copy, 'zhin', 'ore')).toBeCloseTo(marketPrice(s, 'zhin', 'ore'));
+  });
+});
+
+describe('Aufträge', () => {
+  it('Transporter liefern Story-Aufträge auch aus einer Nachbarstation vollständig aus', () => {
+    const s = newGame(5);
+    s.credits = 20_000_000;
+    const a = s.stations[0];
+    const r = foundStation(s, 'zhin', 60, 55);
+    const b = s.stations.find((x) => x.id === r.id)!;
+    for (const d of ['storage_container', 'dock_m']) queueModule(s, b.id, d);
+    step(s, 1800);
+    // Kapitel 7 „Werftbedarf“ direkt starten
+    while (currentMission(s)?.id !== 'hull') s.story.index++;
+    storyApi.startMission(s);
+    setTradeRule(s, b.id, 'hullparts', { sell: true });
+    b.inventory.hullparts = 1500;
+    buyShip(s, 'boa', a.id);
+    step(s, 4 * 3600);
+    expect(currentMission(s)?.progress(s).cur).toBe(1500);
+    expect(missionComplete(s)).toBe(true);
   });
 });

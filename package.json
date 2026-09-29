@@ -9,10 +9,14 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "artifact": "vite build && node scripts/artifact.mjs",
+    "balance": "tsx scripts/balance.ts",
+    "shots": "vite build && node scripts/tour.mjs"
   },
   "devDependencies": {
     "playwright": "^1.63.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^6.4.3",
     "vite-plugin-singlefile": "^2.3.3",

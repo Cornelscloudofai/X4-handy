@@ -16,6 +16,7 @@ import { SectorRenderer } from '../render/sectorView';
 import { $, morph } from './dom';
 import { fmtCr } from './format';
 import { icon } from './icons';
+import { setSound, sfx, soundEnabled } from './sound';
 import { SPEEDS, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { cardHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml } from './views';
 
@@ -70,7 +71,12 @@ export function start(): void {
   window.addEventListener('pagehide', save);
   onGameEvent((e) => {
     if (e.type === 'toast') toast(e.text, e.kind);
-    if (e.type === 'sale' && e.sector === ui.sector && Math.abs(e.value) >= 1000) renderer.addFloat(e.sector, e.x, e.z, (e.value > 0 ? '+' : '') + fmtCr(e.value), e.value > 0 ? '#8ff5b0' : '#ffb4a0');
+    if (e.type === 'sale' && e.sector === ui.sector && Math.abs(e.value) >= 1000 && ui.view === 'sector') {
+      renderer.addFloat(e.sector, e.x, e.z, (e.value > 0 ? '+' : '') + fmtCr(e.value), e.value > 0 ? '#8ff5b0' : '#ffb4a0');
+      if (e.value > 0) sfx.coin();
+    }
+    if (e.type === 'moduleDone') { sfx.build(); navigator.vibrate?.(15); }
+    if (e.type === 'contractDone' || e.type === 'story') sfx.success();
     dirtyUI = true;
   });
   renderUI();
@@ -282,7 +288,10 @@ function onClick(e: MouseEvent): void {
   }
   const d = el.dataset;
   const a = d.act!;
+  if (a.startsWith('open') || a === 'nav' || a.endsWith('modal')) sfx.open();
+  else sfx.tap();
   switch (a) {
+    case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
     case 'nav': {
       ui.modal = null;
       if (d.tab === 'map') { ui.panel = null; if (ui.view === 'galaxy') ui.view = 'sector'; refresh(); }

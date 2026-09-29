@@ -50,9 +50,5 @@ for (let h = 0; h < 72; h++) {
   }
   if (h % 4 === 3) log(`Cr ${(s.credits / 1e6).toFixed(2)} Mio | Wert ${(netWorth(s) / 1e6).toFixed(1)} Mio | Ruf ${s.rep.frf.toFixed(1)} | Miner ${miners()} Händler ${traders()} | RM prod ${Math.round(s.totals.produced.refinedmetals ?? 0)} | Erz ${Math.round(s.totals.mined.ore ?? 0)} | verkauft ${(s.totals.sold / 1e6).toFixed(2)} Mio | RM-Preis ${marketPrice(s, 'zhin', 'refinedmetals').toFixed(0)} | Auslastung ${(productionUtil(st) * 100).toFixed(0)}% | NPC ${s.npcs.length} | Mission ${currentMission(s)?.id}`);
 }
-for (const x of s.stations) console.log(x.name, x.modules.map((m) => m.def + ':' + m.stall + ':' + m.util.toFixed(2)).join(' '), JSON.stringify(Object.fromEntries(Object.entries(x.inventory).map(([k, v]) => [k, Math.round(v)]))), 'queue', x.queue.map((q) => q.def), x.build?.def);
-console.log('hull produced', s.totals.produced.hullparts, 'graphene', s.totals.produced.graphene);
-for (const sh of s.ships) console.log(sh.name, sh.home, sh.status);
-console.log(s.contracts.filter((c) => c.status === 'active'));
-console.log('STORY', s.story, s.contracts.filter((c) => c.story).map((c) => [c.id, c.status, c.delivered]));
-console.log('prog', currentMission(s)?.progress(s));
+console.log('Stationen:', s.stations.map((x) => `${x.name} (${x.modules.length} Module)`).join(', '));
+console.log('Kampagne:', currentMission(s)?.title ?? 'abgeschlossen', currentMission(s)?.progress(s));
