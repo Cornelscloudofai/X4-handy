@@ -315,3 +315,32 @@ describe('Lieferung mit eigenem Transporter', () => {
     expect(c.delivered).toBeGreaterThanOrEqual(2999);
   });
 });
+
+describe('Baupläne beim Vertreter', () => {
+  it('verkauft nur vor Ort, je Volk und Station, mit Ruf der Gastgeberfraktion', async () => {
+    const { buyBlueprint, blueprintState, vendorOffer } = await import('../src/engine/actions');
+    const { VENDOR_MAP, vendorsFor } = await import('../src/data/vendors');
+    const s = newGame(91);
+    s.credits = 50e6;
+    s.rep.frf = 12;
+    // Split-Wirtschaft am Handelsposten, Waffennahes und Werft nur bei Werftvertretern
+    expect(vendorsFor('prod_hullparts').some((v) => v.id === 'v-zhin')).toBe(true);
+    expect(vendorsFor('prod_turretcomponents').every((v) => !!v.npc)).toBe(true);
+    expect(vendorsFor('yard_m').every((v) => v.role === 'Werftvertreter')).toBe(true);
+    expect(buyBlueprint(s, 'prod_turretcomponents', 'v-zhin').ok).toBe(false);
+    expect(buyBlueprint(s, 'prod_turretcomponents', 'v-zhin-werft').ok).toBe(true);
+    // Fremde Bauweise nur bei der Gesandtschaft ihres Volkes
+    expect(vendorsFor('prod_foodrations').map((v) => v.id)).toEqual(['v-argon']);
+    expect(VENDOR_MAP['v-argon'].sells.every((id) => MODULE_MAP[id].method === 'Argon')).toBe(true);
+    expect(buyBlueprint(s, 'prod_foodrations', 'v-zhin').ok).toBe(false); // Split-Vertreter führt keine argonischen Pläne
+    expect(buyBlueprint(s, 'prod_foodrations', 'v-argon').ok).toBe(true);
+    expect(buyBlueprint(s, 'prod_teladianium', 'v-teladi').ok).toBe(false); // fremde Bauweise: Ruf 16 oder außer Reichweite
+    // Unerreichbarer Sektor: Vertreter dort verkauft noch nicht
+    const far = Object.values(VENDOR_MAP).find((v) => vendorOffer(s, v, v.sells[0]) === 'far');
+    expect(far).toBeDefined();
+    expect(buyBlueprint(s, far!.sells[0], far!.id).ok).toBe(false);
+    expect(blueprintState(s, 'prod_hullparts')).toBe('buyable');
+    expect(buyBlueprint(s, 'prod_hullparts', 'v-zhin').ok).toBe(true);
+    expect(blueprintState(s, 'prod_hullparts')).toBe('owned');
+  });
+});

@@ -5,9 +5,10 @@ import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { defaultTradeRule, hasDockFor } from './economy';
 import { spawnCourier } from './npc';
-import { sellableStock, stationById } from './logistics';
+import { knownSectors, sellableStock, stationById } from './logistics';
+import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendors';
 import { newModule, newShip, newStation } from './state';
-import type { GameState, RouteOrder, TradeEndpoint, TradeRule } from './types';
+import type { FactionId, GameState, RouteOrder, TradeEndpoint, TradeRule } from './types';
 import { log } from './util';
 
 export interface Result { ok: boolean; msg: string }
@@ -15,22 +16,48 @@ const ok = (msg: string): Result => ({ ok: true, msg });
 const fail = (msg: string): Result => ({ ok: false, msg });
 const cr = (n: number) => Math.round(n).toLocaleString('de-DE') + ' Cr';
 
-export function blueprintState(state: GameState, defId: string): 'owned' | 'buyable' | 'locked' {
+export type OfferState = 'owned' | 'buyable' | 'rep' | 'far';
+
+/** Kann dieser Vertreter den Bauplan jetzt verkaufen? 'far' = Sektor noch nicht erreichbar, 'rep' = Ruf zu niedrig */
+export function vendorOffer(state: GameState, v: Vendor, defId: string): OfferState {
   if (state.blueprints.includes(defId)) return 'owned';
-  const d = moduleDef(defId);
-  return state.rep.frf >= d.repRequired ? 'buyable' : 'locked';
+  if (!knownSectors(state).includes(v.sector)) return 'far';
+  return state.rep[v.faction] >= moduleDef(defId).repRequired ? 'buyable' : 'rep';
 }
 
-export function buyBlueprint(state: GameState, defId: string): Result {
+/** owned · buyable (bei mindestens einem erreichbaren Vertreter) · locked */
+export function blueprintState(state: GameState, defId: string): 'owned' | 'buyable' | 'locked' {
+  if (state.blueprints.includes(defId)) return 'owned';
+  return vendorsFor(defId).some((v) => vendorOffer(state, v, defId) === 'buyable') ? 'buyable' : 'locked';
+}
+
+/** Höchster Ruf bei einer Fraktion, die den Bauplan verkauft */
+export function bestRepFor(state: GameState, defId: string): { rep: number; faction: FactionId } {
+  const vs = vendorsFor(defId);
+  const best = vs.reduce<FactionId>((b, v) => (state.rep[v.faction] > state.rep[b] ? v.faction : b), vs[0]?.faction ?? 'frf');
+  return { rep: state.rep[best], faction: best };
+}
+
+/** Baupläne gibt es nur beim Vertreter vor Ort */
+export function buyBlueprint(state: GameState, defId: string, vendorId: string): Result {
   const d = MODULE_MAP[defId];
-  if (!d) return fail('Unbekannter Bauplan.');
-  if (state.blueprints.includes(defId)) return fail('Bauplan bereits vorhanden.');
-  if (state.rep.frf < d.repRequired) return fail(`Benötigt Ruf ${d.repRequired} bei den Freien Familien.`);
+  const v = VENDOR_MAP[vendorId];
+  if (!d || !v) return fail('Unbekannter Bauplan oder Vertreter.');
+  if (!v.sells.includes(defId)) return fail(`${v.name} führt diesen Bauplan nicht.`);
+  const offer = vendorOffer(state, v, defId);
+  if (offer === 'owned') return fail('Bauplan bereits vorhanden.');
+  if (offer === 'far') return fail(`${vendorPlace(v)} ist noch nicht erreichbar.`);
+  if (offer === 'rep') return fail(`Benötigt Ruf ${d.repRequired} bei ${FACTIONS[v.faction].name}.`);
   if (state.credits < d.blueprintCost) return fail(`Es fehlen ${cr(d.blueprintCost - state.credits)}.`);
   state.credits -= d.blueprintCost;
   state.blueprints.push(defId);
-  log(state, `Bauplan erworben: ${d.name}.`, 'good');
+  log(state, `Bauplan erworben: ${d.name} (${v.name}, ${vendorPlace(v)}).`, 'good');
   return ok(`Bauplan „${d.name}“ gekauft.`);
+}
+
+/** Baupläne, die für eine Liste von Modulen noch fehlen */
+export function missingBlueprints(state: GameState, defs: string[]): string[] {
+  return [...new Set(defs)].filter((id) => MODULE_MAP[id] && !state.blueprints.includes(id));
 }
 
 export const MAX_MODULES = 40;
@@ -41,7 +68,10 @@ export function queueModule(state: GameState, stationId: string, defId: string, 
   const d = MODULE_MAP[defId];
   if (!st || !d) return fail('Station oder Modul nicht gefunden.');
   if (d.kind === 'core') return fail('Der Stationskern entsteht mit der Station.');
-  if (!state.blueprints.includes(defId)) return fail('Dafür fehlt der Bauplan.');
+  if (!state.blueprints.includes(defId)) {
+    const v = vendorsFor(defId)[0];
+    return fail(`Dafür fehlt der Bauplan${v ? ` – erhältlich bei ${v.role === 'Handelsvertreter' ? 'den Handelsvertretern' : vendorPlace(v)}` : ''}.`);
+  }
   if (st.modules.length + st.queue.length + (st.build ? 1 : 0) >= MAX_MODULES) return fail(`Höchstens ${MAX_MODULES} Module pro Station.`);
   const item = { uid: state.nextId++, def: defId, paid: 0 };
   const pos = at === undefined ? st.queue.length : Math.max(0, Math.min(st.queue.length, at));

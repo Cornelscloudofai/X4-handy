@@ -3,7 +3,9 @@ import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, sector } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { GROUP_LABEL, STORAGE_LABEL, WARES, WARE_IDS, inputsPerHour, outputPerHour } from '../data/wares';
-import { blueprintState, stationCost } from '../engine/actions';
+import { bestRepFor, blueprintState, stationCost, vendorOffer } from '../engine/actions';
+import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/vendors';
+import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
 import { consumesWare, hasDockFor, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { shipEta } from '../engine/fleet';
@@ -198,7 +200,16 @@ function tradeCard(state: GameState, secId: string): string {
   const top = [...s.demand].slice(0, 3);
   return cardShell(icon('market', 24), s.tradeStation.name, `${esc(FACTIONS[s.faction].name)} · Handelsposten`, `
     <div class="stats3">${top.map((id) => `<div>${wareDot(WARES[id].color, 10)}<span><b>${fmtInt(marketPrice(state, secId, id))} Cr</b>${esc(WARES[id].name)}</span></div>`).join('')}</div>
-    <div class="card-actions one"><button class="btn primary" ${act('open-market', { id: secId })}>${icon('market', 20)}Marktpreise</button></div>`, true);
+    <div class="card-actions"><button class="btn primary" ${act('open-market', { id: secId })}>${icon('market', 20)}Marktpreise</button>${vendorButton(state, secId)}</div>`, true);
+}
+
+/** Knopf zum Vertreter – zeigt, wie viele Baupläne dort jetzt kaufbar sind */
+function vendorButton(state: GameState, sector: string, npc?: string): string {
+  const vs = vendorsAt(sector, npc);
+  if (!vs.length) return '';
+  const n = vs.reduce((k, v) => k + v.sells.filter((id) => vendorOffer(state, v, id) === 'buyable').length, 0);
+  const far = vs.every((v) => !knownSectors(state).includes(v.sector));
+  return `<button class="btn amber ${far ? 'disabled' : ''}" ${act('open-vendor', npc ? { sector, npc } : { sector })}>${icon('star', 20)}${vs.length > 1 ? 'Vertreter' : npc ? 'Werftvertreter' : 'Vertreter'}${n ? ` <span class="count">${n}</span>` : ''}</button>`;
 }
 
 const NPC_KIND: Record<string, string> = { wharf: 'Werft', defence: 'Verteidigungsstation', factory: 'Fabrik', habitat: 'Habitat' };
@@ -212,7 +223,8 @@ function npcCard(state: GameState, id: string): string {
   }).join('');
   return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)} · kauft an`, `
     <div class="box rows npc-buys">${rows}</div>
-    <p class="small muted" style="margin:8px 0 0">Kleine Lager, meist gute Preise. Wer viel liefert, drückt den Preis – nach einigen Stunden ist wieder Bedarf da.</p>`, true);
+    <p class="small muted" style="margin:8px 0 0">Kleine Lager, meist gute Preise. Wer viel liefert, drückt den Preis – nach einigen Stunden ist wieder Bedarf da.</p>
+    ${vendorsAt(n.sector, n.id).length ? `<div class="card-actions one" style="margin-top:10px">${vendorButton(state, n.sector, n.id)}</div>` : ''}`, true);
 }
 
 function gateCard(state: GameState, to: string): string {
@@ -267,7 +279,7 @@ export function panelHtml(state: GameState, ui: UIState): string {
     case 'ware': return warePanel(state, p.id ?? 'ore', p);
     case 'sector': return sectorPanel(state, p.id ?? 'zhin', p);
     case 'more': return morePanel(state, ui);
-    case 'blueprints': return blueprintsPanel(state, p);
+    case 'blueprints': return blueprintsPanel(state, ui, p);
     case 'planner': return sheet('Stationsplaner', 'Produktionsketten nach X4', plannerPanel(state, ui));
   }
 }
@@ -582,56 +594,93 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
 
 // ---- Baupläne ----
 
-/** Kaufbare Baupläne (Ruf reicht) */
+/** Kaufbare Baupläne (Ruf reicht bei mindestens einem erreichbaren Vertreter) */
 export function buyableBlueprints(state: GameState): ModuleDef[] {
   return MODULES.filter((d) => blueprintState(state, d.id) === 'buyable');
 }
 
-/** Einstiegszeile zu den Bauplänen, mit Hinweis auf kaufbare */
+/** Einstiegszeile zur Baupläne-Übersicht */
 function blueprintEntry(state: GameState, compact = false): string {
   const n = buyableBlueprints(state).length;
-  const affordable = buyableBlueprints(state).filter((d) => d.blueprintCost <= state.credits).length;
   if (compact) return `<button class="btn small" ${act('open-blueprints')}>${icon('lock', 16)}Baupläne${n ? ` <span class="count">${n}</span>` : ''}</button>`;
   return `<div class="row tap" ${act('open-blueprints')}><span class="ware-tile" style="--c:#ffb547">${icon('lock', 18)}</span><div class="grow"><div class="title">Baupläne</div>
-    <div class="sub wrap">${n ? `${n} kaufbar${affordable < n ? `, ${affordable} davon bezahlbar` : ''}` : 'Mehr Ruf schaltet weitere frei'} · ${state.blueprints.length} vorhanden</div></div>${n ? `<span class="pill amber">${n} neu</span>` : ''}${icon('chev', 20, 'chev')}</div>`;
+    <div class="sub wrap">${n ? `${n} bei Vertretern kaufbar` : 'Mehr Ruf schaltet weitere frei'} · ${state.blueprints.length} vorhanden</div></div>${n ? `<span class="pill amber">${n}</span>` : ''}${icon('chev', 20, 'chev')}</div>`;
 }
 
-function blueprintsPanel(state: GameState, p: Panel): string {
+/** Kurzbeschreibung eines Moduls für Listen */
+function moduleDesc(d: ModuleDef): string {
+  if (d.kind === 'shipyard') return d.yardSize === 'L' ? 'Werft · baut L-Schiffe' : 'Werft · baut S- und M-Schiffe';
+  if (!d.ware) return '';
+  const w = WARES[d.ware];
+  const race = raceOf(d);
+  return `${GROUP_LABEL[w.group]} · Stufe ${w.tier}${race !== 'split' ? ' · ' + RACE_LABEL[race] : ''}`;
+}
+
+/** Wo es den Bauplan gibt – mit Hinfliegen zum nächsten erreichbaren Vertreter */
+function vendorLine(state: GameState, d: ModuleDef): string {
+  const vs = vendorsFor(d.id);
+  if (!vs.length) return '<span class="small muted">Nicht käuflich</span>';
+  const reach = vs.filter((v) => vendorOffer(state, v, d.id) !== 'far');
+  const places = vs[0].role === 'Handelsvertreter' ? 'jedem Split-Handelsposten' : vs.map(vendorPlace).join(', ');
+  const go = reach[0] ?? null;
+  return `<span class="small muted" style="flex:1;min-width:0">Bei ${esc(places)}</span>${go ? `<button class="btn small" style="flex:none" ${act('goto-vendor', { id: go.id })}>${icon('arrowRight', 15)}Hinfliegen</button>` : '<span class="small muted" style="flex:none">noch außer Reichweite</span>'}`;
+}
+
+function blueprintsPanel(state: GameState, ui: UIState, p: Panel): string {
   const tab = p.tab ?? 'buy';
-  const rep = state.rep.frf;
-  const all = MODULES.filter((d) => !d.starter || d.kind === 'shipyard');
-  const buy = all.filter((d) => blueprintState(state, d.id) === 'buyable').sort((a, b) => a.repRequired - b.repRequired || a.blueprintCost - b.blueprintCost);
-  const locked = all.filter((d) => blueprintState(state, d.id) === 'locked').sort((a, b) => a.repRequired - b.repRequired || a.blueprintCost - b.blueprintCost);
-  const owned = MODULES.filter((d) => blueprintState(state, d.id) === 'owned' && (d.kind === 'production' || d.kind === 'shipyard'));
+  const q = ui.search.blueprints ?? '';
+  const all = MODULES.filter((d) => d.kind === 'production' || d.kind === 'shipyard');
+  const pick = (st: string) => all.filter((d) => blueprintState(state, d.id) === st && matches(q, d.name, d.ware && WARES[d.ware].name, moduleDesc(d))).sort(byName);
+  const buy = pick('buyable'), locked = pick('locked'), owned = pick('owned');
   const tabs = `<div class="tabs">${([['buy', 'Kaufbar', buy.length], ['locked', 'Gesperrt', locked.length], ['owned', 'Eigene', owned.length]] as const).map(([t, l, n]) => `<button class="${tab === t ? 'active' : ''}" ${act('station-tab', { tab: t })}>${l} <span class="tab-n">${n}</span></button>`).join('')}</div>`;
   const row = (d: ModuleDef) => {
     const bp = blueprintState(state, d.id);
     const lead = d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
-    const desc = d.kind === 'shipyard' ? (d.yardSize === 'L' ? 'Baut L-Schiffe' : 'Baut S- und M-Schiffe') : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier} · ${fmtAmount(outputPerHour(d.ware!))}/h`;
-    const ins = d.ware ? inputsPerHour(d.ware).map((i) => `<span class="io">${wareDot(WARES[i.ware].color, 7)}${esc(WARES[i.ware].name)}</span>`).join('') : '';
-    const lack = d.blueprintCost - state.credits;
-    const action = bp === 'owned' ? `<span class="pill teal">${icon('check', 13)} vorhanden</span>`
-      : bp === 'buyable' ? `<button class="btn small ${lack > 0 ? 'disabled' : 'amber'}" style="white-space:nowrap;flex:none" ${act('buy-bp', { def: d.id })}>${lack > 0 ? `fehlen ${fmtCr(lack)}` : `Kaufen · ${fmtCr(d.blueprintCost)}`}</button>`
-      : `<span class="small muted">${fmtCr(d.blueprintCost)}</span>`;
-    return `<div class="row" data-key="bp-${d.id}" style="flex-wrap:wrap">${lead}<div class="grow"><div class="title two-lines">${esc(d.name)}</div><div class="sub wrap">${desc}</div>
-      ${ins ? `<div class="flow" style="margin-top:6px">${ins}</div>` : ''}</div>
-      <div style="width:100%;display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:8px"><span class="small muted" style="flex:1;min-width:0">Modul ${fmtCr(d.cost)}${d.ware && bp !== 'owned' ? ` · <a class="link" ${act('plan-from-ware', { ware: d.ware })}>im Planer</a>` : ''}</span>${action}</div></div>`;
+    const best = bestRepFor(state, d.id);
+    const right = bp === 'owned' ? `<span class="pill teal">${icon('check', 13)}</span>`
+      : bp === 'buyable' ? `<b class="small" style="white-space:nowrap">${fmtCr(d.blueprintCost)}</b>`
+      : `<span class="pill">${icon('lock', 13)} Ruf ${d.repRequired} ${FACTIONS[best.faction].short}</span>`;
+    return `<div class="row" data-key="bp-${d.id}" style="flex-wrap:wrap">${lead}<div class="grow"><div class="title two-lines">${esc(d.name)}</div><div class="sub wrap">${esc(moduleDesc(d))}${d.ware ? ` · ${fmtAmount(outputPerHour(d.ware))}/h` : ''}</div></div>
+      <div style="width:100%;display:flex;gap:8px;align-items:center;margin-top:8px">${right}${bp === 'owned' ? '' : vendorLine(state, d)}</div></div>`;
   };
-  let body = '';
-  if (tab === 'buy') {
-    body = buy.length ? `<div class="box rows">${buy.map(row).join('')}</div>` : `<div class="box empty">Gerade nichts kaufbar. Nächste Freischaltung bei Ruf ${locked[0]?.repRequired ?? '–'}.</div>`;
-  } else if (tab === 'locked') {
-    const levels = [...new Set(locked.map((d) => d.repRequired))];
-    body = levels.map((lv) => {
-      const list = locked.filter((d) => d.repRequired === lv);
-      return `<div class="section"><h3>Ab Ruf ${lv} <span class="small muted" style="letter-spacing:0;text-transform:none">${lv >= 16 ? 'fremde Bauweise' : `noch ${fmtNum(Math.max(0, lv - rep), 1)}`}</span></h3>${bar(Math.max(0, rep) / lv, 'amber')}<div class="box rows" style="margin-top:8px">${list.map(row).join('')}</div></div>`;
-    }).join('') || '<div class="box empty">Alle Baupläne freigeschaltet.</div>';
-  } else {
-    body = `<div class="box rows">${owned.map(row).join('')}</div>`;
-  }
-  const head = `<div class="section"><div class="kv"><div><small>Ruf Freie Familien</small><b>${fmtNum(rep, 1)}</b></div><div><small>Nächste Stufe</small><b style="font-size:15px">${locked[0] ? `Ruf ${locked[0].repRequired}` : 'alles frei'}</b></div></div>
-    <p class="small muted" style="margin:8px 0 0">Ruf steigt durch Handel (bis 10), Aufträge und Kampagne. Ein Bauplan gilt für alle Stationen.</p></div>`;
-  return sheet('Baupläne', `${state.blueprints.length} vorhanden`, head + body, { back: !!p.back, tabs });
+  const list = tab === 'buy' ? buy : tab === 'locked' ? locked : owned;
+  const empty = q ? `Nichts gefunden für „${esc(q)}“.` : tab === 'buy' ? 'Gerade nichts kaufbar – mehr Ruf oder neue Sektoren schalten Vertreter frei.' : tab === 'locked' ? 'Alle Baupläne freigeschaltet.' : 'Noch keine gekauften Baupläne.';
+  const head = `<div class="section"><div class="kv">${(['frf', 'zya'] as const).map((f) => `<div><small>Ruf ${esc(FACTIONS[f].short)}</small><b>${fmtNum(state.rep[f], 1)}</b></div>`).join('')}</div>
+    <p class="small muted" style="margin:8px 0 0">Baupläne gibt es nur vor Ort: Split-Baupläne bei den Handelsvertretern der Handelsposten, waffennahe Baupläne und Schiffsfertigung bei den Werftvertretern, fremde Bauweisen bei den Gesandtschaften. Im freien Planer stehen alle zum Ausprobieren bereit.</p></div>`;
+  const body = `${head}${searchBox('blueprints', q, 'Bauplan suchen …')}${list.length ? `<div class="box rows">${list.map(row).join('')}</div>` : `<div class="box empty-search">${empty}</div>`}`;
+  return sheet('Baupläne', `${state.blueprints.length} vorhanden`, body, { back: !!p.back, tabs });
+}
+
+/** Vertreter an einem Handelsposten oder einer Werft */
+function vendorModal(state: GameState, ui: UIState, m: Extract<Modal, { type: 'vendor' }>): string {
+  const here = vendorsAt(m.sector, m.npc);
+  const v = here.find((x) => x.id === m.vendor) ?? here[0];
+  if (!v) return '';
+  const q = ui.search.vendor ?? '';
+  const place = vendorPlace(v);
+  const chooser = here.length > 1 ? `<div class="tabs" style="padding:0 0 12px">${here.map((x) => `<button class="${x.id === v.id ? 'active' : ''}" ${act('vendor-pick', { id: x.id })}>${esc(x.race === 'split' ? x.role : RACE_LABEL[x.race])}</button>`).join('')}</div>` : '';
+  const rep = state.rep[v.faction];
+  const items = v.sells.map((id) => MODULE_MAP[id]).filter((d) => d && matches(q, d.name, d.ware && WARES[d.ware].name, moduleDesc(d))).sort(byName);
+  const rows = items.map((d) => {
+    const offer = vendorOffer(state, v, d.id);
+    const lack = d.blueprintCost - state.credits;
+    const lead = d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
+    const ins = d.ware ? inputsPerHour(d.ware).map((i) => `<span class="io">${wareDot(WARES[i.ware].color, 7)}${esc(WARES[i.ware].name)}</span>`).join('') : '';
+    const action = offer === 'owned' ? `<span class="pill teal">${icon('check', 13)} vorhanden</span>`
+      : offer === 'buyable' ? `<button class="btn small ${lack > 0 ? 'disabled' : 'amber'}" style="white-space:nowrap" ${act('buy-bp', { def: d.id, vendor: v.id })}>${lack > 0 ? `fehlen ${fmtCr(lack)}` : `Kaufen · ${fmtCr(d.blueprintCost)}`}</button>`
+      : `<span class="pill">${icon('lock', 13)} Ruf ${d.repRequired}</span>`;
+    return `<div class="row" data-key="vd-${d.id}" style="flex-wrap:wrap">${lead}<div class="grow"><div class="title two-lines">${esc(d.name)}</div><div class="sub wrap">${esc(moduleDesc(d))} · Modul ${fmtCr(d.cost)}</div>
+      ${ins ? `<div class="flow" style="margin-top:6px">${ins}</div>` : ''}</div>
+      <div style="width:100%;display:flex;justify-content:flex-end;margin-top:8px">${action}</div></div>`;
+  }).join('');
+  const greet = v.race === 'split'
+    ? (v.role === 'Werftvertreter' ? 'Waffen, Schilde, Drohnen – und die Pläne für eine eigene Schiffsfertigung. Nur für Verbündete der Familie.' : 'Die Familien teilen ihr Wissen – mit denen, die ihnen nützen.')
+    : `Die ${RACE_LABEL[v.race]} bauen anders. Wer das Vertrauen des Gastgebers genießt, darf ihre Pläne erwerben.`;
+  const body = `${chooser}<div class="vendor-head"><span class="ware-tile" style="--c:${FACTIONS[v.faction].color}">${icon('star', 18)}</span><div><b>${esc(v.name)}</b><div class="small muted">${esc(v.role)} · ${esc(place)}</div></div></div>
+    <p class="small" style="margin:10px 0 12px;color:var(--text-2)">„${esc(greet)}“ <span class="muted">Dein Ruf bei ${esc(FACTIONS[v.faction].name)}: <b>${fmtNum(rep, 1)}</b></span></p>
+    ${searchBox('vendor', q, 'Bauplan suchen …')}
+    ${rows ? `<div class="box rows">${rows}</div>` : `<div class="box empty-search">Nichts gefunden für „${esc(q)}“.</div>`}`;
+  return modalShell('Baupläne', body, `<button class="btn" ${act('modal-close')}>Fertig</button>`, `${place} · ${fmtCr(state.credits)}`);
 }
 
 // ---- Aufträge ----
@@ -820,7 +869,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
   const m = ui.modal;
   if (!m) return '';
   switch (m.type) {
-    case 'modules': return modulesModal(state, m);
+    case 'modules': return modulesModal(state, ui, m);
     case 'buyShip': return buyShipModal(state, m);
     case 'confirm': return modalShell(m.title, `<p class="lead" style="margin:0">${esc(m.text)}</p>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button><button class="btn ${m.danger ? 'danger' : 'primary'}" ${act('confirm')}>${esc(m.label)}</button>`);
     case 'rename': {
@@ -845,8 +894,9 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const s = state.ships.find((x) => x.id === m.ship);
       return modalShell('Heimatstation wählen', `<div class="box rows">${state.stations.map((st) => `<div class="row tap" ${act('set-home', { id: m.ship, st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${esc(sector(st.sector).name)}</div></div>${s?.home === st.id ? icon('check', 20, 'pos') : ''}</div>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
     }
+    case 'vendor': return vendorModal(state, ui, m);
     case 'storage': return storageModal(state, m.station, m.ware, !!m.back);
-    case 'planPick': return modalShell('Endprodukt wählen', pickerModal(m.group), `<button class="btn" ${act('modal-close')}>Fertig</button>`, 'Stationsplaner');
+    case 'planPick': return modalShell('Endprodukt wählen', pickerModal(state, m.group, ui.search.picker ?? ''), `<button class="btn" ${act('modal-close')}>Fertig</button>`, 'Stationsplaner');
     case 'sell': {
       const v = sellModalHtml(state, m);
       return `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(v.title)}"><div class="sheet-head"><h1><span class="eyebrow">${esc(v.eyebrow)}</span>${esc(v.title)}</h1><button class="icon-btn" ${act('modal-close')} aria-label="Schließen">${icon('close', 22)}</button></div><div class="sheet-body">${v.body}</div><div class="modal-foot">${v.foot}</div></div>`;
@@ -928,17 +978,16 @@ function modalShell(title: string, body: string, foot: string, eyebrow = ''): st
   return `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><h1>${eyebrow ? `<span class="eyebrow">${esc(eyebrow)}</span>` : ''}${esc(title)}</h1><button class="icon-btn" ${act('modal-close')} aria-label="Schließen">${icon('close', 22)}</button></div><div class="sheet-body">${body}</div><div class="modal-foot">${foot}</div></div>`;
 }
 
-function modulesModal(state: GameState, m: Extract<Modal, { type: 'modules' }>): string {
+function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: 'modules' }>): string {
   const st = stationById(state, m.station);
   if (!st) return '';
   const cats: [string, string][] = [['production', 'Produktion'], ['storage', 'Lager'], ['dock', 'Andocken'], ['shipyard', 'Werft']];
   const sun = sector(st.sector).sunlight;
-  const list = MODULES.filter((d) => (m.cat === 'production' || m.cat === 'storage' || m.cat === 'shipyard' ? d.kind === m.cat : d.kind === 'dock' || d.kind === 'pier'))
-    .sort((a, b) => {
-      const sa = blueprintState(state, a.id), sb = blueprintState(state, b.id);
-      const order = { owned: 0, buyable: 1, locked: 2 };
-      return order[sa] - order[sb] || (a.ware && b.ware ? WARES[a.ware].tier - WARES[b.ware].tier : 0) || a.cost - b.cost;
-    });
+  const q = ui.search.modules ?? '';
+  const inCat = (d: ModuleDef) => (m.cat === 'production' || m.cat === 'storage' || m.cat === 'shipyard' ? d.kind === m.cat : d.kind === 'dock' || d.kind === 'pier');
+  // Mit Suchtext wird über alle Kategorien gesucht; immer alphabetisch
+  const list = MODULES.filter((d) => d.kind !== 'core' && (q ? true : inCat(d)) && (!ui.ownedOnly || state.blueprints.includes(d.id)) && matches(q, d.name, d.ware && WARES[d.ware].name, d.ware && GROUP_LABEL[WARES[d.ware].group]))
+    .sort(byName);
   const cards = list.map((d) => {
     const bp = blueprintState(state, d.id);
     const afford = state.credits >= d.cost;
@@ -952,17 +1001,21 @@ function modulesModal(state: GameState, m: Extract<Modal, { type: 'modules' }>):
     const desc = d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
     const action = bp === 'owned'
       ? `${afford ? '' : '<span class="small muted" style="margin-right:auto">startet, sobald Credits reichen</span>'}<button class="btn small primary" ${act('queue', m.at === undefined ? { st: st.id, def: d.id } : { st: st.id, def: d.id, at: m.at })}>${icon('plus', 16)}${m.at === undefined ? 'Einplanen' : `An Position ${m.at + 1}`}</button>`
-      : bp === 'buyable'
-        ? `<button class="btn small amber ${state.credits >= d.blueprintCost ? '' : 'disabled'}" ${act('buy-bp', { def: d.id })}>Bauplan · ${fmtCr(d.blueprintCost)}</button>`
-        : `<span class="pill">${icon('lock', 13)} Ruf ${d.repRequired} FRF</span>`;
+      : (() => {
+        const go = vendorsFor(d.id).find((v) => vendorOffer(state, v, d.id) !== 'far');
+        const lockPill = bp === 'buyable' ? `<span class="small muted" style="margin-right:auto">Bauplan ${fmtCr(d.blueprintCost)}</span>` : `<span class="pill" style="margin-right:auto">${icon('lock', 13)} Ruf ${d.repRequired} ${FACTIONS[bestRepFor(state, d.id).faction].short}</span>`;
+        return `${lockPill}${go ? `<button class="btn small ${bp === 'buyable' ? 'amber' : ''}" ${act('goto-vendor', { id: go.id })}>${icon('arrowRight', 15)}${go.npc ? 'Zur Werft' : 'Zum Vertreter'}</button>` : ''}`;
+      })();
     return `<div class="module-card box ${bp === 'locked' ? 'locked' : ''}" data-key="${d.id}">${lead}<div style="min-width:0"><div class="title" style="font-weight:600">${esc(d.name)}</div><div class="small muted">${desc}</div></div>
       ${io}<div class="meta" style="grid-column:1/-1"><span>Kosten <b>${fmtCr(d.cost)}</b></span><span>Bauzeit <b>${fmtDur(d.buildTime)}</b></span></div>
       <div class="actions">${action}</div></div>`;
   }).join('');
   const nBuy = list.filter((d) => blueprintState(state, d.id) === 'buyable').length;
-  const body = `<div class="tabs" style="padding:0 0 12px">${cats.map(([c, l]) => `<button class="${m.cat === c ? 'active' : ''}" ${act('modules-cat', { cat: c })}>${l}</button>`).join('')}</div>
-    ${nBuy ? `<button class="bp-hint" ${act('open-blueprints')}>${icon('lock', 16)}<span>${nBuy} Bauplan${nBuy === 1 ? '' : 'e'} in dieser Kategorie kaufbar – Übersicht aller Baupläne</span>${icon('chev', 16)}</button>` : ''}
-    <div style="display:grid;gap:10px">${cards}</div>`;
+  const body = `${searchBox('modules', q, 'Modul oder Ware suchen …')}
+    ${q ? `<p class="small muted" style="margin:-4px 0 10px">Suche in allen Kategorien · ${list.length} Treffer</p>` : `<div class="tabs" style="padding:0 0 12px">${cats.map(([c, l]) => `<button class="${m.cat === c ? 'active' : ''}" ${act('modules-cat', { cat: c })}>${l}</button>`).join('')}</div>`}
+    <div class="pills" style="margin-bottom:12px"><button class="pill ${ui.ownedOnly ? 'amber' : ''}" ${act('owned-only')}>${icon('check', 13)} Nur mit Bauplan</button></div>
+    ${nBuy ? `<button class="bp-hint" ${act('open-blueprints')}>${icon('lock', 16)}<span>${nBuy === 1 ? '1 Bauplan' : `${nBuy} Baupläne`} hier kaufbar – bei den Vertretern vor Ort</span>${icon('chev', 16)}</button>` : ''}
+    ${cards ? `<div style="display:grid;gap:10px">${cards}</div>` : `<div class="box empty-search">Nichts gefunden${q ? ` für „${esc(q)}“` : ''}.</div>`}`;
   return modalShell(m.at === undefined ? 'Modul einplanen' : `Modul an Position ${m.at + 1} einfügen`, body, `<button class="btn" ${act('modal-close')}>Fertig</button>`, `${st.name} · ${fmtCr(state.credits)} verfügbar`);
 }
 

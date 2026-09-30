@@ -6,6 +6,7 @@ import type { Contract, FactionId, GameState } from './types';
 import { emit, log } from './util';
 import { netWorth } from './stats';
 import { MODULES } from '../data/modules';
+import { vendorsFor } from '../data/vendors';
 
 export interface StoryMission {
   id: string;
@@ -95,7 +96,7 @@ export const STORY: StoryMission[] = [
     title: 'Werftbedarf',
     story: 'Die Zhin-Werft will neue Rümpfe auflegen. Hüllenteile verbinden deine Metall- und Graphenproduktion zu einer echten Kette.',
     goal: 'Liefere 1.500 Hüllenteile an den Zhin-Handelsposten',
-    hint: 'Kaufe den Bauplan für Hüllenteile (Ruf 7). Transporter im Autohandel liefern automatisch für aktive Aufträge.',
+    hint: 'Den Bauplan für Hüllenteile (Ruf 7) verkauft der Handelsvertreter am Zhin-Handelsposten – tippe ihn auf der Karte an. Transporter im Autohandel liefern automatisch für aktive Aufträge.',
     progress: (s) => { const c = storyContract(s); return { cur: c ? c.delivered : 0, target: 1500 }; },
     reward: { credits: 2_500_000, rep: { frf: 3 } },
     delivery: { sector: 'zhin', ware: 'hullparts', amount: 1500 },
@@ -116,7 +117,7 @@ export const STORY: StoryMission[] = [
     title: 'Steuertechnik',
     story: 'Für Scanner und Antriebe braucht es Mikrochips. Siliziumscheiben sind der Engpass.',
     goal: 'Produziere 1.000 Mikrochips',
-    hint: 'Mikrochips brauchen 200 Siliziumscheiben pro Zyklus – plane mehrere Scheibenfabriken ein.',
+    hint: 'Den Bauplan für Mikrochips hat der Handelsvertreter am Handelsposten. Mikrochips brauchen 200 Siliziumscheiben pro Zyklus – plane mehrere Scheibenfabriken ein.',
     progress: (s) => ({ cur: producedSince(s, 'microchips'), target: 1000 }),
     reward: { credits: 3_000_000, rep: { frf: 2, zya: 2 } },
   },
@@ -147,7 +148,7 @@ export const STORY: StoryMission[] = [
     about: 'Eine Schiffsfertigung baut Schiffe aus Waren: Hüllenteile für den Rumpf, Antriebsteile für Triebwerke, Schildkomponenten, Geschützkomponenten für Abbautürme. Das Material kostet nur einen Bruchteil des Kaufpreises.',
     story: 'Die Baupläne liegen bereit. Die erste Werft der Familie seit dem Xenon-Angriff soll auf deiner Station stehen.',
     goal: 'Baue eine S/M-Schiffsfertigung',
-    hint: 'Bauplan unter „Modul einplanen“ → „Werft“ (Ruf 10). Das Modul selbst braucht 3.312 Claytronik, 6.620 Energiezellen und 12.112 Hüllenteile – Transporter kaufen Fehlendes zu.',
+    hint: 'Den Bauplan (Ruf 10) gibt es nur beim Werftvertreter der Zhin-Werft – tippe die Werft auf der Karte an. Das Modul selbst braucht 3.312 Claytronik, 6.620 Energiezellen und 12.112 Hüllenteile – Transporter kaufen Fehlendes zu.',
     progress: (s) => ({ cur: countModules(s, 'yard_m') + countModules(s, 'yard_l'), target: 1 }),
     reward: { credits: 8_000_000, rep: { frf: 3 } },
   },
@@ -215,10 +216,11 @@ let lastBuyable = -1;
 
 /** Meldet, wenn durch gestiegenen Ruf neue Baupläne kaufbar werden */
 function checkBlueprints(state: GameState): void {
-  const buyable = MODULES.filter((d) => !state.blueprints.includes(d.id) && state.rep.frf >= d.repRequired);
-  const unlocked = MODULES.filter((d) => state.rep.frf >= d.repRequired).length;
+  const open = (d: (typeof MODULES)[number]) => vendorsFor(d.id).some((v) => state.rep[v.faction] >= d.repRequired);
+  const buyable = MODULES.filter((d) => !state.blueprints.includes(d.id) && open(d));
+  const unlocked = MODULES.filter(open).length;
   if (lastBuyable >= 0 && unlocked > lastBuyable && buyable.length) {
-    log(state, `Neue Baupläne kaufbar (${buyable.length}) – Stationen → Baupläne.`, 'good', true);
+    log(state, `Mehr Ruf: neue Baupläne bei den Vertretern (${buyable.length} kaufbar) – tippe einen Handelsposten oder eine Werft an.`, 'good', true);
   }
   lastBuyable = unlocked;
 }

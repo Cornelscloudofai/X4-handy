@@ -31,9 +31,10 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
 | Schiffe | Split-Schiffe mit echten Daten: Preis = Rumpf + Grundausstattung (Triebwerke, Schilde, Abbautürme), Reisegeschwindigkeit aus Schub und Luftwiderstand, Frachtraum; Miner (Mineral/Gas, M/L), Kurier, Transporter, Großfrachter |
 | Logistik | Miner fördern nach Bedarf; Transporter im Autohandel oder als feste Versorgungslinie; Flüge über Sprungtore |
 | Märkte | Preise folgen dem Bestand wie in X4 (Min–Max-Spanne), NPC-Händler besuchen deine Stationen, Nachfrageschwankungen |
-| Baupläne | Eigene Übersicht (Kaufbar / Gesperrt nach Rufstufe / Eigene) mit Eingangswaren und Kosten; erreichbar über Stationen, Modul-Tab, Moduldialog, Aufträge und Leitstand; Meldung, sobald neuer Ruf Baupläne freischaltet |
+| Baupläne | Nur vor Ort beim Vertreter: Split-Baupläne bei den Handelsvertretern aller Handelsposten, waffennahe Baupläne (Geschütz-, Raketen-, Drohnen-, Schild-, Waffenkomponenten, Feldspulen) und Schiffsfertigung bei den Werftvertretern der NPC-Werften, fremde Bauweisen bei Gesandtschaften (Argonen in Zhin, Boronen in Tkr, Teladi in Tharka's Cascade, Terraner in Tharka's Ravine, Paraniden in Heart of Acrimony); Ruf der Gastgeberfraktion zählt, Sektor muss erreichbar sein. Übersicht mit Suche und „Hinfliegen“; im freien Planer sind alle Baupläne nutzbar, die Übernahme in eine Station wird aber mit Liste der fehlenden Baupläne blockiert |
 | Lieferaufträge | Nach der Station wählen, wer liefert: Kurier sofort gegen 10 % Gebühr oder eigener Transporter ohne Gebühr, mit Fahrten, Dauer und Ersparnis; Lager-Reserve direkt anpassbar |
 | Fortschritt | Kampagne mit 15 Kapiteln bis zur eigenen Werft, jedes mit Erklärung, wofür die Ware gebraucht wird; Lieferaufträge, Ruf bei Freien Familien und Zyarth-Patriarchat, Baupläne, Baulizenzen für 7 Sektoren |
+| Listen | Module, Baupläne und Produkte immer alphabetisch, mit Suche (auch nach Zutaten, Umlaute egal) |
 | Komfort | Zeitraffer ×1 bis ×60, Offline-Fortschritt (bis 8 h), automatisches Speichern, Spielstand als Text oder Datei sichern und laden, Rückgängig für Bauliste und Planer, Android-Zurück-Taste schließt Dialoge und Blätter |
 
 ## Offene Punkte

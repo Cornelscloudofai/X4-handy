@@ -30,7 +30,7 @@ await page.evaluate(() => {
   while (g.claim().ok);
   const r = A.foundStation(s, 'zhin', 60, 55);
   for (const d of ['storage_container', 'dock_m', 'prod_energycells', 'prod_hullparts']) { s.blueprints.includes('prod_' + d) || true; A.queueModule(s, r.id, d); }
-  A.buyBlueprint(s, 'prod_hullparts');
+  A.buyBlueprint(s, 'prod_hullparts', 'v-zhin');
   A.queueModule(s, r.id, 'prod_hullparts');
   A.buyShip(s, 'boa', r.id);
   g.step(2 * 3600);

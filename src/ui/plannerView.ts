@@ -1,5 +1,8 @@
 // Stationsplaner: Entwurf oder echte Station planen, Kette als Fließdiagramm bearbeiten
 import { canUndo, undoLabel } from './undo';
+import { matches, searchBox } from './search';
+import { missingBlueprints, vendorOffer } from '../engine/actions';
+import { vendorPlace, vendorsFor } from '../data/vendors';
 import { MODULE_MAP } from '../data/modules';
 import { SECTORS, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
@@ -26,6 +29,23 @@ export interface PlannerUI {
   planSource: string;
   planDetails: boolean;
   dg: { x: number; y: number; k: number };
+}
+
+/** Baupläne, die für die Module des Plans fehlen */
+export function planMissing(state: GameState, r: PlanResult): string[] {
+  return missingBlueprints(state, buildOrder(r));
+}
+
+/** Hinweis im freien Planer: Plan ist testbar, Übernahme erst mit Bauplänen */
+function missingNote(state: GameState, missing: string[], full = false): string {
+  if (!missing.length) return '';
+  const names = missing.map((id) => MODULE_MAP[id].name.replace(/-Fabrik$/, '')).sort((a, b) => a.localeCompare(b, 'de'));
+  const rows = full ? `<div class="box rows" style="margin-top:10px">${missing.map((id) => MODULE_MAP[id]).sort((a, b) => a.name.localeCompare(b.name, 'de')).map((d) => {
+    const v = vendorsFor(d.id).find((x) => vendorOffer(state, x, d.id) !== 'far');
+    const place = vendorsFor(d.id)[0];
+    return `<div class="row">${icon('lock', 18, 'muted')}<div class="grow"><div class="title two-lines">${esc(d.name)}</div><div class="sub wrap">${place ? `bei ${esc(place.role === 'Handelsvertreter' ? 'den Handelsvertretern' : vendorPlace(place))} · ${fmtCr(d.blueprintCost)} · Ruf ${d.repRequired}` : 'nicht käuflich'}</div></div>${v ? `<button class="btn small" ${act('goto-vendor', { id: v.id })}>${icon('arrowRight', 15)}Hin</button>` : ''}</div>`;
+  }).join('')}</div>` : '';
+  return `<div class="plan-missing">${icon('lock', 18)}<div><b>${missing.length === 1 ? '1 Bauplan fehlt' : `${missing.length} Baupläne fehlen`}</b> – der Entwurf lässt sich testen, aber erst nach dem Kauf in eine Station übernehmen: ${esc(names.join(', '))}.${rows}</div></div>`;
 }
 
 /** Die gerade bearbeitete Planung: Entwurf oder die Module einer Station */
@@ -80,7 +100,7 @@ export function plannerPanel(state: GameState, p: PlannerUI): string {
     </div>` : '';
 
   const preview = hasPlan ? `<button class="diagram-preview" ${act('plan-full')} aria-label="Fließdiagramm im Vollbild bearbeiten">
-      ${diagramSvg(r, p, counts, { preview: true })}
+      ${diagramSvg(r, p, counts, { preview: true, missing: new Set(missingBlueprints(state, buildOrder(r))) })}
       <span class="preview-hint">${icon('planner', 16)}Antippen: Vollbild-Editor</span>
     </button>` : '';
 
@@ -111,7 +131,8 @@ export function plannerPanel(state: GameState, p: PlannerUI): string {
       <button class="details-toggle" ${act('plan-details')} aria-expanded="${p.planDetails}">${icon(p.planDetails ? 'up' : 'down', 16)}Stückliste, Rohstoffe und Baumaterial</button>
       ${p.planDetails ? detailsBlock(state, r, !!st) : ''}</div>` : '';
 
-  const actions = !st && hasPlan ? `<div class="section card-actions"><button class="btn primary" ${act('plan-build-modal')}>${icon('wrench', 18)}In Station übernehmen</button><button class="btn" ${act('plan-reset')}>Zurücksetzen</button>${canUndo() ? `<button class="btn" ${act('undo')}>${icon('undo', 18)}Rückgängig</button>` : ''}</div>` : '';
+  const missing = !st && hasPlan ? planMissing(state, r) : [];
+  const actions = !st && hasPlan ? `${missingNote(state, missing)}<div class="section card-actions"><button class="btn ${missing.length ? '' : 'primary'}" ${act('plan-build-modal')}>${icon('wrench', 18)}In Station übernehmen</button><button class="btn" ${act('plan-reset')}>Zurücksetzen</button>${canUndo() ? `<button class="btn" ${act('undo')}>${icon('undo', 18)}Rückgängig</button>` : ''}</div>` : '';
 
   return `${source}${summary}${preview}${controls}${details}${actions}`;
 }
@@ -195,10 +216,10 @@ export function chainOf(r: PlanResult, focus: string): { nodes: Set<string>; edg
   return { nodes, edges };
 }
 
-interface DiagramOpts { preview?: boolean; layout?: Record<string, { x: number; y: number }> }
+interface DiagramOpts { preview?: boolean; layout?: Record<string, { x: number; y: number }>; missing?: Set<string> }
 
 /** SVG-Inhalt: Kanten, Beschriftungen, Modul-Kästchen mit +/− und Empfehlung */
-export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<string, ModuleCount>, pos: Map<string, { x: number; y: number }>, preview: boolean): string {
+export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<string, ModuleCount>, pos: Map<string, { x: number; y: number }>, preview: boolean, missing?: Set<string>): string {
   const focus = p.planFocus && r.nodes[p.planFocus] ? p.planFocus : '';
   const chain = focus && p.planChain ? chainOf(r, focus) : null;
   const edgeLit = (e: { from: string; to: string }) => (chain ? chain.edges.has(e.from + '>' + e.to) : e.from === focus || e.to === focus);
@@ -274,12 +295,13 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
         <text x="${x + 14}" y="${y + 72}" class="dg-sub">${n.kind === 'mined' ? `${fmtAmount(n.use * w.volume)} m³/h abbauen` : `ca. ${fmtCr(n.use * w.price.avg)}/h`}</text>
         <text x="${x + 14}" y="${y + 100}" class="dg-net" fill="${col}">${n.kind === 'mined' ? 'Miner liefern' : 'wird zugekauft'}</text>`;
     }
-    const tag = n.kind === 'mined' ? 'Rohstoff' : n.kind === 'bought' ? 'Zukauf' : st === 'end' ? 'Endprodukt' : '';
+    const noBp = n.kind === 'module' && missing?.has('prod_' + id);
+    const tag = [n.kind === 'mined' ? 'Rohstoff' : n.kind === 'bought' ? 'Zukauf' : st === 'end' ? 'Endprodukt' : '', noBp ? 'Bauplan fehlt' : ''].filter(Boolean).join(' · ');
     cards += `<g class="dg-node" data-node="${id}" opacity="${dim ? (chain ? 0.22 : 0.35) : 1}">${ring}
       <rect x="${x}" y="${y}" width="${NW}" height="${NH}" rx="14" fill="${st === 'end' ? '#1d1b12' : '#0c1c2a'}" stroke="${col}" stroke-width="${focus === id ? 3 : 1.6}"${n.kind === 'bought' ? ' stroke-dasharray="6 4"' : ''}/>
       <rect x="${x}" y="${y}" width="6" height="${NH}" rx="3" fill="${w.color}"/>
       <text x="${x + 14}" y="${y + 24}" class="dg-title">${esc(name)}</text>
-      ${tag ? `<text x="${x + 12}" y="${y - 7}" class="dg-tag" fill="${col}">${tag}</text>` : ''}
+      ${tag ? `<text x="${x + 12}" y="${y - 7}" class="dg-tag" fill="${noBp ? '#ffb547' : col}">${tag}</text>` : ''}
       ${inner}
     </g>`;
   }
@@ -293,7 +315,7 @@ function wareDotSvg(color: string): string {
 export function diagramSvg(r: PlanResult, p: PlannerUI, counts: Record<string, ModuleCount>, opts: DiagramOpts = {}): string {
   const pos = nodePositions(r, opts.layout);
   const b = diagramBounds(pos);
-  return `<svg class="diagram" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Fließdiagramm der Produktionskette">${diagramContent(r, p, counts, pos, !!opts.preview)}</svg>`;
+  return `<svg class="diagram" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Fließdiagramm der Produktionskette">${diagramContent(r, p, counts, pos, !!opts.preview, opts.missing)}</svg>`;
 }
 
 /** Vollbild-Editor: frei verschieb- und zoombar, Kästchen lassen sich ziehen */
@@ -319,7 +341,7 @@ export function diagramEditor(state: GameState, p: PlannerUI, layoutOverride?: R
       <span class="dg-legend">${problems ? `<b class="neg">${problems} ${problems === 1 ? 'Engpass' : 'Engpässe'}</b>` : '<b class="pos">voll versorgt</b>'} · ${r.totalModules} Module</span>
     </div>
     <svg class="dg-editor" role="img" aria-label="Fließdiagramm – ziehen zum Verschieben, zwei Finger zum Zoomen">
-      <g id="dg-view" transform="translate(${v.x.toFixed(1)} ${v.y.toFixed(1)}) scale(${v.k.toFixed(4)})">${diagramContent(r, p, counts, pos, false)}</g>
+      <g id="dg-view" transform="translate(${v.x.toFixed(1)} ${v.y.toFixed(1)}) scale(${v.k.toFixed(4)})">${diagramContent(r, p, counts, pos, false, new Set(planMissing(state, r)))}</g>
     </svg>
     ${p.planFocus && r.nodes[p.planFocus] ? `<div class="dg-focusbar" role="group" aria-label="Hervorhebung">
       <span class="dg-focus-name">${wareDotSvg(WARES[p.planFocus].color)}${esc(WARES[p.planFocus].name)}</span>
@@ -333,21 +355,27 @@ export function diagramEditor(state: GameState, p: PlannerUI, layoutOverride?: R
 
 // ---------- Dialoge ----------
 
-export function pickerModal(group: string): string {
+export function pickerModal(state: GameState, group: string, q: string): string {
   const groups = ['all', 'refined', 'hightech', 'shiptech', 'food', 'agri', 'pharma', 'energy'];
-  const ids = WARE_IDS.filter((id) => producible(id) && (group === 'all' || WARES[id].group === group))
-    .sort((a, b) => WARES[a].tier - WARES[b].tier || WARES[a].name.localeCompare(WARES[b].name));
+  // Alphabetisch; mit Suchtext über alle Gruppen
+  const ids = WARE_IDS.filter((id) => producible(id) && (q || group === 'all' || WARES[id].group === group) && matches(q, WARES[id].name, GROUP_LABEL[WARES[id].group], ...inputsPerHour(id).map((i) => WARES[i.ware].name)))
+    .sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
   const rows = ids.map((id) => {
     const w = WARES[id];
     const ins = inputsPerHour(id).map((i) => WARES[i.ware].name).join(', ');
+    const own = !MODULE_MAP['prod_' + id] || state.blueprints.includes('prod_' + id);
     return `<div class="row tap" ${act('plan-add', { ware: id })} data-key="${id}">${tile(id)}<div class="grow"><div class="title">${esc(w.name)} <span class="small muted">Stufe ${w.tier}</span></div>
-      <div class="sub">${ins ? 'aus ' + esc(ins) : 'Sonnenlicht'}</div></div><span class="small muted">${fmtInt(w.price.avg)} Cr</span>${icon('plus', 18, 'chev')}</div>`;
+      <div class="sub">${ins ? 'aus ' + esc(ins) : 'Sonnenlicht'}</div></div>${own ? '' : `<span class="small warn-text" title="Bauplan fehlt">${icon('lock', 14)}</span>`}<span class="small muted">${fmtInt(w.price.avg)} Cr</span>${icon('plus', 18, 'chev')}</div>`;
   }).join('');
-  return `<div class="pills" style="margin-bottom:12px">${groups.map((g) => `<button class="pill ${group === g ? 'amber' : ''}" ${act('plan-pick-group', { g })}>${g === 'all' ? 'Alle' : esc(GROUP_LABEL[g as 'refined'])}</button>`).join('')}</div>
-    <div class="box rows">${rows}</div>`;
+  return `${searchBox('picker', q, 'Produkt oder Zutat suchen …')}
+    ${q ? '' : `<div class="pills" style="margin-bottom:12px">${groups.map((g) => `<button class="pill ${group === g ? 'amber' : ''}" ${act('plan-pick-group', { g })}>${g === 'all' ? 'Alle' : esc(GROUP_LABEL[g as 'refined'])}</button>`).join('')}</div>`}
+    <p class="small muted" style="margin:0 0 10px">${icon('lock', 12, 'inline')} = Bauplan fehlt noch. Im Entwurf trotzdem planbar.</p>
+    ${rows ? `<div class="box rows">${rows}</div>` : `<div class="box empty-search">Nichts gefunden für „${esc(q)}“.</div>`}`;
 }
 
 export function buildModal(state: GameState, r: PlanResult): string {
+  const missing = planMissing(state, r);
+  if (missing.length) return `<p class="lead">Dieser Entwurf kann nicht in eine Station übernommen werden, weil Baupläne fehlen. Kaufe sie bei den Vertretern vor Ort und versuche es dann erneut.</p>${missingNote(state, missing, true)}`;
   const rows = state.stations.map((st) => `<div class="row tap" ${act('plan-build', { st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${st.modules.length} Module · ${st.queue.length + (st.build ? 1 : 0)} in der Baureihenfolge</div></div>${icon('chev', 20, 'chev')}</div>`).join('');
   return `<p class="lead">Die ${r.totalModules} Produktionsmodule werden als einzelne Positionen an die Baureihenfolge angehängt – Vorprodukte zuerst. Fehlende Lager und ein Dock kommen davor. Bezahlt wird beim jeweiligen Baustart (gesamt etwa ${fmtCr(r.cost)}).</p>
     <div class="box rows">${rows}</div>`;

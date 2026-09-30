@@ -36,7 +36,7 @@ for (let h = 0; h < 72; h++) {
     }
     if (m === 'hull' && second) {
       const b = s.stations.find((x) => x.id === second)!;
-      if (!s.blueprints.includes('prod_hullparts')) { const r = A.buyBlueprint(s, 'prod_hullparts'); if (r.ok) log(r.msg); }
+      if (!s.blueprints.includes('prod_hullparts')) { const r = A.buyBlueprint(s, 'prod_hullparts', 'v-zhin'); if (r.ok) log(r.msg); }
       if (s.blueprints.includes('prod_hullparts') && !b.modules.concat(b.queue.map((q) => ({ def: q.def }) as never)).some((x) => x.def === 'prod_hullparts') && b.build?.def !== 'prod_hullparts') {
         const r = A.queueModule(s, b.id, 'prod_hullparts'); log('Hüllenteile:', r.msg);
         A.queueModule(s, st.id, 'prod_refinedmetals');

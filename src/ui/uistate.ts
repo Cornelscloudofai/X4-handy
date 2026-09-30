@@ -22,6 +22,7 @@ export type Modal =
   | { type: 'home'; ship: string }
   | { type: 'courier'; contract: number; station?: string }
   | { type: 'planPick'; group: string; back?: boolean }
+  | { type: 'vendor'; sector: string; npc?: string; vendor?: string }
   | { type: 'storage'; station: string; ware: string; back?: Modal }
   | { type: 'planBuild' }
   | { type: 'planDiagram' }
@@ -45,6 +46,10 @@ export interface UIState {
   planZoom: number;
   planFocus: string;
   planChain: boolean;
+  /** Suchtext je Liste (modules, blueprints, vendor, picker) */
+  search: Record<string, string>;
+  /** Moduldialog: nur Module mit Bauplan */
+  ownedOnly: boolean;
   planEnergy: boolean;
   planSource: string;
   planDetails: boolean;
@@ -69,6 +74,8 @@ export const ui: UIState = {
   planZoom: 0.8,
   planFocus: '',
   planChain: false,
+  search: {},
+  ownedOnly: false,
   planEnergy: true,
   planSource: 'draft',
   planDetails: false,

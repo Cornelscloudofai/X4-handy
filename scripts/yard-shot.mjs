@@ -45,6 +45,8 @@ const clipped = () => page.evaluate(() => {
     if ((cs.textOverflow === 'ellipsis' || cs.overflow === 'hidden') && el.scrollWidth > el.clientWidth + 1) res.push(el.className + ': ' + el.textContent.trim().slice(0, 50));
   }
   for (const t of document.querySelectorAll('.tabs')) if (t.scrollWidth > t.clientWidth + 1) res.push('Reiter passen nicht: ' + t.textContent.trim());
+  for (const c of document.querySelectorAll('.card, .modal')) { const r = c.getBoundingClientRect(); for (const btn of c.querySelectorAll('.btn')) { const q = btn.getBoundingClientRect(); if (q.width && q.right > r.right + 1) res.push('Knopf ragt heraus: ' + btn.textContent.trim()); } }
+  for (const h of document.querySelectorAll('.card-head h2')) if (h.scrollHeight > h.clientHeight + 1) res.push('Kartentitel abgeschnitten: ' + h.textContent);
   const b = document.querySelector('.chip.sector b');
   if (b && b.scrollHeight > b.clientHeight + 1) res.push('Sektorname abgeschnitten');
   if (document.documentElement.scrollWidth > innerWidth) res.push('Seite breiter als Bildschirm');
@@ -97,6 +99,41 @@ await check('12-deliver');
 
 await act('[data-act="buyship-modal"]').catch(() => {});
 await check('09-buy');
+// Vertreter am Handelsposten: nur dort gibt es Baupläne
+await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.ui.panel = null; g.ui.selection = { kind: 'trade', id: 'zhin' }; g.refresh(); });
+await page.waitForTimeout(300);
+await check('13-trade-card');
+await act('[data-act="open-vendor"]');
+await check('14-vendor');
+await page.fill('#modal input[data-change="search"]', 'hülle');
+await page.waitForTimeout(300);
+await check('15-vendor-search');
+report.vendorSearch = await page.evaluate(() => document.querySelectorAll('#modal [data-key^="vd-"]').length === 1);
+// Werftvertreter an der NPC-Werft
+await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.ui.selection = { kind: 'npcst', id: 'zhin-werft' }; g.refresh(); });
+await page.waitForTimeout(300);
+await act('[data-act="open-vendor"]');
+await check('16-wharf-vendor');
+// Moduldialog: alphabetisch, Suche über alle Kategorien
+await page.evaluate(() => { const g = window.__game; g.ui.search.vendor = ''; g.ui.modal = { type: 'modules', station: g.state.stations[0].id, cat: 'production' }; g.refresh(); });
+await page.waitForTimeout(300);
+report.modulesAlphabetical = await page.evaluate(() => { const t = [...document.querySelectorAll('#modal .module-card .title')].map((x) => x.textContent.trim()); return t.length > 5 && t.every((x, i) => !i || t[i - 1].localeCompare(x, 'de') <= 0); });
+await page.fill('#modal input[data-change="search"]', 'lager');
+await page.waitForTimeout(300);
+await check('17-modules-search');
+report.modulesSearch = await page.evaluate(() => document.querySelectorAll('#modal .module-card').length === 3);
+// Freier Planer: Baupläne fehlen → testbar, aber keine Übernahme
+await page.evaluate(() => {
+  const g = window.__game; g.ui.modal = null; g.ui.search.modules = '';
+  g.ui.plan = { targets: [{ ware: 'claytronics', modules: 1 }], sunlight: 100, workforce: false, buy: [], extra: {}, auto: true, layout: {} };
+  g.ui.planSource = 'draft'; g.openPanel('planner'); g.refresh();
+});
+await page.waitForTimeout(400);
+await page.evaluate(() => document.querySelector('.plan-missing')?.scrollIntoView());
+await check('18-planner-missing');
+await act('[data-act="plan-build-modal"]');
+await check('19-build-blocked');
+report.buildBlocked = await page.evaluate(() => !!document.querySelector('#modal .plan-missing') && !document.querySelector('#modal [data-act="plan-build"]'));
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();

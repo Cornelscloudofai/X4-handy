@@ -1,9 +1,10 @@
 // Steuerung: Spielschleife, Karte, Eingaben, Oberfläche und Speichern
 import { undo, withUndo } from './undo';
 import * as Y from '../engine/yard';
+import { VENDOR_MAP } from '../data/vendors';
 import { deliverWithShip } from '../engine/delivery';
 import { acceptShipOrder, cancelShipBuild, queueShipBuild } from '../engine/yard';
-import { SECTOR_MAP, SECTOR_RADIUS } from '../data/sectors';
+import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { acceptContract } from '../engine/contracts';
@@ -26,7 +27,7 @@ import { defaultSellModal, shipClass } from './sellView';
 import { saleOffers } from '../engine/sales';
 import { SPEEDS, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
-import { activePlan, buildOrder, diagramBounds, diagramEditor, nodePositions } from './plannerView';
+import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, nodePositions } from './plannerView';
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
 import { MODULE_MAP } from '../data/modules';
 import { WARES } from '../data/wares';
@@ -76,7 +77,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -322,6 +323,20 @@ function initBackButton(): void {
   });
 }
 
+/** Kamera zum Vertreter fliegen und dort den Vertreter-Dialog öffnen */
+function gotoVendor(id: string): void {
+  const v = VENDOR_MAP[id];
+  if (!v) return;
+  ui.panel = null;
+  ui.modal = null;
+  const place = v.npc ? NPC_MAP[v.npc] : SECTOR_MAP[v.sector].tradeStation;
+  if (ui.sector !== v.sector || ui.view !== 'sector') gotoSector(v.sector);
+  focusOn(place.x, place.z, v.sector);
+  ui.selection = v.npc ? { kind: 'npcst', id: v.npc } : { kind: 'trade', id: v.sector };
+  refresh();
+  setTimeout(() => { ui.modal = { type: 'vendor', sector: v.sector, npc: v.npc, vendor: v.id }; ui.search.vendor = ''; refresh(); }, 650);
+}
+
 function focusOn(x: number, z: number, sectorId: string, zoom?: number): void {
   if (ui.sector !== sectorId) { ui.sector = sectorId; }
   ui.view = 'sector';
@@ -465,6 +480,8 @@ function onClick(e: MouseEvent): void {
         const st = stationById(state, d.st!);
         if (!st) break;
         const r = computePlan(ui.plan);
+        const miss = planMissing(state, r);
+        if (miss.length) { toast(`Übernahme nicht möglich: ${miss.length === 1 ? 'ein Bauplan fehlt' : `${miss.length} Baupläne fehlen`}.`, 'warn'); refresh(); break; }
         const have = (def: string) => st.modules.some((m) => m.def === def) || st.queue.some((q) => q.def === def) || st.build?.def === def;
         const basics: string[] = [];
         if (!have('storage_container')) basics.push('storage_container');
@@ -558,7 +575,12 @@ function onClick(e: MouseEvent): void {
       }
       case 'q-move': result(A.moveQueued(state, d.st!, Number(d.uid), Number(d.to))); break;
       case 'cancel-build': result(A.cancelBuild(state, d.st!)); break;
-      case 'buy-bp': result(A.buyBlueprint(state, d.def!)); break;
+      case 'buy-bp': result(A.buyBlueprint(state, d.def!, d.vendor!)); break;
+      case 'open-vendor': ui.modal = { type: 'vendor', sector: d.sector!, npc: d.npc }; ui.search.vendor = ''; refresh(); break;
+      case 'vendor-pick': if (ui.modal?.type === 'vendor') { ui.modal = { ...ui.modal, vendor: d.id }; refresh(); } break;
+      case 'goto-vendor': gotoVendor(d.id!); break;
+      case 'owned-only': ui.ownedOnly = !ui.ownedOnly; refresh(); break;
+      case 'search-clear': ui.search[d.scope!] = ''; refresh(); break;
       case 'open-blueprints': ui.modal = null; openPanel('blueprints', undefined, 'buy', !!ui.panel); break;
       case 'cancel-q': result(A.cancelQueued(state, d.st!, Number(d.uid))); break;
       case 'ask-demolish': ask('Modul abreißen?', 'Du erhältst 30 % der Baukosten als Materialerlös zurück. Lagerbestände über der neuen Grenze bleiben erhalten.', 'demolish', { st: d.st!, uid: d.uid! }, 'Abreißen', true); break;
@@ -814,6 +836,11 @@ function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
+  if (field === 'search') {
+    ui.search[el.dataset.scope ?? ''] = (el as unknown as HTMLInputElement).value;
+    refresh();
+    return;
+  }
   if (field === 'import-file') {
     const f = (el as unknown as HTMLInputElement).files?.[0];
     const t = document.getElementById('importText') as HTMLTextAreaElement | null;
