@@ -170,7 +170,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 @keyframes sheet { from { transform: translateY(40px); opacity: 0; } }
 .sheet-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
 .sheet-head h1 { margin: 0; flex: 1; min-width: 0; font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sheet-head .eyebrow { display: block; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-family: var(--font-display); font-weight: 500; }
+.sheet-head .eyebrow { display: block; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-family: var(--font-display); font-weight: 500; line-height: 1.6; padding-top: 1px; }
 .icon-btn { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); color: var(--text-2); background: rgba(255, 255, 255, 0.02); flex: none; }
 .sheet-body { flex: 1; overflow-y: auto; padding: 14px 14px calc(var(--nav-h) + var(--safe-bottom) + 24px); -webkit-overflow-scrolling: touch; user-select: text; -webkit-user-select: text; }
 .tabs { display: flex; gap: 5px; padding: 10px 14px 0; overflow-x: auto; scrollbar-width: none; }

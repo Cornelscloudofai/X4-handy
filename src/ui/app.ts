@@ -484,10 +484,11 @@ function onClick(e: MouseEvent): void {
         if (miss.length) { toast(`Übernahme nicht möglich: ${miss.length === 1 ? 'ein Bauplan fehlt' : `${miss.length} Baupläne fehlen`}.`, 'warn'); refresh(); break; }
         const have = (def: string) => st.modules.some((m) => m.def === def) || st.queue.some((q) => q.def === def) || st.build?.def === def;
         const basics: string[] = [];
-        if (!have('storage_container')) basics.push('storage_container');
+        const haveStore = (type: string) => [...st.modules.map((m) => m.def), ...st.queue.map((q) => q.def), st.build?.def ?? ''].some((def) => MODULE_MAP[def]?.kind === 'storage' && MODULE_MAP[def]?.storage === type);
+        if (!haveStore('Container')) basics.push('storage_container_m');
         const mined = Object.values(r.nodes).filter((n) => n.kind === 'mined').map((n) => WARES[n.ware].storage);
-        if (mined.includes('Solid') && !have('storage_solid')) basics.push('storage_solid');
-        if (mined.includes('Liquid') && !have('storage_liquid')) basics.push('storage_liquid');
+        if (mined.includes('Solid') && !haveStore('Solid')) basics.push('storage_solid');
+        if (mined.includes('Liquid') && !haveStore('Liquid')) basics.push('storage_liquid');
         if (!have('dock_m')) basics.push('dock_m');
         let queued = 0;
         const skipped = new Map<string, string>();

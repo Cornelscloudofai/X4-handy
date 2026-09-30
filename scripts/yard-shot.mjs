@@ -121,7 +121,7 @@ report.modulesAlphabetical = await page.evaluate(() => { const t = [...document.
 await page.fill('#modal input[data-change="search"]', 'lager');
 await page.waitForTimeout(300);
 await check('17-modules-search');
-report.modulesSearch = await page.evaluate(() => document.querySelectorAll('#modal .module-card').length === 3);
+report.modulesSearch = await page.evaluate(() => document.querySelectorAll('#modal .module-card').length === 9);
 // Freier Planer: Baupläne fehlen → testbar, aber keine Übernahme
 await page.evaluate(() => {
   const g = window.__game; g.ui.modal = null; g.ui.search.modules = '';

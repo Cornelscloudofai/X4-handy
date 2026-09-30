@@ -6,7 +6,7 @@ import { initMarkets } from './economy';
 import { startMission } from './story';
 import type { GameState, ModuleInst, Ship, Station } from './types';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 export const SAVE_KEY = 'x4-sektorbau-save-v1';
 export const START_CREDITS = 2_500_000;
 
@@ -42,7 +42,7 @@ export function newGame(seed = Date.now() % 2147483647): GameState {
   };
   initMarkets(state);
   const st = newStation(state, 'Station Alpha', 'zhin', -45, -55);
-  for (const def of ['core', 'prod_energycells', 'storage_container', 'storage_solid', 'dock_m']) st.modules.push({ ...newModule(state, def), util: 1 });
+  for (const def of ['core', 'prod_energycells', 'storage_container_m', 'storage_solid', 'dock_m']) st.modules.push({ ...newModule(state, def), util: 1 });
   st.inventory = { energycells: 3000, ore: 2000 };
   state.stations.push(st);
   state.ships.push(newShip(state, 'alligator_min', st));
@@ -59,8 +59,18 @@ export function serialize(state: GameState): string {
 /** Lädt einen Spielstand und prüft ihn grob auf Gültigkeit */
 export function deserialize(text: string): GameState {
   const raw = JSON.parse(text) as GameState;
-  if (!raw || typeof raw !== 'object' || raw.version !== SAVE_VERSION || !Array.isArray(raw.stations)) {
+  if (!raw || typeof raw !== 'object' || !(raw.version >= 1 && raw.version <= SAVE_VERSION) || !Array.isArray(raw.stations)) {
     throw new Error('Kein gültiger Spielstand.');
+  }
+  // Version 1: Containerlager S hatte 100.000 m³ – heute ist das Containerlager M (echte Werte: S = 25.000 m³)
+  if (raw.version === 1) {
+    const up = (def: string) => (def === 'storage_container' ? 'storage_container_m' : def);
+    for (const s of raw.stations) {
+      for (const m of s.modules ?? []) m.def = up(m.def);
+      for (const q of s.queue ?? []) q.def = up(q.def);
+      if (s.build) s.build.def = up(s.build.def);
+    }
+    raw.version = SAVE_VERSION;
   }
   const base = newGame(raw.seed || 1);
   const state: GameState = { ...base, ...raw };
@@ -79,6 +89,8 @@ export function deserialize(text: string): GameState {
   state.markets = { ...base.markets, ...(raw.markets ?? {}) };
   initMarkets(state);
   state.rep = { ...base.rep, ...(raw.rep ?? {}) };
+  // Neu hinzugekommene Grundbaupläne (z. B. Lager M) auch in alten Spielständen
+  state.blueprints = [...new Set([...(raw.blueprints ?? []), ...base.blueprints])];
   state.totals = { ...base.totals, ...(raw.totals ?? {}) };
   state.story = { ...base.story, ...(raw.story ?? {}) };
   state.contracts = (raw.contracts ?? []).map((c) => ({ ...c, deadline: c.deadline ?? 0 }));

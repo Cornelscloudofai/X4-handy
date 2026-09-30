@@ -26,7 +26,7 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
 | Baureihenfolge | Jede Position einzeln, Ziehen am Griff (auch per Touch), Pfeile, Einfügen zwischen Positionen, laufender Bau fest; bezahlt wird erst beim Baustart |
 | Stationsplaner | Endprodukte wählen → komplette Modulkette mit exakten Mengen pro Stunde, Rundung auf ganze Module, Überschuss/Fehlbedarf, Zukauf statt Eigenproduktion, Sonnenlicht, Belegschaftsbonus, Baukosten, Vollbild-Fließdiagramm (Zoomen, Verschieben, Kästchen anordnen, ± am Modul, Empfehlungen bei Unterversorgung; Ware antippen hebt die direkten Vor- und Folgeprodukte hervor, nochmal antippen die ganze Kette bis zum Rohstoff) für Entwürfe oder echte Stationen – dort wirkt jede Änderung direkt auf die Baureihenfolge |
 | Produktion | 58 Waren mit echten X4-Rezepten (Zykluszeit, Ein- und Ausgangsmengen), Solarleistung abhängig vom Sonnenlicht des Sektors |
-| Stationsbau | Module mit echten Baumaterialien und Bauzeiten, Kosten aus Materialwert; Lager (Container/Feststoff/Flüssig), Dock, Pier; Lageranteil und Reserve je Ware einstellbar |
+| Stationsbau | Module mit echten Baumaterialien und Bauzeiten, Kosten aus Materialwert; Lager S/M/L für Container, Feststoff und Flüssig mit echten Split-Werten (S 25.000/100.000/100.000 m³, M 100.000/500.000/500.000 m³, L je 1.000.000 m³; L-Bauplan beim Handelsvertreter), Dock, Pier; Lageranteil und Reserve je Ware einstellbar |
 | Eigene Werft | S/M- und L-Schiffsfertigung mit echten Baumaterialien (3.312 Claytronik, 6.620 Energiezellen, 12.112 Hüllenteile); Schiffe aus dem Stationslager bauen (Material aus Rumpf + Ausrüstung), fehlendes Material kaufen Transporter automatisch zu; Schiffsbestellungen der Fraktionen bringen Credits und Ruf |
 | Schiffe | Split-Schiffe mit echten Daten: Preis = Rumpf + Grundausstattung (Triebwerke, Schilde, Abbautürme), Reisegeschwindigkeit aus Schub und Luftwiderstand, Frachtraum; Miner (Mineral/Gas, M/L), Kurier, Transporter, Großfrachter |
 | Logistik | Miner fördern nach Bedarf; Transporter im Autohandel oder als feste Versorgungslinie; Flüge über Sprungtore |
@@ -67,7 +67,7 @@ Rezepte und Preisspannen: Community-Datensatz *X4Foundations_FactoryStationsTrac
 abgeglichen mit den Spieldaten aus *crissian/x4* – alle 57 Rezepte stimmen überein. Solarkraftwerk (175 Energiezellen je 60 s)
 und Belegschaftsbonus je Ware aus *crissian/x4*.
 Modul-Baukosten und Bauzeiten (auch Schiffsfertigung): *crissian/x4*. Schiffe (Rumpfpreis, Ausrüstung, Schub, Luftwiderstand,
-Frachtraum, Baumaterial): *crissian/x4*, ausgelesen mit `scripts/extract-ships.mjs`. Lagermodule: Egosoft-Wiki.
+Frachtraum, Baumaterial): *crissian/x4*, ausgelesen mit `scripts/extract-ships.mjs`. Lagermodule S/M/L (Kapazität, Baumaterial, Bauzeit): *crissian/x4*, Split-Bauweise.
 Spielwerte (nicht aus X4): Abbauraten, Schiffsbauzeiten, Lage der Felder, Nachbarsektoren und der Nividium-Preis.
 
 X4: Foundations ist ein Spiel von Egosoft. Dies ist ein inoffizielles Fanprojekt.

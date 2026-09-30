@@ -15,7 +15,7 @@ await page.evaluate(() => {
   const g = window.__game, A = g.actions, s = g.state;
   s.credits = 900_000; // reicht für den ersten Bau, nicht für alles
   const st = s.stations[0];
-  for (const d of ['prod_refinedmetals', 'storage_liquid', 'prod_graphene', 'prod_refinedmetals', 'storage_container', 'prod_siliconwafers', 'prod_superfluidcoolant']) A.queueModule(s, st.id, d);
+  for (const d of ['prod_refinedmetals', 'storage_liquid', 'prod_graphene', 'prod_refinedmetals', 'storage_container_m', 'prod_siliconwafers', 'prod_superfluidcoolant']) A.queueModule(s, st.id, d);
   g.step(5);
   g.ui.paused = true;
   g.openPanel('station', st.id, 'modules');

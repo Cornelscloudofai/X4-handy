@@ -566,12 +566,15 @@ export class SectorRenderer {
       const w = unit * 1.0, h = unit * 0.72;
       if (d.kind === 'storage') {
         const col = d.storage === 'Liquid' ? '#5fb4ff' : d.storage === 'Solid' ? '#d9924a' : '#9fb8c6';
-        for (const off of [-0.2, 0.2]) {
+        // S: zwei Tanks, M: zwei größere, L: drei große
+        const big = d.id.endsWith('_l') ? 2 : d.id.endsWith('_m') ? 1 : 0;
+        const r = unit * (0.3 + big * 0.05);
+        for (const off of big === 2 ? [-0.36, 0, 0.36] : [-0.2, 0.2]) {
           ctx.fillStyle = '#1a2a36';
           ctx.strokeStyle = rgba(col, 0.9);
-          ctx.lineWidth = Math.max(1, unit * 0.06);
+          ctx.lineWidth = Math.max(1, unit * (0.06 + big * 0.015));
           ctx.beginPath();
-          ctx.arc(off * unit, 0, unit * 0.3, 0, Math.PI * 2);
+          ctx.arc(off * unit, 0, r, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
         }

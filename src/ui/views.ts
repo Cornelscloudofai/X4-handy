@@ -480,7 +480,8 @@ function stationModules(state: GameState, st: Station): string {
   }).join('');
   const needDock = !hasDockFor(st, 'M') && !st.queue.some((q) => q.def === 'dock_m') && st.build?.def !== 'dock_m';
   const cap = storageCap(st);
-  const needStore = !cap.Container && !st.queue.some((q) => q.def === 'storage_container') && st.build?.def !== 'storage_container';
+  const isContainer = (def?: string) => !!def && MODULE_MAP[def]?.kind === 'storage' && MODULE_MAP[def]?.storage === 'Container';
+  const needStore = !cap.Container && !st.queue.some((q) => isContainer(q.def)) && !isContainer(st.build?.def);
   const summary = st.queue.length ? `<p class="small muted" style="margin:0 0 8px">${st.queue.length} Position${st.queue.length === 1 ? '' : 'en'} geplant · noch zu bezahlen ${fmtCr(total)} · fertig in ${fmtDur(eta)}. Bezahlt wird jeweils beim Baustart.</p>` : '';
   return `
     <div class="section"><h3>Baureihenfolge</h3>
@@ -490,7 +491,7 @@ function stationModules(state: GameState, st: Station): string {
       <p class="small muted" style="margin:6px 0 0">Am Griff ${icon('more', 12, 'inline')} ziehen oder mit den Pfeilen umsortieren. ${icon('plus', 12, 'inline')} zwischen zwei Positionen fügt dort ein Modul ein. Das laufende Modul ist fest.</p>` : `<div class="box empty">Keine Positionen geplant. Plane Module ein – sie werden der Reihe nach gebaut und erst beim Baustart bezahlt.</div>`}</div>
     ${needDock || needStore ? `<div class="section"><div class="box rows">
       ${needDock ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Ohne Dock können weder deine Schiffe noch NPC-Händler andocken.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'dock_m', at: 0 })}>Dock zuerst</button></div>` : ''}
-      ${needStore ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Energiezellen und Produkte brauchen ein Containerlager.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'storage_container', at: 0 })}>Lager zuerst</button></div>` : ''}
+      ${needStore ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Energiezellen und Produkte brauchen ein Containerlager.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'storage_container_m', at: 0 })}>Lager zuerst</button></div>` : ''}
     </div></div>` : ''}
     <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="box rows">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;
 }
@@ -859,8 +860,8 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
       <div class="toggle"><button class="plain ${soundEnabled() ? 'on' : ''}" ${act('sound-toggle')}>${soundEnabled() ? 'An' : 'Aus'}</button></div></div></div></div>
     <div class="section"><h3>Ereignisse</h3><div class="box rows">${logRows}</div></div>
-    <div class="section"><h3>Daten & Quellen</h3><div class="box" style="padding:14px"><p class="small" style="margin:0 0 8px;color:var(--text-2)">Rezepte, Preisspannen, Warenvolumen und Lagerarten aus dem Community-Datensatz X4Foundations_FactoryStationsTracker. Baumaterialien und Bauzeiten der Module aus crissian/x4. Frachträume der Split-Schiffe und Lagermodule aus der Egosoft-Wiki.</p>
-      <p class="small muted" style="margin:0">Spielwerte: Schiffspreise, Fluggeschwindigkeiten, Abbauraten, Kartenlage der Felder, die Nachbarsektoren sowie der Nividium-Preis. Belegschaft und Kampf sind nicht Teil dieses Spiels. X4: Foundations ist ein Spiel von Egosoft; dies ist ein inoffizielles Fanprojekt.</p></div></div>`);
+    <div class="section"><h3>Daten & Quellen</h3><div class="box" style="padding:14px"><p class="small" style="margin:0 0 8px;color:var(--text-2)">Rezepte, Preisspannen, Warenvolumen und Lagerarten aus dem Community-Datensatz X4Foundations_FactoryStationsTracker. Baumaterialien, Bauzeiten und Kapazitäten der Module (auch Lager S/M/L und Schiffsfertigung) sowie Schiffsdaten (Rumpf, Ausrüstung, Schub, Frachtraum) aus crissian/x4.</p>
+      <p class="small muted" style="margin:0">Spielwerte: Abbauraten, Schiffsbauzeiten, Kartenlage der Felder, die Nachbarsektoren sowie der Nividium-Preis. Belegschaft und Kampf sind nicht Teil dieses Spiels. X4: Foundations ist ein Spiel von Egosoft; dies ist ein inoffizielles Fanprojekt.</p></div></div>`);
 }
 
 // ---------- Dialoge ----------
@@ -920,7 +921,7 @@ function storageModal(state: GameState, stationId: string, ware: string, back = 
   const others = wl.filter((x) => x !== ware && WARES[x].storage === w.storage);
   const seg = [ware, ...others].map((x) => { const s = storageShare(st, x, wl); return `<i style="width:${(s.share * 100).toFixed(1)}%;background:${WARES[x].color}" title="${esc(WARES[x].name)}"></i>`; }).join('');
   return modalShell(`Lager: ${w.name}`, `
-    <p class="lead" style="margin-bottom:10px">${esc(STORAGE_LABEL[w.storage])}-Lager dieser Station: ${fmtAmount(cap[w.storage])} m³. Im Lager: ${fmtAmount(st.inventory[ware] ?? 0)} Einheiten.</p>
+    <p class="lead" style="margin-bottom:10px">${esc(STORAGE_LABEL[w.storage])}-Lager dieser Station: ${fmtAmount(cap[w.storage])} m³. Im Lager: ${fmtAmount(st.inventory[ware] ?? 0)} Einheiten. <a class="link" ${act('modal-modules', { st: st.id, cat: 'storage' })}>Lager erweitern (S/M/L)</a></p>
     <div class="stack-bar">${seg}</div>
     <div class="small muted" style="margin:6px 0 16px">${[ware, ...others].map((x) => `${esc(WARES[x].name)} ${Math.round(storageShare(st, x, wl).share * 100)} %`).join(' · ')}</div>
     <div class="field"><label for="storShare">Anteil am Lagerraum · ${Math.round(share.share * 100)} % = ${fmtAmount(limit)} Einheiten${share.auto ? ' (automatisch)' : ''}</label>

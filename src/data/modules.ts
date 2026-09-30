@@ -47,13 +47,16 @@ function buildModules(): ModuleDef[] {
     });
   }
   const infra = infrastructure as unknown as RawInfra[];
-  const storageNames: Record<string, string> = { Container: 'Containerlager S', Solid: 'Feststofflager S', Liquid: 'Flüssiglager S' };
-  for (const s of infra.filter((x) => x.category === 'Lager')) {
-    const type = s.storageType as StorageType;
+  // Lager S/M/L der Split (crissian/x4): Kapazität, Bauzeit, Baumaterial
+  for (const x of STORAGE) {
+    const id = 'storage_' + x.type.toLowerCase() + (x.size === 'S' ? '' : '_' + x.size.toLowerCase());
+    const materials = { claytronics: x.mat[0], energycells: x.mat[1], hullparts: x.mat[2] };
+    const cost = materialCost(materials);
+    const starter = x.size !== 'L';
     list.push({
-      id: 'storage_' + type.toLowerCase(), x4Id: s.id, kind: 'storage', name: storageNames[type], storage: type,
-      capacity: s.capacity, buildTime: s.time, materials: s.materials, cost: materialCost(s.materials), method: 'Argon',
-      repRequired: 0, blueprintCost: 0, starter: true,
+      id, x4Id: `module_spl_stor_${x.type.toLowerCase()}_${x.size.toLowerCase()}_01`, kind: 'storage', name: `${STORAGE_NAME[x.type]} ${x.size}`, storage: x.type,
+      capacity: x.cap, buildTime: x.time, materials, cost, method: 'Split', repRequired: starter ? 0 : 5,
+      blueprintCost: starter ? 0 : Math.round((cost * 0.35) / 1000) * 1000, starter,
     });
   }
   const dock = infra.find((x) => x.id === 'module_arg_dock_m_02');
@@ -66,6 +69,19 @@ function buildModules(): ModuleDef[] {
   for (const y of YARDS) list.push({ ...y, kind: 'shipyard', cost: materialCost(y.materials), method: 'Universal', starter: false });
   return list;
 }
+
+const STORAGE_NAME: Record<StorageType, string> = { Container: 'Containerlager', Solid: 'Feststofflager', Liquid: 'Flüssiglager' };
+const SIZE_MAT: Record<'S' | 'M' | 'L', { time: number; mat: [number, number, number] }> = {
+  S: { time: 307, mat: [61, 121, 222] },
+  M: { time: 455, mat: [90, 180, 329] },
+  L: { time: 683, mat: [135, 270, 494] },
+};
+const CAPACITY: Record<StorageType, Record<'S' | 'M' | 'L', number>> = {
+  Container: { S: 25_000, M: 100_000, L: 1_000_000 },
+  Solid: { S: 100_000, M: 500_000, L: 1_000_000 },
+  Liquid: { S: 100_000, M: 500_000, L: 1_000_000 },
+};
+const STORAGE = (['Container', 'Solid', 'Liquid'] as StorageType[]).flatMap((type) => (['S', 'M', 'L'] as const).map((size) => ({ type, size, cap: CAPACITY[type][size], ...SIZE_MAT[size] })));
 
 const YARDS: Omit<ModuleDef, 'kind' | 'cost' | 'method' | 'starter'>[] = [
   { id: 'yard_m', x4Id: 'module_gen_build_dockarea_m_01', name: 'S/M-Schiffsfertigung', yardSize: 'M', buildTime: 1298, materials: { claytronics: 3312, energycells: 6620, hullparts: 12112 }, repRequired: 10, blueprintCost: 12_000_000 },

@@ -344,3 +344,28 @@ describe('Baupläne beim Vertreter', () => {
     expect(blueprintState(s, 'prod_hullparts')).toBe('owned');
   });
 });
+
+describe('Lager S/M/L', () => {
+  it('nutzt echte Split-Werte und rüstet alte Spielstände um', () => {
+    expect(MODULE_MAP.storage_container.capacity).toBe(25_000);
+    expect(MODULE_MAP.storage_container_m.capacity).toBe(100_000);
+    expect(MODULE_MAP.storage_container_l.capacity).toBe(1_000_000);
+    expect(MODULE_MAP.storage_solid_m.capacity).toBe(500_000);
+    expect(MODULE_MAP.storage_liquid.capacity).toBe(100_000);
+    expect(MODULE_MAP.storage_liquid_l.materials).toEqual({ claytronics: 135, energycells: 270, hullparts: 494 });
+    expect(MODULE_MAP.storage_liquid_l.buildTime).toBe(683);
+    expect(MODULE_MAP.storage_container_m.starter).toBe(true);
+    expect(MODULE_MAP.storage_container_l.starter).toBe(false);
+    // Neues Spiel: Startlager wie bisher 100.000 m³ Container
+    const s = newGame(101);
+    expect(storageCap(s.stations[0]).Container).toBe(100_000);
+    // Alter Spielstand (Version 1): Containerlager S hatte 100.000 m³ → wird zu M
+    const old = JSON.parse(serialize(s));
+    old.version = 1;
+    old.stations[0].modules = old.stations[0].modules.map((m: { def: string }) => (m.def === 'storage_container_m' ? { ...m, def: 'storage_container' } : m));
+    old.blueprints = old.blueprints.filter((b: string) => !b.endsWith('_m'));
+    const loaded = deserialize(JSON.stringify(old));
+    expect(storageCap(loaded.stations[0]).Container).toBe(100_000);
+    expect(loaded.blueprints).toContain('storage_solid_m');
+  });
+});
