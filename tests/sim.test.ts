@@ -222,7 +222,7 @@ describe('Lager und Reserve', () => {
     setStorageShare(s, st.id, 'energycells', 0.2);
     expect(storageShare(st, 'energycells').share).toBeCloseTo(0.2);
     expect(storageShare(st, 'refinedmetals').share).toBeCloseTo(0.8);
-    expect(wareLimit(st, 'energycells')).toBeCloseTo(20000);
+    expect(wareLimit(st, 'energycells')).toBeCloseTo(5000); // 20 % von 25.000 m³ (Containerlager S)
     // Reserve schützt vor dem Verkauf
     st.inventory.energycells = 9000;
     setReserve(s, st.id, 'energycells', 8500);
@@ -354,18 +354,21 @@ describe('Lager S/M/L', () => {
     expect(MODULE_MAP.storage_liquid.capacity).toBe(100_000);
     expect(MODULE_MAP.storage_liquid_l.materials).toEqual({ claytronics: 135, energycells: 270, hullparts: 494 });
     expect(MODULE_MAP.storage_liquid_l.buildTime).toBe(683);
-    expect(MODULE_MAP.storage_container_m.starter).toBe(true);
-    expect(MODULE_MAP.storage_container_l.starter).toBe(false);
-    // Neues Spiel: Startlager wie bisher 100.000 m³ Container
+    // Nur S ab Start, M und L per Bauplan
+    expect(MODULE_MAP.storage_container.starter).toBe(true);
+    expect(MODULE_MAP.storage_container_m.starter).toBe(false);
+    expect(MODULE_MAP.storage_container_m.blueprintCost).toBeGreaterThan(0);
+    expect(MODULE_MAP.storage_container_l.blueprintCost).toBeGreaterThan(MODULE_MAP.storage_container_m.blueprintCost);
     const s = newGame(101);
-    expect(storageCap(s.stations[0]).Container).toBe(100_000);
-    // Alter Spielstand (Version 1): Containerlager S hatte 100.000 m³ → wird zu M
+    expect(storageCap(s.stations[0]).Container).toBe(25_000);
+    expect(s.blueprints).not.toContain('storage_container_m');
+    expect(queueModule(s, s.stations[0].id, 'storage_container_m').ok).toBe(false);
+    // Alter Spielstand (Version 1): Containerlager S hatte 100.000 m³ → wird zu M, Bauplan inklusive
     const old = JSON.parse(serialize(s));
     old.version = 1;
-    old.stations[0].modules = old.stations[0].modules.map((m: { def: string }) => (m.def === 'storage_container_m' ? { ...m, def: 'storage_container' } : m));
-    old.blueprints = old.blueprints.filter((b: string) => !b.endsWith('_m'));
     const loaded = deserialize(JSON.stringify(old));
     expect(storageCap(loaded.stations[0]).Container).toBe(100_000);
-    expect(loaded.blueprints).toContain('storage_solid_m');
+    expect(loaded.blueprints).toContain('storage_container_m');
+    expect(loaded.blueprints).not.toContain('storage_solid_m');
   });
 });

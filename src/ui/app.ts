@@ -485,10 +485,10 @@ function onClick(e: MouseEvent): void {
         const have = (def: string) => st.modules.some((m) => m.def === def) || st.queue.some((q) => q.def === def) || st.build?.def === def;
         const basics: string[] = [];
         const haveStore = (type: string) => [...st.modules.map((m) => m.def), ...st.queue.map((q) => q.def), st.build?.def ?? ''].some((def) => MODULE_MAP[def]?.kind === 'storage' && MODULE_MAP[def]?.storage === type);
-        if (!haveStore('Container')) basics.push('storage_container_m');
+        if (!haveStore('Container')) basics.push(A.bestStorage(state, 'Container'));
         const mined = Object.values(r.nodes).filter((n) => n.kind === 'mined').map((n) => WARES[n.ware].storage);
-        if (mined.includes('Solid') && !haveStore('Solid')) basics.push('storage_solid');
-        if (mined.includes('Liquid') && !haveStore('Liquid')) basics.push('storage_liquid');
+        if (mined.includes('Solid') && !haveStore('Solid')) basics.push(A.bestStorage(state, 'Solid'));
+        if (mined.includes('Liquid') && !haveStore('Liquid')) basics.push(A.bestStorage(state, 'Liquid'));
         if (!have('dock_m')) basics.push('dock_m');
         let queued = 0;
         const skipped = new Map<string, string>();

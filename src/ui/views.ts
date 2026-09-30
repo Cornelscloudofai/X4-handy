@@ -3,7 +3,7 @@ import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, sector } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { GROUP_LABEL, STORAGE_LABEL, WARES, WARE_IDS, inputsPerHour, outputPerHour } from '../data/wares';
-import { bestRepFor, blueprintState, stationCost, vendorOffer } from '../engine/actions';
+import { bestRepFor, bestStorage, blueprintState, stationCost, vendorOffer } from '../engine/actions';
 import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/vendors';
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
@@ -491,7 +491,7 @@ function stationModules(state: GameState, st: Station): string {
       <p class="small muted" style="margin:6px 0 0">Am Griff ${icon('more', 12, 'inline')} ziehen oder mit den Pfeilen umsortieren. ${icon('plus', 12, 'inline')} zwischen zwei Positionen fügt dort ein Modul ein. Das laufende Modul ist fest.</p>` : `<div class="box empty">Keine Positionen geplant. Plane Module ein – sie werden der Reihe nach gebaut und erst beim Baustart bezahlt.</div>`}</div>
     ${needDock || needStore ? `<div class="section"><div class="box rows">
       ${needDock ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Ohne Dock können weder deine Schiffe noch NPC-Händler andocken.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'dock_m', at: 0 })}>Dock zuerst</button></div>` : ''}
-      ${needStore ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Energiezellen und Produkte brauchen ein Containerlager.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'storage_container_m', at: 0 })}>Lager zuerst</button></div>` : ''}
+      ${needStore ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Energiezellen und Produkte brauchen ein Containerlager.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: bestStorage(state, 'Container'), at: 0 })}>Lager zuerst</button></div>` : ''}
     </div></div>` : ''}
     <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="box rows">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;
 }

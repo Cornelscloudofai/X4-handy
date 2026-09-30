@@ -60,6 +60,13 @@ export function missingBlueprints(state: GameState, defs: string[]): string[] {
   return [...new Set(defs)].filter((id) => MODULE_MAP[id] && !state.blueprints.includes(id));
 }
 
+/** Größtes Lagermodul einer Lagerart, für das der Bauplan vorhanden ist */
+export function bestStorage(state: GameState, type: string): string {
+  const own = Object.values(MODULE_MAP).filter((d) => d.kind === 'storage' && d.storage === type && state.blueprints.includes(d.id));
+  own.sort((a, b) => (b.capacity ?? 0) - (a.capacity ?? 0));
+  return own[0]?.id ?? 'storage_' + type.toLowerCase();
+}
+
 export const MAX_MODULES = 40;
 
 /** Plant ein Modul ein – am Ende oder an Position `at` der Bauliste. Bezahlt wird beim Baustart. */

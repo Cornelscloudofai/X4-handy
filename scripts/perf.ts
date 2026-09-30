@@ -10,7 +10,7 @@ for (const d of ['prod_refinedmetals', 'prod_refinedmetals', 'storage_liquid', '
 for (const c of ['alligator_min', 'alligator_min', 'alligator_gas', 'boa', 'boa', 'boa']) A.buyShip(s, c, st.id);
 for (let i = 0; i < 3; i++) {
   const r = A.foundStation(s, 'zhin', 40 + i * 25, 60 - i * 40);
-  if (r.id) for (const d of ['storage_container_m', 'dock_m', 'prod_energycells', 'prod_refinedmetals']) A.queueModule(s, r.id, d);
+  if (r.id) for (const d of ['storage_container', 'dock_m', 'prod_energycells', 'prod_refinedmetals']) A.queueModule(s, r.id, d);
   if (r.id) { A.buyShip(s, 'boa', r.id); A.buyShip(s, 'alligator_min', r.id); }
 }
 step(s, 3600);

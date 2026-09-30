@@ -42,7 +42,7 @@ export function newGame(seed = Date.now() % 2147483647): GameState {
   };
   initMarkets(state);
   const st = newStation(state, 'Station Alpha', 'zhin', -45, -55);
-  for (const def of ['core', 'prod_energycells', 'storage_container_m', 'storage_solid', 'dock_m']) st.modules.push({ ...newModule(state, def), util: 1 });
+  for (const def of ['core', 'prod_energycells', 'storage_container', 'storage_solid', 'dock_m']) st.modules.push({ ...newModule(state, def), util: 1 });
   st.inventory = { energycells: 3000, ore: 2000 };
   state.stations.push(st);
   state.ships.push(newShip(state, 'alligator_min', st));
@@ -62,7 +62,7 @@ export function deserialize(text: string): GameState {
   if (!raw || typeof raw !== 'object' || !(raw.version >= 1 && raw.version <= SAVE_VERSION) || !Array.isArray(raw.stations)) {
     throw new Error('Kein gültiger Spielstand.');
   }
-  // Version 1: Containerlager S hatte 100.000 m³ – heute ist das Containerlager M (echte Werte: S = 25.000 m³)
+  // Version 1: Containerlager S hatte 100.000 m³ – bestehende werden zu Containerlager M (echte Werte: S = 25.000 m³), Bauplan inklusive
   if (raw.version === 1) {
     const up = (def: string) => (def === 'storage_container' ? 'storage_container_m' : def);
     for (const s of raw.stations) {
@@ -89,8 +89,9 @@ export function deserialize(text: string): GameState {
   state.markets = { ...base.markets, ...(raw.markets ?? {}) };
   initMarkets(state);
   state.rep = { ...base.rep, ...(raw.rep ?? {}) };
-  // Neu hinzugekommene Grundbaupläne (z. B. Lager M) auch in alten Spielständen
-  state.blueprints = [...new Set([...(raw.blueprints ?? []), ...base.blueprints])];
+  // Neu hinzugekommene Grundbaupläne auch in alten Spielständen; wer ein Lager M/L besitzt, behält dessen Bauplan
+  const built = state.stations.flatMap((s) => [...s.modules.map((m) => m.def), ...s.queue.map((q) => q.def), s.build?.def ?? '']).filter((d) => MODULE_MAP[d]?.kind === 'storage');
+  state.blueprints = [...new Set([...(raw.blueprints ?? []), ...base.blueprints, ...built])];
   state.totals = { ...base.totals, ...(raw.totals ?? {}) };
   state.story = { ...base.story, ...(raw.story ?? {}) };
   state.contracts = (raw.contracts ?? []).map((c) => ({ ...c, deadline: c.deadline ?? 0 }));

@@ -52,11 +52,12 @@ function buildModules(): ModuleDef[] {
     const id = 'storage_' + x.type.toLowerCase() + (x.size === 'S' ? '' : '_' + x.size.toLowerCase());
     const materials = { claytronics: x.mat[0], energycells: x.mat[1], hullparts: x.mat[2] };
     const cost = materialCost(materials);
-    const starter = x.size !== 'L';
+    // Nur S gibt es ab Start; M und L kauft man beim Handelsvertreter (Spielwerte für Preis und Ruf)
+    const starter = x.size === 'S';
     list.push({
       id, x4Id: `module_spl_stor_${x.type.toLowerCase()}_${x.size.toLowerCase()}_01`, kind: 'storage', name: `${STORAGE_NAME[x.type]} ${x.size}`, storage: x.type,
-      capacity: x.cap, buildTime: x.time, materials, cost, method: 'Split', repRequired: starter ? 0 : 5,
-      blueprintCost: starter ? 0 : Math.round((cost * 0.35) / 1000) * 1000, starter,
+      capacity: x.cap, buildTime: x.time, materials, cost, method: 'Split', repRequired: STORAGE_BP[x.size].rep,
+      blueprintCost: STORAGE_BP[x.size].price, starter,
     });
   }
   const dock = infra.find((x) => x.id === 'module_arg_dock_m_02');
@@ -80,6 +81,11 @@ const CAPACITY: Record<StorageType, Record<'S' | 'M' | 'L', number>> = {
   Container: { S: 25_000, M: 100_000, L: 1_000_000 },
   Solid: { S: 100_000, M: 500_000, L: 1_000_000 },
   Liquid: { S: 100_000, M: 500_000, L: 1_000_000 },
+};
+const STORAGE_BP: Record<'S' | 'M' | 'L', { price: number; rep: number }> = {
+  S: { price: 0, rep: 0 },
+  M: { price: 900_000, rep: 2 },
+  L: { price: 3_500_000, rep: 6 },
 };
 const STORAGE = (['Container', 'Solid', 'Liquid'] as StorageType[]).flatMap((type) => (['S', 'M', 'L'] as const).map((size) => ({ type, size, cap: CAPACITY[type][size], ...SIZE_MAT[size] })));
 

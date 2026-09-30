@@ -32,7 +32,7 @@ for (let h = 0; h < 72; h++) {
     if (m === 'second' && !second && s.credits > 1.5e6) {
       const r = A.foundStation(s, 'zhin', 70, 60);
       second = r.id; log('Station 2:', r.msg);
-      for (const d of ['storage_container_m', 'dock_m', 'prod_energycells']) A.queueModule(s, second!, d);
+      for (const d of ['storage_container', 'dock_m', 'prod_energycells']) A.queueModule(s, second!, d);
     }
     if (m === 'hull' && second) {
       const b = s.stations.find((x) => x.id === second)!;
