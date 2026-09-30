@@ -77,6 +77,24 @@ await page.waitForTimeout(200);
 await check('07-orders');
 await act('[data-act="nav"][data-tab="fleet"]');
 await check('08-fleet');
+// Baupläne: Übersicht über Stationen erreichbar
+await act('[data-act="nav"][data-tab="stations"]');
+await act('.row[data-act="open-blueprints"]');
+await check('10-blueprints');
+await act('[data-act="station-tab"][data-tab="locked"]');
+await check('11-blueprints-locked');
+await page.goBack(); await page.waitForTimeout(300);
+// Lieferauftrag: Station → Kurier oder eigener Transporter
+await page.evaluate(() => {
+  const g = window.__game, s = g.state;
+  s.contracts.push({ id: 99901, sector: 'zhin', ware: 'energycells', amount: 4000, delivered: 0, reward: 200000, rep: 1, deadline: s.time + 7200, duration: 7200, status: 'active', title: 'Energie für Zhin' });
+  s.stations[0].inventory.energycells = 6000;
+  g.ui.modal = { type: 'courier', contract: 99901 };
+  g.refresh();
+});
+await page.waitForTimeout(300);
+await check('12-deliver');
+
 await act('[data-act="buyship-modal"]').catch(() => {});
 await check('09-buy');
 console.log(JSON.stringify(report, null, 1));

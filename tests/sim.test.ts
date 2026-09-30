@@ -290,3 +290,28 @@ describe('Rückgängig', () => {
     expect(canUndo()).toBe(true);
   });
 });
+
+describe('Lieferung mit eigenem Transporter', () => {
+  it('bietet Kurier und Transporter an und liefert ohne Gebühr', async () => {
+    const { deliveryOptions, deliverWithShip } = await import('../src/engine/delivery');
+    const s = newGame(81);
+    const st = s.stations[0];
+    buyShip(s, 'boa', st.id);
+    const c = { id: s.nextId++, sector: 'zhin', ware: 'energycells', amount: 3000, delivered: 0, reward: 100000, rep: 1, deadline: 1e9, duration: 1e9, status: 'active' as const, title: 'Test' };
+    s.contracts.push(c);
+    st.inventory.energycells = 5000;
+    st.reserve = { energycells: 0 };
+    const o = deliveryOptions(s, c.id, st.id)!;
+    expect(o.courier.fee).toBeGreaterThan(0);
+    const boa = o.ships.find((x) => x.ship.cls === 'boa')!;
+    expect(boa.reason).toBe('');
+    expect(boa.trips).toBeGreaterThanOrEqual(1);
+    const credits = s.credits;
+    expect(deliverWithShip(s, c.id, st.id, boa.ship.id).ok).toBe(true);
+    expect(s.credits).toBe(credits);
+    // Eingeplante Fahrten zählen als gedeckt
+    expect(deliveryOptions(s, c.id, st.id)!.need).toBe(0);
+    step(s, 3 * 3600);
+    expect(c.delivered).toBeGreaterThanOrEqual(2999);
+  });
+});

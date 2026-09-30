@@ -1,6 +1,7 @@
 // Steuerung: Spielschleife, Karte, Eingaben, Oberfläche und Speichern
 import { undo, withUndo } from './undo';
 import * as Y from '../engine/yard';
+import { deliverWithShip } from '../engine/delivery';
 import { acceptShipOrder, cancelShipBuild, queueShipBuild } from '../engine/yard';
 import { SECTOR_MAP, SECTOR_RADIUS } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
@@ -289,6 +290,7 @@ function goBack(): boolean {
   if (ui.modal) {
     if (ui.modal.type === 'welcome') return true;
     if (ui.modal.type === 'planPick' && ui.modal.back) { ui.modal = { type: 'planDiagram' }; needFit = true; }
+    else if (ui.modal.type === 'storage' && ui.modal.back) ui.modal = ui.modal.back;
     else ui.modal = null;
   } else if (ui.placing) ui.placing = null;
   else if (ui.panel) ui.panel = ui.panel.back ?? null;
@@ -414,7 +416,8 @@ function onClick(e: MouseEvent): void {
       case 'plan-auto': ui.plan.auto = ui.plan.auto === false; ui.plan.extra = {}; planChanged(); break;
       case 'plan-details': ui.planDetails = !ui.planDetails; refresh(); break;
       case 'plan-energy': ui.planEnergy = !ui.planEnergy; refresh(); break;
-      case 'plan-focus': ui.planFocus = ui.planFocus === d.ware ? '' : d.ware!; refresh(); break;
+      case 'plan-focus': ui.planFocus = ui.planFocus === d.ware ? '' : d.ware!; ui.planChain = false; refresh(); break;
+      case 'plan-chain': ui.planChain = d.on === '1'; refresh(); break;
       case 'plan-reset': ui.plan = { targets: [], sunlight: 100, workforce: false, buy: [], extra: {}, auto: true, layout: {} }; ui.planFocus = ''; planChanged(); break;
       case 'plan-from-ware': {
         if (!producible(d.ware!)) break;
@@ -436,7 +439,8 @@ function onClick(e: MouseEvent): void {
         fitEditor();
         break;
       }
-      case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware! }; refresh(); break;
+      case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware!, back: ui.modal?.type === 'courier' ? ui.modal : undefined }; refresh(); break;
+      case 'modal-back': ui.modal = ui.modal?.type === 'storage' ? ui.modal.back ?? null : null; refresh(); break;
       case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
       case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); refresh(); break;
       case 'sell-ship': if (ui.modal?.type === 'sell') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, picked: '', amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
@@ -555,6 +559,7 @@ function onClick(e: MouseEvent): void {
       case 'q-move': result(A.moveQueued(state, d.st!, Number(d.uid), Number(d.to))); break;
       case 'cancel-build': result(A.cancelBuild(state, d.st!)); break;
       case 'buy-bp': result(A.buyBlueprint(state, d.def!)); break;
+      case 'open-blueprints': ui.modal = null; openPanel('blueprints', undefined, 'buy', !!ui.panel); break;
       case 'cancel-q': result(A.cancelQueued(state, d.st!, Number(d.uid))); break;
       case 'ask-demolish': ask('Modul abreißen?', 'Du erhältst 30 % der Baukosten als Materialerlös zurück. Lagerbestände über der neuen Grenze bleiben erhalten.', 'demolish', { st: d.st!, uid: d.uid! }, 'Abreißen', true); break;
       case 'ask-sell-ship': {
@@ -608,6 +613,8 @@ function onClick(e: MouseEvent): void {
       case 'yard-cancel': result(cancelShipBuild(state, d.st!, Number(d.uid))); break;
       case 'courier-modal': ui.modal = { type: 'courier', contract: Number(d.id) }; refresh(); break;
       case 'courier': ui.modal = null; result(A.courierDeliver(state, Number(d.c), d.st!)); break;
+      case 'courier-station': if (ui.modal?.type === 'courier') { ui.modal = { ...ui.modal, station: d.st ?? '' }; refresh(); } break;
+      case 'deliver-ship': { const r = deliverWithShip(state, Number(d.c), d.st!, d.ship!); if (r.ok) ui.modal = null; result(r); break; }
       case 'claim': result(claimMission(state)); break;
       case 'license': {
         const r = A.buyLicense(state, d.id!);
@@ -788,7 +795,13 @@ function initEditor(): void {
       const modal = document.getElementById('modal');
       if (modal) morph(modal, diagramEditor(state, ui, editorLayout ?? undefined));
     },
-    tapNode: (w) => { ui.planFocus = ui.planFocus === w ? '' : w; refresh(); },
+    // Antippen: direkte Nachbarn → nochmal: ganze Kette → nochmal: aus
+    tapNode: (w) => {
+      if (ui.planFocus !== w) { ui.planFocus = w; ui.planChain = false; }
+      else if (!ui.planChain) ui.planChain = true;
+      else { ui.planFocus = ''; ui.planChain = false; }
+      refresh();
+    },
   });
 }
 

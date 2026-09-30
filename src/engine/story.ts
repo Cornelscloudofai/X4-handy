@@ -5,6 +5,7 @@ import { WARES } from '../data/wares';
 import type { Contract, FactionId, GameState } from './types';
 import { emit, log } from './util';
 import { netWorth } from './stats';
+import { MODULES } from '../data/modules';
 
 export interface StoryMission {
   id: string;
@@ -210,8 +211,20 @@ export function missionComplete(state: GameState): boolean {
 }
 
 let lastNotified = -1;
+let lastBuyable = -1;
+
+/** Meldet, wenn durch gestiegenen Ruf neue Baupläne kaufbar werden */
+function checkBlueprints(state: GameState): void {
+  const buyable = MODULES.filter((d) => !state.blueprints.includes(d.id) && state.rep.frf >= d.repRequired);
+  const unlocked = MODULES.filter((d) => state.rep.frf >= d.repRequired).length;
+  if (lastBuyable >= 0 && unlocked > lastBuyable && buyable.length) {
+    log(state, `Neue Baupläne kaufbar (${buyable.length}) – Stationen → Baupläne.`, 'good', true);
+  }
+  lastBuyable = unlocked;
+}
 
 export function stepStory(state: GameState): void {
+  checkBlueprints(state);
   const m = currentMission(state);
   if (!m) return;
   if (missionComplete(state) && lastNotified !== state.story.index) {

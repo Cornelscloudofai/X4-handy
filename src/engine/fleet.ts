@@ -12,7 +12,7 @@ import { contractDeliver } from './contracts';
 import type { GameState, Ship, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
 
-function shipPlace(s: Ship): Place {
+export function shipPlace(s: Ship): Place {
   return { sector: s.sector, x: s.x, z: s.z };
 }
 

@@ -6,7 +6,7 @@ export interface Selection { kind: SelKind; id: string }
 
 const PLAN_KEY = 'x4-sektorbau-planer-v1';
 
-export type PanelType = 'stations' | 'fleet' | 'missions' | 'market' | 'more' | 'station' | 'ship' | 'ware' | 'sector' | 'planner';
+export type PanelType = 'stations' | 'fleet' | 'missions' | 'market' | 'more' | 'station' | 'ship' | 'ware' | 'sector' | 'planner' | 'blueprints';
 export interface Panel { type: PanelType; id?: string; tab?: string; back?: Panel | null }
 
 export type Modal =
@@ -20,9 +20,9 @@ export type Modal =
   | { type: 'export' }
   | { type: 'import'; error?: string }
   | { type: 'home'; ship: string }
-  | { type: 'courier'; contract: number }
+  | { type: 'courier'; contract: number; station?: string }
   | { type: 'planPick'; group: string; back?: boolean }
-  | { type: 'storage'; station: string; ware: string }
+  | { type: 'storage'; station: string; ware: string; back?: Modal }
   | { type: 'planBuild' }
   | { type: 'planDiagram' }
   | SellModal;
@@ -44,6 +44,7 @@ export interface UIState {
   plan: PlanSettings;
   planZoom: number;
   planFocus: string;
+  planChain: boolean;
   planEnergy: boolean;
   planSource: string;
   planDetails: boolean;
@@ -67,6 +68,7 @@ export const ui: UIState = {
   plan: loadPlan(),
   planZoom: 0.8,
   planFocus: '',
+  planChain: false,
   planEnergy: true,
   planSource: 'draft',
   planDetails: false,

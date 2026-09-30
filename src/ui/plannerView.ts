@@ -19,6 +19,8 @@ export interface PlannerUI {
   plan: PlanSettings;
   planZoom: number;
   planFocus: string;
+  /** Hervorhebung: false = nur direkte Nachbarn, true = ganze Kette bis Rohstoff und Endprodukt */
+  planChain: boolean;
   planEnergy: boolean;
   /** 'draft' oder Stations-ID */
   planSource: string;
@@ -170,11 +172,37 @@ export function diagramBounds(pos: Map<string, { x: number; y: number }>): { x: 
   return { x: x0 - PAD, y: y0 - PAD, w: x1 - x0 + PAD * 2, h: y1 - y0 + PAD * 2 };
 }
 
+/** Ganze Kette einer Ware: alle Vorstufen bis zum Rohstoff und alle Abnehmer bis zum Endprodukt */
+export function chainOf(r: PlanResult, focus: string): { nodes: Set<string>; edges: Set<string> } {
+  const nodes = new Set([focus]);
+  const edges = new Set<string>();
+  const walk = (start: string, up: boolean) => {
+    const todo = [start];
+    const seen = new Set([start]);
+    while (todo.length) {
+      const cur = todo.pop()!;
+      for (const e of r.edges) {
+        if ((up ? e.to : e.from) !== cur) continue;
+        const next = up ? e.from : e.to;
+        edges.add(e.from + '>' + e.to);
+        nodes.add(next);
+        if (!seen.has(next)) { seen.add(next); todo.push(next); }
+      }
+    }
+  };
+  walk(focus, true);
+  walk(focus, false);
+  return { nodes, edges };
+}
+
 interface DiagramOpts { preview?: boolean; layout?: Record<string, { x: number; y: number }> }
 
 /** SVG-Inhalt: Kanten, Beschriftungen, Modul-Kästchen mit +/− und Empfehlung */
 export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<string, ModuleCount>, pos: Map<string, { x: number; y: number }>, preview: boolean): string {
   const focus = p.planFocus && r.nodes[p.planFocus] ? p.planFocus : '';
+  const chain = focus && p.planChain ? chainOf(r, focus) : null;
+  const edgeLit = (e: { from: string; to: string }) => (chain ? chain.edges.has(e.from + '>' + e.to) : e.from === focus || e.to === focus);
+  const nodeLit = (id: string) => (chain ? chain.nodes.has(id) : focus === id || r.edges.some((e) => (e.from === focus && e.to === id) || (e.to === focus && e.from === id)));
   const edges = r.edges.filter((e) => pos.has(e.from) && pos.has(e.to) && (p.planEnergy || e.from !== 'energycells' || e.to === focus || e.from === focus));
   const maxValue = Math.max(1, ...edges.map((e) => e.amount * WARES[e.from].price.avg));
   const outs = new Map<string, typeof edges>(), ins = new Map<string, typeof edges>();
@@ -199,7 +227,7 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
     const short = src.kind === 'module' && src.net < -0.5;
     const color = WARES[e.from].color;
     const width = 1.6 + 5 * Math.sqrt((e.amount * WARES[e.from].price.avg) / maxValue);
-    const dim = focus && e.from !== focus && e.to !== focus;
+    const dim = focus && !edgeLit(e);
     const energy = e.from === 'energycells';
     const d = `M${sx.toFixed(1)} ${sy.toFixed(1)} C${(sx + dx).toFixed(1)} ${sy.toFixed(1)} ${(tx - dx).toFixed(1)} ${ty.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)}`;
     paths += `<path d="${d}" fill="none" stroke="${short ? '#ff6b7a' : color}" stroke-width="${width.toFixed(1)}" stroke-linecap="round" opacity="${dim ? 0.1 : energy ? 0.45 : 0.9}"${energy || short ? ' stroke-dasharray="6 5"' : ''}/>`;
@@ -217,7 +245,9 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
     const w = WARES[id];
     const st = nodeState(n);
     const col = STATE_COLOR[st];
-    const dim = focus && focus !== id && !r.edges.some((e) => (e.from === focus && e.to === id) || (e.to === focus && e.from === id));
+    const dim = focus && !nodeLit(id);
+    // In der Kettenansicht zeigt ein feiner Ring, dass die Ware zum Pfad gehört
+    const ring = chain && !dim && id !== focus ? `<rect x="${pt.x - 5}" y="${pt.y - 5}" width="${NW + 10}" height="${NH + 10}" rx="18" fill="none" stroke="${WARES[focus].color}" stroke-width="1.2" opacity="0.55"/>` : '';
     const name = w.name.length > 21 ? w.name.slice(0, 20) + '…' : w.name;
     const x = pt.x, y = pt.y;
     let inner = '';
@@ -245,7 +275,7 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
         <text x="${x + 14}" y="${y + 100}" class="dg-net" fill="${col}">${n.kind === 'mined' ? 'Miner liefern' : 'wird zugekauft'}</text>`;
     }
     const tag = n.kind === 'mined' ? 'Rohstoff' : n.kind === 'bought' ? 'Zukauf' : st === 'end' ? 'Endprodukt' : '';
-    cards += `<g class="dg-node" data-node="${id}" opacity="${dim ? 0.35 : 1}">
+    cards += `<g class="dg-node" data-node="${id}" opacity="${dim ? (chain ? 0.22 : 0.35) : 1}">${ring}
       <rect x="${x}" y="${y}" width="${NW}" height="${NH}" rx="14" fill="${st === 'end' ? '#1d1b12' : '#0c1c2a'}" stroke="${col}" stroke-width="${focus === id ? 3 : 1.6}"${n.kind === 'bought' ? ' stroke-dasharray="6 4"' : ''}/>
       <rect x="${x}" y="${y}" width="6" height="${NH}" rx="3" fill="${w.color}"/>
       <text x="${x + 14}" y="${y + 24}" class="dg-title">${esc(name)}</text>
@@ -254,6 +284,10 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
     </g>`;
   }
   return paths + labels + cards;
+}
+
+function wareDotSvg(color: string): string {
+  return `<span class="dot" style="background:${color}"></span>`;
 }
 
 export function diagramSvg(r: PlanResult, p: PlannerUI, counts: Record<string, ModuleCount>, opts: DiagramOpts = {}): string {
@@ -287,7 +321,13 @@ export function diagramEditor(state: GameState, p: PlannerUI, layoutOverride?: R
     <svg class="dg-editor" role="img" aria-label="Fließdiagramm – ziehen zum Verschieben, zwei Finger zum Zoomen">
       <g id="dg-view" transform="translate(${v.x.toFixed(1)} ${v.y.toFixed(1)}) scale(${v.k.toFixed(4)})">${diagramContent(r, p, counts, pos, false)}</g>
     </svg>
-    <div class="dg-hint">Kästchen ziehen zum Anordnen · Hintergrund ziehen zum Verschieben · zwei Finger oder Mausrad zum Zoomen · ± ändert die Modulzahl</div>
+    ${p.planFocus && r.nodes[p.planFocus] ? `<div class="dg-focusbar" role="group" aria-label="Hervorhebung">
+      <span class="dg-focus-name">${wareDotSvg(WARES[p.planFocus].color)}${esc(WARES[p.planFocus].name)}</span>
+      <button class="${p.planChain ? '' : 'on'}" ${act('plan-chain', { on: 0 })}>Direkt</button>
+      <button class="${p.planChain ? 'on' : ''}" ${act('plan-chain', { on: 1 })}>Ganze Kette</button>
+      <button class="x" ${act('plan-focus', { ware: p.planFocus })} aria-label="Hervorhebung aufheben">${icon('close', 14)}</button>
+    </div>` : ''}
+    <div class="dg-hint">${p.planFocus ? (p.planChain ? 'Ganze Kette bis zum Rohstoff · nochmal antippen: aus' : 'Direkte Vor- und Folgeprodukte · nochmal antippen: ganze Kette') : 'Ware antippen: Kette hervorheben · Kästchen ziehen zum Anordnen · Hintergrund ziehen zum Verschieben · zwei Finger zum Zoomen · ± ändert die Modulzahl'}</div>
   </div>`;
 }
 

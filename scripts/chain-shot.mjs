@@ -1,0 +1,32 @@
+// Fließdiagramm: Hervorhebung direkt / ganze Kette per Antippen: node scripts/chain-shot.mjs <outdir>
+import { chromium } from 'playwright';
+import { launchOpts } from './browser.mjs';
+import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+const out = process.argv[2] ?? '.';
+const browser = await chromium.launch(launchOpts());
+const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(pathToFileURL(path.resolve('dist/index.html')).href);
+await page.waitForTimeout(600);
+await page.click('text=Loslegen');
+await page.evaluate(() => {
+  const g = window.__game; g.ui.paused = true;
+  g.ui.plan = { targets: [{ ware: 'claytronics', modules: 1 }, { ware: 'hullparts', modules: 2 }], sunlight: 100, workforce: false, buy: [], extra: {}, auto: true, layout: {} };
+  g.ui.planSource = 'draft';
+});
+await page.click('[data-act="nav"][data-tab="planner"]');
+await page.waitForTimeout(300);
+await page.click('.diagram-preview');
+await page.waitForTimeout(600);
+const tap = async (ware) => { const b = await page.locator(`.dg-editor [data-node="${ware}"] rect`).first().boundingBox(); await page.touchscreen.tap(b.x + 20, b.y + 14); await page.waitForTimeout(300); };
+await tap('claytronics');
+await page.screenshot({ path: `${out}/chain-1-direct.png` });
+await tap('claytronics');
+const st = await page.evaluate(() => [window.__game.ui.planFocus, window.__game.ui.planChain]);
+await page.screenshot({ path: `${out}/chain-2-full.png` });
+await tap('claytronics');
+const off = await page.evaluate(() => window.__game.ui.planFocus);
+console.log('Zustand nach 2x', st, 'nach 3x', JSON.stringify(off), 'errors', errors);
+await browser.close();
