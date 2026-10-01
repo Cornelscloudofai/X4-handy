@@ -1,6 +1,6 @@
 // Stationswirtschaft: Lager, Produktion, Bau und Sektormärkte.
 import { MODULE_MAP, moduleDef } from '../data/modules';
-import { SHIP_MAP } from '../data/ships';
+import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { NPC_STATIONS, SECTORS, marketInfo, sector } from '../data/sectors';
 import { WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
 import type { GameState, Market, Station, StorageType } from './types';
@@ -28,6 +28,23 @@ export function usedVolume(st: Station): Record<StorageType, number> {
   return used;
 }
 
+/**
+ * Werftmaterial, das eine Station mit Schiffsfertigung ständig auf Vorrat hält – alle Waren, aus denen die
+ * Schiffe bestehen, die sie bauen kann. So kann sie bei Bedarf sofort mehrere Schiffe nacheinander bauen.
+ */
+export function yardStockWares(st: Station): string[] {
+  const sizes = new Set<string>();
+  for (const m of st.modules) {
+    const y = MODULE_MAP[m.def]?.yardSize;
+    if (y === 'M') { sizes.add('S'); sizes.add('M'); }
+    if (y === 'L') sizes.add('L');
+  }
+  if (!sizes.size) return [];
+  const out = new Set<string>();
+  for (const c of SHIP_CLASSES) if (sizes.has(c.size)) for (const id of Object.keys(c.materials)) out.add(id);
+  return [...out];
+}
+
 /** Material, das die eigene Werft für die geplanten Schiffe noch braucht (Einheiten je Ware) */
 export function yardNeeds(st: Station): Record<string, number> {
   const out: Record<string, number> = {};
@@ -53,6 +70,7 @@ export function stationWares(st: Station, includePlanned = true): string[] {
   }
   for (const [id, r] of Object.entries(st.trade)) if (r.buy || r.sell) set.add(id);
   for (const id of Object.keys(yardNeeds(st))) set.add(id);
+  for (const id of yardStockWares(st)) set.add(id);
   for (const [id, n] of Object.entries(st.inventory)) if (n > 0.5) set.add(id);
   return [...set].filter((id) => WARES[id]);
 }
@@ -103,6 +121,8 @@ export function producesWare(st: Station, id: string): boolean {
 
 export function consumesWare(st: Station, id: string, includePlanned = false): boolean {
   if (st.yard?.queue.length && (yardNeeds(st)[id] ?? 0) > 0) return true;
+  // Werft hält ihr Material immer auf Vorrat – nicht erst, wenn ein Schiff bestellt ist
+  if (yardStockWares(st).includes(id)) return true;
   const defs = st.modules.map((m) => m.def);
   if (includePlanned) {
     for (const q of st.queue) defs.push(q.def);

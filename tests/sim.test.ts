@@ -289,7 +289,6 @@ describe('Werft', () => {
     step(s, 13 * 60);
     expect(s.ships.length).toBe(ships + 1);
     expect(s.totals.shipsBuilt).toBe(1);
-    expect(st.inventory.hullparts ?? 0).toBeLessThan(1);
     // Schiffsbestellung einer Fraktion
     s.shipOrderTimer = 0;
     stepShipOrders(s, 1);
@@ -570,7 +569,9 @@ describe('Lieferreihenfolge für Überschüsse', () => {
     buyShip(s, 'boa', huelle.id);
     const boa = s.ships.find((x) => x.cls === 'boa')!;
     const targets: string[] = [];
+    werft.inventory.hullparts = 0; // Werft-Vorrat leer: sie hat Bedarf
     for (let t = 0; t < 4 * 3600; t += 10) {
+      s.markets.zhin.hullparts.stock = 0; // nur die eigene Fabrik liefert (keine NPC-Verkäufer)
       step(s, 10);
       const j = boa.job;
       if (j?.ware === 'hullparts' && j.stage === 'pickup') {
@@ -578,7 +579,7 @@ describe('Lieferreihenfolge für Überschüsse', () => {
         if (targets.at(-1) !== k) targets.push(k);
       }
     }
-    return { s, werft, targets };
+    return { s, werft, fab: huelle, targets };
   };
 
   it('ohne Reihenfolge: bester Ertrag, die NPC-Werft darf zuerst bedient werden', async () => {
@@ -587,9 +588,10 @@ describe('Lieferreihenfolge für Überschüsse', () => {
   });
 
   it('Werft auf Prio 1: erst die eigene Werft bis zum Bedarf, danach Verkauf', async () => {
-    const { s, targets } = await setup(true);
+    const { s, fab, targets } = await setup(true);
     expect(targets[0]).toBe('werft');
-    expect(targets).toContain('markt'); // danach werden Überschüsse verkauft
+    // danach wird der Überschuss verkauft (vom Transporter an Märkte oder von NPC-Händlern an der Station)
+    expect(fab.inventory.hullparts ?? 0).toBeLessThan(3000 - 348 - 500);
     expect(s.totals.shipsBuilt).toBe(1);
   });
 
@@ -673,3 +675,23 @@ describe('NPC-Händler nach der Lieferreihenfolge', () => {
     expect(await run(true, false)).toBeGreaterThan(0);
   });
 });
+
+describe('Werft hält Material auf Vorrat', () => {
+  it('füllt ihr Lager ohne Bestellung – ein bestelltes Schiff startet sofort', async () => {
+    const Y = await import('../src/engine/yard');
+    const s = newGame(23);
+    s.credits = 60e6;
+    const werft = s.stations[0];
+    werft.modules.push({ uid: s.nextId++, def: 'yard_m', t: 0, running: false, stall: '', util: 0 });
+    werft.modules.push({ uid: s.nextId++, def: 'storage_container_m', t: 0, running: false, stall: '', util: 0 });
+    buyShip(s, 'boa', werft.id);
+    buyShip(s, 'boa', werft.id);
+    expect(werft.yard?.queue.length ?? 0).toBe(0); // keine Bestellung
+    step(s, 6 * 3600);
+    for (const id of ['hullparts', 'engineparts', 'shieldcomponents']) expect(werft.inventory[id] ?? 0).toBeGreaterThan(SHIP_MAP_BOA()[id]);
+    expect(Y.queueShipBuild(s, werft.id, 'boa').ok).toBe(true);
+    step(s, 2);
+    expect(werft.yard?.build?.cls).toBe('boa'); // Material war schon da
+  });
+});
+function SHIP_MAP_BOA(): Record<string, number> { return { hullparts: 348, engineparts: 20, shieldcomponents: 7 }; }

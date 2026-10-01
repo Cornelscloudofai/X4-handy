@@ -424,12 +424,12 @@ function stationYard(state: GameState, st: Station): string {
     return `<div class="module-card box" data-key="yc${c.id}"><span class="ware-tile" style="--c:#8fb7c4">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
       <div style="min-width:0"><div class="title" style="font-weight:600">${esc(c.name)}</div><div class="small muted">${c.size} · ${fmtInt(c.capacity)} m³ · ${fmtNum(c.speed, 1)} km/s</div></div>
       <div class="flow" style="grid-column:1/-1">${mats}</div>
-      <div class="meta" style="grid-column:1/-1"><span>Material <b>${fmtCr(mv)}</b></span><span>Kaufpreis <b>${fmtCr(c.price)}</b></span><span>Bauzeit <b>${fmtDur(SHIP_BUILD_TIME[c.size])}</b></span></div>
+      <div class="meta" style="grid-column:1/-1"><span>Vorrat für <b>${Math.floor(Math.min(...Object.entries(c.materials).map(([id, n]) => (st.inventory[id] ?? 0) / n)))}×</b></span><span>Material <b>${fmtCr(mv)}</b></span><span>Kaufpreis <b>${fmtCr(c.price)}</b></span><span>Bauzeit <b>${fmtDur(SHIP_BUILD_TIME[c.size])}</b></span></div>
       <div class="actions"><button class="btn small primary" ${act('yard-build', { st: st.id, cls: c.id })}>${icon('plus', 16)}Bauen</button></div></div>`;
   }).join('');
   return `<div class="section"><h3>Fertigung</h3>
     ${current || rows ? `<div class="box rows">${current}${rows}</div>` : '<div class="box empty">Die Werft ist frei. Wähle unten ein Schiff.</div>'}
-    <p class="small muted" style="margin:6px 0 0">Gebaut wird aus dem Lager dieser Station. Fehlendes Material kaufen Transporter im Autohandel automatisch ein, solange ein Schiff wartet.</p></div>
+    <p class="small muted" style="margin:6px 0 0">Gebaut wird aus dem Lager dieser Station. Die Werft hält ihr Material ständig auf Vorrat – deine Transporter und NPC-Händler liefern laufend nach, nicht erst bei einer Bestellung. Wie viel Platz jedes Material bekommt, stellst du im Lager-Reiter ein; größere Lager (M/L) erlauben mehr Schiffe am Stück.</p></div>
     <div class="section"><h3>Schiff bauen</h3><div style="display:grid;gap:10px">${cards}</div></div>`;
 }
 

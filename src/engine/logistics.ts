@@ -179,7 +179,9 @@ export function wanted(state: GameState, st: Station, wareId: string, ignoreRule
   const limit = wareLimit(st, wareId, storageCap(st), stationWares(st));
   const cap = storageCap(st)[WARES[wareId].storage];
   if (cap <= 0) return 0;
-  return Math.max(0, limit * 0.95 - (st.inventory[wareId] ?? 0) - incoming(state, st.id, wareId));
+  // Für bestellte Schiffe wird die volle Menge gebraucht – nicht nur 95 % des Limits
+  const yard = st.yard?.queue.length ? Math.min(yardNeeds(st)[wareId] ?? 0, cap / WARES[wareId].volume) : 0;
+  return Math.max(0, Math.max(limit * 0.95, yard) - (st.inventory[wareId] ?? 0) - incoming(state, st.id, wareId));
 }
 
 /** Wie viel die Station abgeben kann */
