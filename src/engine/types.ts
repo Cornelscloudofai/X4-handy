@@ -217,6 +217,8 @@ export interface Ship {
   fullAction?: 'sell' | 'wait';
   /** Miner: Markt, an dem die aktuelle Ladung verkauft wird */
   sellKey?: string;
+  /** Miner: Sekunden, die er mit einem kleinen Rest am vollen Lager gewartet hat */
+  fullWait?: number;
   miningField: string;
   mode: 'auto' | 'route';
   route: RouteOrder | null;

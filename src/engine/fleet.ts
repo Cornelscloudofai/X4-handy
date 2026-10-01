@@ -116,6 +116,17 @@ export function bestMarketFor(state: GameState, from: Place, ware: string, amoun
   return best;
 }
 
+/** Nächster erreichbarer Handelsposten – nimmt jede Menge ab */
+function nearestTradePost(state: GameState, from: Place): string | null {
+  let best: string | null = null, bestD = Infinity;
+  for (const secId of knownSectors(state)) {
+    const ts = sector(secId).tradeStation;
+    const d = travelDistance(from, { sector: secId, x: ts.x, z: ts.z });
+    if (d < bestD) { bestD = d; best = secId; }
+  }
+  return best;
+}
+
 /** Ladung am Markt verkaufen: Handelsposten nimmt alles, NPC-Käufer nur bis zu ihrem freien Platz */
 function sellCargo(state: GameState, s: Ship, key: string): number {
   if (!s.cargo) return 0;
@@ -181,8 +192,9 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
         const info = fieldById(s.miningField)!;
         const w = WARES[info.field.ware];
         s.cargo = { ware: w.id, amount: cls.capacity / w.volume };
-        // Direkt zum Markt nur, wenn daheim noch immer kein Platz ist
-        if (s.sellKey && freeUnits(home, w.id) < s.cargo.amount * 0.25) { headToMarket(s, s.sellKey); return; }
+        // Für den Markt gefördert: nur nach Hause, wenn dort inzwischen Platz für fast die ganze Ladung ist –
+        // sonst Umweg nach Hause für einen kleinen Teil. Die Entscheidung fällt einmal; unterwegs wird nicht umgeplant.
+        if (s.sellKey && freeUnits(home, w.id) < s.cargo.amount * 0.75) { headToMarket(s, s.sellKey); return; }
         s.sellKey = undefined;
         goTo(s, home, s.id);
         s.phase = 'toHome';
@@ -225,7 +237,19 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
         s.trips++;
         s.phase = 'idle';
         s.miningField = '';
+        s.fullWait = 0;
       } else {
+        // Kleiner Rest, den der Verbrauch gleich freimacht: kurz am Dock warten (höchstens 3 Minuten) statt Extraflug
+        const r = stationRates(home)[s.cargo.ware];
+        const perHour = r ? Math.max(0, r.use - r.prod) : 0;
+        if (s.fullAction !== 'wait' && (s.fullWait ?? 0) < 180 && s.cargo.amount <= (perHour * 180) / 3600) {
+          s.fullWait = (s.fullWait ?? 0) + 20;
+          s.status = 'Lädt ab – wartet kurz auf Platz';
+          s.phase = 'waiting';
+          s.timer = 20;
+          return;
+        }
+        s.fullWait = 0;
         // Lager voll: Rest verkaufen statt den Kreislauf zu blockieren (abschaltbar je Miner)
         const m = s.fullAction !== 'wait' ? bestMarketFor(state, home, s.cargo.ware, s.cargo.amount) : null;
         if (m) { headToMarket(s, m.key); return; }
@@ -245,11 +269,12 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
       const key = s.sellKey ?? home.sector;
       const value = sellCargo(state, s, key);
       if (s.cargo && s.cargo.amount > 0.5) {
-        // Käufer voll: nächsten suchen, sonst zurück nach Hause
-        const m = bestMarketFor(state, s, s.cargo.ware, s.cargo.amount);
-        if (m && m.key !== key) { headToMarket(s, m.key); return; }
-        goTo(s, home, s.id); s.phase = 'toHome'; s.sellKey = undefined;
-        return;
+        // Nur NPC-Käufer nehmen begrenzt ab. Den Rest nimmt der nächste Handelsposten vollständig –
+        // so endet jede Verkaufsfahrt nach höchstens zwei Stationen, kein Hin und Her.
+        const post = nearestTradePost(state, s);
+        if (post && post !== key) { headToMarket(s, post); return; }
+        sellCargo(state, s, post ?? home.sector);
+        s.cargo = null;
       }
       log(state, `${s.name}: Überschuss verkauft für ${Math.round(value).toLocaleString('de-DE')} Cr (${marketInfo(key).name}).`, 'info');
       s.cargo = null;

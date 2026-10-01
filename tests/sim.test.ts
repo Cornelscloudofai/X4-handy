@@ -410,3 +410,41 @@ describe('Miner verteilen sich und blockieren nicht', () => {
     expect(m.status).toMatch(/Lager voll/);
   });
 });
+
+describe('Miner bei knappem Lager: kein Hin und Her', () => {
+  it('kehrt nie unterwegs um und beendet jede Verkaufsfahrt nach höchstens zwei Käufern', () => {
+    const s = newGame(121);
+    s.credits = 80e6;
+    const st = s.stations[0];
+    // Kleines Lager, wechselnder Verbrauch: Lager ist ständig fast voll, Platz entsteht in kleinen Häppchen
+    for (const d of ['storage_liquid', 'prod_graphene', 'prod_superfluidcoolant', 'prod_refinedmetals']) st.modules.push({ uid: s.nextId++, def: d, t: 0, running: false, stall: '', util: 0 });
+    for (const c of ['alligator_gas', 'alligator_gas', 'alligator_gas', 'alligator_min', 'alligator_min', 'alligator_min']) buyShip(s, c, st.id);
+    const miners = s.ships.filter((x) => x.cls.startsWith('alligator'));
+    const last = new Map(miners.map((m) => [m.id, m.phase as string]));
+    const hops = new Map(miners.map((m) => [m.id, 0]));
+    const cargoSince = new Map<string, number>();
+    const bad: string[] = [];
+    let sales = 0;
+    for (let t = 0; t < 12 * 3600; t += 2) {
+      step(s, 2);
+      if (t % 600 === 0) st.modules.forEach((m, i) => { if (i > 2 && (t / 600 + i) % 3 === 0) m.running = false; }); // Störungen im Verbrauch
+      for (const m of miners) {
+        const prev = last.get(m.id)!;
+        if (prev !== m.phase) {
+          if (prev === 'toMarket' && m.phase !== 'selling') bad.push(`${m.name}: toMarket → ${m.phase}`);
+          if (prev === 'selling' && m.phase === 'toHome') bad.push(`${m.name}: Verkauf → zurück nach Hause`);
+          if (m.phase === 'toMarket') hops.set(m.id, hops.get(m.id)! + 1);
+          if (hops.get(m.id)! > 2) bad.push(`${m.name}: mehr als zwei Käufer für eine Ladung`);
+          last.set(m.id, m.phase);
+        }
+        if (m.phase === 'selling' && !m.cargo) sales++;
+        if (!m.cargo) { hops.set(m.id, 0); cargoSince.delete(m.id); }
+        else if (!cargoSince.has(m.id)) cargoSince.set(m.id, s.time);
+        else if (s.time - cargoSince.get(m.id)! > 90 * 60) bad.push(`${m.name}: Ladung seit 90 min an Bord (${m.status})`);
+      }
+      if (bad.length) break;
+    }
+    expect(bad).toEqual([]);
+    expect(s.totals.sold).toBeGreaterThan(0);
+  }, 60_000);
+});
