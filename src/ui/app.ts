@@ -611,6 +611,7 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'miner-ware': result(A.setMinerWare(state, d.id!, d.ware ?? '')); break;
+      case 'miner-full': { const sh = state.ships.find((x) => x.id === d.id); if (sh) { sh.fullAction = d.v === 'wait' ? 'wait' : 'sell'; toast(d.v === 'wait' ? 'Miner wartet bei vollem Lager.' : 'Miner verkauft Überschuss bei vollem Lager.', 'good'); } refresh(); break; }
       case 'trader-mode': {
         const s = state.ships.find((x) => x.id === d.id);
         if (!s) break;

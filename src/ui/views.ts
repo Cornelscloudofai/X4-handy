@@ -554,7 +554,11 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     orders = `<div class="section"><h3>Abbau</h3><div class="pills">
       <button class="pill ${!s.mineWare ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: '' })}>Automatisch nach Bedarf</button>
       ${wares.map((w) => `<button class="pill ${s.mineWare === w ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: w })}>${wareDot(WARES[w].color, 8)}${esc(WARES[w].name)}</button>`).join('')}
-    </div><p class="small muted" style="margin-top:8px">${wares.length ? 'Automatisch: fördert, was die Heimatstation verbraucht. Feste Ware: füllt das Lager auch für den Verkauf (Verkauf im Lager aktivieren).' : 'Im Heimatsektor gibt es kein passendes Feld für diesen Miner.'}</p></div>`;
+    </div><p class="small muted" style="margin-top:8px">${wares.length ? 'Automatisch: fördert, was im Lager am knappsten ist – Rohstoffe, auf die Module warten, zuerst. Mehrere Miner teilen sich die Waren so von selbst auf.' : 'Im Heimatsektor gibt es kein passendes Feld für diesen Miner.'}</p></div>
+    <div class="section"><h3>Wenn das Lager voll ist</h3><div class="pills">
+      <button class="pill ${s.fullAction !== 'wait' ? 'teal' : ''}" ${act('miner-full', { id: s.id, v: 'sell' })}>Überschuss verkaufen</button>
+      <button class="pill ${s.fullAction === 'wait' ? 'teal' : ''}" ${act('miner-full', { id: s.id, v: 'wait' })}>Warten</button>
+    </div><p class="small muted" style="margin-top:8px">${s.fullAction === 'wait' ? 'Der Miner wartet mit voller Ladung am Dock, bis wieder Platz ist.' : 'Passt die Ladung nicht mehr ins Lager, verkauft der Miner den Rest beim besten erreichbaren Käufer und arbeitet weiter. Ist alles voll, fördert er direkt für den Markt.'}</p></div>`;
   } else {
     const r = s.route;
     const eps: { v: string; label: string }[] = [

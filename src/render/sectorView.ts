@@ -221,7 +221,7 @@ export class SectorRenderer {
     for (const s of state.ships) {
       if (s.sector !== sec.id) continue;
       const cls = SHIP_MAP[s.cls];
-      const docked = s.phase === 'docking' || s.phase === 'unloading' || (s.phase === 'waiting' && !s.path.length);
+      const docked = s.phase === 'docking' || s.phase === 'unloading' || s.phase === 'selling' || (s.phase === 'waiting' && !s.path.length);
       const [sx, sy] = cam.toScreen(s.x, s.z);
       if (sx < -30 || sx > W + 30 || sy < -30 || sy > H + 30) continue;
       const color = cls.role === 'miner' ? C.miner : C.trader;

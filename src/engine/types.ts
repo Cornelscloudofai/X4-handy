@@ -177,7 +177,9 @@ export type ShipPhase =
   | 'mining'
   | 'toHome'
   | 'unloading'
-  | 'waiting';
+  | 'waiting'
+  | 'toMarket'
+  | 'selling';
 
 export interface Vec { x: number; z: number }
 
@@ -211,6 +213,10 @@ export interface Ship {
   cargo: { ware: string; amount: number } | null;
   /** Miner: gewählte Ware ('' = automatisch) */
   mineWare: string;
+  /** Miner bei vollem Heimatlager: Überschuss am Markt verkaufen (Standard) oder warten */
+  fullAction?: 'sell' | 'wait';
+  /** Miner: Markt, an dem die aktuelle Ladung verkauft wird */
+  sellKey?: string;
   miningField: string;
   mode: 'auto' | 'route';
   route: RouteOrder | null;

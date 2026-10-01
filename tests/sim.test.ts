@@ -4,6 +4,7 @@ import { step } from '../src/engine/sim';
 import { buyShip, cancelQueued, foundStation, moveQueued, queueModule, setTradeRule, unqueueLast } from '../src/engine/actions';
 import { freeUnits, marketPrice, priceAt, storageCap, wareLimit } from '../src/engine/economy';
 import { WARES, outputPerHour } from '../src/data/wares';
+import { fieldWare } from '../src/engine/logistics';
 import { MODULE_MAP } from '../src/data/modules';
 import { insideHex, sectorPath } from '../src/data/sectors';
 import * as storyApi from '../src/engine/story';
@@ -370,5 +371,42 @@ describe('Lager S/M/L', () => {
     expect(storageCap(loaded.stations[0]).Container).toBe(100_000);
     expect(loaded.blueprints).toContain('storage_container_m');
     expect(loaded.blueprints).not.toContain('storage_solid_m');
+  });
+});
+
+describe('Miner verteilen sich und blockieren nicht', () => {
+  it('fördert die knappste Ware statt nur Methan', () => {
+    const s = newGame(111);
+    s.credits = 50e6;
+    const st = s.stations[0];
+    for (const d of ['storage_liquid', 'prod_graphene', 'prod_graphene', 'prod_superfluidcoolant']) st.modules.push({ uid: s.nextId++, def: d, t: 0, running: false, stall: '', util: 0 });
+    st.inventory.methane = 8_300; // Methan am Limit (voll), Helium leer
+    for (let i = 0; i < 3; i++) buyShip(s, 'alligator_gas', st.id);
+    step(s, 1800);
+    const targets = s.ships.filter((x) => x.cls === 'alligator_gas').map((x) => (x.miningField ? fieldWare(x.miningField) : x.cargo?.ware ?? ''));
+    expect(targets).toContain('helium');
+    step(s, 3 * 3600);
+    expect(s.totals.mined.helium ?? 0).toBeGreaterThan(1000);
+  });
+
+  it('verkauft Überschuss, wenn das Lager voll ist, statt ewig zu warten', () => {
+    const s = newGame(112);
+    const st = s.stations[0];
+    st.modules.push({ uid: s.nextId++, def: 'storage_liquid', t: 0, running: false, stall: '', util: 0 });
+    buyShip(s, 'alligator_gas', st.id);
+    const m = s.ships.find((x) => x.cls === 'alligator_gas')!;
+    st.inventory.methane = 1e9; // voll
+    Object.assign(m, { sector: st.sector, x: st.x, z: st.z, path: [], phase: 'unloading', cargo: { ware: 'methane', amount: 900 } });
+    const c0 = s.credits;
+    step(s, 600);
+    expect(m.cargo === null || m.phase === 'toMarket' || m.phase === 'selling' || s.credits > c0).toBe(true);
+    step(s, 1200);
+    expect(s.credits).toBeGreaterThan(c0);
+    // Mit „Warten“ bleibt die Ladung an Bord
+    m.fullAction = 'wait';
+    Object.assign(m, { sector: st.sector, x: st.x, z: st.z, path: [], phase: 'unloading', cargo: { ware: 'methane', amount: 900 } });
+    step(s, 600);
+    expect(m.cargo?.amount).toBe(900);
+    expect(m.status).toMatch(/Lager voll/);
   });
 });
