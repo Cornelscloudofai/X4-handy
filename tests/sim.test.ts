@@ -552,8 +552,8 @@ describe('Restladung: Automatik und Fallbetrachtung', () => {
   });
 });
 
-describe('Eigene Stationen zuerst', () => {
-  it('Transporter der Hüllenteile-Station beliefert zuerst die eigene Werft, nicht den NPC-Käufer', async () => {
+describe('Option: zuerst eigene Stationen beliefern', () => {
+  const setup = async (ownFirst: boolean) => {
     const Y = await import('../src/engine/yard');
     const s = newGame(7);
     s.credits = 60e6;
@@ -564,12 +564,32 @@ describe('Eigene Stationen zuerst', () => {
     for (const d of ['storage_container', 'dock_m']) queueModule(s, huelle.id, d);
     step(s, 1800);
     huelle.inventory.hullparts = 3000;
+    huelle.ownFirst = ownFirst;
     setTradeRule(s, huelle.id, 'hullparts', { sell: true });
     Y.queueShipBuild(s, werft.id, 'boa');
     buyShip(s, 'boa', huelle.id);
     const boa = s.ships.find((x) => x.cls === 'boa')!;
-    let first: unknown = null;
-    for (let t = 0; t < 2 * 3600 && !first; t += 10) { step(s, 10); if (boa.job?.ware === 'hullparts') first = boa.job.to; }
-    expect(first).toEqual({ kind: 'station', id: werft.id });
+    const targets: string[] = [];
+    for (let t = 0; t < 4 * 3600; t += 10) {
+      step(s, 10);
+      const j = boa.job;
+      if (j?.ware === 'hullparts' && j.stage === 'pickup') {
+        const k = j.to.kind === 'station' ? 'werft' : 'markt';
+        if (targets.at(-1) !== k) targets.push(k);
+      }
+    }
+    return { s, werft, targets };
+  };
+
+  it('ohne Haken: bester Ertrag, die NPC-Werft darf zuerst bedient werden', async () => {
+    const { targets } = await setup(false);
+    expect(targets[0]).toBe('markt');
+  });
+
+  it('mit Haken: erst die eigene Werft bis zum Bedarf, danach Verkauf', async () => {
+    const { s, targets } = await setup(true);
+    expect(targets[0]).toBe('werft');
+    expect(targets).toContain('markt'); // danach werden Überschüsse verkauft
+    expect(s.totals.shipsBuilt).toBe(1);
   });
 });

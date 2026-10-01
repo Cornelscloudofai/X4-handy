@@ -148,6 +148,13 @@ await page.waitForTimeout(400);
 await page.evaluate(() => document.querySelector('.rest-case')?.scrollIntoView());
 await check('20-rest-case');
 report.restCase = await page.evaluate(() => document.querySelectorAll('.rest-opt').length === 3 && !!document.querySelector('.rest-opt.on'));
+// Option „Zuerst eigene Stationen beliefern“ im Lager-Reiter
+await page.evaluate(() => { const g = window.__game; g.openPanel('station', g.state.stations[0].id, 'storage'); g.refresh(); });
+await page.waitForTimeout(300);
+await page.click('input[data-change="own-first"]');
+await page.waitForTimeout(300);
+await check('21-own-first');
+report.ownFirst = await page.evaluate(() => window.__game.state.stations[0].ownFirst === true);
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();

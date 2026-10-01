@@ -838,6 +838,15 @@ function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
+  if (field === 'own-first') {
+    const st = stationById(state, el.dataset.st ?? '');
+    if (st) {
+      st.ownFirst = (el as unknown as HTMLInputElement).checked;
+      toast(st.ownFirst ? `${st.name}: eigene Stationen werden zuerst beliefert.` : `${st.name}: Überschüsse gehen an den besten Käufer.`, 'good');
+    }
+    refresh();
+    return;
+  }
   if (field === 'search') {
     ui.search[el.dataset.scope ?? ''] = (el as unknown as HTMLInputElement).value;
     refresh();

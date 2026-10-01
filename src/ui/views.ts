@@ -496,7 +496,7 @@ function stationModules(state: GameState, st: Station): string {
     <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="box rows">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;
 }
 
-function stationStorage(_state: GameState, st: Station): string {
+function stationStorage(state: GameState, st: Station): string {
   const wares = stationWares(st).sort((a, b) => WARES[a].tier - WARES[b].tier || WARES[a].name.localeCompare(WARES[b].name));
   const cap = storageCap(st);
   const wl = stationWares(st);
@@ -507,12 +507,14 @@ function stationStorage(_state: GameState, st: Station): string {
     const rule = tradeRule(st, id);
     const share = storageShare(st, id, wl);
     const reserve = reserveFor(st, id, limit);
-    return `<div class="row" data-key="${id}">${wareTile(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(w.name)}</div>
-      <div class="sub">${fmtAmount(have)} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
+    return `<div class="row" data-key="${id}">${wareTile(id)}<div class="grow"><div class="title two-lines" style="font-weight:500">${esc(w.name)}</div>
+      <div class="sub wrap">${fmtAmount(have)} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
       <div class="row-links"><button class="linkish" ${act('storage-open', { st: st.id, ware: id })}>Lager einstellen</button>${have >= 1 && w.storage === 'Container' ? `<button class="linkish" ${act('sell-open', { st: st.id, ware: id })}>Verkaufen …</button>` : ''}</div></div>
       <div class="toggle"><button class="buy ${rule.buy ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'buy' })} aria-pressed="${rule.buy}">Kauf</button><button class="sell ${rule.sell ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'sell' })} aria-pressed="${rule.sell}">Verkauf</button></div></div>`;
   }).join('');
   return `<p class="lead">Kauf: Händler und deine Transporter liefern an. Verkauf: Überschüsse werden abgegeben, die Reserve bleibt für die eigene Produktion.</p>
+    <div class="box" style="padding:12px 14px;margin-bottom:14px"><label class="check"><input type="checkbox" data-change="own-first" data-st="${st.id}" ${st.ownFirst ? 'checked' : ''}> Zuerst eigene Stationen beliefern</label>
+      <p class="small muted" style="margin:6px 0 0">Die Transporter dieser Station bringen Überschüsse zuerst zu deinen eigenen Stationen, die sie brauchen (z. B. Hüllenteile an die Werft), bis deren Bedarf gedeckt ist. Erst danach wird an Märkte und NPC-Käufer verkauft.${state.ships.some((x) => x.home === st.id && SHIP_MAP[x.cls].role === 'trader') ? '' : ' <span class="warn-text">Diese Station hat noch keinen eigenen Transporter.</span>'}</p></div>
     <div class="section"><div class="box rows">${rows || '<div class="empty">Das Lager ist leer.</div>'}</div></div>
     <p class="small muted">Ohne Einstellung teilen sich alle Waren einer Lagerart den Platz gleichmäßig („auto“). Eingestellte Anteile gehen vor, der Rest wird verteilt.</p>`;
 }

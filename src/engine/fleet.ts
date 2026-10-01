@@ -378,7 +378,7 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
 
 // ---------- Transporter ----------
 
-interface Candidate { job: TradeJob; score: number }
+interface Candidate { job: TradeJob; score: number; own?: boolean }
 
 function unitsFor(s: Ship, wareId: string): number {
   return SHIP_MAP[s.cls].capacity / WARES[wareId].volume;
@@ -408,8 +408,6 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
   const known = knownSectors(state);
   const cands: Candidate[] = [];
   if (!canDockAt(state, s, { kind: 'station', id: home.id })) return null;
-  // Eigene Stationen zu versorgen hat Vorrang vor Verkäufen an Märkte und NPC-Käufer
-  const OWN = 4;
   const minLoad = (id: string) => Math.min(unitsFor(s, id) * 0.3, Math.max(50, 60_000 / WARES[id].price.avg));
   // Im Autohandel ist die Heimatstation immer einer der beiden Handelspartner:
   // Sie gibt ab (an Märkte, Aufträge oder eigene Stationen) oder wird versorgt. Kein Handel zwischen fremden Stationen.
@@ -433,7 +431,7 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         const need = wanted(state, other, id);
         const n = Math.min(qty, need);
         if (n < minLoad(id)) continue;
-        cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup' }, score: (weight * n * avg * OWN) / travelTime(state, s, baseEp, to) });
+        cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup' }, score: (weight * n * avg * 1.5) / travelTime(state, s, baseEp, to), own: true });
       }
       for (const c of state.contracts) {
         if (c.status !== 'active' || c.ware !== id) continue;
@@ -473,7 +471,7 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         const have = surplus(state, other, id);
         if (have < minLoad(id)) continue;
         const n = Math.min(qty, have);
-        cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * n * avg * OWN) / travelTime(state, s, from, baseEp) });
+        cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * n * avg * 1.5) / travelTime(state, s, from, baseEp) });
       }
       if (WARES[id].mined && state.ships.some((m) => m.home === base.id && SHIP_MAP[m.cls].role === 'miner' && SHIP_MAP[m.cls].storage === WARES[id].storage)) continue;
       for (const sec of nearbyMarkets) {
@@ -489,8 +487,10 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
       }
     }
   }
-  cands.sort((a, b) => b.score - a.score);
-  return cands[0]?.job ?? null;
+  // Option der Heimatstation: zuerst eigene Stationen beliefern, bis deren Bedarf gedeckt ist – erst dann verkaufen
+  const pool = home.ownFirst && cands.some((c) => c.own) ? cands.filter((c) => c.own || c.job.to.kind === 'station' && c.job.to.id === home.id) : cands;
+  pool.sort((a, b) => b.score - a.score);
+  return pool[0]?.job ?? null;
 }
 
 export function inTransitForContract(state: GameState, contractId: number): number {
