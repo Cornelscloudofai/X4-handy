@@ -40,6 +40,13 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
 ## Offene Punkte
 
 - **Belegschaft:** Habitatmodule mit Verbrauch von Nahrung und Medizin, damit der Belegschaftsbonus im Planer und in der Simulation vollständig durchgerechnet wird.
+- **Erfahrung und Stufen für Schiffe und Stationen (Idee, noch nicht umgesetzt – erst nach dem Test der aktuellen Version):**
+  Miner und Stationen sammeln durch ihre Arbeit Erfahrungspunkte (Fahrten, geförderte/verarbeitete Mengen, Verkäufe) und steigen
+  im Level auf. Stufen schalten Optimierungen frei – „die Karotte vor der Nase“, mehr Spielfluss und Spieltiefe.
+  Beispiel Miner: Standard ist *Nachfüllen* (fliegt mit Restladung wieder los); *Verkaufen*, *Warten* und die *Automatik*
+  mit Fallbetrachtung werden erst mit höheren Stufen freigeschaltet. Analog denkbar für Stationen (z. B. Lagersteuerung,
+  Reserve, Handelsregeln) und Transporter. Offen: XP-Quellen und Kurve, was genau je Stufe kommt, Anzeige (Stufe/Fortschritt
+  im Schiffs- und Stationsblatt), Umgang mit bestehenden Spielständen.
 - **Kampfschiffe und Gefahren:** Piraten und Xenon an den Toren, Geleitschutz und Verteidigungsplattformen – die eigene Werft ist die Grundlage dafür.
 - **Balance der späten Kapitel:** Die Balance-Simulation spielt bisher bis „Steuertechnik“; Claytronik, Werft und Bestellungen sind per Test abgedeckt.
 
