@@ -47,6 +47,18 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
   mit Fallbetrachtung werden erst mit höheren Stufen freigeschaltet. Analog denkbar für Stationen (z. B. Lagersteuerung,
   Reserve, Handelsregeln) und Transporter. Offen: XP-Quellen und Kurve, was genau je Stufe kommt, Anzeige (Stufe/Fortschritt
   im Schiffs- und Stationsblatt), Umgang mit bestehenden Spielständen.
+- **Ereignisse mit freiwilligen Minispielen (Idee, noch nicht umgesetzt):**
+  Sporadische Ereignisse in den Spielbereichen; der Spieler wird gefragt, ob er ein kurzes Minispiel spielen möchte.
+  Ablehnen = kleiner, vorübergehender Malus (z. B. 30 min x % weniger Produktion), Spielen und Lösen = kein Malus und per Zufall
+  eine Belohnung (z. B. dauerhafte kleine Effizienzsteigerung oder besondere Gegenstände). So reizvoll, aber nie Pflicht.
+  - *Piraten- / Xenon-Überfall:* Draufsicht-Shooter, eigenes Schiff per virtuellem Joystick in alle Richtungen steuern, Feinde
+    abschießen. Ausrüstung (Waffen, Schilde, Triebwerke) verbesserbar – passt zur eigenen Werft und zu waffennahen Bauplänen/Waren.
+  - *Fabrik-Störung:* z. B. verstopfte Rohrleitung als Rohr-Puzzle (Leitungsstücke drehen/anordnen).
+  - *Bergbau:* eigenes Minispiel (z. B. reiche Ader treffen, Asteroid zerlegen).
+  Gedanken dazu: Häufigkeit begrenzen (Abklingzeit, höchstens ein offenes Ereignis), Ereignisse während Offline-Zeit/Zeitraffer
+  automatisch mit Malus abwickeln oder kurz aufheben; Malus klein und sichtbar (Countdown am Modul), Belohnungen eher selten und
+  spürbar; Schwierigkeit mit Fortschritt steigern; kurze Runden (30–90 s), Touch-tauglich, jederzeit abbrechbar (= Malus).
+  Verknüpfbar mit der Stufen-Idee oben (Erfahrungspunkte aus Minispielen) und mit Kampfschiffen/Gefahren.
 - **Kampfschiffe und Gefahren:** Piraten und Xenon an den Toren, Geleitschutz und Verteidigungsplattformen – die eigene Werft ist die Grundlage dafür.
 - **Balance der späten Kapitel:** Die Balance-Simulation spielt bisher bis „Steuertechnik“; Claytronik, Werft und Bestellungen sind per Test abgedeckt.
 
