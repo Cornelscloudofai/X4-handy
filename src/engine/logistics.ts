@@ -199,3 +199,18 @@ export function knownSectors(state: GameState): string[] {
   for (const id of state.sectors) for (const l of sector(id).links) set.add(l);
   return [...set];
 }
+
+/**
+ * Braucht noch eine Station aus der Lieferreihenfolge diese Ware? „Versorgt“ heißt wie beim Durchrutschen der
+ * Transporter: Sie kann weniger als eine halbe Ladung abnehmen (bezogen auf das, was tatsächlich mitginge).
+ */
+export function prioNeeds(state: GameState, st: Station, wareId: string, load: number): Station | null {
+  const have = Math.max(0, (st.inventory[wareId] ?? 0) - reserveFor(st, wareId, wareLimit(st, wareId)));
+  const ref = Math.min(have, load);
+  if (ref < 1) return null;
+  for (const id of st.deliveryPrio ?? []) {
+    const o = stationById(state, id);
+    if (o && wanted(state, o, wareId) >= ref * 0.5) return o;
+  }
+  return null;
+}

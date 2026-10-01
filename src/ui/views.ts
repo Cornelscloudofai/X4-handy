@@ -514,7 +514,9 @@ function deliveryPrioBox(state: GameState, st: Station): string {
   const add = others.length ? `<select class="prio-add" data-change="prio-add" data-st="${st.id}" aria-label="Station hinzufügen"><option value="">+ Station hinzufügen …</option>${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>` : '';
   const noTrader = state.ships.some((x) => x.home === st.id && SHIP_MAP[x.cls].role === 'trader') ? '' : ' <span class="warn-text">Diese Station hat noch keinen eigenen Transporter.</span>';
   return `<div class="section"><h3>Lieferreihenfolge für Überschüsse</h3><div class="box rows">${rows}${last}</div>${add}
-    <p class="small muted" style="margin:6px 0 0">Die Transporter dieser Station beliefern die Stationen der Reihe nach. Kann eine Station weniger als eine halbe Ladung abnehmen, rutschen sie eine Stufe tiefer – zuletzt wird zum besten Preis verkauft.${noTrader}</p></div>`;
+    <p class="small muted" style="margin:6px 0 0">Die Transporter dieser Station beliefern die Stationen der Reihe nach. Kann eine Station weniger als eine halbe Ladung abnehmen, rutschen sie eine Stufe tiefer – zuletzt wird zum besten Preis verkauft.${noTrader}</p>
+    ${prio.length ? `<div class="box" style="padding:12px 14px;margin-top:10px"><label class="check"><input type="checkbox" data-change="prio-npc" data-st="${st.id}" ${st.prioBeforeNpc ? 'checked' : ''}> NPC-Händler erst kaufen lassen, wenn diese Stationen versorgt sind</label>
+      <p class="small muted" style="margin:6px 0 0">Ohne Haken kaufen NPC-Händler an dieser Station alles, was zum Verkauf freigegeben ist. Mit Haken bekommen sie eine Ware erst, wenn keine Station der Reihenfolge mehr eine halbe Ladung davon braucht – so geht z. B. jedes Hüllenteil zuerst an die Werft und erst der Rest an NPC-Händler.${st.prioBeforeNpc && noTrader ? ' <span class="warn-text">Ohne eigenen Transporter holt nur ein Transporter der Zielstation die Ware ab.</span>' : ''}</p></div>` : ''}</div>`;
 }
 
 function stationStorage(state: GameState, st: Station): string {

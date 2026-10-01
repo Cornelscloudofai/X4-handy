@@ -4,7 +4,7 @@ import { SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
 import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, stationWares } from './economy';
 import { contractDeliver } from './contracts';
-import { dockPoint, sellableStock, stationById, surplus, wanted } from './logistics';
+import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
 import type { GameState, NpcShip } from './types';
 import { emit, pick, rand, randRange, weightedPick } from './util';
 
@@ -52,7 +52,9 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
       const w = WARES[id];
       const units = NPC_CAPACITY / w.volume;
       // Ware für aktive Aufträge wird nicht an NPC-Händler verkauft
-      const have = surplus(state, st, id) - contractNeed(state, id);
+      // Option der Station: erst die eigene Lieferreihenfolge versorgen, dann an NPC-Händler verkaufen
+      const held = st.prioBeforeNpc && prioNeeds(state, st, id, units);
+      const have = held ? 0 : surplus(state, st, id) - contractNeed(state, id);
       const room = marketRoom(state, sectorId, id);
       const sell = Math.min(have, units, room);
       if (sell >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'buyer', amount: sell }, w: sell * marketPrice(state, sectorId, id) });
@@ -123,6 +125,8 @@ function npcTrade(state: GameState, n: NpcShip): void {
   const st = stationById(state, n.station);
   if (!st) return;
   if (n.kind === 'buyer') {
+    // Inzwischen braucht eine Station der Lieferreihenfolge die Ware: der Händler zieht ohne Kauf weiter
+    if (st.prioBeforeNpc && prioNeeds(state, st, n.ware, NPC_CAPACITY / WARES[n.ware].volume)) return;
     const qty = Math.min(n.amount, sellableStock(st, n.ware), marketRoom(state, n.sector, n.ware) + n.amount * 0.1);
     if (qty < 1) return;
     addWare(st, n.ware, -qty);

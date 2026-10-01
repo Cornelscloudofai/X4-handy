@@ -142,6 +142,8 @@ export interface Station {
   reserve?: Record<string, number>;
   /** Lieferreihenfolge für Überschüsse: eigene Stationen der Reihe nach, danach Verkauf zum besten Preis */
   deliveryPrio?: string[];
+  /** NPC-Händler kaufen eine Ware erst, wenn die Stationen der Lieferreihenfolge davon versorgt sind */
+  prioBeforeNpc?: boolean;
   /** Veraltet (ersetzt durch deliveryPrio): zuerst alle eigenen Stationen beliefern */
   ownFirst?: boolean;
   /** Eigene Anordnung der Kästchen im Fließdiagramm */

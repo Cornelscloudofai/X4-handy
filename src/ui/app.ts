@@ -849,6 +849,15 @@ function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
+  if (field === 'prio-npc') {
+    const st = stationById(state, el.dataset.st ?? '');
+    if (st) {
+      st.prioBeforeNpc = (el as unknown as HTMLInputElement).checked;
+      toast(st.prioBeforeNpc ? `${st.name}: NPC-Händler kaufen erst, wenn die Lieferreihenfolge versorgt ist.` : `${st.name}: NPC-Händler kaufen wieder frei.`, 'good');
+    }
+    refresh();
+    return;
+  }
   if (field === 'prio-add') {
     const st = stationById(state, el.dataset.st ?? '');
     if (st && el.value) result(A.setDeliveryPrio(state, st.id, [...(st.deliveryPrio ?? []), el.value]));

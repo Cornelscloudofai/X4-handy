@@ -160,6 +160,11 @@ for (let i = 0; i < 2; i++) { await page.selectOption('select[data-change="prio-
 await page.evaluate(() => document.querySelector('.prio-add, [data-key^="prio-"]')?.scrollIntoView());
 await check('21-delivery-prio');
 report.deliveryPrio = await page.evaluate(() => (window.__game.state.stations[0].deliveryPrio ?? []).length === 2 && document.querySelectorAll('[data-key^="prio-"]').length === 2);
+await page.click('input[data-change="prio-npc"]');
+await page.waitForTimeout(300);
+await page.evaluate(() => document.querySelector('input[data-change="prio-npc"]')?.scrollIntoView({ block: 'center' }));
+await check('22-prio-npc');
+report.prioNpc = await page.evaluate(() => window.__game.state.stations[0].prioBeforeNpc === true);
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();

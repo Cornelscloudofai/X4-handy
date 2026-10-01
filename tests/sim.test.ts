@@ -634,3 +634,42 @@ describe('Alter Haken „Zuerst eigene Stationen“', () => {
     expect(loaded.stations[0].ownFirst).toBeUndefined();
   });
 });
+
+describe('NPC-Händler nach der Lieferreihenfolge', () => {
+  const run = async (prioBeforeNpc: boolean, queueShips: boolean) => {
+    const Y = await import('../src/engine/yard');
+    const s = newGame(19);
+    s.credits = 60e6;
+    const werft = s.stations[0];
+    werft.modules.push({ uid: s.nextId++, def: 'yard_m', t: 0, running: false, stall: '', util: 0 });
+    const r = foundStation(s, 'zhin', 60, 55);
+    const fab = s.stations.find((x) => x.id === r.id)!;
+    for (const d of ['storage_container', 'dock_m']) queueModule(s, fab.id, d);
+    step(s, 1800);
+    setTradeRule(s, fab.id, 'hullparts', { sell: true });
+    fab.deliveryPrio = [werft.id];
+    fab.prioBeforeNpc = prioBeforeNpc;
+    if (queueShips) for (let i = 0; i < 4; i++) Y.queueShipBuild(s, werft.id, 'boa'); // Werft braucht ~1.400 Hüllenteile
+    let bought = 0;
+    for (let t = 0; t < 6 * 3600; t += 10) {
+      fab.inventory.hullparts = 3000; // Fabrik produziert laufend nach
+      s.markets.zhin.hullparts.stock = 0; // kein Nachschub vom Markt – sonst gilt die Werft durch NPC-Verkäufer als versorgt
+      const before = fab.inventory.hullparts;
+      step(s, 10);
+      bought += Math.max(0, before - (fab.inventory.hullparts ?? 0));
+    }
+    return bought;
+  };
+
+  it('ohne Haken kaufen NPC-Händler Hüllenteile, obwohl die Werft sie braucht', async () => {
+    expect(await run(false, true)).toBeGreaterThan(0);
+  });
+
+  it('mit Haken kaufen sie nichts, solange die Werft auf Prio 1 noch Bedarf hat', async () => {
+    expect(await run(true, true)).toBe(0);
+  });
+
+  it('mit Haken kaufen sie wieder, sobald die Werft versorgt ist', async () => {
+    expect(await run(true, false)).toBeGreaterThan(0);
+  });
+});
