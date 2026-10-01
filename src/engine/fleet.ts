@@ -409,10 +409,10 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
   const cands: Candidate[] = [];
   if (!canDockAt(state, s, { kind: 'station', id: home.id })) return null;
   const minLoad = (id: string) => Math.min(unitsFor(s, id) * 0.3, Math.max(50, 60_000 / WARES[id].price.avg));
-  // Der Transporter bedient seine Heimat und – nachrangig – alle eigenen Stationen im selben Sektor.
-  const served = state.stations.filter((x) => x.id === home.id || x.sector === home.sector);
-  for (const base of served) {
-    const weight = base.id === home.id ? 1 : 0.55;
+  // Im Autohandel ist die Heimatstation immer einer der beiden Handelspartner:
+  // Sie gibt ab (an Märkte, Aufträge oder eigene Stationen) oder wird versorgt. Kein Handel zwischen fremden Stationen.
+  for (const base of [home]) {
+    const weight = 1;
     const baseEp: TradeEndpoint = { kind: 'station', id: base.id };
     if (!canDockAt(state, s, baseEp)) continue;
     const nearbyMarkets = [base.sector, ...sector(base.sector).links.filter((l) => known.includes(l))];

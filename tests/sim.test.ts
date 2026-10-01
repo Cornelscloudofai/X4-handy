@@ -104,7 +104,7 @@ describe('Simulation', () => {
 });
 
 describe('Aufträge', () => {
-  it('Transporter liefern Story-Aufträge auch aus einer Nachbarstation vollständig aus', () => {
+  it('Transporter liefern Story-Aufträge vollständig aus – aber nur aus ihrer Heimatstation', () => {
     const s = newGame(5);
     s.credits = 20_000_000;
     const a = s.stations[0];
@@ -117,10 +117,46 @@ describe('Aufträge', () => {
     storyApi.startMission(s);
     setTradeRule(s, b.id, 'hullparts', { sell: true });
     b.inventory.hullparts = 1500;
+    // Transporter von Station A bedient B nicht
     buyShip(s, 'boa', a.id);
+    step(s, 2 * 3600);
+    expect(currentMission(s)?.progress(s).cur).toBe(0);
+    // Transporter mit Heimat B liefert vollständig
+    buyShip(s, 'boa', b.id);
     step(s, 4 * 3600);
     expect(currentMission(s)?.progress(s).cur).toBe(1500);
     expect(missionComplete(s)).toBe(true);
+  });
+
+  it('Autohandel: die Heimatstation ist immer einer der beiden Handelspartner', () => {
+    const s = newGame(15);
+    s.credits = 60_000_000;
+    const home = s.stations[0];
+    const ids: string[] = [];
+    for (const [x, z] of [[60, 55], [-80, 70]]) {
+      const r = foundStation(s, 'zhin', x, z);
+      ids.push(r.id!);
+      for (const d of ['storage_container', 'dock_m']) queueModule(s, r.id!, d);
+    }
+    step(s, 1800);
+    const [b, c] = ids.map((id) => s.stations.find((x) => x.id === id)!);
+    // B hat Überschuss, C braucht genau das – verlockend, aber ohne Bezug zur Heimat
+    setTradeRule(s, b.id, 'refinedmetals', { sell: true });
+    setTradeRule(s, c.id, 'refinedmetals', { buy: true });
+    b.inventory.refinedmetals = 5000;
+    buyShip(s, 'boa', home.id);
+    buyShip(s, 'boa', home.id);
+    const bad: string[] = [];
+    for (let t = 0; t < 6 * 3600; t += 10) {
+      step(s, 10);
+      for (const sh of s.ships.filter((x) => x.home === home.id && x.cls === 'boa')) {
+        const j = sh.job;
+        if (!j) continue;
+        const touches = (ep: typeof j.from) => ep.kind === 'station' && ep.id === home.id;
+        if (!touches(j.from) && !touches(j.to)) bad.push(`${sh.name}: ${JSON.stringify(j.from)} → ${JSON.stringify(j.to)}`);
+      }
+    }
+    expect(bad).toEqual([]);
   });
 });
 

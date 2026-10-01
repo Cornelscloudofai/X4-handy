@@ -608,7 +608,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     orders = `<div class="section"><h3>Befehl</h3>
       <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Autohandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Versorgungslinie</button></div>
       ${s.mode === 'auto'
-        ? `<p class="small muted">Verkauft Überschüsse der Heimatstation an eigene Stationen, aktive Aufträge oder den besten Markt in der Nähe und kauft fehlende Eingangswaren ein.</p>`
+        ? `<p class="small muted">Verkauft Überschüsse der Heimatstation an eigene Stationen, aktive Aufträge oder den besten Markt in der Nähe und kauft fehlende Eingangswaren für sie ein. Die Heimatstation ist immer einer der beiden Handelspartner – für andere Stationen arbeitet er nur über Einzelaufträge oder eine Versorgungslinie.</p>`
         : `<div class="form">
           <div class="field"><label>Von</label>${sel('route-from', epVal(r?.from), eps)}</div>
           <div class="field"><label>Nach</label>${sel('route-to', epVal(r?.to), eps)}</div>

@@ -96,7 +96,7 @@ export const STORY: StoryMission[] = [
     title: 'Werftbedarf',
     story: 'Die Zhin-Werft will neue Rümpfe auflegen. Hüllenteile verbinden deine Metall- und Graphenproduktion zu einer echten Kette.',
     goal: 'Liefere 1.500 Hüllenteile an den Zhin-Handelsposten',
-    hint: 'Den Bauplan für Hüllenteile (Ruf 7) verkauft der Handelsvertreter am Zhin-Handelsposten – tippe ihn auf der Karte an. Transporter im Autohandel liefern automatisch für aktive Aufträge.',
+    hint: 'Den Bauplan für Hüllenteile (Ruf 7) verkauft der Handelsvertreter am Zhin-Handelsposten – tippe ihn auf der Karte an. Transporter im Autohandel liefern automatisch für aktive Aufträge – aber nur aus ihrer Heimatstation: Die Station mit den Hüllenteilen braucht einen eigenen Transporter.',
     progress: (s) => { const c = storyContract(s); return { cur: c ? c.delivered : 0, target: 1500 }; },
     reward: { credits: 2_500_000, rep: { frf: 3 } },
     delivery: { sector: 'zhin', ware: 'hullparts', amount: 1500 },

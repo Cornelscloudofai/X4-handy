@@ -43,7 +43,7 @@ for (let h = 0; h < 72; h++) {
         A.setTradeRule(s, b.id, 'refinedmetals', { buy: true });
         A.setTradeRule(s, b.id, 'graphene', { buy: true });
       }
-      if (traders() < 3 && s.credits > 1.5e6) A.buyShip(s, 'boa', st.id);
+      if (traders() < 3 && s.credits > 1.5e6) A.buyShip(s, 'boa', traders() === 2 ? b.id : st.id); // dritter Transporter für die Hüllenteile-Station
       if (miners() < 5 && s.credits > 1.5e6) A.buyShip(s, 'alligator_min', st.id);
     }
     if (m === 'license' && s.credits > 4.2e6) log(A.buyLicense(s, 'tkr').msg);

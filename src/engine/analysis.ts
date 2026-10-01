@@ -35,6 +35,10 @@ export function stationAlerts(state: GameState, st: Station): Alert[] {
       break;
     }
   }
+  // Ohne eigenen Transporter handelt niemand automatisch für diese Station
+  if (hasProd && !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') && state.ships.some((s) => SHIP_MAP[s.cls].role === 'trader')) {
+    out.push({ station: st.id, text: `${st.name}: kein eigener Transporter – Überschüsse werden nicht verkauft, Fehlendes nicht eingekauft. Transporter kaufen oder einen hierher versetzen.`, severity: 'warn' });
+  }
   // Überförderung: Miner bringen wiederholt mehr, als ins Lager passt
   const over = new Set(ships.filter((s) => SHIP_MAP[s.cls].role === 'miner' && (s.restStreak ?? 0) >= 2 && s.lastRest).map((s) => s.lastRest!.ware));
   for (const w of over) out.push({ station: st.id, text: `${st.name}: Miner fördern mehr ${WARES[w].name}, als die Station verbraucht – Überschuss wird verkauft. Weniger Miner oder mehr Verbraucher einplanen.`, severity: 'warn' });
