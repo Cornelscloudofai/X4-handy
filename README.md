@@ -59,6 +59,13 @@ Tipp fürs Handy: Seite öffnen → Browsermenü → „Zum Startbildschirm hinz
   automatisch mit Malus abwickeln oder kurz aufheben; Malus klein und sichtbar (Countdown am Modul), Belohnungen eher selten und
   spürbar; Schwierigkeit mit Fortschritt steigern; kurze Runden (30–90 s), Touch-tauglich, jederzeit abbrechbar (= Malus).
   Verknüpfbar mit der Stufen-Idee oben (Erfahrungspunkte aus Minispielen) und mit Kampfschiffen/Gefahren.
+  - *Häufigkeit steuern – Stationsmanager:* Jede Station hat einen Manager mit Stufe und Eigenschaften (z. B. Sorgfalt, Technik,
+    Sicherheit). Niedrige Stufe = mehr Störungen; Eigenschaften wirken gezielt (Technik → weniger Rohrbrüche, Sicherheit → weniger
+    Überfälle auf die Station). Manager sammeln Erfahrung (Stufen-Idee), lassen sich ggf. anwerben/austauschen.
+  - *Häufigkeit steuern – Schutz durch Kampfschiffe:* Begleitschutz für Frachter senkt Überfälle auf Handelsrouten, Patrouillen
+    in einem Sektor senken Piraten-/Xenon-Ereignisse dort. Weitere mögliche Effekte: Patrouillen erhöhen Ruf oder Marktsicherheit,
+    ungeschützte Routen riskieren Frachtverlust, Geleitschutz kostet Unterhalt (Zielkonflikt Sicherheit vs. Kosten).
+    Die Kampfschiffe kommen aus der eigenen Werft und brauchen waffennahe Waren – verbindet Wirtschaft, Werft und Gefahren.
 - **Kampfschiffe und Gefahren:** Piraten und Xenon an den Toren, Geleitschutz und Verteidigungsplattformen – die eigene Werft ist die Grundlage dafür.
 - **Balance der späten Kapitel:** Die Balance-Simulation spielt bisher bis „Steuertechnik“; Claytronik, Werft und Bestellungen sind per Test abgedeckt.
 
