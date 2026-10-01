@@ -197,6 +197,24 @@ export type TradeEndpoint = { kind: 'station'; id: string } | { kind: 'market'; 
 
 export interface RouteOrder { from: TradeEndpoint; to: TradeEndpoint; ware: string }
 
+export type RestAction = 'auto' | 'topup' | 'sell' | 'wait';
+
+/** Fallbetrachtung einer Restladung: gewählter Weg und was die anderen gekostet hätten (Sekunden, Credits) */
+export interface RestCase {
+  t: number;
+  ware: string;
+  amount: number;
+  choice: 'topup' | 'sell' | 'wait';
+  reason: string;
+  /** Zeitverlust je Weg; null = nicht möglich */
+  wait: number | null;
+  sell: number | null;
+  sellValue: number;
+  topup: number | null;
+  /** Abbauzeit, die das Nachfüllen spart */
+  topupSaves: number;
+}
+
 export interface Ship {
   id: string;
   name: string;
@@ -217,8 +235,14 @@ export interface Ship {
   fullAction?: 'sell' | 'wait';
   /** Miner: Markt, an dem die aktuelle Ladung verkauft wird */
   sellKey?: string;
-  /** Miner: Sekunden, die er mit einem kleinen Rest am vollen Lager gewartet hat */
-  fullWait?: number;
+  /** Miner: Was mit einer Restladung geschieht, die nicht mehr ins Lager passt */
+  restAction?: RestAction;
+  /** Miner: Rückkehren in Folge, bei denen ein Rest blieb (Überförderung erkennen) */
+  restStreak?: number;
+  /** Miner: Laderaum mit derselben Ware auffüllen statt neu zu beginnen */
+  topUp?: boolean;
+  /** Miner: letzte Entscheidung über eine Restladung mit Kostenvergleich */
+  lastRest?: RestCase;
   miningField: string;
   mode: 'auto' | 'route';
   route: RouteOrder | null;

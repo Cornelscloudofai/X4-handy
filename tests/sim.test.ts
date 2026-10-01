@@ -448,3 +448,70 @@ describe('Miner bei knappem Lager: kein Hin und Her', () => {
     expect(s.totals.sold).toBeGreaterThan(0);
   }, 60_000);
 });
+
+describe('Restladung: Automatik und Fallbetrachtung', () => {
+  const setup = (seed: number) => {
+    const s = newGame(seed);
+    s.credits = 50e6;
+    const st = s.stations[0];
+    for (const d of ['storage_liquid', 'prod_graphene', 'prod_superfluidcoolant']) st.modules.push({ uid: s.nextId++, def: d, t: 0, running: false, stall: '', util: 0 });
+    buyShip(s, 'alligator_gas', st.id);
+    const m = s.ships.find((x) => x.cls === 'alligator_gas')!;
+    Object.assign(m, { sector: st.sector, x: st.x, z: st.z, path: [], phase: 'unloading' });
+    return { s, st, m };
+  };
+
+  it('füllt nach, wenn dieselbe Ware weiter gebraucht wird – und spart Abbauzeit', async () => {
+    const { decideRest } = await import('../src/engine/fleet');
+    const { s, st, m } = setup(131);
+    st.inventory.methane = wareLimit(st, 'methane');
+    st.inventory.helium = wareLimit(st, 'helium') * 0.8; // Helium ausreichend da
+    m.cargo = { ware: 'methane', amount: 900 };
+    const c = decideRest(s, m, st);
+    expect(c.choice).toBe('topup');
+    expect(c.topup).toBe(0);
+    expect(c.topupSaves).toBeGreaterThan(60);
+    expect(c.wait).toBeGreaterThan(0);
+    expect(c.sell).toBeGreaterThan(0);
+    // Ausführen: Miner fliegt mit Rest zum Methanfeld und kommt mit voller Ladung zurück
+    step(s, 2);
+    expect(m.topUp).toBe(true);
+    expect(m.cargo!.amount).toBeGreaterThan(400); // Rest bleibt an Bord (abzüglich dessen, was noch passte)
+    let full = 0;
+    for (let i = 0; i < 400 && !full; i++) { step(s, 2); if (m.phase === 'toHome' && m.cargo) full = m.cargo.amount; }
+    expect(full).toBeCloseTo(1266.7, 0);
+  });
+
+  it('füllt nicht nach, wenn die Station dringender eine andere Ware braucht', async () => {
+    const { decideRest } = await import('../src/engine/fleet');
+    const { s, st, m } = setup(132);
+    st.inventory.methane = wareLimit(st, 'methane');
+    st.inventory.helium = 0;
+    m.cargo = { ware: 'methane', amount: 300 };
+    const c = decideRest(s, m, st);
+    expect(c.choice).not.toBe('topup');
+    expect(c.reason).toMatch(/Helium/);
+    // Gewählt wird das Kürzere von Warten und Verkaufen
+    expect(c.choice === 'wait' ? c.wait! <= c.sell! : c.sell! < c.wait!).toBe(true);
+  });
+
+  it('erkennt Überförderung und hält feste Einstellungen ein', async () => {
+    const { decideRest } = await import('../src/engine/fleet');
+    const { s, st, m } = setup(133);
+    st.inventory.methane = wareLimit(st, 'methane');
+    st.inventory.helium = wareLimit(st, 'helium') * 0.8;
+    m.cargo = { ware: 'methane', amount: 300 };
+    m.restStreak = 2;
+    const c = decideRest(s, m, st);
+    expect(c.choice).toBe('sell');
+    expect(c.reason).toMatch(/mehr Methan/);
+    m.restStreak = 0;
+    for (const v of ['sell', 'wait', 'topup'] as const) { m.restAction = v; expect(decideRest(s, m, st).choice).toBe(v); }
+    // Station verbraucht die Ware gar nicht: Warten ist unmöglich
+    m.restAction = 'auto';
+    m.cargo = { ware: 'hydrogen', amount: 300 };
+    const h = decideRest(s, m, st);
+    expect(h.wait).toBeNull();
+    expect(h.choice).toBe('sell');
+  });
+});

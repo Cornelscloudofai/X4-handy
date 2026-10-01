@@ -10,7 +10,7 @@ import {
   type Place,
 } from './logistics';
 import { contractDeliver } from './contracts';
-import type { GameState, Ship, Station, TradeEndpoint, TradeJob } from './types';
+import type { GameState, RestAction, RestCase, Ship, Station, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
 
 export function shipPlace(s: Ship): Place {
@@ -74,7 +74,7 @@ export function chooseMining(state: GameState, s: Ship): MiningChoice {
   const best = (production.length ? production : sale).sort((a, b) => b.score - a.score)[0];
   if (best) return { ware: best.ware, field: best.field };
   // Alles voll: auf Wunsch direkt für den Markt fördern statt untätig zu warten
-  if (full && s.fullAction !== 'wait') {
+  if (full && restMode(s) !== 'wait') {
     const pick = fields.map((f) => {
       const m = bestMarketFor(state, home, f.ware, cls.capacity / WARES[f.ware].volume);
       return m ? { f, m } : null;
@@ -152,6 +152,84 @@ function headToMarket(s: Ship, key: string): void {
   s.status = `Lager voll – verkauft ${WARES[s.cargo?.ware ?? 'ore'].name} bei ${info.name}`;
 }
 
+export function restMode(s: Ship): RestAction {
+  return s.restAction ?? (s.fullAction === 'wait' ? 'wait' : 'auto');
+}
+
+/** Felder einer Ware im Heimatsektor, nächstes zuerst */
+function fieldsOf(home: Station, ware: string) {
+  return sector(home.sector).fields.filter((f) => f.ware === ware).sort((a, b) => Math.hypot(a.x - home.x, a.z - home.z) - Math.hypot(b.x - home.x, b.z - home.z));
+}
+
+/** Andere Ware derselben Lagerart, die die Station dringender braucht (Füllstand unter 75 %, also spürbar Platz) */
+function urgentOther(state: GameState, s: Ship, home: Station, ware: string): string | null {
+  if (s.mineWare) return null;
+  const cls = SHIP_MAP[s.cls];
+  const rates = stationRates(home);
+  let best: { w: string; fill: number } | null = null;
+  for (const f of sector(home.sector).fields) {
+    const w = f.ware;
+    if (w === ware || WARES[w].storage !== cls.storage) continue;
+    const use = Math.max(0, (rates[w]?.use ?? 0) - (rates[w]?.prod ?? 0));
+    if (use <= 0) continue;
+    const limit = wareLimit(home, w);
+    const fill = limit > 0 ? ((home.inventory[w] ?? 0) + incoming(state, home.id, w)) / limit : 1;
+    if (fill < 0.75 && freeUnits(home, w) > (cls.capacity / WARES[w].volume) * 0.25 && (!best || fill < best.fill)) best = { w, fill };
+  }
+  return best?.w ?? null;
+}
+
+/**
+ * Was tun mit einer Restladung, die nicht mehr ins Lager passt? Vergleicht drei Wege:
+ * Warten (bis der Verbrauch Platz macht), Verkaufen (Umweg zum Käufer) und Nachfüllen (Rest bleibt an Bord,
+ * der Miner baut nur den freien Laderaum ab – kostet keine Zeit, solange dieselbe Ware weiter gebraucht wird).
+ */
+export function decideRest(state: GameState, s: Ship, home: Station): RestCase {
+  const cls = SHIP_MAP[s.cls];
+  const cargo = s.cargo!;
+  const w = WARES[cargo.ware];
+  const r = stationRates(home)[cargo.ware];
+  const use = r ? Math.max(0, r.use - r.prod) : 0;
+  const wait = use > 0 ? (cargo.amount / use) * 3600 : null;
+  const m = bestMarketFor(state, home, cargo.ware, cargo.amount);
+  const field = fieldsOf(home, cargo.ware)[0];
+  const topupOk = !!field && (!s.mineWare || s.mineWare === cargo.ware);
+  const topupSaves = field ? (cargo.amount * w.volume) / (cls.miningRate * field.richness) : 0;
+  // Verkaufen kostet den Umweg – und braucht die Station die Ware, muss die verkaufte Menge später erneut gefördert werden
+  const sell = m ? (2 * travelDistance(home, marketInfo(m.key))) / cls.speed + DOCK_TIME[cls.size] + (use > 0 ? topupSaves : 0) : null;
+  const base = { t: state.time, ware: cargo.ware, amount: cargo.amount, wait, sell, sellValue: m?.value ?? 0, topup: topupOk ? 0 : null, topupSaves };
+  const cheaper = (why: string): RestCase => {
+    if (wait != null && (sell == null || wait <= sell)) return { ...base, choice: 'wait', reason: why + ' – Warten ist kürzer als der Umweg.' };
+    if (sell != null) return { ...base, choice: 'sell', reason: why + ' – der Umweg zum Käufer ist kürzer als Warten.' };
+    return { ...base, choice: 'wait', reason: why + ' – kein Käufer erreichbar.' };
+  };
+  const mode = restMode(s);
+  if (mode === 'wait') return { ...base, choice: 'wait', reason: 'Fest eingestellt: Warten.' };
+  if (mode === 'sell') return sell != null ? { ...base, choice: 'sell', reason: 'Fest eingestellt: Verkaufen.' } : { ...base, choice: 'wait', reason: 'Verkaufen eingestellt, aber kein Käufer erreichbar.' };
+  if (mode === 'topup') return topupOk ? { ...base, choice: 'topup', reason: 'Fest eingestellt: Nachfüllen.' } : cheaper('Nachfüllen eingestellt, aber kein passendes Feld');
+  // Automatik
+  if (use <= 0) return cheaper(`Die Station verbraucht kein ${w.name}`);
+  const other = urgentOther(state, s, home, cargo.ware);
+  if (other) return cheaper(`Die Station braucht dringender ${WARES[other].name}`);
+  if ((s.restStreak ?? 0) >= 2 && sell != null) return { ...base, choice: 'sell', reason: `Zum ${s.restStreak}. Mal in Folge ein Rest – die Miner fördern mehr ${w.name}, als die Station verbraucht.` };
+  if (topupOk) return { ...base, choice: 'topup', reason: `${w.name} wird weiter gebraucht – der Rest bleibt an Bord, Nachfüllen kostet keine Zeit.` };
+  return cheaper('Kein Feld zum Nachfüllen');
+}
+
+/** Rest an Bord behalten und am nächsten Feld derselben Ware auffüllen */
+function startTopUp(state: GameState, s: Ship, home: Station): void {
+  const f = fieldsOf(home, s.cargo!.ware)[0];
+  const info = fieldById(f.id)!;
+  const a = rand(state) * Math.PI * 2;
+  const r = Math.sqrt(rand(state)) * info.field.r * 0.6;
+  s.miningField = f.id;
+  s.topUp = true;
+  s.sellKey = undefined;
+  goTo(s, { sector: info.sector.id, x: info.field.x + Math.cos(a) * r, z: info.field.z + Math.sin(a) * r });
+  s.phase = 'toTarget';
+  s.status = `Füllt auf: ${WARES[s.cargo!.ware].name} (${fmtN(s.cargo!.amount)} an Bord)`;
+}
+
 function stepMiner(state: GameState, s: Ship, dt: number): void {
   const cls = SHIP_MAP[s.cls];
   const home = stationById(state, s.home);
@@ -181,8 +259,10 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
         const info = fieldById(s.miningField);
         if (!info) { s.phase = 'idle'; return; }
         s.phase = 'mining';
-        s.timer = cls.capacity / (cls.miningRate * info.field.richness);
-        s.status = `Baut ${WARES[info.field.ware].name} ab`;
+        // Beim Nachfüllen nur den freien Laderaum abbauen
+        const used = s.cargo && s.cargo.ware === info.field.ware ? s.cargo.amount * WARES[s.cargo.ware].volume : 0;
+        s.timer = Math.max(0, cls.capacity - used) / (cls.miningRate * info.field.richness);
+        s.status = used ? `Füllt auf: ${WARES[info.field.ware].name}` : `Baut ${WARES[info.field.ware].name} ab`;
       }
       return;
     }
@@ -192,6 +272,7 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
         const info = fieldById(s.miningField)!;
         const w = WARES[info.field.ware];
         s.cargo = { ware: w.id, amount: cls.capacity / w.volume };
+        s.topUp = false;
         // Für den Markt gefördert: nur nach Hause, wenn dort inzwischen Platz für fast die ganze Ladung ist –
         // sonst Umweg nach Hause für einen kleinen Teil. Die Entscheidung fällt einmal; unterwegs wird nicht umgeplant.
         if (s.sellKey && freeUnits(home, w.id) < s.cargo.amount * 0.75) { headToMarket(s, s.sellKey); return; }
@@ -232,31 +313,27 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
         state.totals.mined[s.cargo.ware] = (state.totals.mined[s.cargo.ware] ?? 0) + n;
         s.earned += n * WARES[s.cargo.ware].price.avg;
       }
+      // Wiederholter Versuch nach kurzem Warten zählt nicht als neue Restladung
+      const retry = !!s.lastRest && s.lastRest.choice === 'wait' && s.lastRest.ware === s.cargo.ware && state.time - s.lastRest.t < 600 && (s.status.startsWith('Lädt ab') || s.status === 'Wartet: Lager voll');
       if (s.cargo.amount < 0.5) {
         s.cargo = null;
         s.trips++;
         s.phase = 'idle';
         s.miningField = '';
-        s.fullWait = 0;
-      } else {
-        // Kleiner Rest, den der Verbrauch gleich freimacht: kurz am Dock warten (höchstens 3 Minuten) statt Extraflug
-        const r = stationRates(home)[s.cargo.ware];
-        const perHour = r ? Math.max(0, r.use - r.prod) : 0;
-        if (s.fullAction !== 'wait' && (s.fullWait ?? 0) < 180 && s.cargo.amount <= (perHour * 180) / 3600) {
-          s.fullWait = (s.fullWait ?? 0) + 20;
-          s.status = 'Lädt ab – wartet kurz auf Platz';
-          s.phase = 'waiting';
-          s.timer = 20;
-          return;
-        }
-        s.fullWait = 0;
-        // Lager voll: Rest verkaufen statt den Kreislauf zu blockieren (abschaltbar je Miner)
-        const m = s.fullAction !== 'wait' ? bestMarketFor(state, home, s.cargo.ware, s.cargo.amount) : null;
-        if (m) { headToMarket(s, m.key); return; }
-        s.status = 'Wartet: Lager voll';
-        s.phase = 'waiting';
-        s.timer = 15;
+        if (!retry) s.restStreak = 0;
+        return;
       }
+      if (!retry) s.restStreak = (s.restStreak ?? 0) + 1;
+      const c = decideRest(state, s, home);
+      s.lastRest = c;
+      if (c.choice === 'topup') { startTopUp(state, s, home); return; }
+      if (c.choice === 'sell') {
+        const m = bestMarketFor(state, home, s.cargo.ware, s.cargo.amount);
+        if (m) { headToMarket(s, m.key); return; }
+      }
+      s.status = restMode(s) === 'wait' ? 'Wartet: Lager voll' : 'Lädt ab – wartet kurz auf Platz';
+      s.phase = 'waiting';
+      s.timer = Math.max(10, Math.min(30, c.wait ?? 15));
       return;
     }
     case 'toMarket': {

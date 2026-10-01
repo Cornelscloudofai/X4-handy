@@ -478,3 +478,13 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 .plan-missing b { color: var(--amber); }
 .plan-missing .box { color: var(--text); }
 .vendor-head { display: flex; gap: 12px; align-items: center; }
+/* Miner: Fallbetrachtung Restladung */
+.rest-case { margin-top: 12px; padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); }
+.rest-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; font-size: 15px; }
+.rest-opt { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; margin-top: 4px; font-size: 13.5px; }
+.rest-opt.on { border-color: var(--teal); background: rgba(63, 224, 197, 0.08); }
+.rest-opt.off { opacity: 0.5; }
+.rest-k { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.rest-opt.on .rest-k { color: var(--teal); }
+.rest-v { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.rest-n { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }

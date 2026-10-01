@@ -35,6 +35,9 @@ export function stationAlerts(state: GameState, st: Station): Alert[] {
       break;
     }
   }
+  // Überförderung: Miner bringen wiederholt mehr, als ins Lager passt
+  const over = new Set(ships.filter((s) => SHIP_MAP[s.cls].role === 'miner' && (s.restStreak ?? 0) >= 2 && s.lastRest).map((s) => s.lastRest!.ware));
+  for (const w of over) out.push({ station: st.id, text: `${st.name}: Miner fördern mehr ${WARES[w].name}, als die Station verbraucht – Überschuss wird verkauft. Weniger Miner oder mehr Verbraucher einplanen.`, severity: 'warn' });
   return out;
 }
 

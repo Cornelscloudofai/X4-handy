@@ -8,13 +8,13 @@ import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
 import { consumesWare, hasDockFor, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
-import { shipEta } from '../engine/fleet';
+import { restMode, shipEta } from '../engine/fleet';
 import { endpointName, fieldById, knownSectors, reserveFor, stationById } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { STORY, currentMission, missionComplete } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
 import { SHIP_BUILD_TIME, hasYard, materialValue, missingFor, yardSizes, yardStations } from '../engine/yard';
-import type { GameState, ModuleDef, Ship, Station, TradeEndpoint } from '../engine/types';
+import type { GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
 import { canUndo, undoLabel } from './undo';
 import { fmtAmount, fmtClock, fmtCr, fmtDur, fmtInt, fmtNum, pct } from './format';
@@ -525,6 +525,45 @@ function shipRow(_state: GameState, s: Ship): string {
     ${icon('chev', 20, 'chev')}</div>`;
 }
 
+const REST_LABEL: Record<RestAction, string> = { auto: 'Automatisch', topup: 'Nachfüllen', sell: 'Verkaufen', wait: 'Warten' };
+const REST_HELP: Record<RestAction, string> = {
+  auto: 'Rechnet bei jeder Restladung selbst: Wird dieselbe Ware weiter gebraucht, füllt er nach. Braucht die Station dringender etwas anderes, wartet er kurz oder verkauft – je nachdem, was schneller ist. Bleibt zweimal in Folge ein Rest, verkauft er (Überförderung).',
+  topup: 'Der Rest bleibt an Bord, der Miner baut nur den freien Laderaum ab und bringt beim nächsten Mal eine volle Ladung. Kostet keine Zeit, bindet ihn aber an diese Ware.',
+  sell: 'Der Rest wird immer beim besten erreichbaren Käufer verkauft. Macht den Miner zur kleinen Geldquelle, kostet aber einen Umweg.',
+  wait: 'Der Miner wartet am Dock, bis der Verbrauch Platz macht. Fördert auch nicht für den Markt, wenn alles voll ist.',
+};
+
+/** Kurze Zeiten sekundengenau (m:ss), damit sich die Wege vergleichen lassen */
+function fmtSecs(sec: number): string {
+  if (sec >= 600) return fmtDur(sec);
+  const t = Math.round(sec);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} min`;
+}
+
+/** Restladung: Einstellung und Fallbetrachtung der letzten Entscheidung */
+function restSection(state: GameState, s: Ship): string {
+  const mode = restMode(s);
+  const pills = (Object.keys(REST_LABEL) as RestAction[]).map((k) => `<button class="pill ${mode === k ? 'teal' : ''}" ${act('miner-rest', { id: s.id, v: k })}>${REST_LABEL[k]}</button>`).join('');
+  const c = s.lastRest;
+  let casebox = '<p class="small muted" style="margin:8px 0 0">Noch keine Restladung – das Lager hatte bisher immer Platz.</p>';
+  if (c) {
+    const w = WARES[c.ware];
+    const opt = (k: RestCase['choice'], label: string, cost: string | null, note = '') => `<div class="rest-opt ${c.choice === k ? 'on' : ''} ${cost == null ? 'off' : ''}">
+      <span class="rest-k">${c.choice === k ? icon('check', 14) : ''}${label}</span><span class="rest-v">${cost ?? 'nicht möglich'}</span>${note ? `<span class="rest-n">${note}</span>` : ''}</div>`;
+    casebox = `<div class="rest-case">
+      <div class="small muted">Letzte Restladung · vor ${fmtDur(Math.max(0, state.time - c.t))}</div>
+      <div class="rest-head">${wareDot(w.color, 9)}<b>${fmtAmount(c.amount)} ${esc(w.name)}</b> → <b class="pos">${REST_LABEL[c.choice]}</b></div>
+      <p class="small" style="margin:4px 0 10px;color:var(--text-2)">${esc(c.reason)}</p>
+      ${opt('topup', 'Nachfüllen', c.topup == null ? null : '± 0:00 min', c.topup == null ? '' : `spart ${fmtSecs(c.topupSaves)} Abbau`)}
+      ${opt('wait', 'Warten', c.wait == null ? null : `ca. ${fmtSecs(c.wait)}`, c.wait == null ? 'Station verbraucht die Ware nicht' : 'bis der Verbrauch Platz macht')}
+      ${opt('sell', 'Verkaufen', c.sell == null ? null : `ca. ${fmtSecs(c.sell)}`, c.sell == null ? 'kein Käufer erreichbar' : `Umweg${c.wait != null ? ' + Menge später neu fördern' : ''} · Erlös ${fmtCr(c.sellValue)}`)}
+    </div>`;
+  }
+  const streak = (s.restStreak ?? 0) >= 2 ? `<p class="small warn-text" style="margin:8px 0 0">${s.restStreak}× in Folge ein Rest: Die Miner dieser Station fördern mehr, als verbraucht wird.</p>` : '';
+  return `<div class="section"><h3>Restladung</h3><div class="pills">${pills}</div>
+    <p class="small muted" style="margin:8px 0 0">${REST_HELP[mode]}</p>${streak}${casebox}</div>`;
+}
+
 function stationShips(state: GameState, st: Station): string {
   const ships = state.ships.filter((s) => s.home === st.id);
   return `<div class="section">${ships.length ? `<div class="box rows">${ships.map((s) => shipRow(state, s)).join('')}</div>` : '<div class="box empty">Dieser Station sind keine Schiffe zugeteilt.</div>'}</div>
@@ -555,10 +594,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
       <button class="pill ${!s.mineWare ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: '' })}>Automatisch nach Bedarf</button>
       ${wares.map((w) => `<button class="pill ${s.mineWare === w ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: w })}>${wareDot(WARES[w].color, 8)}${esc(WARES[w].name)}</button>`).join('')}
     </div><p class="small muted" style="margin-top:8px">${wares.length ? 'Automatisch: fördert, was im Lager am knappsten ist – Rohstoffe, auf die Module warten, zuerst. Mehrere Miner teilen sich die Waren so von selbst auf.' : 'Im Heimatsektor gibt es kein passendes Feld für diesen Miner.'}</p></div>
-    <div class="section"><h3>Wenn das Lager voll ist</h3><div class="pills">
-      <button class="pill ${s.fullAction !== 'wait' ? 'teal' : ''}" ${act('miner-full', { id: s.id, v: 'sell' })}>Überschuss verkaufen</button>
-      <button class="pill ${s.fullAction === 'wait' ? 'teal' : ''}" ${act('miner-full', { id: s.id, v: 'wait' })}>Warten</button>
-    </div><p class="small muted" style="margin-top:8px">${s.fullAction === 'wait' ? 'Der Miner wartet mit voller Ladung am Dock, bis wieder Platz ist.' : 'Passt die Ladung nicht mehr ins Lager, verkauft der Miner den Rest beim besten erreichbaren Käufer und arbeitet weiter. Ist alles voll, fördert er direkt für den Markt.'}</p></div>`;
+    ${restSection(state, s)}`;
   } else {
     const r = s.route;
     const eps: { v: string; label: string }[] = [

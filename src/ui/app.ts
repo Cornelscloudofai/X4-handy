@@ -13,7 +13,7 @@ import { stationById } from '../engine/logistics';
 import { catchUp, step } from '../engine/sim';
 import { deserialize, serialize, loadLocal, newGame, saveLocal, clearLocal } from '../engine/state';
 import { claimMission } from '../engine/story';
-import type { GameState, TradeEndpoint } from '../engine/types';
+import type { RestAction, GameState, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
 import { GALAXY_HEX, drawGalaxy, galaxyHit, sectorCenter } from '../render/galaxyView';
@@ -611,7 +611,7 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'miner-ware': result(A.setMinerWare(state, d.id!, d.ware ?? '')); break;
-      case 'miner-full': { const sh = state.ships.find((x) => x.id === d.id); if (sh) { sh.fullAction = d.v === 'wait' ? 'wait' : 'sell'; toast(d.v === 'wait' ? 'Miner wartet bei vollem Lager.' : 'Miner verkauft Überschuss bei vollem Lager.', 'good'); } refresh(); break; }
+      case 'miner-rest': { const sh = state.ships.find((x) => x.id === d.id); if (sh) { sh.restAction = d.v as RestAction; sh.fullAction = undefined; } refresh(); break; }
       case 'trader-mode': {
         const s = state.ships.find((x) => x.id === d.id);
         if (!s) break;

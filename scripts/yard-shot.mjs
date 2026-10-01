@@ -134,6 +134,20 @@ await check('18-planner-missing');
 await act('[data-act="plan-build-modal"]');
 await check('19-build-blocked');
 report.buildBlocked = await page.evaluate(() => !!document.querySelector('#modal .plan-missing') && !document.querySelector('#modal [data-act="plan-build"]'));
+// Miner: Restladung mit Fallbetrachtung
+await page.evaluate(() => {
+  const g = window.__game, s = g.state;
+  g.ui.modal = null;
+  const m = s.ships.find((x) => x.cls.startsWith('alligator'));
+  m.restStreak = 1;
+  m.lastRest = { t: s.time - 300, ware: 'methane', amount: 317, choice: 'topup', reason: 'Methan wird weiter gebraucht – der Rest bleibt an Bord, Nachfüllen kostet keine Zeit.', wait: 238, sell: 212, sellValue: 15400, topup: 0, topupSaves: 127 };
+  g.openPanel('ship', m.id);
+  g.refresh();
+});
+await page.waitForTimeout(400);
+await page.evaluate(() => document.querySelector('.rest-case')?.scrollIntoView());
+await check('20-rest-case');
+report.restCase = await page.evaluate(() => document.querySelectorAll('.rest-opt').length === 3 && !!document.querySelector('.rest-opt.on'));
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();
