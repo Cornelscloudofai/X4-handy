@@ -551,3 +551,25 @@ describe('Restladung: Automatik und Fallbetrachtung', () => {
     expect(h.choice).toBe('sell');
   });
 });
+
+describe('Eigene Stationen zuerst', () => {
+  it('Transporter der Hüllenteile-Station beliefert zuerst die eigene Werft, nicht den NPC-Käufer', async () => {
+    const Y = await import('../src/engine/yard');
+    const s = newGame(7);
+    s.credits = 60e6;
+    const werft = s.stations[0];
+    werft.modules.push({ uid: s.nextId++, def: 'yard_m', t: 0, running: false, stall: '', util: 0 });
+    const r = foundStation(s, 'zhin', 60, 55);
+    const huelle = s.stations.find((x) => x.id === r.id)!;
+    for (const d of ['storage_container', 'dock_m']) queueModule(s, huelle.id, d);
+    step(s, 1800);
+    huelle.inventory.hullparts = 3000;
+    setTradeRule(s, huelle.id, 'hullparts', { sell: true });
+    Y.queueShipBuild(s, werft.id, 'boa');
+    buyShip(s, 'boa', huelle.id);
+    const boa = s.ships.find((x) => x.cls === 'boa')!;
+    let first: unknown = null;
+    for (let t = 0; t < 2 * 3600 && !first; t += 10) { step(s, 10); if (boa.job?.ware === 'hullparts') first = boa.job.to; }
+    expect(first).toEqual({ kind: 'station', id: werft.id });
+  });
+});
