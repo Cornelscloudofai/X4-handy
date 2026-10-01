@@ -378,7 +378,13 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
 
 // ---------- Transporter ----------
 
-interface Candidate { job: TradeJob; score: number; own?: boolean }
+interface Candidate {
+  job: TradeJob;
+  score: number;
+  /** Lieferung von der Heimat an eine andere eigene Station: deren ID und welcher Anteil der möglichen Ladung dort abgenommen wird */
+  toStation?: string;
+  fill?: number;
+}
 
 function unitsFor(s: Ship, wareId: string): number {
   return SHIP_MAP[s.cls].capacity / WARES[wareId].volume;
@@ -431,7 +437,7 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         const need = wanted(state, other, id);
         const n = Math.min(qty, need);
         if (n < minLoad(id)) continue;
-        cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup' }, score: (weight * n * avg * 1.5) / travelTime(state, s, baseEp, to), own: true });
+        cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup' }, score: (weight * n * avg * 1.5) / travelTime(state, s, baseEp, to), toStation: other.id, fill: n / Math.max(1, Math.min(qty, unitsFor(s, id))) });
       }
       for (const c of state.contracts) {
         if (c.status !== 'active' || c.ware !== id) continue;
@@ -487,10 +493,28 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
       }
     }
   }
-  // Option der Heimatstation: zuerst eigene Stationen beliefern, bis deren Bedarf gedeckt ist – erst dann verkaufen
-  const pool = home.ownFirst && cands.some((c) => c.own) ? cands.filter((c) => c.own || c.job.to.kind === 'station' && c.job.to.id === home.id) : cands;
-  pool.sort((a, b) => b.score - a.score);
-  return pool[0]?.job ?? null;
+  return pickByPriority(home, cands)?.job ?? null;
+}
+
+/** Mindestens dieser Anteil einer Ladung muss eine Prioritäts-Station abnehmen, sonst rutscht der Transporter eine Stufe tiefer */
+export const PRIO_MIN_FILL = 0.5;
+
+/**
+ * Lieferreihenfolge der Heimatstation: Überschüsse gehen der Reihe nach an die eingetragenen eigenen Stationen.
+ * Nimmt eine Station weniger als eine halbe Ladung ab, kommt die nächste dran; zuletzt Verkauf zum besten Preis
+ * (Märkte, Aufträge, nicht eingetragene Stationen). Die Versorgung der Heimat selbst läuft unabhängig davon mit.
+ */
+function pickByPriority(home: Station, cands: Candidate[]): Candidate | null {
+  const best = (list: Candidate[]) => list.sort((a, b) => b.score - a.score)[0] ?? null;
+  const prio = (home.deliveryPrio ?? []).filter((id) => id !== home.id);
+  if (!prio.length) return best(cands);
+  const supplyHome = cands.filter((c) => c.job.to.kind === 'station' && c.job.to.id === home.id);
+  for (const id of prio) {
+    const tier = cands.filter((c) => c.toStation === id && (c.fill ?? 0) >= PRIO_MIN_FILL);
+    if (tier.length) return best([...tier, ...supplyHome]);
+  }
+  // Letzte Stufe: bester Preis – eingetragene Stationen, die zu wenig abnehmen, bleiben außen vor
+  return best(cands.filter((c) => !c.toStation || !prio.includes(c.toStation)));
 }
 
 export function inTransitForContract(state: GameState, contractId: number): number {

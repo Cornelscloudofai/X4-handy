@@ -9,7 +9,7 @@ import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
 import { consumesWare, hasDockFor, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { restMode, shipEta } from '../engine/fleet';
-import { endpointName, fieldById, knownSectors, reserveFor, stationById } from '../engine/logistics';
+import { endpointName, fieldById, knownSectors, reserveFor, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { STORY, currentMission, missionComplete } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
@@ -496,6 +496,27 @@ function stationModules(state: GameState, st: Station): string {
     <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="box rows">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;
 }
 
+/** Lieferreihenfolge: wohin die Transporter dieser Station Überschüsse zuerst bringen */
+function deliveryPrioBox(state: GameState, st: Station): string {
+  const prio = (st.deliveryPrio ?? []).map((id) => stationById(state, id)).filter((x): x is Station => !!x);
+  const others = state.stations.filter((x) => x.id !== st.id && !prio.includes(x));
+  const surplusWares = stationWares(st).filter((id) => tradeRule(st, id).sell && (st.inventory[id] ?? 0) >= 1);
+  const needs = (o: Station) => surplusWares.filter((id) => wanted(state, o, id) >= 1).map((id) => WARES[id].name);
+  const rows = prio.map((o, i) => {
+    const n = needs(o);
+    return `<div class="row" data-key="prio-${o.id}"><span class="pos-no num">${i + 1}</span>${icon(hasYard(o) ? 'yard' : 'station', 18, 'muted')}
+      <div class="grow"><div class="title two-lines">${esc(o.name)}</div><div class="sub wrap">${n.length ? 'braucht: ' + esc(n.join(', ')) : 'braucht gerade nichts von hier'}</div></div>
+      <div class="row-tools"><button class="icon-btn sm" ${act('prio-move', { st: st.id, id: o.id, d: -1 })} ${i === 0 ? 'disabled' : ''} aria-label="Höher">${icon('up', 16)}</button>
+      <button class="icon-btn sm" ${act('prio-move', { st: st.id, id: o.id, d: 1 })} ${i === prio.length - 1 ? 'disabled' : ''} aria-label="Tiefer">${icon('down', 16)}</button></div>
+      <button class="icon-btn sm ghost-x" ${act('prio-remove', { st: st.id, id: o.id })} aria-label="Aus der Reihenfolge nehmen">${icon('close', 16)}</button></div>`;
+  }).join('');
+  const last = `<div class="row locked"><span class="pos-no num">${prio.length + 1}</span>${icon('market', 18, 'muted')}<div class="grow"><div class="title">Verkauf zum besten Preis</div><div class="sub wrap">Märkte, NPC-Käufer, Aufträge${prio.length ? ' und nicht eingetragene Stationen' : ' und eigene Stationen – je nach Ertrag'}</div></div></div>`;
+  const add = others.length ? `<select class="prio-add" data-change="prio-add" data-st="${st.id}" aria-label="Station hinzufügen"><option value="">+ Station hinzufügen …</option>${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>` : '';
+  const noTrader = state.ships.some((x) => x.home === st.id && SHIP_MAP[x.cls].role === 'trader') ? '' : ' <span class="warn-text">Diese Station hat noch keinen eigenen Transporter.</span>';
+  return `<div class="section"><h3>Lieferreihenfolge für Überschüsse</h3><div class="box rows">${rows}${last}</div>${add}
+    <p class="small muted" style="margin:6px 0 0">Die Transporter dieser Station beliefern die Stationen der Reihe nach. Kann eine Station weniger als eine halbe Ladung abnehmen, rutschen sie eine Stufe tiefer – zuletzt wird zum besten Preis verkauft.${noTrader}</p></div>`;
+}
+
 function stationStorage(state: GameState, st: Station): string {
   const wares = stationWares(st).sort((a, b) => WARES[a].tier - WARES[b].tier || WARES[a].name.localeCompare(WARES[b].name));
   const cap = storageCap(st);
@@ -513,8 +534,7 @@ function stationStorage(state: GameState, st: Station): string {
       <div class="toggle"><button class="buy ${rule.buy ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'buy' })} aria-pressed="${rule.buy}">Kauf</button><button class="sell ${rule.sell ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'sell' })} aria-pressed="${rule.sell}">Verkauf</button></div></div>`;
   }).join('');
   return `<p class="lead">Kauf: Händler und deine Transporter liefern an. Verkauf: Überschüsse werden abgegeben, die Reserve bleibt für die eigene Produktion.</p>
-    <div class="box" style="padding:12px 14px;margin-bottom:14px"><label class="check"><input type="checkbox" data-change="own-first" data-st="${st.id}" ${st.ownFirst ? 'checked' : ''}> Zuerst eigene Stationen beliefern</label>
-      <p class="small muted" style="margin:6px 0 0">Die Transporter dieser Station bringen Überschüsse zuerst zu deinen eigenen Stationen, die sie brauchen (z. B. Hüllenteile an die Werft), bis deren Bedarf gedeckt ist. Erst danach wird an Märkte und NPC-Käufer verkauft.${state.ships.some((x) => x.home === st.id && SHIP_MAP[x.cls].role === 'trader') ? '' : ' <span class="warn-text">Diese Station hat noch keinen eigenen Transporter.</span>'}</p></div>
+    ${deliveryPrioBox(state, st)}
     <div class="section"><div class="box rows">${rows || '<div class="empty">Das Lager ist leer.</div>'}</div></div>
     <p class="small muted">Ohne Einstellung teilen sich alle Waren einer Lagerart den Platz gleichmäßig („auto“). Eingestellte Anteile gehen vor, der Rest wird verteilt.</p>`;
 }

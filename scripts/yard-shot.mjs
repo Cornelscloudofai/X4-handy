@@ -148,13 +148,18 @@ await page.waitForTimeout(400);
 await page.evaluate(() => document.querySelector('.rest-case')?.scrollIntoView());
 await check('20-rest-case');
 report.restCase = await page.evaluate(() => document.querySelectorAll('.rest-opt').length === 3 && !!document.querySelector('.rest-opt.on'));
-// Option „Zuerst eigene Stationen beliefern“ im Lager-Reiter
-await page.evaluate(() => { const g = window.__game; g.openPanel('station', g.state.stations[0].id, 'storage'); g.refresh(); });
+// Lieferreihenfolge im Lager-Reiter: zwei Stationen eintragen
+await page.evaluate(() => {
+  const g = window.__game, s = g.state, A = g.actions;
+  s.credits = Math.max(s.credits, 5e6);
+  A.foundStation(s, 'zhin', 60, 55); A.foundStation(s, 'zhin', -80, 70);
+  g.openPanel('station', s.stations[0].id, 'storage'); g.refresh();
+});
 await page.waitForTimeout(300);
-await page.click('input[data-change="own-first"]');
-await page.waitForTimeout(300);
-await check('21-own-first');
-report.ownFirst = await page.evaluate(() => window.__game.state.stations[0].ownFirst === true);
+for (let i = 0; i < 2; i++) { await page.selectOption('select[data-change="prio-add"]', { index: 1 }); await page.waitForTimeout(250); }
+await page.evaluate(() => document.querySelector('.prio-add, [data-key^="prio-"]')?.scrollIntoView());
+await check('21-delivery-prio');
+report.deliveryPrio = await page.evaluate(() => (window.__game.state.stations[0].deliveryPrio ?? []).length === 2 && document.querySelectorAll('[data-key^="prio-"]').length === 2);
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();

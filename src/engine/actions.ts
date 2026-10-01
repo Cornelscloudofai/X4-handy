@@ -331,3 +331,12 @@ export function setReserve(state: GameState, stationId: string, ware: string, un
   else st.reserve[ware] = Math.max(0, Math.round(units));
   return ok('Reserve geändert.');
 }
+
+/** Lieferreihenfolge für Überschüsse einer Station setzen (eigene Stationen in Reihenfolge) */
+export function setDeliveryPrio(state: GameState, stationId: string, list: string[]): Result {
+  const st = stationById(state, stationId);
+  if (!st) return fail('Station nicht gefunden.');
+  const ids = new Set(state.stations.map((x) => x.id));
+  st.deliveryPrio = [...new Set(list)].filter((id) => ids.has(id) && id !== st.id);
+  return ok(st.deliveryPrio.length ? 'Lieferreihenfolge gespeichert.' : 'Überschüsse gehen wieder an den besten Käufer.');
+}

@@ -84,6 +84,12 @@ export function deserialize(text: string): GameState {
     produced: s.produced ?? {},
   }));
   const ids = new Set(state.stations.map((s) => s.id));
+  // Haken „Zuerst eigene Stationen beliefern“ → Lieferreihenfolge mit allen anderen eigenen Stationen
+  for (const st of state.stations) {
+    if (st.ownFirst && !st.deliveryPrio) st.deliveryPrio = state.stations.filter((x) => x.id !== st.id).map((x) => x.id);
+    delete st.ownFirst;
+    if (st.deliveryPrio) st.deliveryPrio = st.deliveryPrio.filter((id) => ids.has(id) && id !== st.id);
+  }
   state.ships = (raw.ships ?? []).filter((s) => SHIP_MAP[s.cls] && ids.has(s.home) && SECTOR_MAP[s.sector]);
   state.npcs = (raw.npcs ?? []).filter((n) => SECTOR_MAP[n.sector]);
   state.markets = { ...base.markets, ...(raw.markets ?? {}) };

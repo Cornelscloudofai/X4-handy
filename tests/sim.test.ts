@@ -552,7 +552,7 @@ describe('Restladung: Automatik und Fallbetrachtung', () => {
   });
 });
 
-describe('Option: zuerst eigene Stationen beliefern', () => {
+describe('Lieferreihenfolge für Überschüsse', () => {
   const setup = async (ownFirst: boolean) => {
     const Y = await import('../src/engine/yard');
     const s = newGame(7);
@@ -564,7 +564,7 @@ describe('Option: zuerst eigene Stationen beliefern', () => {
     for (const d of ['storage_container', 'dock_m']) queueModule(s, huelle.id, d);
     step(s, 1800);
     huelle.inventory.hullparts = 3000;
-    huelle.ownFirst = ownFirst;
+    if (ownFirst) huelle.deliveryPrio = [werft.id];
     setTradeRule(s, huelle.id, 'hullparts', { sell: true });
     Y.queueShipBuild(s, werft.id, 'boa');
     buyShip(s, 'boa', huelle.id);
@@ -581,15 +581,56 @@ describe('Option: zuerst eigene Stationen beliefern', () => {
     return { s, werft, targets };
   };
 
-  it('ohne Haken: bester Ertrag, die NPC-Werft darf zuerst bedient werden', async () => {
+  it('ohne Reihenfolge: bester Ertrag, die NPC-Werft darf zuerst bedient werden', async () => {
     const { targets } = await setup(false);
     expect(targets[0]).toBe('markt');
   });
 
-  it('mit Haken: erst die eigene Werft bis zum Bedarf, danach Verkauf', async () => {
+  it('Werft auf Prio 1: erst die eigene Werft bis zum Bedarf, danach Verkauf', async () => {
     const { s, targets } = await setup(true);
     expect(targets[0]).toBe('werft');
     expect(targets).toContain('markt'); // danach werden Überschüsse verkauft
     expect(s.totals.shipsBuilt).toBe(1);
+  });
+
+  it('Prio 1 vor Prio 2; nimmt Prio 1 weniger als eine halbe Ladung, rutscht der Transporter eine Stufe tiefer', async () => {
+    const { findTradeJob } = await import('../src/engine/fleet');
+    const s = newGame(17);
+    s.credits = 60e6;
+    const src = s.stations[0];
+    const made = [[60, 55], [-80, 70]].map(([x, z]) => {
+      const r = foundStation(s, 'zhin', x, z);
+      for (const d of ['storage_container', 'dock_m']) queueModule(s, r.id!, d);
+      return r.id!;
+    });
+    step(s, 1800);
+    const [p1, p2] = made.map((id) => s.stations.find((x) => x.id === id)!);
+    src.inventory.refinedmetals = 5000;
+    setTradeRule(s, src.id, 'refinedmetals', { sell: true });
+    for (const st of [p1, p2]) setTradeRule(s, st.id, 'refinedmetals', { buy: true });
+    src.deliveryPrio = [p1.id, p2.id];
+    buyShip(s, 'boa', src.id);
+    const boa = s.ships.find((x) => x.cls === 'boa')!;
+    const target = () => { const j = findTradeJob(s, boa); return j && j.ware === 'refinedmetals' && j.to.kind === 'station' ? j.to.id : j ? 'markt' : null; };
+    expect(target()).toBe(p1.id);
+    // Prio 1 fast voll: nimmt weniger als eine halbe Ladung → Prio 2
+    p1.inventory.refinedmetals = wareLimit(p1, 'refinedmetals') * 0.95 - 100;
+    expect(target()).toBe(p2.id);
+    // Beide fast voll → Verkauf zum besten Preis
+    p2.inventory.refinedmetals = wareLimit(p2, 'refinedmetals') * 0.95 - 100;
+    expect(target()).toBe('markt');
+  });
+});
+
+describe('Alter Haken „Zuerst eigene Stationen“', () => {
+  it('wird beim Laden zur Lieferreihenfolge mit allen anderen eigenen Stationen', () => {
+    const s = newGame(18);
+    s.credits = 10e6;
+    foundStation(s, 'zhin', 60, 55);
+    const old = JSON.parse(serialize(s));
+    old.stations[0].ownFirst = true;
+    const loaded = deserialize(JSON.stringify(old));
+    expect(loaded.stations[0].deliveryPrio).toEqual([loaded.stations[1].id]);
+    expect(loaded.stations[0].ownFirst).toBeUndefined();
   });
 });

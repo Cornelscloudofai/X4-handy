@@ -140,7 +140,9 @@ export interface Station {
   limits?: Record<string, number>;
   /** Einheiten, die nicht verkauft werden (für die eigene Produktion); nicht gesetzt = automatisch */
   reserve?: Record<string, number>;
-  /** Transporter dieser Station beliefern zuerst eigene Stationen (z. B. Werft), erst danach wird verkauft */
+  /** Lieferreihenfolge für Überschüsse: eigene Stationen der Reihe nach, danach Verkauf zum besten Preis */
+  deliveryPrio?: string[];
+  /** Veraltet (ersetzt durch deliveryPrio): zuerst alle eigenen Stationen beliefern */
   ownFirst?: boolean;
   /** Eigene Anordnung der Kästchen im Fließdiagramm */
   layout?: Record<string, { x: number; y: number }>;

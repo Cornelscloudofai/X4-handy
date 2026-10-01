@@ -611,6 +611,17 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'miner-ware': result(A.setMinerWare(state, d.id!, d.ware ?? '')); break;
+      case 'prio-move': {
+        const st = stationById(state, d.st!);
+        if (st?.deliveryPrio) {
+          const l = [...st.deliveryPrio];
+          const i = l.indexOf(d.id!), j = i + Number(d.d);
+          if (i >= 0 && j >= 0 && j < l.length) { [l[i], l[j]] = [l[j], l[i]]; A.setDeliveryPrio(state, st.id, l); }
+        }
+        refresh();
+        break;
+      }
+      case 'prio-remove': { const st = stationById(state, d.st!); if (st) result(A.setDeliveryPrio(state, st.id, (st.deliveryPrio ?? []).filter((x) => x !== d.id))); break; }
       case 'miner-rest': { const sh = state.ships.find((x) => x.id === d.id); if (sh) { sh.restAction = d.v as RestAction; sh.fullAction = undefined; } refresh(); break; }
       case 'trader-mode': {
         const s = state.ships.find((x) => x.id === d.id);
@@ -838,13 +849,9 @@ function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
-  if (field === 'own-first') {
+  if (field === 'prio-add') {
     const st = stationById(state, el.dataset.st ?? '');
-    if (st) {
-      st.ownFirst = (el as unknown as HTMLInputElement).checked;
-      toast(st.ownFirst ? `${st.name}: eigene Stationen werden zuerst beliefert.` : `${st.name}: Überschüsse gehen an den besten Käufer.`, 'good');
-    }
-    refresh();
+    if (st && el.value) result(A.setDeliveryPrio(state, st.id, [...(st.deliveryPrio ?? []), el.value]));
     return;
   }
   if (field === 'search') {
