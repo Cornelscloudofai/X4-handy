@@ -35,6 +35,11 @@ export function stationAlerts(state: GameState, st: Station): Alert[] {
       break;
     }
   }
+  // Bauprojekt wartet auf Material
+  if (st.build && st.waiting === 'material') {
+    const miss = Object.entries(st.build.need ?? {}).filter(([, n]) => n > 0.5).map(([id, n]) => `${Math.round(n)} ${WARES[id].name}`);
+    if (miss.length) out.push({ station: st.id, text: `${st.name}: Bau von ${MODULE_MAP[st.build.def]?.name} wartet auf ${miss.join(', ')}${st.autoBuyBuild === false ? ' (nur eigenes Material)' : ' – am Markt knapp, eigene Produktion hilft'}`, severity: 'warn' });
+  }
   // Ohne eigenen Transporter handelt niemand automatisch für diese Station
   if (hasProd && !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') && state.ships.some((s) => SHIP_MAP[s.cls].role === 'trader')) {
     out.push({ station: st.id, text: `${st.name}: kein eigener Transporter – Überschüsse werden nicht verkauft, Fehlendes nicht eingekauft. Transporter kaufen oder einen hierher versetzen.`, severity: 'warn' });

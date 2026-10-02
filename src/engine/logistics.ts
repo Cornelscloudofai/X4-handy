@@ -2,7 +2,7 @@
 import { SECTOR_MAP, gate, marketInfo, sector, sectorPath } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { consumesWare, storageCap, stationWares, tradeRule, wareLimit, yardNeeds } from './economy';
+import { consumesWare, pendingNeeds, storageCap, stationWares, tradeRule, wareLimit } from './economy';
 import type { GameState, Ship, Station, TradeEndpoint, Vec } from './types';
 import { hashStr } from './util';
 
@@ -163,7 +163,7 @@ export function fieldById(fieldId: string) {
 export function reserveFor(st: Station, wareId: string, limit: number): number {
   const set = st.reserve?.[wareId];
   if (set !== undefined) return set;
-  const yard = st.yard?.queue.length ? yardNeeds(st)[wareId] ?? 0 : 0;
+  const yard = pendingNeeds(st)[wareId] ?? 0;
   return Math.max(yard, consumesWare(st, wareId) ? limit * 0.4 : 0);
 }
 
@@ -180,7 +180,7 @@ export function wanted(state: GameState, st: Station, wareId: string, ignoreRule
   const cap = storageCap(st)[WARES[wareId].storage];
   if (cap <= 0) return 0;
   // Für bestellte Schiffe wird die volle Menge gebraucht – nicht nur 95 % des Limits
-  const yard = st.yard?.queue.length ? Math.min(yardNeeds(st)[wareId] ?? 0, cap / WARES[wareId].volume) : 0;
+  const yard = Math.min(pendingNeeds(st)[wareId] ?? 0, cap / WARES[wareId].volume);
   return Math.max(0, Math.max(limit * 0.95, yard) - (st.inventory[wareId] ?? 0) - incoming(state, st.id, wareId));
 }
 

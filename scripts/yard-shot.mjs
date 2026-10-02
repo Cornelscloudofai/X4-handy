@@ -47,6 +47,7 @@ const clipped = () => page.evaluate(() => {
   for (const t of document.querySelectorAll('.tabs')) if (t.scrollWidth > t.clientWidth + 1) res.push('Reiter passen nicht: ' + t.textContent.trim());
   for (const c of document.querySelectorAll('.card, .modal')) { const r = c.getBoundingClientRect(); for (const btn of c.querySelectorAll('.btn')) { const q = btn.getBoundingClientRect(); if (q.width && q.right > r.right + 1) res.push('Knopf ragt heraus: ' + btn.textContent.trim()); } }
   for (const h of document.querySelectorAll('.card-head h2')) if (h.scrollHeight > h.clientHeight + 1) res.push('Kartentitel abgeschnitten: ' + h.textContent);
+  for (const t of document.querySelectorAll('.two-lines')) if (t.offsetParent && t.scrollHeight > t.clientHeight + 2) res.push('Titel gekürzt: ' + t.textContent.trim());
   const b = document.querySelector('.chip.sector b');
   if (b && b.scrollHeight > b.clientHeight + 1) res.push('Sektorname abgeschnitten');
   if (document.documentElement.scrollWidth > innerWidth) res.push('Seite breiter als Bildschirm');
@@ -165,6 +166,18 @@ await page.waitForTimeout(300);
 await page.evaluate(() => document.querySelector('input[data-change="prio-npc"]')?.scrollIntoView({ block: 'center' }));
 await check('22-prio-npc');
 report.prioNpc = await page.evaluate(() => window.__game.state.stations[0].prioBeforeNpc === true);
+// Modulbau sammelt Material (Werft braucht mehr Claytronik, als die Märkte haben)
+await page.evaluate(() => {
+  const g = window.__game, s = g.state, A = g.actions;
+  s.credits = Math.max(s.credits, 300e6);
+  if (!s.blueprints.includes('yard_l')) s.blueprints.push('yard_l');
+  const st = s.stations[1] ?? s.stations[0];
+  A.queueModule(s, st.id, 'yard_l'); A.queueModule(s, st.id, 'prod_refinedmetals');
+  g.step(600); g.openPanel('station', st.id, 'modules'); g.refresh();
+});
+await page.waitForTimeout(400);
+await check('23-build-material');
+report.buildMaterial = await page.evaluate(() => !!document.querySelector('.build-row.locked .io.lack') || !!document.querySelector('.build-row.locked'));
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();

@@ -54,6 +54,23 @@ export function yardNeeds(st: Station): Record<string, number> {
   return out;
 }
 
+/** Material, das die Station gerade braucht: bestellte Schiffe der Werft und das laufende Bauprojekt */
+export function pendingNeeds(st: Station): Record<string, number> {
+  const out: Record<string, number> = st.yard?.queue.length ? { ...yardNeeds(st) } : {};
+  for (const [id, n] of Object.entries(st.build?.need ?? {})) if (n > 0.5) out[id] = (out[id] ?? 0) + n;
+  return out;
+}
+
+/**
+ * Station kauft diese Ware nicht am Markt zu: Zukauf von Baumaterial ist abgeschaltet und die Ware wird
+ * nur fürs Bauprojekt gebraucht (nicht für die Produktion oder die Werft).
+ */
+export function noMarketBuy(st: Station, id: string): boolean {
+  if (st.autoBuyBuild !== false || !((st.build?.need?.[id] ?? 0) > 0.5)) return false;
+  const prod = st.modules.some((m) => { const d = MODULE_MAP[m.def]; return d?.kind === 'production' && !!d.ware && ware(d.ware).inputs.some((i) => i.ware === id); });
+  return !prod && !yardStockWares(st).includes(id);
+}
+
 /** Waren, die für die Station relevant sind (Produktion, Verbrauch, Handelsregeln, Bestand) */
 export function stationWares(st: Station, includePlanned = true): string[] {
   const set = new Set<string>();
@@ -69,7 +86,7 @@ export function stationWares(st: Station, includePlanned = true): string[] {
     for (const i of ware(d.ware).inputs) set.add(i.ware);
   }
   for (const [id, r] of Object.entries(st.trade)) if (r.buy || r.sell) set.add(id);
-  for (const id of Object.keys(yardNeeds(st))) set.add(id);
+  for (const id of Object.keys(pendingNeeds(st))) set.add(id);
   for (const id of yardStockWares(st)) set.add(id);
   for (const [id, n] of Object.entries(st.inventory)) if (n > 0.5) set.add(id);
   return [...set].filter((id) => WARES[id]);
@@ -95,7 +112,7 @@ export function wareLimit(st: Station, id: string, cap = storageCap(st), wares =
   if (!w) return 0;
   const byShare = (cap[w.storage] * storageShare(st, id, wares).share) / w.volume;
   // Werftmaterial darf seinen Bedarf immer einlagern (sonst könnte das Schiff nie starten)
-  const need = st.yard?.queue.length ? yardNeeds(st)[id] ?? 0 : 0;
+  const need = pendingNeeds(st)[id] ?? 0;
   return need > byShare ? Math.min(need, cap[w.storage] / w.volume) : byShare;
 }
 
@@ -120,7 +137,7 @@ export function producesWare(st: Station, id: string): boolean {
 }
 
 export function consumesWare(st: Station, id: string, includePlanned = false): boolean {
-  if (st.yard?.queue.length && (yardNeeds(st)[id] ?? 0) > 0) return true;
+  if ((pendingNeeds(st)[id] ?? 0) > 0) return true;
   // Werft hält ihr Material immer auf Vorrat – nicht erst, wenn ein Schiff bestellt ist
   if (yardStockWares(st).includes(id)) return true;
   const defs = st.modules.map((m) => m.def);
@@ -203,6 +220,50 @@ export function stepProduction(state: GameState, st: Station, dt: number): void 
 
 // ---------- Bau ----------
 
+/** Markt-Bestand, den Händler nicht abgeben (sie behalten einen Rest) */
+const MARKET_KEEP = 0.1;
+
+/** Handelsposten in Reichweite: eigene Lizenzsektoren und ihre Nachbarn */
+function reachableMarkets(state: GameState): string[] {
+  const set = new Set(state.sectors);
+  for (const id of state.sectors) for (const l of sector(id).links) set.add(l);
+  return [...set];
+}
+
+/** Was die Märkte in Reichweite von einer Ware noch abgeben */
+export function marketSupply(state: GameState, id: string): number {
+  let n = 0;
+  for (const key of reachableMarkets(state)) {
+    const m = state.markets[key]?.[id];
+    if (m) n += Math.max(0, m.stock - m.cap * MARKET_KEEP);
+  }
+  return n;
+}
+
+/** Fehlendes Baumaterial bei den günstigsten Handelsposten in Reichweite kaufen – solange Vorrat und Credits reichen */
+function buyBuildMaterials(state: GameState, st: Station): void {
+  const b = st.build!;
+  const keys = reachableMarkets(state);
+  for (const [id, want] of Object.entries(b.need ?? {})) {
+    let left = want;
+    const offers = keys.filter((k) => state.markets[k]?.[id]).sort((x, y) => marketPrice(state, x, id) - marketPrice(state, y, id));
+    for (const key of offers) {
+      if (left < 0.5) break;
+      const m = state.markets[key][id];
+      const avail = Math.max(0, m.stock - m.cap * MARKET_KEEP);
+      const price = marketPrice(state, key, id);
+      const afford = Math.max(0, state.credits - 20_000) / Math.max(1, price * 1.2);
+      const n = Math.floor(Math.min(left, avail, afford));
+      if (n < 1) continue;
+      const cost = applyMarketTrade(state, key, id, -n);
+      st.expenses += cost;
+      b.paid += cost;
+      left -= n;
+    }
+    b.need![id] = left;
+  }
+}
+
 export function stepConstruction(state: GameState, st: Station, dt: number): void {
   let left = dt;
   let guard = 0;
@@ -211,23 +272,38 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
       const next = st.queue[0];
       if (!next) { st.waiting = ''; return; }
       const d = moduleDef(next.def);
-      // Bezahlt wird erst beim Baustart – so lässt sich die Bauliste frei planen
-      const due = next.paid > 0 ? 0 : d.cost;
-      if (state.credits < due) {
-        if (st.waiting !== 'credits') log(state, `${st.name}: ${d.name} wartet auf Credits.`, 'warn');
-        st.waiting = 'credits';
-        return;
-      }
-      state.credits -= due;
       st.queue.shift();
       st.waiting = '';
-      st.build = { def: next.def, remaining: d.buildTime, total: d.buildTime, paid: next.paid + due };
+      // Bezahlte Positionen alter Spielstände brauchen kein Material mehr
+      st.build = { def: next.def, remaining: d.buildTime, total: d.buildTime, paid: next.paid, need: next.paid > 0 ? {} : { ...d.materials }, used: {}, buyT: 0 };
     }
-    const step = Math.min(left, st.build.remaining);
-    st.build.remaining -= step;
+    const b = st.build;
+    // Phase 1: Baumaterial sammeln – erst aus dem eigenen Lager, dann vom Markt
+    if (b.need && Object.values(b.need).some((n) => n > 0.5)) {
+      for (const [id, n] of Object.entries(b.need)) {
+        const take = Math.min(n, st.inventory[id] ?? 0);
+        if (take > 0) { addWare(st, id, -take); b.need[id] = n - take; b.used = { ...(b.used ?? {}), [id]: (b.used?.[id] ?? 0) + take }; }
+      }
+      b.buyT = (b.buyT ?? 0) - left;
+      if (st.autoBuyBuild !== false && b.buyT <= 0) { b.buyT = 30; buyBuildMaterials(state, st); }
+      const missing = Object.entries(b.need).filter(([, n]) => n > 0.5);
+      if (missing.length) {
+        const why = st.autoBuyBuild === false ? 'material' : state.credits < 50_000 ? 'credits' : 'material';
+        if (st.waiting !== why) {
+          const names = missing.map(([id]) => WARES[id].name).join(', ');
+          log(state, `${st.name}: ${moduleDef(b.def).name} wartet auf ${why === 'credits' ? 'Credits für Baumaterial' : 'Baumaterial: ' + names}.`, 'warn');
+        }
+        st.waiting = why;
+        return;
+      }
+      st.waiting = '';
+    }
+    // Phase 2: Bauzeit
+    const step = Math.min(left, b.remaining);
+    b.remaining -= step;
     left -= step;
-    if (st.build.remaining <= 1e-6) {
-      const d = moduleDef(st.build.def);
+    if (b.remaining <= 1e-6) {
+      const d = moduleDef(b.def);
       st.modules.push({ uid: state.nextId++, def: d.id, t: 0, running: false, stall: '', util: 0 });
       st.build = null;
       log(state, `${st.name}: ${d.name} fertiggestellt.`, 'good', true);

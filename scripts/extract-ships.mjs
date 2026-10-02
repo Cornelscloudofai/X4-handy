@@ -47,12 +47,28 @@ for (const [key, id] of Object.entries(PICK)) {
   const engSize = sz[s.engines[0]?.size] ?? sz[s.size];
   const engine = add(`engine_spl_${engSize}_allround_01_mk1`, s.engines.length, 'Allround-Triebwerk Mk1');
   add(`shield_spl_${sz[s.shields[0]?.size] ?? engSize}_standard_01_mk1`, s.shields.length, 'Schildgenerator Mk1');
-  if (miner) {
-    const slots = [...(s.turrets ?? []), ...(s.weapons ?? [])].filter((t) => (t.types ?? []).includes('mining'));
-    const bySize = {};
-    for (const t of slots) bySize[sz[t.size]] = (bySize[sz[t.size]] ?? 0) + 1;
-    for (const [z, n] of Object.entries(bySize)) add(`turret_spl_${z}_mining_01_mk1`, n, `Abbauturm ${z.toUpperCase()} Mk1`);
+  // Steuerdüsen (für jedes Schiff, Größe laut Rumpf)
+  const thr = sz[s.thruster] ?? engSize;
+  add(`thruster_gen_${thr}_allround_01_mk1`, 1, `Steuerdüsen ${thr.toUpperCase()} Mk1`);
+  // Geschütztürme: Miner bestücken Abbau-Plätze mit Abbautürmen, alle übrigen Plätze bekommen Puls-Lasertürme
+  const turrets = s.turrets ?? [];
+  const mining = {}, laser = {};
+  for (const t of turrets) {
+    const z = sz[t.size];
+    if (miner && (t.types ?? []).includes('mining')) mining[z] = (mining[z] ?? 0) + 1;
+    else laser[z] = (laser[z] ?? 0) + 1;
   }
+  if (miner) for (const t of (s.weapons ?? []).filter((w) => (w.types ?? []).includes('mining'))) mining[sz[t.size]] = (mining[sz[t.size]] ?? 0) + 1;
+  for (const [z, n] of Object.entries(mining)) add(`turret_spl_${z}_mining_01_mk1`, n, `Abbauturm ${z.toUpperCase()} Mk1`);
+  for (const [z, n] of Object.entries(laser)) add(`turret_spl_${z}_laser_01_mk1`, n, `Puls-Laserturm ${z.toUpperCase()} Mk1`);
+  // Drohnen (nur Schiffe mit Drohnenplätzen): Miner Abbaudrohnen, Frachter Frachtdrohnen – halbe Kapazität
+  const units = s.storage?.unit ?? 0;
+  if (units) {
+    const kind = miner ? (s.cargo?.[0]?.types?.[0] === 'liquid' ? 'ship_gen_s_miningdrone_liquid_01_a' : 'ship_gen_s_miningdrone_solid_01_a') : 'ship_gen_xs_cargodrone_empty_01_a';
+    add(kind, Math.ceil(units / 2), miner ? 'Abbaudrohne' : 'Frachtdrohne');
+  }
+  // Täuschkörper (Flares) als Grundschutz
+  add('countermeasure_flares_01', s.size === 'large' ? 10 : 5, 'Täuschkörper');
   const speed = engine ? (s.engines.length * engine.thrust.forward) / s.drag.forward : 0;
   out[key] = {
     x4Id: id,

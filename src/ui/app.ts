@@ -849,6 +849,12 @@ function onChange(e: Event): void {
   const el = e.target as HTMLSelectElement;
   const field = el.dataset?.change;
   if (!field) return;
+  if (field === 'auto-buy-build') {
+    const st = stationById(state, el.dataset.st ?? '');
+    if (st) st.autoBuyBuild = (el as unknown as HTMLInputElement).checked;
+    refresh();
+    return;
+  }
   if (field === 'prio-npc') {
     const st = stationById(state, el.dataset.st ?? '');
     if (st) {

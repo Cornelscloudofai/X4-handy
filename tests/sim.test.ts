@@ -177,18 +177,20 @@ describe('Bauliste', () => {
     expect(s.credits).toBeLessThan(c0);
   });
 
-  it('wartet auf Credits statt zu überziehen', () => {
+  it('wartet auf Credits für Baumaterial statt zu überziehen', () => {
     const s = newGame(12);
     const st = s.stations[0];
     s.credits = 1000;
     queueModule(s, st.id, 'prod_refinedmetals');
     step(s, 10);
-    expect(st.build).toBeNull();
+    expect(st.build?.def).toBe('prod_refinedmetals');
     expect(st.waiting).toBe('credits');
+    expect(st.build!.remaining).toBe(st.build!.total); // Bauzeit läuft noch nicht
     expect(s.credits).toBeGreaterThanOrEqual(0);
     s.credits = 5_000_000;
-    step(s, 1);
-    expect(st.build?.def).toBe('prod_refinedmetals');
+    step(s, 60);
+    expect(st.waiting).toBe('');
+    expect(st.build!.remaining).toBeLessThan(st.build!.total);
   });
 
   it('entfernt geplante Positionen einzeln', () => {
@@ -695,3 +697,52 @@ describe('Werft hält Material auf Vorrat', () => {
   });
 });
 function SHIP_MAP_BOA(): Record<string, number> { return { hullparts: 348, engineparts: 20, shieldcomponents: 7 }; }
+
+describe('Modulbau mit echtem Material', () => {
+  it('nimmt Material zuerst aus dem Lager, kauft den Rest am Markt und baut erst dann', () => {
+    const s = newGame(31);
+    const st = s.stations[0];
+    const need = MODULE_MAP.prod_refinedmetals.materials;
+    st.inventory.hullparts = need.hullparts; // Hüllenteile hat die Station selbst
+    const c0 = s.credits;
+    const clay0 = s.markets.zhin.claytronics.stock;
+    queueModule(s, st.id, 'prod_refinedmetals');
+    step(s, 2);
+    expect(st.inventory.hullparts ?? 0).toBeLessThan(1); // aus dem eigenen Lager genommen
+    expect(s.markets.zhin.claytronics.stock).toBeLessThan(clay0); // Claytronik am Markt gekauft
+    expect(s.credits).toBeLessThan(c0);
+    step(s, MODULE_MAP.prod_refinedmetals.buildTime + 10);
+    expect(st.modules.some((m) => m.def === 'prod_refinedmetals')).toBe(true);
+  });
+
+  it('knappes Material am Markt hält den Bau auf; eigene Lieferung löst den Engpass', () => {
+    const s = newGame(32);
+    s.credits = 500e6;
+    s.blueprints.push('yard_m');
+    const st = s.stations[0];
+    queueModule(s, st.id, 'yard_m'); // braucht 3.312 Claytronik
+    step(s, 120);
+    expect(st.build?.def).toBe('yard_m');
+    expect(st.waiting).toBe('material');
+    expect(st.build!.need!.claytronics).toBeGreaterThan(100); // Märkte haben nicht genug
+    // Eigene Claytronik ins Lager: der Bau nimmt sie und läuft weiter
+    st.inventory.claytronics = st.build!.need!.claytronics;
+    step(s, 60);
+    expect(st.build!.need!.claytronics ?? 0).toBeLessThan(1);
+  });
+
+  it('ohne Zukauf wird nur eigenes Material verbaut; Abbruch gibt Material und Credits zurück', async () => {
+    const { cancelBuild } = await import('../src/engine/actions');
+    const s = newGame(33);
+    const st = s.stations[0];
+    st.autoBuyBuild = false;
+    st.inventory.hullparts = 50;
+    queueModule(s, st.id, 'prod_refinedmetals');
+    step(s, 120);
+    expect(st.build!.paid).toBe(0); // nichts zugekauft
+    expect(st.build!.need!.claytronics).toBe(MODULE_MAP.prod_refinedmetals.materials.claytronics); // keine Lieferung vom Markt
+    expect(st.waiting).toBe('material');
+    expect(cancelBuild(s, st.id).ok).toBe(true);
+    expect(st.inventory.hullparts).toBeCloseTo(50);
+  });
+});

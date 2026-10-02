@@ -3,7 +3,7 @@ import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
 import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { defaultTradeRule, hasDockFor } from './economy';
+import { addWare, defaultTradeRule, hasDockFor } from './economy';
 import { spawnCourier } from './npc';
 import { knownSectors, sellableStock, stationById } from './logistics';
 import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendors';
@@ -112,9 +112,11 @@ export function cancelQueued(state: GameState, stationId: string, uid: number): 
 export function cancelBuild(state: GameState, stationId: string): Result {
   const st = stationById(state, stationId);
   if (!st?.build) return fail('Kein laufender Bau.');
+  // Zugekauftes wird erstattet, Material aus dem eigenen Lager kommt zurück (soweit Platz ist)
   state.credits += st.build.paid;
+  for (const [id, n] of Object.entries(st.build.used ?? {})) addWare(st, id, n);
   st.build = null;
-  return ok('Bau abgebrochen, Kosten erstattet.');
+  return ok('Bau abgebrochen, Material und Kosten erstattet.');
 }
 
 /** Entfernt die letzte noch nicht begonnene Position eines Modultyps */

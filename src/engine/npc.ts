@@ -2,7 +2,7 @@
 // Hintergrundverkehr belebt die Sektoren.
 import { SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, stationWares } from './economy';
+import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, noMarketBuy, stationWares } from './economy';
 import { contractDeliver } from './contracts';
 import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
 import type { GameState, NpcShip } from './types';
@@ -58,7 +58,7 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
       const room = marketRoom(state, sectorId, id);
       const sell = Math.min(have, units, room);
       if (sell >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'buyer', amount: sell }, w: sell * marketPrice(state, sectorId, id) });
-      const need = wanted(state, st, id);
+      const need = noMarketBuy(st, id) ? 0 : wanted(state, st, id);
       const stock = marketStock(state, sectorId, id);
       const buy = Math.min(need, units, stock * 0.5, Math.max(0, state.credits - 100_000) / marketPrice(state, sectorId, id));
       if (buy >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'seller', amount: buy }, w: buy * w.price.avg * 0.8 });

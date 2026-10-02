@@ -4,7 +4,7 @@ import { marketInfo, sector } from '../data/sectors';
 import { MODULE_MAP } from '../data/modules';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { addWare, applyMarketTrade, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
+import { addWare, applyMarketTrade, noMarketBuy, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
 import {
   dockPoint, sellableStock, endpointName, endpointPlace, fieldById, fieldWare, incoming, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
   type Place,
@@ -480,6 +480,7 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * n * avg * 1.5) / travelTime(state, s, from, baseEp) });
       }
       if (WARES[id].mined && state.ships.some((m) => m.home === base.id && SHIP_MAP[m.cls].role === 'miner' && SHIP_MAP[m.cls].storage === WARES[id].storage)) continue;
+      if (noMarketBuy(base, id)) continue; // Baumaterial nur aus eigenen Stationen
       for (const sec of nearbyMarkets) {
         const stock = marketStock(state, sec, id);
         const price = marketPrice(state, sec, id);

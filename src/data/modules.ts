@@ -90,8 +90,11 @@ const STORAGE_BP: Record<'S' | 'M' | 'L', { price: number; rep: number }> = {
 const STORAGE = (['Container', 'Solid', 'Liquid'] as StorageType[]).flatMap((type) => (['S', 'M', 'L'] as const).map((size) => ({ type, size, cap: CAPACITY[type][size], ...SIZE_MAT[size] })));
 
 const YARDS: Omit<ModuleDef, 'kind' | 'cost' | 'method' | 'starter'>[] = [
-  { id: 'yard_m', x4Id: 'module_gen_build_dockarea_m_01', name: 'S/M-Schiffsfertigung', yardSize: 'M', buildTime: 1298, materials: { claytronics: 3312, energycells: 6620, hullparts: 12112 }, repRequired: 10, blueprintCost: 12_000_000 },
-  { id: 'yard_l', x4Id: 'module_gen_build_l_01', name: 'L-Schiffsfertigung', yardSize: 'L', buildTime: 731, materials: { claytronics: 1866, energycells: 3731, hullparts: 6826 }, repRequired: 15, blueprintCost: 20_000_000 },
+  // Baupläne: Spielwerte im dreistelligen Millionenbereich, aufsteigend S/M < L < XL (wie die Modulpreise im Original:
+  // 101 / 212 / 216 Mio Cr). Baumaterial und Bauzeit sind die echten Werte aus crissian/x4.
+  { id: 'yard_m', x4Id: 'module_gen_build_dockarea_m_01', name: 'S/M-Schiffsfertigung', yardSize: 'M', buildTime: 1298, materials: { claytronics: 3312, energycells: 6620, hullparts: 12112 }, repRequired: 10, blueprintCost: 120_000_000 },
+  { id: 'yard_l', x4Id: 'module_gen_build_l_01', name: 'L-Schiffsfertigung', yardSize: 'L', buildTime: 731, materials: { claytronics: 1866, energycells: 3731, hullparts: 6826 }, repRequired: 15, blueprintCost: 240_000_000 },
+  { id: 'yard_xl', x4Id: 'module_gen_build_xl_01', name: 'XL-Schiffsfertigung', yardSize: 'XL', buildTime: 954, materials: { claytronics: 2434, energycells: 4866, hullparts: 8902 }, repRequired: 20, blueprintCost: 400_000_000 },
 ];
 
 export const MODULES: ModuleDef[] = buildModules();

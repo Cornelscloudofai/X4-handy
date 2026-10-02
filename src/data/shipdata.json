@@ -52,6 +52,38 @@
        "amount": 1
       }
      ]
+    },
+    {
+     "id": "thruster_gen_s_allround_01_mk1",
+     "name": "Steuerdüsen S Mk1",
+     "count": 1,
+     "price": 5948,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "engineparts",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
     }
    ],
    "speed": 314,
@@ -116,6 +148,58 @@
       {
        "ware": "shieldcomponents",
        "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_m_allround_01_mk1",
+     "name": "Steuerdüsen M Mk1",
+     "count": 1,
+     "price": 13019,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "engineparts",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 2,
+     "price": 21860,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 52
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 11
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
       }
      ]
     }
@@ -188,6 +272,98 @@
        "amount": 7
       }
      ]
+    },
+    {
+     "id": "thruster_gen_l_allround_01_mk1",
+     "name": "Steuerdüsen L Mk1",
+     "count": 1,
+     "price": 281595,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 120
+      },
+      {
+       "ware": "energycells",
+       "amount": 10
+      },
+      {
+       "ware": "engineparts",
+       "amount": 48
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_l_laser_01_mk1",
+     "name": "Puls-Laserturm L Mk1",
+     "count": 1,
+     "price": 55193,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 47
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 29
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 8,
+     "price": 21860,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 52
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 11
+      }
+     ]
+    },
+    {
+     "id": "ship_gen_xs_cargodrone_empty_01_a",
+     "name": "Frachtdrohne",
+     "count": 5,
+     "price": 16150,
+     "materials": [
+      {
+       "ware": "dronecomponents",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 50
+      },
+      {
+       "ware": "smartchips",
+       "amount": 10
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 10,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
     }
    ],
    "speed": 215,
@@ -256,6 +432,26 @@
      ]
     },
     {
+     "id": "thruster_gen_m_allround_01_mk1",
+     "name": "Steuerdüsen M Mk1",
+     "count": 1,
+     "price": 13019,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "engineparts",
+       "amount": 4
+      }
+     ]
+    },
+    {
      "id": "turret_spl_m_mining_01_mk1",
      "name": "Abbauturm M Mk1",
      "count": 4,
@@ -268,6 +464,22 @@
       {
        "ware": "turretcomponents",
        "amount": 10
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
       }
      ]
     }
@@ -334,6 +546,58 @@
       {
        "ware": "shieldcomponents",
        "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_m_allround_01_mk1",
+     "name": "Steuerdüsen M Mk1",
+     "count": 1,
+     "price": 13019,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "engineparts",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 2,
+     "price": 21860,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 52
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 11
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
       }
      ]
     }
@@ -408,6 +672,26 @@
      ]
     },
     {
+     "id": "thruster_gen_l_allround_01_mk1",
+     "name": "Steuerdüsen L Mk1",
+     "count": 1,
+     "price": 281595,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 120
+      },
+      {
+       "ware": "energycells",
+       "amount": 10
+      },
+      {
+       "ware": "engineparts",
+       "amount": 48
+      }
+     ]
+    },
+    {
      "id": "turret_spl_l_mining_01_mk1",
      "name": "Abbauturm L Mk1",
      "count": 2,
@@ -420,6 +704,58 @@
       {
        "ware": "turretcomponents",
        "amount": 30
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 8,
+     "price": 21860,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 52
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 11
+      }
+     ]
+    },
+    {
+     "id": "ship_gen_s_miningdrone_solid_01_a",
+     "name": "Abbaudrohne",
+     "count": 5,
+     "price": 13860,
+     "materials": [
+      {
+       "ware": "dronecomponents",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 50
+      },
+      {
+       "ware": "smartchips",
+       "amount": 20
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 10,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
       }
      ]
     }
@@ -490,6 +826,78 @@
       {
        "ware": "shieldcomponents",
        "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_l_allround_01_mk1",
+     "name": "Steuerdüsen L Mk1",
+     "count": 1,
+     "price": 281595,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 120
+      },
+      {
+       "ware": "energycells",
+       "amount": 10
+      },
+      {
+       "ware": "engineparts",
+       "amount": 48
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 8,
+     "price": 21860,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 52
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 11
+      }
+     ]
+    },
+    {
+     "id": "ship_gen_s_miningdrone_liquid_01_a",
+     "name": "Abbaudrohne",
+     "count": 5,
+     "price": 13860,
+     "materials": [
+      {
+       "ware": "dronecomponents",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 50
+      },
+      {
+       "ware": "smartchips",
+       "amount": 20
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 10,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
       }
      ]
     }

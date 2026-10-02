@@ -43,7 +43,7 @@ export interface ModuleDef {
   blueprintCost: number;
   starter: boolean;
   /** Werftmodul: größte Schiffsklasse, die hier gebaut werden kann */
-  yardSize?: 'M' | 'L';
+  yardSize?: 'M' | 'L' | 'XL';
 }
 
 export type ShipRole = 'miner' | 'trader';
@@ -148,7 +148,13 @@ export interface Station {
   ownFirst?: boolean;
   /** Eigene Anordnung der Kästchen im Fließdiagramm */
   layout?: Record<string, { x: number; y: number }>;
-  build: { def: string; remaining: number; total: number; paid: number } | null;
+  /**
+   * Laufender Bau. need: noch fehlendes Baumaterial (erst wenn alles da ist, läuft die Bauzeit);
+   * used: aus dem eigenen Lager genommen (geht beim Abbruch zurück); paid: für Zukäufe ausgegebene Credits.
+   */
+  build: { def: string; remaining: number; total: number; paid: number; need?: Record<string, number>; used?: Record<string, number>; buyT?: number } | null;
+  /** Fehlendes Baumaterial automatisch am Markt kaufen (Standard: an) */
+  autoBuyBuild?: boolean;
   inventory: Record<string, number>;
   trade: Record<string, TradeRule>;
   /** Kumulierte Werte für Statistik */
