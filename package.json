@@ -14,7 +14,8 @@
     "balance": "tsx scripts/balance.ts",
     "shots": "vite build && node scripts/tour.mjs",
     "e2e": "vite build && node scripts/yard-shot.mjs /tmp 390 && node scripts/yard-shot.mjs /tmp 360",
-    "perf": "tsx scripts/perf.ts"
+    "perf": "tsx scripts/perf.ts",
+    "kampagne": "tsx scripts/campaign.ts"
   },
   "devDependencies": {
     "playwright": "^1.63.0",

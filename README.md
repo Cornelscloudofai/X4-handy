@@ -85,7 +85,7 @@ tests         Simulationstests
 scripts       Werkzeuge: Balance-Simulation, Screenshot-Tour, Artifact-Export
 ```
 
-Nützliche Befehle: `npm test`, `npm run typecheck`, `npm run balance` (simulierter Spieler über 72 Spielstunden), `npm run e2e` (Handy-Oberfläche in 390 und 360 px: Werft, Zurück-Taste, keine abgeschnittenen Texte – läuft auch in GitHub Actions), `npm run perf` (Simulationstempo).
+Nützliche Befehle: `npm test`, `npm run typecheck`, `npm run balance` (simulierter Spieler über 72 Spielstunden), `npm run e2e` (Handy-Oberfläche in 390 und 360 px: Werft, Zurück-Taste, keine abgeschnittenen Texte – läuft auch in GitHub Actions), `npm run perf` (Simulationstempo), `npm run kampagne -- [seed] [stunden] [--weiter]` (simulierter Spieler spielt alle 15 Kapitel und prüft stündlich: keine ungültigen/negativen Bestände, kein überfülltes Lager, kein festhängendes Schiff).
 
 ## Datenquellen
 
