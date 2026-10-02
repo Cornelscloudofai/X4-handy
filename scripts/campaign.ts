@@ -1,4 +1,4 @@
-// Simulierter Spieler für die komplette Kampagne (15 Kapitel) mit Dauerlauf-Prüfungen.
+// Simulierter Spieler für die komplette Kampagne (28 Kapitel) mit Dauerlauf-Prüfungen.
 // npx tsx scripts/campaign.ts [seed] [maxStunden]
 import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
@@ -99,8 +99,25 @@ function checkInvariants() {
 
 // ---------- Spielverlauf ----------
 const alpha = s.stations[0];
-let beta: Station | null = null, chips: Station | null = null, engine: Station | null = null, clay: Station | null = null;
+let beta: Station | null = null;
+const plants: Record<string, Station> = {};
 const chapterAt: Record<string, number> = {};
+const reached = (id: string) => currentMission(s)?.id === id || chapterAt[id] !== undefined;
+const storeM = () => (s.blueprints.includes('storage_container_m') ? 'storage_container_m' : 'storage_container');
+/** Fabrikstation für eine Ware: gründen, Lager/Dock, Kette per Planer, Miner und Transporter */
+function factory(key: string, x: number, z: number, ware: string, opts: { buy?: string[]; extra?: string[]; traders?: number; credits?: number; feedTo?: string[] } = {}) {
+  let st = plants[key];
+  if (!st) {
+    if (s.credits < (opts.credits ?? 3e6)) return null;
+    const p = place(x, z, key);
+    if (!p) return null;
+    plants[key] = st = p;
+    for (const d of ['dock_m', storeM(), ...(opts.extra ?? [])]) ensure(st, d);
+  }
+  if (chain(st, ware, 1, opts.buy ?? [])) minedNeeds(st, ware, 1, opts.buy ?? []);
+  traders(st, opts.traders ?? 1);
+  return st;
+}
 A.queueModule(s, alpha.id, 'prod_refinedmetals');
 const t0 = performance.now();
 for (let h = 0; h < maxHours; h++) {
@@ -121,7 +138,7 @@ for (let h = 0; h < maxHours; h++) {
     if (m === 'trader' || (s.time > 3600 && s.ships.filter((x) => x.home === alpha.id && SHIP_MAP[x.cls].role === 'trader').length < 1)) traders(alpha, 1);
     if (m === 'graphene') ensure(alpha, 'prod_graphene');
     if (m === 'second' && !beta && s.credits > 1.5e6) { beta = place(70, 60, 'Station Beta'); if (beta) for (const d of ['storage_container', 'dock_m', 'prod_energycells']) ensure(beta, d); }
-    if (beta && (m === 'hull' || chapterAt.hull)) {
+    if (beta && reached('hull')) {
       if (blueprint('prod_hullparts')) {
         ensure(beta, 'prod_hullparts');
         ensure(alpha, 'prod_refinedmetals', 2);
@@ -132,44 +149,52 @@ for (let h = 0; h < maxHours; h++) {
       traders(alpha, 2);
     }
     if (m === 'license' && s.credits > 4.5e6) log(A.buyLicense(s, 'tkr').msg);
-    // Speicher M, sobald bezahlbar
-    if (chapterAt.license && s.credits > 6e6) for (const t of ['container', 'solid', 'liquid']) blueprint(`storage_${t}_m`);
-    // Kapitel 9: Mikrochips
-    if ((m === 'chips' || chapterAt.chips) && !chips && s.credits > 3e6) {
-      chips = place(-30, -85, 'Chipwerk');
-      if (chips) for (const d of ['dock_m', s.blueprints.includes('storage_container_m') ? 'storage_container_m' : 'storage_container', 'storage_solid']) ensure(chips, d);
+    // Kapitel 9: Lager M – Bauplan beim Handelsvertreter
+    if (reached('storage') && s.credits > 3e6) for (const t of ['container', 'solid', 'liquid']) blueprint(`storage_${t}_m`);
+    if (reached('storage') && s.blueprints.includes('storage_container_m')) ensure(alpha, 'storage_container_m');
+    // Kapitel 10–11: Siliziumscheiben und Mikrochips im Chipwerk
+    const chips = reached('wafers') ? factory('Chipwerk', -30, -85, 'microchips', { extra: ['storage_solid'] }) : null;
+    // Kapitel 12–13: Antimateriezellen und Antriebsteile nach Rhy
+    const engine = reached('antimatter') ? factory('Antriebswerk', 100, 20, 'engineparts', { extra: ['storage_solid', 'storage_liquid'], traders: 2 }) : null;
+    // Kapitel 14–15: Kühlmittel und Quantenröhren
+    const quantum = reached('coolant') ? factory('Quantenwerk', -90, 30, 'quantumtubes', { extra: ['storage_liquid'], traders: 1 }) : null;
+    // Kapitel 16: Claytronik – Mikrochips und Quantenröhren kommen aus den eigenen Werken (Lieferreihenfolge)
+    const clay = reached('claytronics') && chips && quantum ? factory('Claytronik-Werk', 10, 85, 'claytronics', { buy: ['microchips', 'quantumtubes'], extra: ['storage_liquid'], traders: 2, credits: 4e6 }) : null;
+    if (clay && chips && quantum) {
+      A.setDeliveryPrio(s, chips.id, [clay.id]); chips.prioBeforeNpc = true;
+      A.setDeliveryPrio(s, quantum.id, [clay.id]); quantum.prioBeforeNpc = true;
+      ensure(chips, 'prod_microchips', 2);
     }
-    if (chips) { if (chain(chips, 'microchips', 1)) minedNeeds(chips, 'microchips', 1); traders(chips, 1); }
-    // Kapitel 10: Antriebsteile nach Rhy
-    if ((m === 'engines' || chapterAt.engines) && !engine && s.credits > 3e6) {
-      engine = place(100, 20, 'Antriebswerk');
-      if (engine) for (const d of ['dock_m', s.blueprints.includes('storage_container_m') ? 'storage_container_m' : 'storage_container', 'storage_solid', 'storage_liquid']) ensure(engine, d);
+    // Kapitel 17: eigene Claytronik verbauen – zweite Claytronik-Fabrik im eigenen Werk
+    if (clay && reached('ownbuild')) {
+      ensure(clay, 'prod_claytronics', 2);
+      // Wie im Kapitelhinweis: ohne Marktkauf verbaut der Bautrupp die eigene Claytronik
+      clay.autoBuyBuild = currentMission(s)?.id !== 'ownbuild';
+      A.setDeliveryPrio(s, clay.id, Object.values(plants).concat(alpha).filter((x) => x.id !== clay.id).map((x) => x.id));
     }
-    if (engine) { if (chain(engine, 'engineparts', 1)) minedNeeds(engine, 'engineparts', 1); traders(engine, 2); }
-    // Kapitel 11: Claytronik – Mikrochips kommen vom Chipwerk (Lieferreihenfolge)
-    if ((m === 'claytronics' || chapterAt.claytronics) && !clay && s.credits > 4e6 && chips) {
-      clay = place(10, 85, 'Claytronik-Werk');
-      if (clay) {
-        for (const d of ['dock_m', s.blueprints.includes('storage_container_m') ? 'storage_container_m' : 'storage_container', 'storage_liquid']) ensure(clay, d);
-        A.setDeliveryPrio(s, chips.id, [clay.id]);
-        chips.prioBeforeNpc = true;
-      }
-    }
-    if (clay && chips) { if (chain(clay, 'claytronics', 1, ['microchips'])) minedNeeds(clay, 'claytronics', 1, ['microchips']); ensure(chips, 'prod_microchips', 2); traders(clay, 2); }
-    // Kapitel 12–14: eigene Werft bei Station Alpha
-    if (chapterAt.claytronics && blueprint('yard_m')) {
+    // Kapitel 18–19: Schild- und Geschützkomponenten (Baupläne beim Werftvertreter)
+    if (reached('shields')) factory('Rüstungswerk', 60, -90, 'shieldcomponents', { extra: ['storage_solid', 'storage_liquid'], credits: 6e6 });
+    if (reached('turrets') && plants['Rüstungswerk']) factory('Rüstungswerk', 60, -90, 'turretcomponents');
+    // Kapitel 20–23: eigene Werft bei Station Alpha
+    if (reached('yard') && blueprint('yard_m')) {
       ensure(alpha, 'yard_m');
-      if (s.blueprints.includes('storage_container_m')) ensure(alpha, 'storage_container_m');
-      traders(alpha, 3);
+      if (s.blueprints.includes('storage_container_m')) ensure(alpha, 'storage_container_m', 2);
+      traders(alpha, 4);
       if (beta) A.setDeliveryPrio(s, beta.id, [alpha.id]);
     }
-    if ((m === 'firstship') && Y.yardStations(s).length && !(alpha.yard?.queue.length || alpha.yard?.build)) Y.queueShipBuild(s, alpha.id, 'boa');
+    if (m === 'firstship' && Y.yardStations(s).length && !(alpha.yard?.queue.length || alpha.yard?.build)) Y.queueShipBuild(s, alpha.id, 'boa');
+    // Kapitel 24: Antimaterie-Konverter
+    if (reached('converters')) factory('Konverterwerk', -100, -60, 'antimatterconverters', { extra: ['storage_solid', 'storage_liquid'], credits: 8e6 });
+    // Kapitel 25–26: L-Werft und erstes L-Schiff
+    if (reached('yardl') && blueprint('yard_l')) { ensure(alpha, 'pier_l'); ensure(alpha, 'yard_l'); }
+    if (m === 'bigship' && Y.yardSizes(alpha).has('L') && !alpha.yard?.queue.some((j) => !j.order) && !(alpha.yard?.build && !alpha.yard.build.order)) Y.queueShipBuild(s, alpha.id, 'buffalo');
   }
   if (h % 2 === 1) checkInvariants();
   if (h % 12 === 11) log(`Cr ${(s.credits / 1e6).toFixed(1)} Mio · Wert ${(netWorth(s) / 1e6).toFixed(0)} Mio · Ruf FRF ${s.rep.frf.toFixed(1)} ZYA ${s.rep.zya.toFixed(1)} · ${s.stations.length} Stationen · ${s.ships.length} Schiffe · Kapitel ${currentMission(s)?.id ?? 'fertig'}`);
   if (!currentMission(s) && !process.argv.includes("--weiter")) break;
 }
 const ms = performance.now() - t0;
+if (process.argv.includes('--debug')) for (const st of s.stations) console.log(st.name, st.modules.map((m) => m.def).join(','), '| Bau', st.build?.def, JSON.stringify(st.build?.need), st.waiting, '| Queue', st.queue.map((q) => q.def).join(','), '| Lager', JSON.stringify(Object.fromEntries(Object.entries(st.inventory).map(([k, v]) => [k, Math.round(v)]))));
 console.log('\n=== Ergebnis ===');
 console.log('Kapitel (Stunde):', Object.entries(chapterAt).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(' · '));
 console.log('Offen:', currentMission(s)?.title ?? '–', currentMission(s)?.progress(s));

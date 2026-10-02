@@ -112,6 +112,7 @@ export function stepYard(state: GameState, st: Station, dt: number): void {
     const ship = newShip(state, job.cls, st);
     state.ships.push(ship);
     state.totals.shipsBuilt = (state.totals.shipsBuilt ?? 0) + 1;
+    if (c.size === 'L') state.totals.shipsBuiltL = (state.totals.shipsBuiltL ?? 0) + 1;
     log(state, `${st.name}: ${ship.name} (${c.name}) vom Stapel gelaufen.`, 'good', true);
   }
   emit({ type: 'shipBuilt', station: st.id, cls: job.cls });

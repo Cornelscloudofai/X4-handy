@@ -3,7 +3,7 @@ import { MODULES, MODULE_MAP } from '../data/modules';
 import { SECTOR_MAP } from '../data/sectors';
 import { SHIP_MAP, shipName } from '../data/ships';
 import { initMarkets } from './economy';
-import { startMission } from './story';
+import { OLD_STORY_IDS, STORY, startMission } from './story';
 import type { GameState, ModuleInst, Ship, Station } from './types';
 
 export const SAVE_VERSION = 2;
@@ -100,6 +100,13 @@ export function deserialize(text: string): GameState {
   state.blueprints = [...new Set([...(raw.blueprints ?? []), ...base.blueprints, ...built])];
   state.totals = { ...base.totals, ...(raw.totals ?? {}) };
   state.story = { ...base.story, ...(raw.story ?? {}) };
+  // Alte Spielstände kannten nur 15 Kapitel: über die Kapitel-Kennung auf die neue Reihenfolge umstellen
+  if (raw.story && !raw.story.id) {
+    const id = OLD_STORY_IDS[state.story.index];
+    const i = id ? STORY.findIndex((m) => m.id === id) : -1;
+    state.story.index = i >= 0 ? i : STORY.length;
+    state.story.id = STORY[state.story.index]?.id;
+  }
   state.contracts = (raw.contracts ?? []).map((c) => ({ ...c, deadline: c.deadline ?? 0 }));
   return state;
 }

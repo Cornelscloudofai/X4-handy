@@ -746,3 +746,29 @@ describe('Modulbau mit echtem Material', () => {
     expect(st.inventory.hullparts).toBeCloseTo(50);
   });
 });
+
+describe('Kampagne mit 28 Kapiteln', () => {
+  it('stellt alte Spielstände über die Kapitel-Kennung um', () => {
+    const s = newGame(31);
+    const old = JSON.parse(serialize(s));
+    delete old.story.id;
+    old.story.index = 11; // altes Kapitel 12: eigene Werft
+    expect(currentMission(deserialize(JSON.stringify(old)))?.id).toBe('yard');
+    old.story.index = 15; // alte Kampagne abgeschlossen
+    expect(currentMission(deserialize(JSON.stringify(old)))).toBeNull();
+    old.story.index = 3;
+    expect(currentMission(deserialize(JSON.stringify(old)))?.id).toBe('trader');
+  });
+
+  it('zählt eigene Claytronik im Modulbau', () => {
+    const s = newGame(32);
+    s.credits = 50e6;
+    while (currentMission(s)?.id !== 'ownbuild') s.story.index++;
+    storyApi.startMission(s);
+    const st = s.stations[0];
+    st.inventory.claytronics = 40;
+    expect(queueModule(s, st.id, 'storage_container').ok).toBe(true);
+    step(s, 60);
+    expect(currentMission(s)!.progress(s).cur).toBeGreaterThanOrEqual(40);
+  });
+});

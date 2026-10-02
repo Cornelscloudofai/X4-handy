@@ -282,7 +282,7 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
     if (b.need && Object.values(b.need).some((n) => n > 0.5)) {
       for (const [id, n] of Object.entries(b.need)) {
         const take = Math.min(n, st.inventory[id] ?? 0);
-        if (take > 0) { addWare(st, id, -take); b.need[id] = n - take; b.used = { ...(b.used ?? {}), [id]: (b.used?.[id] ?? 0) + take }; }
+        if (take > 0) { addWare(st, id, -take); b.need[id] = n - take; b.used = { ...(b.used ?? {}), [id]: (b.used?.[id] ?? 0) + take }; state.totals.buildOwn = { ...(state.totals.buildOwn ?? {}), [id]: (state.totals.buildOwn?.[id] ?? 0) + take }; }
       }
       b.buyT = (b.buyT ?? 0) - left;
       if (st.autoBuyBuild !== false && b.buyT <= 0) { b.buyT = 30; buyBuildMaterials(state, st); }

@@ -322,8 +322,8 @@ export interface GameState {
   contracts: Contract[];
   shipOrders?: ShipOrder[];
   shipOrderTimer?: number;
-  story: { index: number; claimed: boolean; startedAt: number; base: Record<string, number>; contractFloor: number };
-  totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number };
+  story: { id?: string; index: number; claimed: boolean; startedAt: number; base: Record<string, number>; contractFloor: number };
+  totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number; shipsBuiltL?: number; buildOwn?: Record<string, number> };
   log: LogEntry[];
   nextId: number;
   npcTimer: Record<string, number>;
