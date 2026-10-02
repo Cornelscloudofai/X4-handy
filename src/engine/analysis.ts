@@ -2,7 +2,7 @@
 import { MODULE_MAP } from '../data/modules';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { hasDockFor, stationRates, storageCap, usedVolume } from './economy';
+import { buildMissing, hasDockFor, stationRates, storageCap, usedVolume } from './economy';
 import type { GameState, Station } from './types';
 
 export interface Alert { station: string; text: string; severity: 'warn' | 'bad'; ware?: string }
@@ -37,8 +37,8 @@ export function stationAlerts(state: GameState, st: Station): Alert[] {
   }
   // Bauprojekt wartet auf Material
   if (st.build && st.waiting === 'material') {
-    const miss = Object.entries(st.build.need ?? {}).filter(([, n]) => n > 0.5).map(([id, n]) => `${Math.round(n)} ${WARES[id].name}`);
-    if (miss.length) out.push({ station: st.id, text: `${st.name}: Bau von ${MODULE_MAP[st.build.def]?.name} wartet auf ${miss.join(', ')}${st.autoBuyBuild === false ? ' (nur eigenes Material)' : ' – am Markt knapp, eigene Produktion hilft'}`, severity: 'warn' });
+    const miss = Object.entries(buildMissing(st)).map(([id, n]) => `${Math.ceil(n).toLocaleString('de-DE')} ${WARES[id].name}`);
+    if (miss.length) out.push({ station: st.id, text: `${st.name}: Baulager braucht noch ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? ' …' : ''}${st.autoBuyBuild === false ? ' (nur eigenes Material)' : !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') ? ' – eigene Transporter beschleunigen die Lieferung' : ''}`, severity: 'warn' });
   }
   // Ohne eigenen Transporter handelt niemand automatisch für diese Station
   if (hasProd && !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') && state.ships.some((s) => SHIP_MAP[s.cls].role === 'trader')) {

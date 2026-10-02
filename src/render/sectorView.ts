@@ -4,6 +4,7 @@ import { FACTIONS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, hexCorners } from '../dat
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { endpointPlace, fieldById, stationById } from '../engine/logistics';
+import { buildProgress } from '../engine/economy';
 import type { GameState, Ship, Station } from '../engine/types';
 import { hashStr } from '../engine/util';
 import type { Selection, UIState } from '../ui/uistate';
@@ -495,7 +496,7 @@ export class SectorRenderer {
     }
     // Bau-Fortschritt
     if (st.build) {
-      const p = 1 - st.build.remaining / st.build.total;
+      const p = buildProgress(st);
       const r = detail ? Math.min(90, stationScale(cam.zoom) * 4.6) : 18;
       ctx.strokeStyle = rgba(C.amber, 0.25);
       ctx.lineWidth = 3;

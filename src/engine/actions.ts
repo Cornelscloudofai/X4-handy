@@ -3,7 +3,7 @@ import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
 import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { addWare, defaultTradeRule, hasDockFor } from './economy';
+import { BUILD_STORAGE_COST, defaultTradeRule, hasDockFor } from './economy';
 import { spawnCourier } from './npc';
 import { knownSectors, sellableStock, stationById } from './logistics';
 import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendors';
@@ -69,7 +69,7 @@ export function bestStorage(state: GameState, type: string): string {
 
 export const MAX_MODULES = 40;
 
-/** Plant ein Modul ein – am Ende oder an Position `at` der Bauliste. Bezahlt wird beim Baustart. */
+/** Plant ein Modul ein – am Ende oder an Position `at` der Bauliste. Gebaut wird aus dem Material im Baulager. */
 export function queueModule(state: GameState, stationId: string, defId: string, at?: number): Result & { uid?: number } {
   const st = stationById(state, stationId);
   const d = MODULE_MAP[defId];
@@ -112,11 +112,12 @@ export function cancelQueued(state: GameState, stationId: string, uid: number): 
 export function cancelBuild(state: GameState, stationId: string): Result {
   const st = stationById(state, stationId);
   if (!st?.build) return fail('Kein laufender Bau.');
-  // Zugekauftes wird erstattet, Material aus dem eigenen Lager kommt zurück (soweit Platz ist)
-  state.credits += st.build.paid;
-  for (const [id, n] of Object.entries(st.build.used ?? {})) addWare(st, id, n);
+  // Verbautes Material kommt zurück ins Baulager (bezahlte Positionen alter Spielstände: Credits zurück)
+  if (st.build.paid > 0) state.credits += st.build.paid;
+  else for (const [id, n] of Object.entries(st.build.used ?? {})) if (n > 1e-6) { st.buildStore ??= {}; st.buildStore[id] = (st.buildStore[id] ?? 0) + n; }
   st.build = null;
-  return ok('Bau abgebrochen, Material und Kosten erstattet.');
+  st.waiting = '';
+  return ok('Bau abgebrochen – das verbaute Material liegt wieder im Baulager.');
 }
 
 /** Entfernt die letzte noch nicht begonnene Position eines Modultyps */
@@ -142,7 +143,7 @@ export function demolishModule(state: GameState, stationId: string, uid: number)
 }
 
 export function stationCost(): number {
-  return PLOT_COST + moduleDef('core').cost;
+  return PLOT_COST + BUILD_STORAGE_COST;
 }
 
 export function canPlaceStation(state: GameState, sectorId: string, x: number, z: number): Result {
@@ -165,10 +166,11 @@ export function foundStation(state: GameState, sectorId: string, x: number, z: n
   const used = new Set(state.stations.map((s) => s.name));
   const name = 'Station ' + (names.find((n) => !used.has('Station ' + n)) ?? state.stations.length + 1);
   const st = newStation(state, name, sectorId, x, z);
-  st.build = { def: 'core', remaining: moduleDef('core').buildTime, total: moduleDef('core').buildTime, paid: moduleDef('core').cost };
+  // Zuerst steht nur das Baulager; der Stationskern wird wie jedes Modul aus angeliefertem Material gebaut
+  st.build = { def: 'core', remaining: moduleDef('core').buildTime, total: moduleDef('core').buildTime, paid: 0, used: {} };
   state.stations.push(st);
   log(state, `${name} in ${sector(sectorId).name} gegründet.`, 'good');
-  return { ok: true, msg: `${name} gegründet. Baue jetzt Lager, Dock und Produktion.`, id: st.id };
+  return { ok: true, msg: `${name} gegründet – das Baulager steht. Plane Dock, Lager und Produktion ein; Transporter und NPC-Händler liefern das Baumaterial.`, id: st.id };
 }
 
 export function renameStation(state: GameState, stationId: string, name: string): Result {

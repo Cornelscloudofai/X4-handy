@@ -132,7 +132,7 @@ export interface Station {
   x: number;
   z: number;
   modules: ModuleInst[];
-  /** Geplante Baupositionen in Reihenfolge. Bezahlt wird beim Baustart (paid > 0: bereits bezahlt, alte Spielstände). */
+  /** Geplante Baupositionen in Reihenfolge; Material kommt übers Baulager (paid > 0: bereits bezahlt, alte Spielstände). */
   queue: QueueItem[];
   /** Grund, warum die nächste Position nicht startet */
   waiting?: string;
@@ -152,8 +152,11 @@ export interface Station {
    * Laufender Bau. need: noch fehlendes Baumaterial (erst wenn alles da ist, läuft die Bauzeit);
    * used: aus dem eigenen Lager genommen (geht beim Abbruch zurück); paid: für Zukäufe ausgegebene Credits.
    */
-  build: { def: string; remaining: number; total: number; paid: number; need?: Record<string, number>; used?: Record<string, number>; buyT?: number } | null;
-  /** Fehlendes Baumaterial automatisch am Markt kaufen (Standard: an) */
+  /** Laufender Modulbau: remaining = restliche Bauzeit, used = bereits verbautes Material */
+  build: { def: string; remaining: number; total: number; paid: number; used?: Record<string, number> } | null;
+  /** Baulager: angeliefertes Baumaterial für die Bauliste (gibt es an jeder Station, schon vor dem Stationskern) */
+  buildStore?: Record<string, number>;
+  /** Baulager darf von NPC-Händlern und Markteinkäufen beliefert werden (Standard: an); aus = nur Ware aus eigenen Stationen */
   autoBuyBuild?: boolean;
   inventory: Record<string, number>;
   trade: Record<string, TradeRule>;

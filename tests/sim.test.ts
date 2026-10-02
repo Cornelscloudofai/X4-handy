@@ -9,6 +9,15 @@ import { MODULE_MAP } from '../src/data/modules';
 import { insideHex, sectorPath } from '../src/data/sectors';
 import * as storyApi from '../src/engine/story';
 import { claimMission, currentMission, missionComplete } from '../src/engine/story';
+import type { GameState, Station } from '../src/engine/types';
+
+/** Für Tests, in denen es nicht um den Bau geht: Module sofort fertig (Stationskern inklusive) */
+function instantModules(s: GameState, st: Station | string, defs: string[]): Station {
+  const station = typeof st === 'string' ? s.stations.find((x) => x.id === st)! : st;
+  if (station.build?.def === 'core') { station.modules.push({ uid: s.nextId++, def: 'core', t: 0, running: false, stall: '', util: 0 }); station.build = null; }
+  for (const def of defs) station.modules.push({ uid: s.nextId++, def, t: 0, running: false, stall: '', util: 0 });
+  return station;
+}
 
 describe('Daten', () => {
   it('nutzt echte X4-Rezepte', () => {
@@ -161,7 +170,7 @@ describe('Aufträge', () => {
 });
 
 describe('Bauliste', () => {
-  it('plant ohne Vorkasse, bezahlt beim Baustart und hält die Reihenfolge ein', () => {
+  it('plant ohne Vorkasse und hält die Reihenfolge ein', () => {
     const s = newGame(11);
     const st = s.stations[0];
     const c0 = s.credits;
@@ -174,23 +183,7 @@ describe('Bauliste', () => {
     expect(st.queue.map((q) => q.def)).toEqual(['storage_liquid', 'storage_container', 'prod_refinedmetals']);
     step(s, 1);
     expect(st.build?.def).toBe('storage_liquid');
-    expect(s.credits).toBeLessThan(c0);
-  });
-
-  it('wartet auf Credits für Baumaterial statt zu überziehen', () => {
-    const s = newGame(12);
-    const st = s.stations[0];
-    s.credits = 1000;
-    queueModule(s, st.id, 'prod_refinedmetals');
-    step(s, 10);
-    expect(st.build?.def).toBe('prod_refinedmetals');
-    expect(st.waiting).toBe('credits');
-    expect(st.build!.remaining).toBe(st.build!.total); // Bauzeit läuft noch nicht
-    expect(s.credits).toBeGreaterThanOrEqual(0);
-    s.credits = 5_000_000;
-    step(s, 60);
-    expect(st.waiting).toBe('');
-    expect(st.build!.remaining).toBeLessThan(st.build!.total);
+    expect(s.credits).toBe(c0); // Module kosten keine Credits – nur das angelieferte Material
   });
 
   it('entfernt geplante Positionen einzeln', () => {
@@ -255,9 +248,8 @@ describe('Lager und Reserve', () => {
     const { setStorageShare, setReserve, sellOrder } = await import('../src/engine/actions');
     const { storageShare } = await import('../src/engine/economy');
     const s = newGame(51);
-    const st = s.stations[0];
-    queueModule(s, st.id, 'prod_refinedmetals');
-    step(s, 3600);
+    const st = instantModules(s, s.stations[0], ['prod_refinedmetals']);
+    step(s, 600);
     setStorageShare(s, st.id, 'energycells', 0.2);
     expect(storageShare(st, 'energycells').share).toBeCloseTo(0.2);
     expect(storageShare(st, 'refinedmetals').share).toBeCloseTo(0.8);
@@ -561,8 +553,7 @@ describe('Lieferreihenfolge für Überschüsse', () => {
     const werft = s.stations[0];
     werft.modules.push({ uid: s.nextId++, def: 'yard_m', t: 0, running: false, stall: '', util: 0 });
     const r = foundStation(s, 'zhin', 60, 55);
-    const huelle = s.stations.find((x) => x.id === r.id)!;
-    for (const d of ['storage_container', 'dock_m']) queueModule(s, huelle.id, d);
+    const huelle = instantModules(s, r.id!, ['storage_container', 'dock_m']);
     step(s, 1800);
     huelle.inventory.hullparts = 3000;
     if (ownFirst) huelle.deliveryPrio = [werft.id];
@@ -604,7 +595,7 @@ describe('Lieferreihenfolge für Überschüsse', () => {
     const src = s.stations[0];
     const made = [[60, 55], [-80, 70]].map(([x, z]) => {
       const r = foundStation(s, 'zhin', x, z);
-      for (const d of ['storage_container', 'dock_m']) queueModule(s, r.id!, d);
+      instantModules(s, r.id!, ['storage_container', 'dock_m']);
       return r.id!;
     });
     step(s, 1800);
@@ -698,52 +689,127 @@ describe('Werft hält Material auf Vorrat', () => {
 });
 function SHIP_MAP_BOA(): Record<string, number> { return { hullparts: 348, engineparts: 20, shieldcomponents: 7 }; }
 
-describe('Modulbau mit echtem Material', () => {
-  it('nimmt Material zuerst aus dem Lager, kauft den Rest am Markt und baut erst dann', () => {
+describe('Baulager', () => {
+  it('Gründung kostet Bauplatz + Baulager; der Stationskern wird aus angeliefertem Material gebaut', async () => {
+    const { BUILD_STORAGE_COST, buildDemand } = await import('../src/engine/economy');
+    const { PLOT_COST } = await import('../src/data/modules');
+    const s = newGame(30);
+    const c0 = s.credits;
+    const r = foundStation(s, 'zhin', 60, 55);
+    expect(s.credits).toBe(c0 - PLOT_COST - BUILD_STORAGE_COST);
+    expect(BUILD_STORAGE_COST).toBe(50_000);
+    const st = s.stations.find((x) => x.id === r.id)!;
+    expect(st.build?.def).toBe('core');
+    expect(buildDemand(st)).toEqual(MODULE_MAP.core.materials);
+  });
+
+  it('nimmt Lieferungen an und zeigt Bestand und Bedarf der ganzen Bauliste', async () => {
+    const { buildDemand, buildMissing, receiveWare } = await import('../src/engine/economy');
     const s = newGame(31);
     const st = s.stations[0];
-    const need = MODULE_MAP.prod_refinedmetals.materials;
-    st.inventory.hullparts = need.hullparts; // Hüllenteile hat die Station selbst
-    const c0 = s.credits;
-    const clay0 = s.markets.zhin.claytronics.stock;
+    st.inventory.energycells = 0;
+    st.modules = st.modules.filter((m) => m.def !== 'prod_energycells'); // keine eigene Energie im Spiel
     queueModule(s, st.id, 'prod_refinedmetals');
-    step(s, 2);
-    expect(st.inventory.hullparts ?? 0).toBeLessThan(1); // aus dem eigenen Lager genommen
-    expect(s.markets.zhin.claytronics.stock).toBeLessThan(clay0); // Claytronik am Markt gekauft
-    expect(s.credits).toBeLessThan(c0);
-    step(s, MODULE_MAP.prod_refinedmetals.buildTime + 10);
-    expect(st.modules.some((m) => m.def === 'prod_refinedmetals')).toBe(true);
+    queueModule(s, st.id, 'prod_refinedmetals');
+    const m = MODULE_MAP.prod_refinedmetals.materials;
+    expect(buildDemand(st).claytronics).toBe(2 * m.claytronics);
+    // Lieferung geht zuerst ins Baulager, nur der Überschuss ins Stationslager
+    expect(receiveWare(s, st, 'hullparts', 2 * m.hullparts + 40)).toBeCloseTo(2 * m.hullparts + 40);
+    expect(st.buildStore!.hullparts).toBeCloseTo(2 * m.hullparts);
+    expect(st.inventory.hullparts).toBeCloseTo(40);
+    expect(buildMissing(st).hullparts).toBeUndefined();
+    expect(buildMissing(st).claytronics).toBe(2 * m.claytronics);
   });
 
-  it('knappes Material am Markt hält den Bau auf; eigene Lieferung löst den Engpass', () => {
+  it('baut anteilig weiter und bleibt beim erreichten Prozentwert stehen, bis nachgeliefert wird', async () => {
+    const { buildProgress, receiveWare } = await import('../src/engine/economy');
     const s = newGame(32);
-    s.credits = 500e6;
-    s.blueprints.push('yard_m');
     const st = s.stations[0];
-    queueModule(s, st.id, 'yard_m'); // braucht 3.312 Claytronik
-    step(s, 120);
-    expect(st.build?.def).toBe('yard_m');
+    st.autoBuyBuild = false; // keine NPC-Lieferungen im Test
+    st.modules = st.modules.filter((m) => m.def !== 'prod_energycells');
+    st.inventory = {};
+    const d = MODULE_MAP.prod_refinedmetals;
+    queueModule(s, st.id, d.id);
+    // Nur Hüllenteile und Energiezellen da, keine Claytronik
+    receiveWare(s, st, 'hullparts', d.materials.hullparts);
+    receiveWare(s, st, 'energycells', d.materials.energycells);
+    step(s, d.buildTime * 5); // ohne Claytronik läuft der Bau nur mit dem Wertanteil des vorhandenen Materials
     expect(st.waiting).toBe('material');
-    expect(st.build!.need!.claytronics).toBeGreaterThan(100); // Märkte haben nicht genug
-    // Eigene Claytronik ins Lager: der Bau nimmt sie und läuft weiter
-    st.inventory.claytronics = st.build!.need!.claytronics;
+    const p = buildProgress(st);
+    expect(p).toBeGreaterThan(0.1);
+    expect(p).toBeLessThan(0.95);
+    expect(st.build!.used!.hullparts).toBeCloseTo(d.materials.hullparts); // vorhandenes Material ist verbaut
+    step(s, 600);
+    expect(buildProgress(st)).toBeCloseTo(p); // steht still
+    // Halbe Claytronik: weiter, aber noch nicht fertig
+    receiveWare(s, st, 'claytronics', d.materials.claytronics / 2);
     step(s, 60);
-    expect(st.build!.need!.claytronics ?? 0).toBeLessThan(1);
+    expect(buildProgress(st)).toBeGreaterThan(p);
+    expect(st.build?.def).toBe(d.id);
+    receiveWare(s, st, 'claytronics', d.materials.claytronics / 2);
+    step(s, d.buildTime);
+    expect(st.modules.some((m) => m.def === d.id)).toBe(true);
+    expect(st.buildStore ?? {}).toEqual({});
   });
 
-  it('ohne Zukauf wird nur eigenes Material verbaut; Abbruch gibt Material und Credits zurück', async () => {
-    const { cancelBuild } = await import('../src/engine/actions');
+  it('wird durch echte Schiffe beliefert: NPC-Händler (bezahlt bei Lieferung) und eigene Transporter, auch ohne Dock', async () => {
+    const { buildDemand } = await import('../src/engine/economy');
     const s = newGame(33);
+    s.credits = 20e6;
+    const a = s.stations[0];
+    queueModule(s, a.id, 'prod_refinedmetals');
+    const e0 = a.expenses;
+    step(s, 3 * 3600);
+    expect(a.modules.some((m) => m.def === 'prod_refinedmetals')).toBe(true);
+    expect(a.expenses).toBeGreaterThan(e0); // NPC-Lieferungen wurden bezahlt
+    // Neue Station ohne Dock: ein eigener Transporter einer anderen Station bringt Claytronik ins Baulager
+    const r = foundStation(s, 'zhin', 60, 55);
+    const b = s.stations.find((x) => x.id === r.id)!;
+    b.autoBuyBuild = false; // nur eigene Ware
+    a.inventory.claytronics = 500;
+    a.inventory.hullparts = 500;
+    a.inventory.energycells = 5000;
+    a.deliveryPrio = [b.id];
+    a.prioBeforeNpc = true; // NPC-Händler kaufen nichts weg, solange B Bedarf hat
+    for (const id of ['claytronics', 'hullparts']) setTradeRule(s, a.id, id, { sell: true });
+    buyShip(s, 'boa', a.id);
+    step(s, 3 * 3600);
+    expect(b.modules.some((m) => m.def === 'core')).toBe(true);
+    expect(buildDemand(b)).toEqual({});
+  });
+
+  it('ohne Zukauf liefern weder NPC-Händler noch Markt; Abbruch legt das Material zurück ins Baulager', async () => {
+    const { cancelBuild } = await import('../src/engine/actions');
+    const s = newGame(34);
     const st = s.stations[0];
     st.autoBuyBuild = false;
     st.inventory.hullparts = 50;
     queueModule(s, st.id, 'prod_refinedmetals');
-    step(s, 120);
-    expect(st.build!.paid).toBe(0); // nichts zugekauft
-    expect(st.build!.need!.claytronics).toBe(MODULE_MAP.prod_refinedmetals.materials.claytronics); // keine Lieferung vom Markt
+    buyShip(s, 'boa', st.id);
+    step(s, 2 * 3600);
+    expect(st.build!.used!.claytronics ?? 0).toBe(0); // keine Claytronik vom Markt
     expect(st.waiting).toBe('material');
+    const used = st.build!.used!.hullparts;
+    expect(used).toBeGreaterThan(1); // eigenes Lager wird umgeladen und verbaut
     expect(cancelBuild(s, st.id).ok).toBe(true);
-    expect(st.inventory.hullparts).toBeCloseTo(50);
+    expect(st.build).toBeNull();
+    step(s, 2);
+    expect((st.buildStore?.hullparts ?? 0) + (st.inventory.hullparts ?? 0)).toBeCloseTo(50);
+  });
+
+  it('alte Spielstände: gesammeltes Material kommt ins Baulager', () => {
+    const s = newGame(35);
+    const st = s.stations[0];
+    queueModule(s, st.id, 'prod_refinedmetals');
+    step(s, 1);
+    const old = JSON.parse(serialize(s));
+    const m = MODULE_MAP.prod_refinedmetals.materials;
+    old.stations[0].build = { def: 'prod_refinedmetals', remaining: 514, total: 514, paid: 1000, need: { claytronics: 10, hullparts: 0, energycells: 0 }, used: { hullparts: 5 }, buyT: 3 };
+    old.stations[0].buildStore = undefined;
+    const st2 = deserialize(JSON.stringify(old)).stations[0];
+    expect(st2.build!.paid).toBe(0);
+    expect(st2.buildStore!.claytronics).toBe(m.claytronics - 10);
+    expect(st2.buildStore!.hullparts).toBe(m.hullparts);
   });
 });
 

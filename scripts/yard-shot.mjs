@@ -175,9 +175,14 @@ await page.evaluate(() => {
   A.queueModule(s, st.id, 'yard_l'); A.queueModule(s, st.id, 'prod_refinedmetals');
   g.step(600); g.openPanel('station', st.id, 'modules'); g.refresh();
 });
-await page.waitForTimeout(400);
+await page.waitForTimeout(3500); // Hinweise ausblenden lassen
+await page.evaluate(() => document.querySelector('.build-row.locked')?.scrollIntoView({ block: 'center' }));
 await check('23-build-material');
 report.buildMaterial = await page.evaluate(() => !!document.querySelector('.build-row.locked .io.lack') || !!document.querySelector('.build-row.locked'));
+// Baulager: Bestand „x von y“ je Ware sichtbar
+report.buildStore = await page.evaluate(() => document.querySelectorAll('[data-key^="bs-"]').length > 0 && /von .* vorhanden/.test(document.querySelector('[data-key^="bs-"]')?.textContent ?? ''));
+await page.evaluate(() => document.querySelector('[data-key^="bs-"]')?.scrollIntoView({ block: 'center' }));
+await check('24-build-store');
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();

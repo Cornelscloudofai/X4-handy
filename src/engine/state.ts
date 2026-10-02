@@ -57,6 +57,24 @@ export function serialize(state: GameState): string {
 }
 
 /** Lädt einen Spielstand und prüft ihn grob auf Gültigkeit */
+/**
+ * Laufender Bau aus Spielständen vor dem Baulager: Dort wurde Material erst komplett gesammelt (need = noch fehlend),
+ * danach lief die Bauzeit. Gesammeltes Material kommt ins Baulager, der Bau läuft anteilig weiter.
+ */
+function migrateBuild(s: Station): Station['build'] {
+  const old = s.build as NonNullable<Station['build']> & { need?: Record<string, number>; buyT?: number };
+  if (!old.need) return old;
+  const mats = MODULE_MAP[old.def].materials;
+  const missing = Object.values(old.need).some((n) => n > 0.5);
+  const b: NonNullable<Station['build']> = { def: old.def, total: old.total, remaining: missing ? old.total : old.remaining, paid: 0, used: {} };
+  for (const [id, n] of Object.entries(mats)) {
+    const got = Math.max(0, n - (old.need[id] ?? 0));
+    if (!missing) b.used![id] = n;
+    else if (got > 0) { s.buildStore ??= {}; s.buildStore[id] = (s.buildStore[id] ?? 0) + got; }
+  }
+  return b;
+}
+
 export function deserialize(text: string): GameState {
   const raw = JSON.parse(text) as GameState;
   if (!raw || typeof raw !== 'object' || !(raw.version >= 1 && raw.version <= SAVE_VERSION) || !Array.isArray(raw.stations)) {
@@ -74,6 +92,7 @@ export function deserialize(text: string): GameState {
   }
   const base = newGame(raw.seed || 1);
   const state: GameState = { ...base, ...raw };
+  for (const s of raw.stations) if (s?.build && MODULE_MAP[s.build.def]) s.build = migrateBuild(s);
   state.stations = raw.stations.filter((s) => s && SECTOR_MAP[s.sector]).map((s) => ({
     ...s,
     modules: (s.modules ?? []).filter((m) => MODULE_MAP[m.def]),

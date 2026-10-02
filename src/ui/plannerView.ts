@@ -377,7 +377,7 @@ export function buildModal(state: GameState, r: PlanResult): string {
   const missing = planMissing(state, r);
   if (missing.length) return `<p class="lead">Dieser Entwurf kann nicht in eine Station übernommen werden, weil Baupläne fehlen. Kaufe sie bei den Vertretern vor Ort und versuche es dann erneut.</p>${missingNote(state, missing, true)}`;
   const rows = state.stations.map((st) => `<div class="row tap" ${act('plan-build', { st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${st.modules.length} Module · ${st.queue.length + (st.build ? 1 : 0)} in der Baureihenfolge</div></div>${icon('chev', 20, 'chev')}</div>`).join('');
-  return `<p class="lead">Die ${r.totalModules} Produktionsmodule werden als einzelne Positionen an die Baureihenfolge angehängt – Vorprodukte zuerst. Fehlende Lager und ein Dock kommen davor. Bezahlt wird beim jeweiligen Baustart (gesamt etwa ${fmtCr(r.cost)}).</p>
+  return `<p class="lead">Die ${r.totalModules} Produktionsmodule werden als einzelne Positionen an die Baureihenfolge angehängt – Vorprodukte zuerst. Fehlende Lager und ein Dock kommen davor. Das Baumaterial (Wert etwa ${fmtCr(r.cost)}) liefern Schiffe ins Baulager der Station.</p>
     <div class="box rows">${rows}</div>`;
 }
 

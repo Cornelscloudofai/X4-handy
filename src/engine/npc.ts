@@ -2,7 +2,7 @@
 // Hintergrundverkehr belebt die Sektoren.
 import { SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { addWare, applyMarketTrade, freeUnits, hasDockFor, marketPrice, marketRoom, marketStock, noMarketBuy, stationWares } from './economy';
+import { addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, marketStock, receiveWare, roomAt, stationWares } from './economy';
 import { contractDeliver } from './contracts';
 import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
 import type { GameState, NpcShip } from './types';
@@ -44,10 +44,12 @@ function makeNpc(state: GameState, partial: Partial<NpcShip> & Pick<NpcShip, 'se
 }
 
 function trySpawnTrader(state: GameState, sectorId: string): void {
-  const stations = state.stations.filter((s) => s.sector === sectorId && hasDockFor(s, 'M'));
+  // Ohne Dock beliefern NPC-Händler nur das Baulager (sofern die Station Zukauf erlaubt)
+  const stations = state.stations.filter((s) => s.sector === sectorId && (hasDockFor(s, 'M') || (s.autoBuyBuild !== false && (s.build || s.queue.length))));
   if (!stations.length) return;
   const offers: { item: { st: string; ware: string; kind: 'buyer' | 'seller'; amount: number }; w: number }[] = [];
   for (const st of stations) {
+    const dock = hasDockFor(st, 'M');
     for (const id of stationWares(st)) {
       const w = WARES[id];
       const units = NPC_CAPACITY / w.volume;
@@ -56,12 +58,15 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
       const held = st.prioBeforeNpc && prioNeeds(state, st, id, units);
       const have = held ? 0 : surplus(state, st, id) - contractNeed(state, id);
       const room = marketRoom(state, sectorId, id);
-      const sell = Math.min(have, units, room);
+      const sell = dock ? Math.min(have, units, room) : 0;
       if (sell >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'buyer', amount: sell }, w: sell * marketPrice(state, sectorId, id) });
-      const need = noMarketBuy(st, id) ? 0 : wanted(state, st, id);
+      const want = wanted(state, st, id, false, true);
+      const need = dock ? want : Math.min(want, buildRoom(st, id));
       const stock = marketStock(state, sectorId, id);
       const buy = Math.min(need, units, stock * 0.5, Math.max(0, state.credits - 100_000) / marketPrice(state, sectorId, id));
-      if (buy >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'seller', amount: buy }, w: buy * w.price.avg * 0.8 });
+      // Kleine Restmengen fürs Baulager werden auch geliefert
+      const minBuy = Math.min(units * 0.25, 200, Math.max(1, buildRoom(st, id) - 0.5));
+      if (buy >= minBuy) offers.push({ item: { st: st.id, ware: id, kind: 'seller', amount: buy }, w: buy * w.price.avg * 0.8 });
     }
   }
   const o = weightedPick(state, offers);
@@ -135,10 +140,11 @@ function npcTrade(state: GameState, n: NpcShip): void {
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value });
   } else if (n.kind === 'seller') {
     const price = marketPrice(state, n.sector, n.ware);
-    const qty = Math.min(n.amount, freeUnits(st, n.ware), marketStock(state, n.sector, n.ware), Math.max(0, state.credits - 20_000) / price);
+    const room = hasDockFor(st, 'M') ? roomAt(st, n.ware) : buildRoom(st, n.ware);
+    const qty = Math.min(n.amount, room, marketStock(state, n.sector, n.ware), Math.max(0, state.credits - 20_000) / price);
     if (qty < 1) return;
     const cost = applyMarketTrade(state, n.sector, n.ware, -qty);
-    addWare(st, n.ware, qty);
+    receiveWare(state, st, n.ware, qty);
     st.expenses += cost;
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value: -cost });
   }

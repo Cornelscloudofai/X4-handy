@@ -8,7 +8,7 @@ import { claimMission, currentMission, missionComplete } from '../src/engine/sto
 import { netWorth } from '../src/engine/stats';
 import { acceptContract } from '../src/engine/contracts';
 import { computePlan } from '../src/engine/planner';
-import { storageCap, usedVolume } from '../src/engine/economy';
+import { buildProgress, storageCap, usedVolume } from '../src/engine/economy';
 import { stationById } from '../src/engine/logistics';
 import { SHIP_MAP } from '../src/data/ships';
 import { MODULE_MAP } from '../src/data/modules';
@@ -194,7 +194,7 @@ for (let h = 0; h < maxHours; h++) {
   if (!currentMission(s) && !process.argv.includes("--weiter")) break;
 }
 const ms = performance.now() - t0;
-if (process.argv.includes('--debug')) for (const st of s.stations) console.log(st.name, st.modules.map((m) => m.def).join(','), '| Bau', st.build?.def, JSON.stringify(st.build?.need), st.waiting, '| Queue', st.queue.map((q) => q.def).join(','), '| Lager', JSON.stringify(Object.fromEntries(Object.entries(st.inventory).map(([k, v]) => [k, Math.round(v)]))));
+if (process.argv.includes('--debug')) for (const st of s.stations) console.log(st.name, st.modules.map((m) => m.def).join(','), '| Bau', st.build?.def, JSON.stringify(st.buildStore), (buildProgress(st) * 100).toFixed(0) + '%', st.waiting, '| Queue', st.queue.map((q) => q.def).join(','), '| Lager', JSON.stringify(Object.fromEntries(Object.entries(st.inventory).map(([k, v]) => [k, Math.round(v)]))));
 console.log('\n=== Ergebnis ===');
 console.log('Kapitel (Stunde):', Object.entries(chapterAt).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(' · '));
 console.log('Offen:', currentMission(s)?.title ?? '–', currentMission(s)?.progress(s));

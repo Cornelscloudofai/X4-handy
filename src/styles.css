@@ -491,3 +491,9 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 .prio-add { width: 100%; margin-top: 8px; min-height: 42px; }
 .row.locked .pos-no { opacity: 0.6; }
 .build-row .two-lines { -webkit-line-clamp: 3; }
+
+/* Laufender Modulbau: Material und Fortschritt in eigener Zeile über die volle Breite */
+.build-row.locked { flex-wrap: wrap; }
+.build-row .build-detail { flex: 1 0 100%; min-width: 0; }
+.build-row .build-detail .flow { margin-top: 2px; }
+.build-row .build-detail .bar { margin-top: 8px; }

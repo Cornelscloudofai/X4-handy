@@ -7,9 +7,9 @@ import { bestRepFor, bestStorage, blueprintState, stationCost, vendorOffer } fro
 import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/vendors';
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
-import { consumesWare, hasDockFor, marketSupply, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
+import { BUILD_STORAGE_COST, buildDemand, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { restMode, shipEta } from '../engine/fleet';
-import { endpointName, fieldById, knownSectors, reserveFor, stationById, wanted } from '../engine/logistics';
+import { endpointName, fieldById, incoming, knownSectors, reserveFor, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { STORY, currentMission, missionComplete } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
@@ -140,7 +140,7 @@ function cardShell(emblem: string, title: string, sub: string, body: string, amb
 
 function stationCard(state: GameState, st: Station): string {
   const building = (st.build ? 1 : 0) + st.queue.length;
-  const buildFrac = st.build ? 1 - st.build.remaining / st.build.total : 0;
+  const buildFrac = buildProgress(st);
   const runway = shortestRunway(st);
   const alerts = stationAlerts(state, st);
   const miners = state.ships.filter((s) => s.home === st.id && SHIP_MAP[s.cls].role === 'miner');
@@ -257,7 +257,7 @@ function placeCard(state: GameState, ui: UIState): string {
   const can = p.set && p.valid && state.credits >= cost;
   const msg = !p.set ? 'Tippe auf die Karte, um den Bauplatz zu wählen.' : p.valid ? (state.credits >= cost ? 'Guter Platz. Tipp: Nahe an Rohstofffeldern sparen deine Miner Zeit.' : 'Nicht genug Credits.') : p.msg;
   return `<div class="card placebar">
-    <div class="card-head"><div class="emblem">${icon('plus', 22)}</div><div style="flex:1;min-width:0"><h2>Neue Station</h2><p>Bauplatz ${fmtCr(PLOT_COST)} + Stationskern · gesamt <b class="num">${fmtCr(cost)}</b></p></div>
+    <div class="card-head"><div class="emblem">${icon('plus', 22)}</div><div style="flex:1;min-width:0"><h2>Neue Station</h2><p>Bauplatz ${fmtCr(PLOT_COST)} + Baulager ${fmtCr(BUILD_STORAGE_COST)} · gesamt <b class="num">${fmtCr(cost)}</b></p></div>
     <button class="x" ${act('place-cancel')} aria-label="Abbrechen">${icon('close', 22)}</button></div>
     <p class="small ${p.set && !p.valid ? 'warn-text' : 'muted'}" style="margin:0 0 10px">${esc(msg)}</p>
     <div class="card-actions"><button class="btn primary ${can ? '' : 'disabled'}" ${act('place-confirm')}>${icon('check', 20)}Hier bauen</button><button class="btn" ${act('place-cancel')}>Abbrechen</button></div>
@@ -303,7 +303,7 @@ function stationsPanel(state: GameState): string {
       <div class="emblem" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center;border:1px solid rgba(63,224,197,.3);color:${alerts.length ? 'var(--amber)' : 'var(--teal)'}">${icon('station', 22)}</div>
       <div class="grow"><div class="title">${esc(st.name)}</div>
       <div class="sub">${esc(sector(st.sector).name)} · ${prods.length ? prods.map((id) => esc(WARES[id].name)).join(', ') : 'noch keine Produktion'}</div>
-      <div class="pills" style="margin-top:6px">${st.build ? `<span class="pill amber">${icon('wrench', 13)} Bau ${pct(1 - st.build.remaining / st.build.total)}</span>` : ''}
+      <div class="pills" style="margin-top:6px">${st.build ? `<span class="pill amber">${icon('wrench', 13)} Bau ${pct(buildProgress(st))}</span>` : ''}
       ${alerts.length ? `<span class="pill amber">${icon('warn', 13)} ${alerts.length} Hinweis${alerts.length === 1 ? '' : 'e'}</span>` : `<span class="pill teal">${icon('check', 13)} ${pct(productionUtil(st))} Auslastung</span>`}</div></div>
       ${icon('chev', 20, 'chev')}</div>`;
   }).join('');
@@ -440,8 +440,30 @@ function stationYard(state: GameState, st: Station): string {
 /** Hinweis, wenn ein Baumaterial an den Märkten in Reichweite knapp ist */
 function scarceNote(state: GameState, st: Station, mats: Record<string, number>): string {
   if (st.autoBuyBuild === false) return '';
-  const scarce = Object.entries(mats).filter(([id, n]) => (st.inventory[id] ?? 0) + marketSupply(state, id) < n);
+  const scarce = Object.entries(mats).filter(([id, n]) => (st.buildStore?.[id] ?? 0) + marketSupply(state, id) < n);
   return scarce.length ? `<div class="sub wrap warn-text">Knapp am Markt: ${scarce.map(([id]) => esc(WARES[id].name)).join(', ')} – eigene Produktion hilft</div>` : '';
+}
+
+/** Baulager: was für die ganze Bauliste gebraucht wird, was schon da ist und was unterwegs ist */
+function buildStoreBox(state: GameState, st: Station): string {
+  const demand = buildDemand(st);
+  const store = st.buildStore ?? {};
+  const ids = [...new Set([...Object.keys(demand), ...Object.keys(store).filter((id) => store[id] >= 0.5)])].sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
+  const own = st.autoBuyBuild === false;
+  const rows = ids.map((id) => {
+    const need = demand[id] ?? 0;
+    const have = store[id] ?? 0;
+    const way = need > have ? Math.min(need - have, incoming(state, st.id, id)) : 0;
+    const f = need > 0 ? Math.min(1, have / need) : 1;
+    const done = have >= need - 0.5;
+    return `<div class="row" data-key="bs-${id}">${wareDot(WARES[id].color, 9)}<div class="grow"><div class="title">${esc(WARES[id].name)}</div>
+      <div class="sub wrap ${done ? '' : 'warn-text'}"><b class="num">${fmtAmount(have)}</b> von <b class="num">${fmtAmount(need)}</b> vorhanden${way >= 0.5 ? ` · ${fmtAmount(way)} unterwegs` : ''}${need < have - 0.5 ? ' · Rest geht ins Stationslager' : ''}</div>${bar(f, done ? '' : 'amber')}</div></div>`;
+  }).join('');
+  return `<div class="box" style="margin-bottom:10px"><div class="row" style="padding-bottom:4px">${icon('box', 20, 'muted')}<div class="grow"><div class="title">Baulager</div>
+      <div class="sub wrap">Schiffe liefern das Baumaterial hierher – auch ohne Dock. Fehlt etwas, bleibt der Bau beim erreichten Prozentwert stehen und läuft mit jeder Lieferung weiter.</div></div></div>
+    ${rows ? `<div class="rows">${rows}</div>` : '<p class="small muted" style="margin:4px 0 8px">Leer – es wird gerade kein Material gebraucht.</p>'}
+    <div style="padding:8px 14px 12px"><label class="check"><input type="checkbox" data-change="auto-buy-build" data-st="${st.id}" ${own ? '' : 'checked'}> NPC-Händler und Markteinkäufe dürfen liefern</label>
+    <p class="small muted" style="margin:4px 0 0">${own ? 'Nur eigenes Material: Das Baulager nimmt nur Ware aus deinen Stationen an (eigene Transporter, Lieferreihenfolge, Lager dieser Station).' : 'NPC-Händler bringen Material und werden bei Lieferung bezahlt; deine Transporter kaufen es auch am Markt. Lager dieser Station und eigene Stationen liefern immer mit.'}</p></div></div>`;
 }
 
 function stationModules(state: GameState, st: Station): string {
@@ -454,13 +476,12 @@ function stationModules(state: GameState, st: Station): string {
     const startIn = eta;
     eta += d.buildTime;
     total += x.paid > 0 ? 0 : d.cost;
-    const waiting = i === 0 && !st.build && st.waiting === 'credits';
     const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
     return `${slot(i)}<div class="row build-row" data-uid="${x.uid}" data-key="q${x.uid}">
       <button class="drag-handle" data-drag-handle aria-label="Position ${i + 1} verschieben">${icon('more', 18)}</button>
       <span class="pos-no num">${i + 1}</span>${lead}
       <div class="grow"><div class="title two-lines" style="font-weight:600">${esc(d.name)}</div>
-        <div class="sub wrap ${waiting ? 'warn-text' : ''}">${x.paid > 0 ? 'bezahlt' : `Material ca. ${fmtCr(d.cost)}`} · ${fmtDur(d.buildTime)} · Start in ${fmtDur(startIn)}</div>${x.paid > 0 ? '' : scarceNote(state, st, d.materials)}</div>
+        <div class="sub wrap">${x.paid > 0 ? 'bezahlt' : `Material ca. ${fmtCr(d.cost)}`} · ${fmtDur(d.buildTime)} · Start frühestens in ${fmtDur(startIn)}</div>${x.paid > 0 ? '' : scarceNote(state, st, d.materials)}</div>
       <div class="row-tools">
         <button class="icon-btn sm" ${act('q-move', { st: st.id, uid: x.uid, to: i - 1 })} ${i === 0 ? 'disabled' : ''} aria-label="Nach oben">${icon('up', 16)}</button>
         <button class="icon-btn sm" ${act('q-move', { st: st.id, uid: x.uid, to: i + 1 })} ${i === st.queue.length - 1 ? 'disabled' : ''} aria-label="Nach unten">${icon('down', 16)}</button>
@@ -468,19 +489,22 @@ function stationModules(state: GameState, st: Station): string {
       <button class="icon-btn sm ghost-x" ${act('cancel-q', { st: st.id, uid: x.uid })} aria-label="Position entfernen">${icon('close', 16)}</button></div>`;
   }).join('');
   const build = st.build ? (() => {
-    const d = MODULE_MAP[st.build.def];
-    const f = 1 - st.build.remaining / st.build.total;
-    const need = Object.entries(st.build.need ?? {}).filter(([, n]) => n > 0.5);
-    const total = Object.values(d.materials).reduce((a, n) => a + n, 0);
-    const got = need.length ? 1 - need.reduce((a, [, n]) => a + n, 0) / Math.max(1, total) : 1;
-    const sub = need.length
-      ? `<div class="sub wrap ${st.waiting ? 'warn-text' : ''}">Sammelt Baumaterial · ${Math.round(got * 100)} %${st.waiting === 'credits' ? ' · wartet auf Credits' : ''}</div>
-        <div class="flow" style="margin-top:6px">${need.map(([id, n]) => `<span class="io lack">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`).join('')}</div>
-        ${st.autoBuyBuild !== false ? `<div class="sub wrap" style="margin-top:4px">Märkte in Reichweite: ${need.map(([id]) => `${esc(WARES[id].name)} ${fmtAmount(marketSupply(state, id))}`).join(' · ')}</div>` : ''}${bar(got, 'amber')}`
-      : `<div class="sub">Im Bau · noch ${fmtDur(st.build.remaining)}</div>${bar(f, 'amber')}`;
-    return `<div class="row build-row locked">${icon('lock', 18, 'muted')}<span class="pos-no num">–</span>${d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`}
-      <div class="grow"><div class="title two-lines">${esc(d.name)}</div>${sub}</div>
-      <button class="btn small ghost" ${act('cancel-build', { st: st.id })}>Stopp</button></div>`;
+    const b = st.build;
+    const d = MODULE_MAP[b.def];
+    const f = buildProgress(st);
+    const mats = Object.entries(d.materials);
+    const lack = b.paid > 0 ? [] : mats.filter(([id, n]) => (b.used?.[id] ?? 0) < n - 0.5 && (st.buildStore?.[id] ?? 0) < 0.5);
+    const status = st.waiting === 'material'
+      ? `<div class="sub wrap warn-text">Bau ${pct(f)} · wartet auf ${esc(lack.map(([id]) => WARES[id].name).join(', ') || 'Material')}</div>`
+      : `<div class="sub">Bau ${pct(f)} · noch ca. ${fmtDur(b.remaining)}</div>`;
+    const chips = b.paid > 0 ? '' : `<div class="flow" style="margin-top:6px">${mats.map(([id, n]) => {
+      const used = Math.min(n, b.used?.[id] ?? 0);
+      return `<span class="io ${lack.some(([x]) => x === id) ? 'lack' : ''}">${wareDot(WARES[id].color, 7)}<b class="num">${fmtAmount(used)}/${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`;
+    }).join('')}</div>`;
+    return `<div class="row build-row locked">${icon('lock', 18, 'muted')}${d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`}
+      <div class="grow"><div class="title two-lines">${esc(d.name)}</div>${status}</div>
+      <button class="icon-btn sm ghost-x" ${act('cancel-build', { st: st.id })} aria-label="Bau abbrechen" title="Bau abbrechen – verbautes Material geht ins Baulager zurück">${icon('close', 16)}</button>
+      <div class="build-detail">${chips}${bar(f, 'amber')}</div></div>`;
   })() : '';
   const groups = new Map<string, { n: number; uids: number[]; util: number }>();
   for (const m of st.modules) {
@@ -501,17 +525,16 @@ function stationModules(state: GameState, st: Station): string {
   const cap = storageCap(st);
   const isContainer = (def?: string) => !!def && MODULE_MAP[def]?.kind === 'storage' && MODULE_MAP[def]?.storage === 'Container';
   const needStore = !cap.Container && !st.queue.some((q) => isContainer(q.def)) && !isContainer(st.build?.def);
-  const summary = `${st.queue.length ? `<p class="small muted" style="margin:0 0 8px">${st.queue.length} Position${st.queue.length === 1 ? '' : 'en'} geplant · Material ca. ${fmtCr(total)} · reine Bauzeit ${fmtDur(eta)}. Jedes Modul braucht echtes Baumaterial – erst aus dem Lager der Station, der Rest zum Marktpreis.</p>` : ''}
-    <div class="box" style="padding:10px 14px;margin-bottom:10px"><label class="check"><input type="checkbox" data-change="auto-buy-build" data-st="${st.id}" ${st.autoBuyBuild !== false ? 'checked' : ''}> Fehlendes Baumaterial am Markt kaufen</label>
-      <p class="small muted" style="margin:4px 0 0">${st.autoBuyBuild !== false ? 'Fehlt Material im Lager, kauft der Bautrupp bei den günstigsten Handelsposten in Reichweite – solange deren Vorrat reicht. Knappe Waren (z. B. Claytronik) halten den Bau auf, bis nachgeliefert wird.' : 'Nur eigenes Material: Gebaut wird mit dem, was deine Transporter aus eigenen Stationen anliefern. Kein Zukauf vom Markt oder von NPC-Händlern.'}</p></div>`;
+  const summary = st.queue.length ? `<p class="small muted" style="margin:0 0 8px">${st.queue.length} Position${st.queue.length === 1 ? '' : 'en'} geplant · Material ca. ${fmtCr(total)} · reine Bauzeit ${fmtDur(eta)}.</p>` : '';
   return `
     <div class="section"><h3>Baureihenfolge</h3>
     <div class="card-actions" style="margin-bottom:10px"><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 16)}Modul einplanen</button><button class="btn small" ${act('plan-station', { st: st.id })}>${icon('planner', 16)}Fließdiagramm</button>${blueprintEntry(state, true)}${canUndo() ? `<button class="btn small" ${act('undo')} title="${esc(undoLabel())}">${icon('undo', 16)}Rückgängig</button>` : ''}</div>
     ${summary}
+    ${buildStoreBox(state, st)}
     ${build || rows ? `<div class="box build-list" data-draglist data-st="${st.id}">${build}${rows}${rows ? slot(st.queue.length) : ''}</div>
-      <p class="small muted" style="margin:6px 0 0">Am Griff ${icon('more', 12, 'inline')} ziehen oder mit den Pfeilen umsortieren. ${icon('plus', 12, 'inline')} zwischen zwei Positionen fügt dort ein Modul ein. Das laufende Modul ist fest.</p>` : `<div class="box empty">Keine Positionen geplant. Plane Module ein – sie werden der Reihe nach gebaut und erst beim Baustart bezahlt.</div>`}</div>
+      <p class="small muted" style="margin:6px 0 0">Am Griff ${icon('more', 12, 'inline')} ziehen oder mit den Pfeilen umsortieren. ${icon('plus', 12, 'inline')} zwischen zwei Positionen fügt dort ein Modul ein. Das laufende Modul ist fest.</p>` : `<div class="box empty">Keine Positionen geplant. Plane Module ein – sie werden der Reihe nach aus dem Material im Baulager gebaut.</div>`}</div>
     ${needDock || needStore ? `<div class="section"><div class="box rows">
-      ${needDock ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Ohne Dock können weder deine Schiffe noch NPC-Händler andocken.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'dock_m', at: 0 })}>Dock zuerst</button></div>` : ''}
+      ${needDock ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Ohne Dock beliefern Schiffe nur das Baulager – Handel und Miner brauchen ein Dock.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'dock_m', at: 0 })}>Dock zuerst</button></div>` : ''}
       ${needStore ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Energiezellen und Produkte brauchen ein Containerlager.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: bestStorage(state, 'Container'), at: 0 })}>Lager zuerst</button></div>` : ''}
     </div></div>` : ''}
     <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="box rows">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;

@@ -2,7 +2,7 @@
 import { SECTOR_MAP, gate, marketInfo, sector, sectorPath } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { consumesWare, pendingNeeds, storageCap, stationWares, tradeRule, wareLimit } from './economy';
+import { buildRoom, consumesWare, pendingNeeds, storageCap, stationWares, tradeRule, wareLimit } from './economy';
 import type { GameState, Ship, Station, TradeEndpoint, Vec } from './types';
 import { hashStr } from './util';
 
@@ -172,16 +172,23 @@ export function sellableStock(st: Station, wareId: string): number {
   return Math.max(0, (st.inventory[wareId] ?? 0) - reserveFor(st, wareId, wareLimit(st, wareId)));
 }
 
-/** Wie viel die Station noch einkaufen möchte (abzüglich bereits unterwegs befindlicher Ware) */
-export function wanted(state: GameState, st: Station, wareId: string, ignoreRule = false): number {
+/**
+ * Wie viel die Station noch einkaufen möchte (abzüglich bereits unterwegs befindlicher Ware): Lagerbedarf nach Handelsregel
+ * plus Baumaterial fürs Baulager. market = Lieferung vom Markt oder von NPC-Händlern – dann zählt das Baulager nur,
+ * wenn die Station Zukauf von Baumaterial erlaubt.
+ */
+export function wanted(state: GameState, st: Station, wareId: string, ignoreRule = false, market = false): number {
+  const build = market && st.autoBuyBuild === false ? 0 : buildRoom(st, wareId);
+  let stock = 0;
   const rule = tradeRule(st, wareId);
-  if (!rule.buy && !ignoreRule) return 0;
-  const limit = wareLimit(st, wareId, storageCap(st), stationWares(st));
   const cap = storageCap(st)[WARES[wareId].storage];
-  if (cap <= 0) return 0;
-  // Für bestellte Schiffe wird die volle Menge gebraucht – nicht nur 95 % des Limits
-  const yard = Math.min(pendingNeeds(st)[wareId] ?? 0, cap / WARES[wareId].volume);
-  return Math.max(0, Math.max(limit * 0.95, yard) - (st.inventory[wareId] ?? 0) - incoming(state, st.id, wareId));
+  if ((rule.buy || ignoreRule) && cap > 0) {
+    const limit = wareLimit(st, wareId, storageCap(st), stationWares(st));
+    // Für bestellte Schiffe wird die volle Menge gebraucht – nicht nur 95 % des Limits
+    const yard = Math.min(pendingNeeds(st)[wareId] ?? 0, cap / WARES[wareId].volume);
+    stock = Math.max(0, Math.max(limit * 0.95, yard) - (st.inventory[wareId] ?? 0));
+  }
+  return Math.max(0, stock + build - incoming(state, st.id, wareId));
 }
 
 /** Wie viel die Station abgeben kann */
@@ -204,7 +211,8 @@ export function knownSectors(state: GameState): string[] {
 
 /**
  * Braucht noch eine Station aus der Lieferreihenfolge diese Ware? „Versorgt“ heißt wie beim Durchrutschen der
- * Transporter: Sie kann weniger als eine halbe Ladung abnehmen (bezogen auf das, was tatsächlich mitginge).
+ * Transporter: Sie kann weniger als eine halbe Ladung abnehmen (bezogen auf das, was tatsächlich mitginge) und ihr
+ * Baulager braucht nichts mehr davon.
  */
 export function prioNeeds(state: GameState, st: Station, wareId: string, load: number): Station | null {
   const have = Math.max(0, (st.inventory[wareId] ?? 0) - reserveFor(st, wareId, wareLimit(st, wareId)));
@@ -212,7 +220,9 @@ export function prioNeeds(state: GameState, st: Station, wareId: string, load: n
   if (ref < 1) return null;
   for (const id of st.deliveryPrio ?? []) {
     const o = stationById(state, id);
-    if (o && wanted(state, o, wareId) >= ref * 0.5) return o;
+    if (!o) continue;
+    // Bedarf im Baulager zählt immer – auch kleine Restmengen halten sonst einen Bau auf
+    if (wanted(state, o, wareId) >= ref * 0.5 || Math.min(buildRoom(o, wareId), wanted(state, o, wareId)) >= 0.5) return o;
   }
   return null;
 }
