@@ -148,11 +148,7 @@ export interface Station {
   ownFirst?: boolean;
   /** Eigene Anordnung der Kästchen im Fließdiagramm */
   layout?: Record<string, { x: number; y: number }>;
-  /**
-   * Laufender Bau. need: noch fehlendes Baumaterial (erst wenn alles da ist, läuft die Bauzeit);
-   * used: aus dem eigenen Lager genommen (geht beim Abbruch zurück); paid: für Zukäufe ausgegebene Credits.
-   */
-  /** Laufender Modulbau: remaining = restliche Bauzeit, used = bereits verbautes Material */
+  /** Laufender Modulbau: remaining = restliche Bauzeit, used = bereits verbautes Material, paid > 0 = alter Stand, schon bezahlt */
   build: { def: string; remaining: number; total: number; paid: number; used?: Record<string, number> } | null;
   /** Baulager: angeliefertes Baumaterial für die Bauliste (gibt es an jeder Station, schon vor dem Stationskern) */
   buildStore?: Record<string, number>;

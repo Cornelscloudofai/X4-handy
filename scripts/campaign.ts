@@ -170,8 +170,12 @@ for (let h = 0; h < maxHours; h++) {
       ensure(clay, 'prod_claytronics', 2);
       // Wie im Kapitelhinweis: ohne Marktkauf verbaut der Bautrupp die eigene Claytronik
       clay.autoBuyBuild = currentMission(s)?.id !== 'ownbuild';
-      // Wie ein Spieler: eigene Claytronik per „Umladen“ ins Baulager
-      if (currentMission(s)?.id === 'ownbuild') A.moveBuildStore(s, clay.id, 'claytronics', clay.inventory.claytronics ?? 0);
+      // Wie ein Spieler: Reserve, damit die Transporter die Claytronik nicht verkaufen, und per „Umladen“ ins Baulager
+      if (currentMission(s)?.id === 'ownbuild') {
+        A.setReserve(s, clay.id, 'claytronics', 3000);
+        A.moveBuildStore(s, clay.id, 'claytronics', clay.inventory.claytronics ?? 0);
+      } else if (clay.reserve?.claytronics !== undefined) A.setReserve(s, clay.id, 'claytronics', null);
+      if (process.argv.includes('--debug-own') && currentMission(s)?.id === 'ownbuild') log('own', Math.round(s.totals.buildOwn?.claytronics ?? 0), 'Lager', Math.round(clay.inventory.claytronics ?? 0), 'Baulager', JSON.stringify(clay.buildStore), clay.build?.def, clay.queue.map((x) => x.def).join(','), clay.waiting);
       A.setDeliveryPrio(s, clay.id, Object.values(plants).concat(alpha).filter((x) => x.id !== clay.id).map((x) => x.id));
     }
     // Kapitel 18–19: Schild- und Geschützkomponenten (Baupläne beim Werftvertreter)

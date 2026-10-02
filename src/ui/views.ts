@@ -466,7 +466,7 @@ function buildStoreBox(state: GameState, st: Station): string {
   }).join('');
   return `<div class="box" style="margin-bottom:10px"><div class="row" style="padding-bottom:4px">${icon('box', 20, 'muted')}<div class="grow"><div class="title">Baulager</div>
       <div class="sub wrap">Schiffe liefern das Baumaterial hierher – auch ohne Dock. Ware aus dem eigenen Stationslager lädst du mit „Umladen“ selbst hin und her. Fehlt etwas, bleibt der Bau beim erreichten Prozentwert stehen und läuft mit jeder Lieferung weiter.</div></div></div>
-    ${rows ? `<div class="rows">${rows}</div>` : '<p class="small muted" style="margin:4px 0 8px">Leer – es wird gerade kein Material gebraucht.</p>'}
+    ${rows ? `<div class="rows">${rows}</div>` : '<p class="small muted" style="margin:4px 14px 0">Leer – es wird gerade kein Material gebraucht.</p>'}
     <div style="padding:8px 14px 12px"><label class="check"><input type="checkbox" data-change="auto-buy-build" data-st="${st.id}" ${own ? '' : 'checked'}> NPC-Händler und Markteinkäufe dürfen liefern</label>
     <p class="small muted" style="margin:4px 0 0">${own ? 'Nur eigenes Material: Das Baulager nimmt nur Ware aus deinen Stationen an (eigene Transporter, Lieferreihenfolge, Umladen aus dem Stationslager).' : 'NPC-Händler bringen Material und werden bei Lieferung bezahlt; deine Transporter kaufen es auch am Markt. Eigene Stationen liefern immer mit.'}</p></div></div>`;
 }
@@ -1030,7 +1030,8 @@ function buildMoveModal(state: GameState, m: Extract<Modal, { type: 'buildMove' 
   const lim = buildMoveLimits(st, m.ware);
   const need = buildDemand(st)[m.ware] ?? 0;
   const have = st.buildStore?.[m.ware] ?? 0;
-  const maxIn = Math.floor(lim.toBuild), maxOut = Math.floor(lim.toStation);
+  // Aufrunden, damit auch Bruchteile umgeladen werden können (die Engine begrenzt auf das Mögliche)
+  const maxIn = Math.ceil(lim.toBuild - 1e-6), maxOut = Math.ceil(lim.toStation - 1e-6);
   const vIn = Math.min(maxIn, m.toBuild ?? maxIn), vOut = Math.min(maxOut, m.toStation ?? maxOut);
   const step = (max: number) => Math.max(1, Math.round(max / 100));
   const part = (label: string, field: string, dir: number, max: number, v: number, empty: string) => `<div class="field" style="margin-top:14px">
@@ -1145,7 +1146,7 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
         return `${lockPill}${go ? `<button class="btn small ${bp === 'buyable' ? 'amber' : ''}" ${act('goto-vendor', { id: go.id })}>${icon('arrowRight', 15)}${go.npc ? 'Zur Werft' : 'Zum Vertreter'}</button>` : ''}`;
       })();
     return `<div class="module-card box ${bp === 'locked' ? 'locked' : ''}" data-key="${d.id}">${lead}<div style="min-width:0"><div class="title" style="font-weight:600">${esc(d.name)}</div><div class="small muted">${desc}</div></div>
-      ${io}<div class="flow" style="grid-column:1/-1">${Object.entries(d.materials).map(([id, n]) => `<span class="io ${(st.inventory[id] ?? 0) + marketSupply(state, id) < n ? 'lack' : ''}">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`).join('')}</div>
+      ${io}<div class="flow" style="grid-column:1/-1">${Object.entries(d.materials).map(([id, n]) => `<span class="io ${(st.buildStore?.[id] ?? 0) + marketSupply(state, id) < n ? 'lack' : ''}">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`).join('')}</div>
       <div class="meta" style="grid-column:1/-1"><span>Material ca. <b>${fmtCr(d.cost)}</b></span><span>Bauzeit <b>${fmtDur(d.buildTime)}</b></span></div>
       <div class="actions">${action}</div></div>`;
   }).join('');

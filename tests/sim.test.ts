@@ -714,7 +714,7 @@ describe('Baulager', () => {
     const m = MODULE_MAP.prod_refinedmetals.materials;
     expect(buildDemand(st).claytronics).toBe(2 * m.claytronics);
     // Lieferung geht zuerst ins Baulager, nur der Überschuss ins Stationslager
-    expect(receiveWare(s, st, 'hullparts', 2 * m.hullparts + 40)).toBeCloseTo(2 * m.hullparts + 40);
+    expect(receiveWare(s, st, 'hullparts', 2 * m.hullparts + 40, 'market')).toBeCloseTo(2 * m.hullparts + 40);
     expect(st.buildStore!.hullparts).toBeCloseTo(2 * m.hullparts);
     expect(st.inventory.hullparts).toBeCloseTo(40);
     expect(buildMissing(st).hullparts).toBeUndefined();
@@ -731,8 +731,8 @@ describe('Baulager', () => {
     const d = MODULE_MAP.prod_refinedmetals;
     queueModule(s, st.id, d.id);
     // Nur Hüllenteile und Energiezellen da, keine Claytronik
-    receiveWare(s, st, 'hullparts', d.materials.hullparts);
-    receiveWare(s, st, 'energycells', d.materials.energycells);
+    receiveWare(s, st, 'hullparts', d.materials.hullparts, 'own');
+    receiveWare(s, st, 'energycells', d.materials.energycells, 'own');
     step(s, d.buildTime * 5); // ohne Claytronik läuft der Bau nur mit dem Wertanteil des vorhandenen Materials
     expect(st.waiting).toBe('material');
     const p = buildProgress(st);
@@ -742,11 +742,11 @@ describe('Baulager', () => {
     step(s, 600);
     expect(buildProgress(st)).toBeCloseTo(p); // steht still
     // Halbe Claytronik: weiter, aber noch nicht fertig
-    receiveWare(s, st, 'claytronics', d.materials.claytronics / 2);
+    receiveWare(s, st, 'claytronics', d.materials.claytronics / 2, 'own');
     step(s, 60);
     expect(buildProgress(st)).toBeGreaterThan(p);
     expect(st.build?.def).toBe(d.id);
-    receiveWare(s, st, 'claytronics', d.materials.claytronics / 2);
+    receiveWare(s, st, 'claytronics', d.materials.claytronics / 2, 'own');
     step(s, d.buildTime);
     expect(st.modules.some((m) => m.def === d.id)).toBe(true);
     expect(st.buildStore ?? {}).toEqual({});
@@ -813,6 +813,46 @@ describe('Baulager', () => {
     expect(moveBuildStore(s, st.id, 'claytronics', 500).ok).toBe(true);
     expect(st.buildStore!.claytronics).toBe(MODULE_MAP.prod_refinedmetals.materials.claytronics);
     expect(st.inventory.claytronics).toBe(500 - MODULE_MAP.prod_refinedmetals.materials.claytronics);
+  });
+
+  it('Review-Fälle: Marktware bei „nur eigenes Material“, Zurückladen, bezahlte Altbauten, Bruchteile', async () => {
+    const { receiveWare, buildDemand } = await import('../src/engine/economy');
+    const { moveBuildStore } = await import('../src/engine/actions');
+    const s = newGame(37);
+    const st = s.stations[0];
+    st.modules = st.modules.filter((m) => m.def !== 'prod_energycells');
+    st.inventory = {};
+    st.autoBuyBuild = false;
+    queueModule(s, st.id, 'prod_refinedmetals');
+    // Marktware geht nicht ins Baulager, sondern ins Stationslager
+    receiveWare(s, st, 'hullparts', 20, 'market');
+    expect(st.buildStore?.hullparts ?? 0).toBe(0);
+    expect(st.inventory.hullparts).toBeCloseTo(20);
+    // Hin- und Zurückladen zählt nicht als verbaute eigene Ware
+    st.inventory.claytronics = 30;
+    moveBuildStore(s, st.id, 'claytronics', 30);
+    moveBuildStore(s, st.id, 'claytronics', -30);
+    expect(s.totals.buildOwn?.claytronics ?? 0).toBe(0);
+    // Bezahlter Bau aus einem alten Stand (ohne Materialangaben) läuft einfach zu Ende
+    const old = JSON.parse(serialize(s));
+    old.stations[0].queue = [];
+    old.stations[0].buildStore = {};
+    old.stations[0].build = { def: 'prod_graphene', remaining: 100, total: 300, paid: 50000 };
+    const l = deserialize(JSON.stringify(old));
+    step(l, 200);
+    expect(l.stations[0].modules.some((m) => m.def === 'prod_graphene')).toBe(true);
+    // Bruchteil unter einer Einheit hält den Bau nicht auf
+    const s2 = newGame(38);
+    const b = s2.stations[0];
+    b.autoBuyBuild = false;
+    b.modules = b.modules.filter((m) => m.def !== 'prod_energycells');
+    b.inventory = {};
+    queueModule(s2, b.id, 'prod_refinedmetals');
+    step(s2, 1);
+    for (const [id, n] of Object.entries(MODULE_MAP.prod_refinedmetals.materials)) receiveWare(s2, b, id, n - 0.4, 'own');
+    step(s2, MODULE_MAP.prod_refinedmetals.buildTime + 5);
+    expect(b.modules.some((m) => m.def === 'prod_refinedmetals')).toBe(true);
+    expect(buildDemand(b)).toEqual({});
   });
 
   it('alte Spielstände: gesammeltes Material kommt ins Baulager', () => {

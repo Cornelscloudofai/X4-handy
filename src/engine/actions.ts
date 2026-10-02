@@ -3,7 +3,7 @@ import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
 import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { BUILD_STORAGE_COST, defaultTradeRule, hasDockFor, moveBuildStock } from './economy';
+import { BUILD_STORAGE_COST, addBuildStore, defaultTradeRule, hasDockFor, moveBuildStock } from './economy';
 import { spawnCourier } from './npc';
 import { knownSectors, sellableStock, stationById } from './logistics';
 import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendors';
@@ -114,8 +114,8 @@ export function moveBuildStore(state: GameState, stationId: string, ware: string
   const st = stationById(state, stationId);
   if (!st || !WARES[ware]) return fail('Station oder Ware nicht gefunden.');
   const n = moveBuildStock(state, st, ware, amount);
-  if (Math.abs(n) < 0.5) return fail(amount > 0 ? 'Nichts umzuladen – Lager leer oder Baulager braucht nichts mehr davon.' : 'Nichts umzuladen – Baulager leer oder Stationslager voll.');
-  return ok(`${Math.round(Math.abs(n)).toLocaleString('de-DE')} ${WARES[ware].name} ${n > 0 ? 'ins Baulager' : 'ins Stationslager'} umgeladen.`);
+  if (n === 0) return fail(amount > 0 ? 'Nichts umzuladen – Lager leer oder Baulager braucht nichts mehr davon.' : 'Nichts umzuladen – Baulager leer oder Stationslager voll.');
+  return ok(`${Math.abs(n).toLocaleString('de-DE', { maximumFractionDigits: 1 })} ${WARES[ware].name} ${n > 0 ? 'ins Baulager' : 'ins Stationslager'} umgeladen.`);
 }
 
 export function cancelBuild(state: GameState, stationId: string): Result {
@@ -123,7 +123,7 @@ export function cancelBuild(state: GameState, stationId: string): Result {
   if (!st?.build) return fail('Kein laufender Bau.');
   // Verbautes Material kommt zurück ins Baulager (bezahlte Positionen alter Spielstände: Credits zurück)
   if (st.build.paid > 0) state.credits += st.build.paid;
-  else for (const [id, n] of Object.entries(st.build.used ?? {})) if (n > 1e-6) { st.buildStore ??= {}; st.buildStore[id] = (st.buildStore[id] ?? 0) + n; }
+  else for (const [id, n] of Object.entries(st.build.used ?? {})) addBuildStore(st, id, n);
   st.build = null;
   st.waiting = '';
   return ok('Bau abgebrochen – das verbaute Material liegt wieder im Baulager.');

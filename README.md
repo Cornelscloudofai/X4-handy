@@ -85,7 +85,9 @@ tests         Simulationstests
 scripts       Werkzeuge: Balance-Simulation, Screenshot-Tour, Artifact-Export
 ```
 
-Nützliche Befehle: `npm test`, `npm run typecheck`, `npm run balance` (simulierter Spieler über 72 Spielstunden), `npm run e2e` (Handy-Oberfläche in 390 und 360 px: Werft, Zurück-Taste, keine abgeschnittenen Texte – läuft auch in GitHub Actions), `npm run perf` (Simulationstempo), `npm run kampagne -- [seed] [stunden] [--weiter]` (simulierter Spieler spielt alle 28 Kapitel (ca. 100 Spielstunden) und prüft stündlich: keine ungültigen/negativen Bestände, kein überfülltes Lager, kein festhängendes Schiff).
+Alte Spielstände: `tests/fixtures/saves/` enthält echte Spielstände aus 8 älteren Versionen (erste Version bis erstes Baulager), erzeugt mit dem jeweiligen damaligen Code. `npm test` lädt jeden mit dem aktuellen Code, prüft Kampagne, Bauten, Lager und Schiffe und spielt 12 Stunden weiter.
+
+Nützliche Befehle: `npm test`, `npm run typecheck`, `npm run balance` (simulierter Spieler über 72 Spielstunden), `npm run e2e` (Handy-Oberfläche in 390 und 360 px: Werft, Zurück-Taste, keine abgeschnittenen Texte, dazu alte Spielstände über den echten Ladedialog – läuft auch in GitHub Actions), `npm run perf` (Simulationstempo), `npm run kampagne -- [seed] [stunden] [--weiter]` (simulierter Spieler spielt alle 28 Kapitel (ca. 100 Spielstunden) und prüft stündlich: keine ungültigen/negativen Bestände, kein überfülltes Lager, kein festhängendes Schiff).
 
 ## Datenquellen
 

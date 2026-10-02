@@ -56,13 +56,16 @@ export function yardNeeds(st: Station): Record<string, number> {
 
 /** Material, das die Werft der Station für die geplanten Schiffe braucht (Einheiten je Ware) */
 export function pendingNeeds(st: Station): Record<string, number> {
-  return st.yard?.queue.length ? { ...yardNeeds(st) } : {};
+  return yardNeeds(st);
 }
 
 // ---------- Baulager ----------
 
 /** Kosten des Baulagers bei der Stationsgründung – es ist vor dem Stationskern da und braucht kein Material */
 export const BUILD_STORAGE_COST = 50_000;
+
+/** Fehlmengen bis zu dieser Größe gelten als geliefert (Kaufmengen sind gebrochen, Lieferungen ab 1 Einheit sinnvoll) */
+export const BUILD_TOLERANCE = 0.5;
 
 /** Baumaterial, das die Bauliste noch braucht: Rest des laufenden Moduls und alle geplanten Module */
 export function buildDemand(st: Station): Record<string, number> {
@@ -75,8 +78,12 @@ export function buildDemand(st: Station): Record<string, number> {
   return out;
 }
 
-/** Wie viel das Baulager von einer Ware noch aufnimmt (Bedarf der Bauliste minus Bestand) */
-export function buildRoom(st: Station, id: string, demand = buildDemand(st)): number {
+/**
+ * Wie viel das Baulager von einer Ware noch aufnimmt (Bedarf der Bauliste minus Bestand).
+ * market = Lieferung vom Markt oder von NPC-Händlern – bei „nur eigenes Material“ nimmt das Baulager davon nichts an.
+ */
+export function buildRoom(st: Station, id: string, demand = buildDemand(st), market = false): number {
+  if (market && st.autoBuyBuild === false) return 0;
   return Math.max(0, (demand[id] ?? 0) - (st.buildStore?.[id] ?? 0));
 }
 
@@ -84,30 +91,37 @@ export function buildRoom(st: Station, id: string, demand = buildDemand(st)): nu
 export function buildMissing(st: Station): Record<string, number> {
   const demand = buildDemand(st);
   const out: Record<string, number> = {};
-  for (const id of Object.keys(demand)) { const n = buildRoom(st, id, demand); if (n > 0.5) out[id] = n; }
+  for (const id of Object.keys(demand)) { const n = buildRoom(st, id, demand); if (n > BUILD_TOLERANCE) out[id] = n; }
   return out;
 }
 
-function addBuildStore(st: Station, id: string, n: number): void {
+export function addBuildStore(st: Station, id: string, n: number): void {
   st.buildStore ??= {};
   st.buildStore[id] = Math.max(0, (st.buildStore[id] ?? 0) + n);
   if (st.buildStore[id] < 1e-6) delete st.buildStore[id];
 }
 
-/** Platz an der Station für eine Lieferung: Baulager (soweit gebraucht) plus Stationslager */
-export function roomAt(st: Station, id: string): number {
-  return buildRoom(st, id) + freeUnits(st, id);
+/** Herkunft einer Lieferung: aus eigenen Stationen oder vom Markt/NPC-Händler */
+export type WareSource = 'own' | 'market';
+
+/** Platz an der Station für eine Lieferung: Baulager (soweit gebraucht und erlaubt) plus Stationslager */
+export function roomAt(st: Station, id: string, source: WareSource = 'own'): number {
+  return buildRoom(st, id, buildDemand(st), source === 'market') + freeUnits(st, id);
+}
+
+function countOwn(state: GameState, id: string, n: number): void {
+  state.totals.buildOwn = { ...(state.totals.buildOwn ?? {}), [id]: Math.max(0, (state.totals.buildOwn?.[id] ?? 0) + n) };
 }
 
 /**
- * Lieferung an einer Station abladen: zuerst ins Baulager, soweit die Bauliste die Ware braucht, der Rest ins Stationslager.
- * own = Ware aus eigenen Stationen (zählt für die Kampagne). Liefert die angenommene Menge.
+ * Lieferung an einer Station abladen: zuerst ins Baulager, soweit die Bauliste die Ware braucht (Marktware nur, wenn die
+ * Station Zukauf erlaubt), der Rest ins Stationslager. Eigene Ware zählt für die Kampagne. Liefert die angenommene Menge.
  */
-export function receiveWare(state: GameState, st: Station, id: string, n: number, own = false): number {
-  const toBuild = Math.min(n, buildRoom(st, id));
+export function receiveWare(state: GameState, st: Station, id: string, n: number, source: WareSource): number {
+  const toBuild = Math.min(n, buildRoom(st, id, buildDemand(st), source === 'market'));
   if (toBuild > 0) {
     addBuildStore(st, id, toBuild);
-    if (own) state.totals.buildOwn = { ...(state.totals.buildOwn ?? {}), [id]: (state.totals.buildOwn?.[id] ?? 0) + toBuild };
+    if (source === 'own') countOwn(state, id, toBuild);
   }
   const rest = Math.max(0, Math.min(n - toBuild, freeUnits(st, id)));
   if (rest > 0) addWare(st, id, rest);
@@ -314,13 +328,14 @@ export function moveBuildStock(state: GameState, st: Station, id: string, amount
     const n = Math.min(amount, lim.toBuild);
     if (n <= 1e-6) return 0;
     addWare(st, id, -n);
-    receiveWare(state, st, id, n, true);
+    receiveWare(state, st, id, n, 'own');
     return n;
   }
   const n = Math.min(-amount, lim.toStation);
   if (n <= 1e-6) return 0;
   addBuildStore(st, id, -n);
   addWare(st, id, n);
+  countOwn(state, id, -n); // Zurückgeladenes zählt nicht mehr als verbaute eigene Ware
   return -n;
 }
 
@@ -343,7 +358,8 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
       st.build = { def: next.def, remaining: d.buildTime, total: d.buildTime, paid: next.paid, used: next.paid > 0 ? { ...d.materials } : {} };
     }
     const b = st.build;
-    const mats = Object.entries(moduleDef(b.def).materials);
+    // Bezahlte Bauten alter Spielstände haben ihr Material schon – nur die Bauzeit läuft
+    const mats = b.paid > 0 ? [] : Object.entries(moduleDef(b.def).materials);
     const dtWork = Math.min(left, b.remaining);
     const cap = b.total > 0 ? Math.min(1, (b.total - b.remaining + dtWork) / b.total) : 1;
     b.used ??= {};
@@ -357,7 +373,7 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
       }
       const v = n * (WARES[id]?.price.avg ?? 1);
       all += v;
-      if ((b.used[id] ?? 0) >= n * cap - 1e-6) ok += v;
+      if ((b.used[id] ?? 0) >= n * cap - BUILD_TOLERANCE) ok += v;
       else lacking.push(id);
     }
     // Bautempo nach dem Wertanteil des vorhandenen Materials
@@ -504,6 +520,9 @@ export function stationValue(st: Station): number {
   let v = 0;
   for (const m of st.modules) v += MODULE_MAP[m.def]?.cost ?? 0;
   for (const [id, n] of Object.entries(st.inventory)) v += n * (WARES[id]?.price.avg ?? 0);
+  // Baulager und schon verbautes Material des laufenden Moduls gehören zum Wert
+  for (const [id, n] of Object.entries(st.buildStore ?? {})) v += n * (WARES[id]?.price.avg ?? 0);
+  if (st.build && !(st.build.paid > 0)) for (const [id, n] of Object.entries(st.build.used ?? {})) v += n * (WARES[id]?.price.avg ?? 0);
   return v;
 }
 

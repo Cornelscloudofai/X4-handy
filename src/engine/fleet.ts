@@ -4,7 +4,7 @@ import { marketInfo, sector } from '../data/sectors';
 import { MODULE_MAP } from '../data/modules';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { addWare, applyMarketTrade, buildRoom, receiveWare, roomAt, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
+import { BUILD_TOLERANCE, addWare, applyMarketTrade, buildDemand, buildRoom, receiveWare, roomAt, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
 import {
   dockPoint, sellableStock, endpointName, endpointPlace, fieldById, fieldWare, incoming, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
   type Place,
@@ -418,7 +418,14 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
   if (!homeDock && !Object.keys(home.buildStore ?? {}).length && !home.build && !home.queue.length) return null;
   const minLoad = (id: string) => Math.min(unitsFor(s, id) * 0.3, Math.max(50, 60_000 / WARES[id].price.avg));
   // Fürs Baulager genügt auch die kleine Restmenge, sonst bliebe ein Modul kurz vor Schluss stehen
-  const minFor = (st: Station, id: string) => Math.min(minLoad(id), Math.max(1, buildRoom(st, id) - 0.5));
+  // Baulagerbedarf je Station nur einmal pro Suche berechnen
+  const demands = new Map<string, Record<string, number>>();
+  const roomOf = (st: Station, id: string, market = false) => {
+    let d = demands.get(st.id);
+    if (!d) demands.set(st.id, (d = buildDemand(st)));
+    return buildRoom(st, id, d, market);
+  };
+  const minFor = (st: Station, id: string, market = false) => { const r = roomOf(st, id, market); return r > BUILD_TOLERANCE ? Math.min(minLoad(id), r) : minLoad(id); };
   // Im Autohandel ist die Heimatstation immer einer der beiden Handelspartner:
   // Sie gibt ab (an Märkte, Aufträge oder eigene Stationen) oder wird versorgt. Kein Handel zwischen fremden Stationen.
   for (const base of [home]) {
@@ -438,12 +445,12 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         const to: TradeEndpoint = { kind: 'station', id: other.id };
         // Ohne passendes Dock nimmt nur das Baulager der Station Ware an
         const dock = canDockAt(state, s, to);
-        const need = dock ? wanted(state, other, id) : Math.min(wanted(state, other, id), buildRoom(other, id));
+        const need = dock ? wanted(state, other, id) : Math.min(wanted(state, other, id), roomOf(other, id));
         const n = Math.min(qty, need);
         if (n < minFor(other, id)) continue;
         // Baulager hat Vorrang; deckt die Fuhre seinen ganzen Bedarf, zählt sie in der Lieferreihenfolge als volle Ladung
-        const forBuild = Math.min(n, buildRoom(other, id));
-        const fill = forBuild > 0.5 && n >= buildRoom(other, id) - 0.5 ? 1 : n / Math.max(1, Math.min(qty, unitsFor(s, id)));
+        const forBuild = Math.min(n, roomOf(other, id));
+        const fill = forBuild > BUILD_TOLERANCE && n >= roomOf(other, id) - BUILD_TOLERANCE ? 1 : n / Math.max(1, Math.min(qty, unitsFor(s, id)));
         cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup' }, score: (weight * (n * avg * 1.5 + buildBonus(forBuild, avg))) / travelTime(state, s, baseEp, to), toStation: other.id, fill });
       }
       for (const c of state.contracts) {
@@ -473,7 +480,7 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
     // 2) Bedarf decken
     for (const id of stationWares(base)) {
       if (WARES[id].storage !== cls.storage) continue;
-      const cap = (n: number) => (homeDock ? n : Math.min(n, buildRoom(base, id)));
+      const cap = (n: number, market = false) => (homeDock ? n : Math.min(n, roomOf(base, id, market)));
       const need = cap(wanted(state, base, id));
       const min = minFor(base, id);
       if (need < min) continue;
@@ -486,21 +493,22 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         const have = surplus(state, other, id);
         if (have < Math.min(min, qty)) continue;
         const n = Math.min(qty, have);
-        cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * (n * avg * 1.5 + buildBonus(Math.min(n, buildRoom(base, id)), avg))) / travelTime(state, s, from, baseEp) });
+        cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * (n * avg * 1.5 + buildBonus(Math.min(n, roomOf(base, id)), avg))) / travelTime(state, s, from, baseEp) });
       }
       if (WARES[id].mined && state.ships.some((m) => m.home === base.id && SHIP_MAP[m.cls].role === 'miner' && SHIP_MAP[m.cls].storage === WARES[id].storage)) continue;
       // Vom Markt nur, was die Station dort kaufen darf (Baulager ggf. nur aus eigenen Stationen)
-      const qtyMarket = Math.min(qty, cap(wanted(state, base, id, false, true)));
+      const qtyMarket = Math.min(qty, cap(wanted(state, base, id, false, true), true));
+      const minMarket = minFor(base, id, true);
       for (const sec of nearbyMarkets) {
         const stock = marketStock(state, sec, id);
         const price = marketPrice(state, sec, id);
         const afford = Math.max(0, state.credits - 50_000) / price;
         const n = Math.min(qtyMarket, stock * 0.8, afford);
-        if (n < min) continue;
+        if (n < minMarket) continue;
         const from: TradeEndpoint = { kind: 'market', sector: sec };
         // Einkauf lohnt sich, wenn der Preis nicht über dem Durchschnitt liegt
         const bonus = price <= avg ? 1 : 0.5;
-        cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * (n * avg * 0.9 * bonus + buildBonus(Math.min(n, buildRoom(base, id)), avg))) / travelTime(state, s, from, baseEp) });
+        cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * (n * avg * 0.9 * bonus + buildBonus(Math.min(n, roomOf(base, id, true)), avg))) / travelTime(state, s, from, baseEp) });
       }
     }
   }
@@ -560,7 +568,7 @@ function routeJob(state: GameState, s: Ship): TradeJob | null {
   if (r.to.kind === 'station') {
     const st = stationById(state, r.to.id);
     if (!st) return null;
-    room = roomAt(st, r.ware);
+    room = roomAt(st, r.ware, r.from.kind === 'station' ? 'own' : 'market');
   } else room = marketRoom(state, marketKey(r.to), r.ware);
   const n = Math.min(units, have, room);
   if (n < Math.min(units * 0.2, 100)) return null;
@@ -664,7 +672,7 @@ function doTrade(state: GameState, s: Ship): void {
   if (job.to.kind === 'station') {
     const st = stationById(state, job.to.id);
     if (st) {
-      const n = receiveWare(state, st, s.cargo.ware, s.cargo.amount, job.from.kind === 'station');
+      const n = receiveWare(state, st, s.cargo.ware, s.cargo.amount, job.from.kind === 'station' ? 'own' : 'market');
       s.cargo.amount -= n;
       s.earned += n * w.price.avg * 0.1;
     }

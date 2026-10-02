@@ -2,7 +2,7 @@
 // Hintergrundverkehr belebt die Sektoren.
 import { SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, marketStock, receiveWare, roomAt, stationWares } from './economy';
+import { BUILD_TOLERANCE, addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, marketStock, receiveWare, roomAt, stationWares } from './economy';
 import { contractDeliver } from './contracts';
 import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
 import type { GameState, NpcShip } from './types';
@@ -61,11 +61,12 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
       const sell = dock ? Math.min(have, units, room) : 0;
       if (sell >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'buyer', amount: sell }, w: sell * marketPrice(state, sectorId, id) });
       const want = wanted(state, st, id, false, true);
-      const need = dock ? want : Math.min(want, buildRoom(st, id));
+      const bRoom = buildRoom(st, id, undefined, true);
+      const need = dock ? want : Math.min(want, bRoom);
       const stock = marketStock(state, sectorId, id);
       const buy = Math.min(need, units, stock * 0.5, Math.max(0, state.credits - 100_000) / marketPrice(state, sectorId, id));
       // Kleine Restmengen fürs Baulager werden auch geliefert
-      const minBuy = Math.min(units * 0.25, 200, Math.max(1, buildRoom(st, id) - 0.5));
+      const minBuy = bRoom > BUILD_TOLERANCE ? Math.min(units * 0.25, 200, bRoom) : Math.min(units * 0.25, 200);
       if (buy >= minBuy) offers.push({ item: { st: st.id, ware: id, kind: 'seller', amount: buy }, w: buy * w.price.avg * 0.8 });
     }
   }
@@ -140,11 +141,11 @@ function npcTrade(state: GameState, n: NpcShip): void {
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value });
   } else if (n.kind === 'seller') {
     const price = marketPrice(state, n.sector, n.ware);
-    const room = hasDockFor(st, 'M') ? roomAt(st, n.ware) : buildRoom(st, n.ware);
+    const room = hasDockFor(st, 'M') ? roomAt(st, n.ware, 'market') : buildRoom(st, n.ware, undefined, true);
     const qty = Math.min(n.amount, room, marketStock(state, n.sector, n.ware), Math.max(0, state.credits - 20_000) / price);
     if (qty < 1) return;
     const cost = applyMarketTrade(state, n.sector, n.ware, -qty);
-    receiveWare(state, st, n.ware, qty);
+    receiveWare(state, st, n.ware, qty, 'market');
     st.expenses += cost;
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value: -cost });
   }

@@ -2,7 +2,7 @@
 import { MODULES, MODULE_MAP } from '../data/modules';
 import { SECTOR_MAP } from '../data/sectors';
 import { SHIP_MAP, shipName } from '../data/ships';
-import { initMarkets } from './economy';
+import { addBuildStore, initMarkets } from './economy';
 import { OLD_STORY_IDS, STORY, startMission } from './story';
 import type { GameState, ModuleInst, Ship, Station } from './types';
 
@@ -56,7 +56,6 @@ export function serialize(state: GameState): string {
   return JSON.stringify(state);
 }
 
-/** Lädt einen Spielstand und prüft ihn grob auf Gültigkeit */
 /**
  * Laufender Bau aus Spielständen vor dem Baulager: Dort wurde Material erst komplett gesammelt (need = noch fehlend),
  * danach lief die Bauzeit. Gesammeltes Material kommt ins Baulager, der Bau läuft anteilig weiter.
@@ -70,11 +69,12 @@ function migrateBuild(s: Station): Station['build'] {
   for (const [id, n] of Object.entries(mats)) {
     const got = Math.max(0, n - (old.need[id] ?? 0));
     if (!missing) b.used![id] = n;
-    else if (got > 0) { s.buildStore ??= {}; s.buildStore[id] = (s.buildStore[id] ?? 0) + got; }
+    else if (got > 0) addBuildStore(s, id, got);
   }
   return b;
 }
 
+/** Lädt einen Spielstand und prüft ihn grob auf Gültigkeit */
 export function deserialize(text: string): GameState {
   const raw = JSON.parse(text) as GameState;
   if (!raw || typeof raw !== 'object' || !(raw.version >= 1 && raw.version <= SAVE_VERSION) || !Array.isArray(raw.stations)) {
@@ -120,7 +120,11 @@ export function deserialize(text: string): GameState {
   state.totals = { ...base.totals, ...(raw.totals ?? {}) };
   state.story = { ...base.story, ...(raw.story ?? {}) };
   // Alte Spielstände kannten nur 15 Kapitel: über die Kapitel-Kennung auf die neue Reihenfolge umstellen
-  if (raw.story && !raw.story.id) {
+  if (raw.story?.id) {
+    // Die Kapitel-Kennung ist maßgeblich – so übersteht der Spielstand auch eine geänderte Kapitelreihenfolge
+    const i = STORY.findIndex((m) => m.id === raw.story.id);
+    if (i >= 0) state.story.index = i;
+  } else if (raw.story) {
     const id = OLD_STORY_IDS[state.story.index];
     const i = id ? STORY.findIndex((m) => m.id === id) : -1;
     state.story.index = i >= 0 ? i : STORY.length;
