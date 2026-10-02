@@ -779,22 +779,40 @@ describe('Baulager', () => {
   });
 
   it('ohne Zukauf liefern weder NPC-Händler noch Markt; Abbruch legt das Material zurück ins Baulager', async () => {
-    const { cancelBuild } = await import('../src/engine/actions');
+    const { cancelBuild, moveBuildStore } = await import('../src/engine/actions');
     const s = newGame(34);
     const st = s.stations[0];
     st.autoBuyBuild = false;
     st.inventory.hullparts = 50;
     queueModule(s, st.id, 'prod_refinedmetals');
     buyShip(s, 'boa', st.id);
+    step(s, 600);
+    expect(st.inventory.hullparts).toBeCloseTo(50); // keine Automatik: das Stationslager bleibt unangetastet
+    expect(moveBuildStore(s, st.id, 'hullparts', 50).ok).toBe(true); // manuell umladen
     step(s, 2 * 3600);
     expect(st.build!.used!.claytronics ?? 0).toBe(0); // keine Claytronik vom Markt
     expect(st.waiting).toBe('material');
     const used = st.build!.used!.hullparts;
-    expect(used).toBeGreaterThan(1); // eigenes Lager wird umgeladen und verbaut
+    expect(used).toBeGreaterThan(1); // umgeladenes Material wird verbaut
     expect(cancelBuild(s, st.id).ok).toBe(true);
     expect(st.build).toBeNull();
     step(s, 2);
-    expect((st.buildStore?.hullparts ?? 0) + (st.inventory.hullparts ?? 0)).toBeCloseTo(50);
+    expect(st.buildStore?.hullparts).toBeCloseTo(50); // bleibt im Baulager, bis man es zurücklädt
+    expect(moveBuildStore(s, st.id, 'hullparts', -50).ok).toBe(true);
+    expect(st.inventory.hullparts).toBeCloseTo(50);
+    expect(st.buildStore?.hullparts ?? 0).toBe(0);
+  });
+
+  it('Umladen ist auf Bedarf und Lagerplatz begrenzt', async () => {
+    const { moveBuildStore } = await import('../src/engine/actions');
+    const s = newGame(36);
+    const st = s.stations[0];
+    st.inventory.claytronics = 500;
+    expect(moveBuildStore(s, st.id, 'claytronics', 100).ok).toBe(false); // nichts geplant, Baulager braucht nichts
+    queueModule(s, st.id, 'prod_refinedmetals');
+    expect(moveBuildStore(s, st.id, 'claytronics', 500).ok).toBe(true);
+    expect(st.buildStore!.claytronics).toBe(MODULE_MAP.prod_refinedmetals.materials.claytronics);
+    expect(st.inventory.claytronics).toBe(500 - MODULE_MAP.prod_refinedmetals.materials.claytronics);
   });
 
   it('alte Spielstände: gesammeltes Material kommt ins Baulager', () => {
@@ -826,7 +844,7 @@ describe('Kampagne mit 28 Kapiteln', () => {
     expect(currentMission(deserialize(JSON.stringify(old)))?.id).toBe('trader');
   });
 
-  it('zählt eigene Claytronik im Modulbau', () => {
+  it('zählt eigene Claytronik im Modulbau', async () => {
     const s = newGame(32);
     s.credits = 50e6;
     while (currentMission(s)?.id !== 'ownbuild') s.story.index++;
@@ -834,6 +852,8 @@ describe('Kampagne mit 28 Kapiteln', () => {
     const st = s.stations[0];
     st.inventory.claytronics = 40;
     expect(queueModule(s, st.id, 'storage_container').ok).toBe(true);
+    const { moveBuildStore } = await import('../src/engine/actions');
+    moveBuildStore(s, st.id, 'claytronics', 40);
     step(s, 60);
     expect(currentMission(s)!.progress(s).cur).toBeGreaterThanOrEqual(40);
   });

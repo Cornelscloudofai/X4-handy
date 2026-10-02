@@ -7,7 +7,7 @@ import { bestRepFor, bestStorage, blueprintState, stationCost, vendorOffer } fro
 import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/vendors';
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
-import { BUILD_STORAGE_COST, buildDemand, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
+import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { restMode, shipEta } from '../engine/fleet';
 import { endpointName, fieldById, incoming, knownSectors, reserveFor, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
@@ -456,14 +456,19 @@ function buildStoreBox(state: GameState, st: Station): string {
     const way = need > have ? Math.min(need - have, incoming(state, st.id, id)) : 0;
     const f = need > 0 ? Math.min(1, have / need) : 1;
     const done = have >= need - 0.5;
+    const lim = buildMoveLimits(st, id);
+    const local = st.inventory[id] ?? 0;
+    const canMove = lim.toBuild >= 0.5 || lim.toStation >= 0.5;
     return `<div class="row" data-key="bs-${id}">${wareDot(WARES[id].color, 9)}<div class="grow"><div class="title">${esc(WARES[id].name)}</div>
-      <div class="sub wrap ${done ? '' : 'warn-text'}"><b class="num">${fmtAmount(have)}</b> von <b class="num">${fmtAmount(need)}</b> vorhanden${way >= 0.5 ? ` · ${fmtAmount(way)} unterwegs` : ''}${need < have - 0.5 ? ' · Rest geht ins Stationslager' : ''}</div>${bar(f, done ? '' : 'amber')}</div></div>`;
+      <div class="sub wrap ${done ? '' : 'warn-text'}"><b class="num">${fmtAmount(have)}</b> von <b class="num">${fmtAmount(need)}</b> vorhanden${way >= 0.5 ? ` · ${fmtAmount(way)} unterwegs` : ''}${need < have - 0.5 ? ` · ${fmtAmount(have - need)} übrig` : ''}</div>
+      ${local >= 0.5 ? `<div class="sub wrap">Im Stationslager: ${fmtAmount(local)}</div>` : ''}${bar(f, done ? '' : 'amber')}</div>
+      ${canMove ? `<button class="btn small" ${act('build-move-open', { st: st.id, ware: id })}>Umladen</button>` : ''}</div>`;
   }).join('');
   return `<div class="box" style="margin-bottom:10px"><div class="row" style="padding-bottom:4px">${icon('box', 20, 'muted')}<div class="grow"><div class="title">Baulager</div>
-      <div class="sub wrap">Schiffe liefern das Baumaterial hierher – auch ohne Dock. Fehlt etwas, bleibt der Bau beim erreichten Prozentwert stehen und läuft mit jeder Lieferung weiter.</div></div></div>
+      <div class="sub wrap">Schiffe liefern das Baumaterial hierher – auch ohne Dock. Ware aus dem eigenen Stationslager lädst du mit „Umladen“ selbst hin und her. Fehlt etwas, bleibt der Bau beim erreichten Prozentwert stehen und läuft mit jeder Lieferung weiter.</div></div></div>
     ${rows ? `<div class="rows">${rows}</div>` : '<p class="small muted" style="margin:4px 0 8px">Leer – es wird gerade kein Material gebraucht.</p>'}
     <div style="padding:8px 14px 12px"><label class="check"><input type="checkbox" data-change="auto-buy-build" data-st="${st.id}" ${own ? '' : 'checked'}> NPC-Händler und Markteinkäufe dürfen liefern</label>
-    <p class="small muted" style="margin:4px 0 0">${own ? 'Nur eigenes Material: Das Baulager nimmt nur Ware aus deinen Stationen an (eigene Transporter, Lieferreihenfolge, Lager dieser Station).' : 'NPC-Händler bringen Material und werden bei Lieferung bezahlt; deine Transporter kaufen es auch am Markt. Lager dieser Station und eigene Stationen liefern immer mit.'}</p></div></div>`;
+    <p class="small muted" style="margin:4px 0 0">${own ? 'Nur eigenes Material: Das Baulager nimmt nur Ware aus deinen Stationen an (eigene Transporter, Lieferreihenfolge, Umladen aus dem Stationslager).' : 'NPC-Händler bringen Material und werden bei Lieferung bezahlt; deine Transporter kaufen es auch am Markt. Eigene Stationen liefern immer mit.'}</p></div></div>`;
 }
 
 function stationModules(state: GameState, st: Station): string {
@@ -1005,6 +1010,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
     }
     case 'vendor': return vendorModal(state, ui, m);
     case 'storage': return storageModal(state, m.station, m.ware, !!m.back);
+    case 'buildMove': return buildMoveModal(state, m);
     case 'planPick': return modalShell('Endprodukt wählen', pickerModal(state, m.group, ui.search.picker ?? ''), `<button class="btn" ${act('modal-close')}>Fertig</button>`, 'Stationsplaner');
     case 'sell': {
       const v = sellModalHtml(state, m);
@@ -1014,6 +1020,30 @@ export function modalHtml(state: GameState, ui: UIState): string {
     case 'planBuild': return modalShell('Plan in Station bauen', buildModal(state, computePlan(ui.plan)), `<button class="btn" ${act('modal-close')}>Abbrechen</button>`, 'Stationsplaner');
     case 'courier': return deliveryModal(state, m);
   }
+}
+
+/** Manuelles Umladen zwischen Stationslager und Baulager */
+function buildMoveModal(state: GameState, m: Extract<Modal, { type: 'buildMove' }>): string {
+  const st = stationById(state, m.station);
+  if (!st) return '';
+  const w = WARES[m.ware];
+  const lim = buildMoveLimits(st, m.ware);
+  const need = buildDemand(st)[m.ware] ?? 0;
+  const have = st.buildStore?.[m.ware] ?? 0;
+  const maxIn = Math.floor(lim.toBuild), maxOut = Math.floor(lim.toStation);
+  const vIn = Math.min(maxIn, m.toBuild ?? maxIn), vOut = Math.min(maxOut, m.toStation ?? maxOut);
+  const step = (max: number) => Math.max(1, Math.round(max / 100));
+  const part = (label: string, field: string, dir: number, max: number, v: number, empty: string) => `<div class="field" style="margin-top:14px">
+      <label for="${field}">${label} · <b class="num">${fmtAmount(v)}</b></label>
+      ${max >= 1 ? `<input type="range" id="${field}" min="0" max="${max}" step="${step(max)}" value="${v}" data-change="${field}">
+      <button class="btn small${dir > 0 ? ' primary' : ''}" style="margin-top:8px" ${act('build-move', { st: st.id, ware: m.ware, n: String(dir * v) })} ${v < 1 ? 'disabled' : ''}>${dir > 0 ? 'Ins Baulager laden' : 'Ins Stationslager laden'}</button>`
+      : `<p class="small muted" style="margin:4px 0 0">${empty}</p>`}</div>`;
+  return modalShell(`Umladen: ${w.name}`, `
+    <p class="lead" style="margin-bottom:6px">Stationslager <b class="num">${fmtAmount(st.inventory[m.ware] ?? 0)}</b> · Baulager <b class="num">${fmtAmount(have)}</b> von <b class="num">${fmtAmount(need)}</b> gebraucht.</p>
+    <p class="small muted" style="margin:0">Umladen geht ohne Schiff, nur innerhalb dieser Station. Ins Baulager passt höchstens, was die Bauliste noch braucht.</p>
+    ${part('Ins Baulager', 'build-move-in', 1, maxIn, vIn, (st.inventory[m.ware] ?? 0) < 1 ? 'Im Stationslager liegt nichts davon.' : 'Das Baulager hat schon alles, was gebraucht wird.')}
+    ${part('Zurück ins Stationslager', 'build-move-out', -1, maxOut, vOut, have < 1 ? 'Im Baulager liegt nichts davon.' : 'Im Stationslager ist kein Platz dafür.')}`,
+    `<button class="btn" ${act('modal-close')}>Fertig</button>`, st.name);
 }
 
 function storageModal(state: GameState, stationId: string, ware: string, back = false): string {

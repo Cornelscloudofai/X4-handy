@@ -211,7 +211,7 @@ export const STORY: StoryMission[] = [
     about: 'Ins Baulager liefern NPC-Händler vom Markt – doch Claytronik ist dort knapp und teuer. Bringen deine Transporter eigene Claytronik ins Baulager, wird sie genauso verbaut.',
     story: 'Die Handelsposten sind leergekauft. Zeit, mit eigener Claytronik zu bauen.',
     goal: 'Verbaue 500 eigene Claytronik in neuen Modulen',
-    hint: 'Plane z. B. eine zweite Claytronik-Fabrik im Claytronik-Werk ein – das Werk füllt sein Baulager aus dem eigenen Lager. Oder setze eine Baustelle in die Lieferreihenfolge des Werks. Ohne den Haken „NPC-Händler und Markteinkäufe dürfen liefern“ kommt nur eigene Ware.',
+    hint: 'Plane z. B. eine zweite Claytronik-Fabrik im Claytronik-Werk ein und lade dort unter „Module“ → Baulager → „Umladen“ eigene Claytronik ins Baulager. Oder setze eine Baustelle in die Lieferreihenfolge des Werks.',
     progress: (s) => ({ cur: (s.totals.buildOwn?.claytronics ?? 0) - (s.story.base['buildOwn:claytronics'] ?? 0), target: 500 }),
     reward: { credits: 4_000_000, rep: { frf: 2 } },
   },

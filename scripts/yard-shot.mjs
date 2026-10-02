@@ -183,6 +183,27 @@ report.buildMaterial = await page.evaluate(() => !!document.querySelector('.buil
 report.buildStore = await page.evaluate(() => document.querySelectorAll('[data-key^="bs-"]').length > 0 && /von .* vorhanden/.test(document.querySelector('[data-key^="bs-"]')?.textContent ?? ''));
 await page.evaluate(() => document.querySelector('[data-key^="bs-"]')?.scrollIntoView({ block: 'center' }));
 await check('24-build-store');
+// Manuelles Umladen zwischen Stationslager und Baulager
+await page.evaluate(() => {
+  const g = window.__game, s = g.state;
+  const st = s.stations[1] ?? s.stations[0];
+  st.inventory.claytronics = 400;
+  g.refresh();
+});
+await page.waitForTimeout(300);
+await page.evaluate(() => document.querySelector('[data-key="bs-claytronics"] [data-act="build-move-open"]')?.click());
+await page.waitForTimeout(400);
+await check('25-build-move');
+report.buildMove = await page.evaluate(async () => {
+  const s = window.__game.state, st = s.stations[1] ?? s.stations[0];
+  const before = st.buildStore?.claytronics ?? 0;
+  const btn = [...document.querySelectorAll('[data-act="build-move"]')].find((b) => b.textContent.includes('Ins Baulager'));
+  if (!btn) return false;
+  btn.click();
+  await new Promise((r) => setTimeout(r, 300));
+  return (st.buildStore?.claytronics ?? 0) > before && (st.inventory.claytronics ?? 0) < 400;
+});
+await check('26-build-moved');
 console.log(JSON.stringify(report, null, 1));
 console.log('errors', errors);
 await browser.close();

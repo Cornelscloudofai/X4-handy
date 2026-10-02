@@ -24,6 +24,7 @@ export type Modal =
   | { type: 'planPick'; group: string; back?: boolean }
   | { type: 'vendor'; sector: string; npc?: string; vendor?: string }
   | { type: 'storage'; station: string; ware: string; back?: Modal }
+  | { type: 'buildMove'; station: string; ware: string; toBuild?: number; toStation?: number }
   | { type: 'planBuild' }
   | { type: 'planDiagram' }
   | SellModal;

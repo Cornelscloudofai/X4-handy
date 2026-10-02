@@ -299,29 +299,29 @@ export function marketSupply(state: GameState, id: string): number {
   return n;
 }
 
-/** Was eine Station aus ihrem eigenen Lager ans Baulager abgibt: Produktionseingänge behalten eine Reserve von 40 % */
-function ownBuildStock(st: Station, id: string): number {
-  const have = st.inventory[id] ?? 0;
-  const consumed = yardStockWares(st).includes(id) || st.modules.some((m) => { const d = MODULE_MAP[m.def]; return d?.kind === 'production' && !!d.ware && ware(d.ware).inputs.some((i) => i.ware === id); });
-  return consumed ? Math.max(0, have - wareLimit(st, id) * 0.4) : have;
+/** Wie viel sich zwischen Stationslager und Baulager umladen lässt (manuell, ohne Schiff) */
+export function buildMoveLimits(st: Station, id: string): { toBuild: number; toStation: number } {
+  return {
+    toBuild: Math.max(0, Math.min(st.inventory[id] ?? 0, buildRoom(st, id))),
+    toStation: Math.max(0, Math.min(st.buildStore?.[id] ?? 0, freeUnits(st, id))),
+  };
 }
 
-/**
- * Baulager pflegen: Ware aus dem eigenen Stationslager umladen (Stationsdrohnen, ohne Schiff) und Material,
- * das die Bauliste nicht mehr braucht (z. B. nach dem Entfernen einer Position), zurück ins Stationslager räumen.
- */
-function tendBuildStore(state: GameState, st: Station): void {
-  const demand = buildDemand(st);
-  for (const id of Object.keys(demand)) {
-    const n = Math.min(buildRoom(st, id, demand), ownBuildStock(st, id));
-    if (n > 1e-6) { addWare(st, id, -n); receiveWare(state, st, id, n, true); }
+/** Manuell umladen: positive Menge = Stationslager → Baulager, negative = Baulager → Stationslager. Liefert die bewegte Menge. */
+export function moveBuildStock(state: GameState, st: Station, id: string, amount: number): number {
+  const lim = buildMoveLimits(st, id);
+  if (amount > 0) {
+    const n = Math.min(amount, lim.toBuild);
+    if (n <= 1e-6) return 0;
+    addWare(st, id, -n);
+    receiveWare(state, st, id, n, true);
+    return n;
   }
-  for (const [id, n] of Object.entries(st.buildStore ?? {})) {
-    const extra = n - (demand[id] ?? 0);
-    if (extra <= 1e-6) continue;
-    const move = Math.min(extra, freeUnits(st, id));
-    if (move > 0) { addBuildStore(st, id, -move); addWare(st, id, move); }
-  }
+  const n = Math.min(-amount, lim.toStation);
+  if (n <= 1e-6) return 0;
+  addBuildStore(st, id, -n);
+  addWare(st, id, n);
+  return -n;
 }
 
 /**
@@ -330,7 +330,6 @@ function tendBuildStore(state: GameState, st: Station): void {
  * bis wieder geliefert wird. Fertig ist das Modul, wenn die Bauzeit um und alles Material verbaut ist.
  */
 export function stepConstruction(state: GameState, st: Station, dt: number): void {
-  tendBuildStore(state, st);
   let left = dt;
   let guard = 0;
   while (left > 1e-9 && guard++ < 20) {

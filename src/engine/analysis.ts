@@ -37,8 +37,10 @@ export function stationAlerts(state: GameState, st: Station): Alert[] {
   }
   // Bauprojekt wartet auf Material
   if (st.build && st.waiting === 'material') {
-    const miss = Object.entries(buildMissing(st)).map(([id, n]) => `${Math.ceil(n).toLocaleString('de-DE')} ${WARES[id].name}`);
-    if (miss.length) out.push({ station: st.id, text: `${st.name}: Baulager braucht noch ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? ' …' : ''}${st.autoBuyBuild === false ? ' (nur eigenes Material)' : !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') ? ' – eigene Transporter beschleunigen die Lieferung' : ''}`, severity: 'warn' });
+    const missing = buildMissing(st);
+    const miss = Object.entries(missing).map(([id, n]) => `${Math.ceil(n).toLocaleString('de-DE')} ${WARES[id].name}`);
+    const local = Object.keys(missing).filter((id) => (st.inventory[id] ?? 0) >= 1).map((id) => WARES[id].name);
+    if (miss.length) out.push({ station: st.id, text: `${st.name}: Baulager braucht noch ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? ' …' : ''}${local.length ? ` – ${local.join(', ')} liegt im Stationslager: „Umladen“` : st.autoBuyBuild === false ? ' (nur eigenes Material)' : !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') ? ' – eigene Transporter beschleunigen die Lieferung' : ''}`, severity: 'warn' });
   }
   // Ohne eigenen Transporter handelt niemand automatisch für diese Station
   if (hasProd && !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') && state.ships.some((s) => SHIP_MAP[s.cls].role === 'trader')) {

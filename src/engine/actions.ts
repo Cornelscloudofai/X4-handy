@@ -3,7 +3,7 @@ import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
 import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { BUILD_STORAGE_COST, defaultTradeRule, hasDockFor } from './economy';
+import { BUILD_STORAGE_COST, defaultTradeRule, hasDockFor, moveBuildStock } from './economy';
 import { spawnCourier } from './npc';
 import { knownSectors, sellableStock, stationById } from './logistics';
 import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendors';
@@ -107,6 +107,15 @@ export function cancelQueued(state: GameState, stationId: string, uid: number): 
   state.credits += q.paid;
   st.waiting = '';
   return ok(q.paid ? 'Position entfernt, Kosten erstattet.' : 'Position aus der Bauliste entfernt.');
+}
+
+/** Ware manuell zwischen Stationslager und Baulager umladen (amount > 0: ins Baulager, < 0: zurück ins Stationslager) */
+export function moveBuildStore(state: GameState, stationId: string, ware: string, amount: number): Result {
+  const st = stationById(state, stationId);
+  if (!st || !WARES[ware]) return fail('Station oder Ware nicht gefunden.');
+  const n = moveBuildStock(state, st, ware, amount);
+  if (Math.abs(n) < 0.5) return fail(amount > 0 ? 'Nichts umzuladen – Lager leer oder Baulager braucht nichts mehr davon.' : 'Nichts umzuladen – Baulager leer oder Stationslager voll.');
+  return ok(`${Math.round(Math.abs(n)).toLocaleString('de-DE')} ${WARES[ware].name} ${n > 0 ? 'ins Baulager' : 'ins Stationslager'} umgeladen.`);
 }
 
 export function cancelBuild(state: GameState, stationId: string): Result {

@@ -77,7 +77,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -452,6 +452,14 @@ function onClick(e: MouseEvent): void {
         else { ui.plan.layout = {}; savePlan(); }
         refresh();
         fitEditor();
+        break;
+      }
+      case 'build-move-open': ui.modal = { type: 'buildMove', station: d.st!, ware: d.ware! }; refresh(); break;
+      case 'build-move': {
+        const r = A.moveBuildStore(state, d.st!, d.ware!, Number(d.n));
+        toast(r.msg, r.ok ? 'good' : 'warn');
+        if (ui.modal?.type === 'buildMove') ui.modal = { type: 'buildMove', station: d.st!, ware: d.ware! };
+        refresh();
         break;
       }
       case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware!, back: ui.modal?.type === 'courier' ? ui.modal : undefined }; refresh(); break;
@@ -887,6 +895,12 @@ function onChange(e: Event): void {
   }
   if (field === 'sell-repeat' && ui.modal?.type === 'sell') {
     ui.modal = { ...ui.modal, repeat: (el as unknown as HTMLInputElement).checked };
+    refresh();
+    return;
+  }
+  if ((field === 'build-move-in' || field === 'build-move-out') && ui.modal?.type === 'buildMove') {
+    const v = Number(el.value);
+    ui.modal = field === 'build-move-in' ? { ...ui.modal, toBuild: v } : { ...ui.modal, toStation: v };
     refresh();
     return;
   }
