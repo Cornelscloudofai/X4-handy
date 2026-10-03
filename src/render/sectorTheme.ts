@@ -48,6 +48,8 @@ export interface Scene {
   stars: number; warm: number;
   /** Größe der Muster (Rauschfrequenz, kleiner = großflächiger) und Stärke der Verwirbelung */
   scale?: number; warp?: number;
+  /** Gesamtstärke des Nebels (Standard 0,45 = dezent; nur der gasreichste Sektor deutlich heller) */
+  intensity?: number;
 }
 
 /** Ein Motiv je Sektor – jeder Sektor ist ein eigener Anblick */
@@ -59,7 +61,7 @@ export const SCENES: Record<string, Scene> = {
     galaxies: [{ x: 0.66, y: 0.36, size: 0.111, angle: -0.55, tilt: 0.46, kind: 'spiral' }, { x: 0.24, y: 0.58, size: 0.065, angle: 1.05, tilt: 0.17, kind: 'edge' }, { x: 0.82, y: 0.83, size: 0.023, angle: 0.3, tilt: 0.6, kind: 'spiral' }],
     stars: 1.6, warm: 0.5 },
   // Türkis und Grüngold (Farben des Rosettennebels): sehr großflächig, stark verwirbelt – der Gas-Sektor
-  cascade: { name: 'Türkis-Marmor', shape: 'marble', cx: 0.5, cy: 0.5, rx: 0.4, ry: 0.4, angle: 0, core: '#2e9c94', rim: '#a4a83c', hi: '#a8f0e0', haze: '#0c2c2a', hazeA: 0.035, glow: 0.56, cover: 0.42, edge: 0.6, dust: 0.5, fil: 0.7, globules: 10, cluster: 0, stars: 1, warm: 0.15, scale: 2.1, warp: 3.4 },
+  cascade: { name: 'Türkis-Marmor', shape: 'marble', cx: 0.5, cy: 0.5, rx: 0.4, ry: 0.4, angle: 0, core: '#2e9c94', rim: '#a4a83c', hi: '#a8f0e0', haze: '#0c2c2a', hazeA: 0.035, glow: 0.56, cover: 0.42, edge: 0.6, dust: 0.5, fil: 0.7, globules: 10, cluster: 0, stars: 1, warm: 0.15, scale: 2.1, warp: 3.4, intensity: 0.8 },
   // Pferdekopfnebel: leuchtende rote Wand mit scharfer Kante, darunter Dunkelwolke, Silhouette auf der Kante
   ravine: { name: 'Pferdekopfnebel', shape: 'wall', cx: 0.5, cy: 0.56, rx: 0.3, ry: 0.2, angle: -0.12, core: '#b8405a', rim: '#f490aa', hi: '#ffd6e0', haze: '#3a1420', hazeA: 0.08, glow: 0.95, cover: 0.4, edge: 1.1, dust: 0.55, fil: 0.8, globules: 4, cluster: 0, stars: 0.9, warm: 0.55 },
   // Flammenstern- und Kaulquappennebel: rote Fasern über dem ganzen Himmel, dazu eine blaue Wolke
@@ -140,6 +142,7 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
   const cos = Math.cos(-sc.angle), sin = Math.sin(-sc.angle);
   const scale = (sc.scale ?? 4.2) / M;
   const warp = sc.warp ?? 2.6;
+  const strength = sc.intensity ?? 0.45;
   const dark = [3, 5, 9];
   const grain = rng(t.seed + 3);
   // Globulen: kleine, längliche Dunkelwolken – meist am Rand der Wolke, wo das Licht sie umspült
@@ -217,9 +220,9 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
       cr += (hi[0] - cr) * hl * 0.4; cg += (hi[1] - cg) * hl * 0.4; cb += (hi[2] - cb) * hl * 0.4;
       // Helligkeit schwankt großräumig: helle Kerne und dunklere Bereiche statt gleichmäßiger Fläche
       const lum = 0.4 + 0.95 * smooth(0.28, 0.78, q2 * 0.6 + rr * 0.4);
-      let ea = Math.pow(Math.min(1, (dens * 0.75 + fil * 0.5 + edgeF * dens * 0.45) * sc.glow * light * lum), 1.15);
+      let ea = Math.pow(Math.min(1, (dens * 0.75 + fil * 0.5 + edgeF * dens * 0.45) * sc.glow * light * lum), 1.15) * strength;
       // Schleier über den ganzen Himmel
-      const ha = sc.hazeA * (0.35 + 0.9 * q2) * light;
+      const ha = sc.hazeA * (0.35 + 0.9 * q2) * light * strength;
       // Dunkelwolken und Globulen
       let du = smooth(0.53, 0.75, fbm(n2, u * 1.5 + q1 * 1.2 + 9, v * 1.5 - q2 + 4, 4)) * sc.dust * (0.4 + 0.6 * mm);
       du = Math.max(du, wallDark * 0.85);
