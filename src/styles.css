@@ -518,3 +518,7 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 .help-body ul { margin: 0 0 12px; padding-left: 18px; color: var(--text-2); line-height: 1.5; }
 .help-body li { margin-bottom: 8px; }
 .help-body b { color: var(--text); }
+
+/* Regler in den Einstellungen */
+.range-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.range-row input[type='range'] { flex: 1; min-width: 0; }

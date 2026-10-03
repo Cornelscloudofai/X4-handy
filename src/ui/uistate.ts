@@ -38,6 +38,8 @@ export interface UIState {
   routes: boolean;
   galaxySel: string | null;
   reducedMotion: boolean;
+  /** Beschriftungsdichte der Karte 0 (wenig) bis 100 (viel), Standard 50 */
+  labelDensity: number;
   panel: Panel | null;
   modal: Modal | null;
   paused: boolean;
@@ -66,6 +68,7 @@ export const ui: UIState = {
   routes: true,
   galaxySel: null,
   reducedMotion: initialReducedMotion(),
+  labelDensity: initialLabelDensity(),
   panel: null,
   modal: null,
   paused: false,
@@ -118,6 +121,24 @@ function initialReducedMotion(): boolean {
 export function saveMotionSetting(reduced: boolean): void {
   try {
     localStorage.setItem('x4-sektorbau-effects', reduced ? 'reduced' : 'full');
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}
+
+function initialLabelDensity(): number {
+  try {
+    const v = Number(localStorage.getItem('x4-sektorbau-labels'));
+    if (localStorage.getItem('x4-sektorbau-labels') !== null && Number.isFinite(v)) return Math.max(0, Math.min(100, v));
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+  return 50;
+}
+
+export function saveLabelDensity(v: number): void {
+  try {
+    localStorage.setItem('x4-sektorbau-labels', String(v));
   } catch {
     /* Speicher nicht verfügbar */
   }

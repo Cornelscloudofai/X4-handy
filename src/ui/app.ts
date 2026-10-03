@@ -26,7 +26,7 @@ import { setSound, sfx, soundEnabled } from './sound';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { saleOffers } from '../engine/sales';
-import { SPEEDS, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
+import { SPEEDS, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
 import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, nodePositions } from './plannerView';
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
@@ -81,7 +81,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -915,6 +915,12 @@ function onChange(e: Event): void {
   }
   if (field === 'sell-repeat' && ui.modal?.type === 'sell') {
     ui.modal = { ...ui.modal, repeat: (el as unknown as HTMLInputElement).checked };
+    refresh();
+    return;
+  }
+  if (field === 'label-density') {
+    ui.labelDensity = Math.max(0, Math.min(100, Number(el.value)));
+    saveLabelDensity(ui.labelDensity);
     refresh();
     return;
   }

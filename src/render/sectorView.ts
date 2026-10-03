@@ -42,7 +42,14 @@ const SECTOR_TINT: Record<string, [string, string]> = {
 };
 
 interface Float { sector: string; x: number; z: number; value: number; life: number; row: number }
-interface QLabel { text: string; x: number; ys: number[]; size: number; color: string; weight: number; prio: number; sub?: { text: string; color: string } }
+/**
+ * Beschriftung: minRel = Zoomstufe (relativ zur Gesamtansicht), ab der sie erscheint – verschoben durch den
+ * Regler „Beschriftung“. force = immer zeigen (ausgewählt).
+ */
+interface QLabel { text: string; x: number; ys: number[]; size: number; color: string; weight: number; prio: number; minRel: number; force?: boolean; sub?: { text: string; color: string } }
+
+/** Ab welcher Zoomstufe (relativ zur Gesamtansicht) Beschriftungen bei mittlerer Einstellung erscheinen */
+const LABEL_AT = { station: 0.8, trade: 0.8, gate: 1.4, npc: 1.8, field: 1.8, amount: 1.25 };
 interface Trail { pts: { x: number; z: number }[]; acc: number; sector: string }
 
 export class SectorRenderer {
@@ -147,8 +154,8 @@ export class SectorRenderer {
         drawRockField(ctx, cam, f, hashStr(f.id), 0, sel, parallax);
       }
       // Feldnamen erst beim Heranzoomen (Gesamtansicht bleibt ruhig)
-      if (rel >= 1.5 || sel) {
-        this.labels.push({ text: WARES[f.ware].name, x: sx, ys: [sy + rad * 0.15, sy - rad * 0.55, sy + rad * 0.7], size: 12, color: rgba(color, 0.95), weight: 600, prio: 2,
+      {
+        this.labels.push({ text: WARES[f.ware].name, x: sx, ys: [sy + rad * 0.15, sy - rad * 0.55, sy + rad * 0.7], size: 12, color: rgba(color, 0.95), weight: 600, prio: 2, minRel: LABEL_AT.field, force: sel,
           sub: f.richness !== 1 && rel > 2 ? { text: `Ertrag ${Math.round(f.richness * 100)} %`, color: C.muted } : undefined });
       }
     }
@@ -162,7 +169,7 @@ export class SectorRenderer {
       this.drawGate(ctx, sx, sy, s, motion ? now : 0, sel);
       const ox = Math.cos(g.angle), oz = Math.sin(g.angle);
       const lx = sx - ox * 26 * s, ly = sy - oz * 22 * s;
-      this.labels.push({ text: target.name, x: lx, ys: [ly, ly - 14, ly + 14], size: rel < 1.5 ? 10 : 11, color: owned ? '#ffd9a0' : C.muted, weight: 600, prio: 1 });
+      this.labels.push({ text: target.name, x: lx, ys: [ly, ly - 14, ly + 14], size: rel < 1.5 ? 10 : 11, color: owned ? '#ffd9a0' : C.muted, weight: 600, prio: 1, minRel: LABEL_AT.gate, force: sel });
     }
 
     // Handelsposten
@@ -173,7 +180,7 @@ export class SectorRenderer {
       const r = Math.max(13 * s, Math.min(60, cam.zoom * 3.2));
       this.drawTradeStation(ctx, sx, sy, r, motion ? now : 0, FACTIONS[sec.faction].color, sel);
       const off = r + 10;
-      this.labels.push({ text: ts.name, x: sx, ys: [sy + off, sy - off], size: rel < 1.5 ? 11 : 12, color: '#ffd9a0', weight: 600, prio: 3 });
+      this.labels.push({ text: ts.name, x: sx, ys: [sy + off, sy - off], size: rel < 1.5 ? 11 : 12, color: '#ffd9a0', weight: 600, prio: 3, minRel: LABEL_AT.trade, force: sel });
       this.obstacles.push({ x: sx - r, y: sy - r, w: r * 2, h: r * 2 });
     }
 
@@ -211,7 +218,7 @@ export class SectorRenderer {
       ctx.fill();
       ctx.restore();
       if (sel) this.selectionRing(ctx, sx, sy, r + 4, now, col);
-      if (rel >= 1.5 || sel) this.labels.push({ text: n.name, x: sx, ys: [sy + r + 12, sy - r - 12], size: 11, color: rgba(col, 0.95), weight: 600, prio: 2 });
+      this.labels.push({ text: n.name, x: sx, ys: [sy + r + 12, sy - r - 12], size: 11, color: rgba(col, 0.95), weight: 600, prio: 2, minRel: LABEL_AT.npc, force: sel });
       this.obstacles.push({ x: sx - r, y: sy - r, w: r * 2, h: r * 2 });
     }
 
@@ -268,12 +275,14 @@ export class SectorRenderer {
     // Effekte (Funken, Splitter, Gas)
     this.fx.draw(ctx, cam, sec.id, s);
 
-    this.flushLabels(ctx, rel);
+    this.flushLabels(ctx, rel, ui.labelDensity);
 
     // Schwebende Texte (Verkäufe)
+    // Ein- und Ausgaben folgen dem Regler „Beschriftung“ – herausgezoomt standardmäßig ausgeblendet
+    const showAmounts = rel >= LABEL_AT.amount * Math.pow(2, (50 - ui.labelDensity) / 25);
     for (const f of this.floats) {
       f.life -= dt / 2.2;
-      if (f.sector !== sec.id) continue;
+      if (f.sector !== sec.id || !showAmounts) continue;
       const [sx, sy] = cam.toScreen(f.x, f.z);
       ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 2));
       this.label(ctx, (f.value > 0 ? '+' : '') + fmtCr(f.value), sx, sy - 20 * s - 10 - f.row * 15 - (1 - f.life) * 40, rel < 1.5 ? 11 : 12, f.value > 0 ? '#8ff5b0' : '#ffb4a0', 700);
@@ -313,13 +322,23 @@ export class SectorRenderer {
   // ---------- Bausteine ----------
 
   /** Beschriftungen ohne Überlappung setzen: wichtige zuerst, sonst Ausweichposition oder weglassen */
-  private flushLabels(ctx: CanvasRenderingContext2D, rel = 2): void {
+  /**
+   * Beschriftungen setzen: Jede erscheint ab ihrer Zoomstufe und blendet beim Heranzoomen weich ein. Der Regler
+   * „Beschriftung“ verschiebt alle Schwellen gemeinsam (wenig = erst nah, viel = schon in der Gesamtansicht).
+   * Überlappende werden weggelassen – nur ausgewählte Objekte behalten ihren Namen immer.
+   */
+  private flushLabels(ctx: CanvasRenderingContext2D, rel: number, density: number): void {
     const placed = [...this.obstacles];
     const hit = (r: { x: number; y: number; w: number; h: number }) =>
       placed.some((p) => r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y);
-    this.labels.sort((a, b) => b.prio - a.prio);
+    const factor = Math.pow(2, (50 - density) / 25);
+    this.labels.sort((a, b) => Number(!!b.force) - Number(!!a.force) || b.prio - a.prio);
     const shrink = rel < 1.5 ? 0.88 : 1;
     for (const l of this.labels) {
+      const need = l.minRel * factor;
+      if (!l.force && rel < need) continue;
+      // Weiches Einblenden zwischen Schwelle und 1,25-facher Schwelle
+      const alpha = l.force ? 1 : Math.min(1, 0.25 + ((rel / need - 1) / 0.25) * 0.75);
       l.size = Math.round(l.size * shrink);
       ctx.font = `${l.weight} ${l.size}px ${FONT}`;
       const w = ctx.measureText(l.text).width + 6;
@@ -330,11 +349,13 @@ export class SectorRenderer {
         if (!hit(r)) { chosen = y; placed.push(r); break; }
       }
       if (chosen === null) {
-        if (l.prio < 3) continue;
+        if (!l.force) continue;
         chosen = l.ys[0];
       }
+      ctx.globalAlpha = alpha;
       this.label(ctx, l.text, l.x, chosen, l.size, l.color, l.weight);
       if (l.sub) this.label(ctx, l.sub.text, l.x, chosen + 14, 10, l.sub.color, 500);
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -591,7 +612,7 @@ export class SectorRenderer {
     const ring = detail ? reach + 8 : 16 * s + 4;
     if (selected) this.selectionRing(ctx, sx, sy, ring, now, color);
     const ly = sy + (detail ? reach + 16 : 20 * s + 9);
-    this.labels.push({ text: st.name, x: sx, ys: [ly, sy - (ly - sy)], size: rel < 1.5 ? 13 : 14, color: problem ? '#ffd28a' : '#bff7ec', weight: 700, prio: 4 });
+    this.labels.push({ text: st.name, x: sx, ys: [ly, sy - (ly - sy)], size: rel < 1.5 ? 13 : 14, color: problem ? '#ffd28a' : '#bff7ec', weight: 700, prio: 4, minRel: LABEL_AT.station, force: selected });
     const ob = detail ? Math.min(reach, 60) : 12 * s + 4;
     this.obstacles.push({ x: sx - ob, y: sy - ob, w: ob * 2, h: ob * 2 });
     if (problem) {

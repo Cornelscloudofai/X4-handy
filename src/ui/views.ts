@@ -967,6 +967,9 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="box rows" style="margin-top:8px"><div class="row tap" ${act('coach-restart')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">Erste Schritte zeigen</div><div class="sub wrap">${state.help?.coachOff ? 'Ausgeblendet – hier wieder einschalten' : 'Geführte Hinweise für den Einstieg'}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
     <div class="section"><h3>Einstellungen</h3><div class="box rows"><div class="row"><div class="grow"><div class="title" style="font-weight:500">Routen auf der Karte</div><div class="sub">Flugwege und Versorgungslinien</div></div>
       <div class="toggle"><button class="plain ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${ui.routes ? 'An' : 'Aus'}</button></div></div>
+      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Beschriftung auf der Karte</div>
+        <div class="sub">${ui.labelDensity <= 20 ? 'Wenig – Namen erst beim Heranzoomen' : ui.labelDensity >= 80 ? 'Viel – fast alles schon von Weitem' : 'Mittel – Wichtiges zuerst, Rest beim Zoomen'}</div>
+        <div class="range-row"><span class="small muted">wenig</span><input type="range" min="0" max="100" step="5" value="${ui.labelDensity}" data-change="label-density" aria-label="Beschriftungsdichte"><span class="small muted">viel</span></div></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Animationen und Effekte</div><div class="sub">Funken, Triebwerke, driftende Nebel</div></div>
       <div class="toggle"><button class="plain ${ui.reducedMotion ? '' : 'on'}" ${act('motion-toggle')}>${ui.reducedMotion ? 'Reduziert' : 'Voll'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
