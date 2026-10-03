@@ -1,4 +1,4 @@
-import type { GameState, LogEntry } from './types';
+import type { FactionId, GameState, LogEntry } from './types';
 
 /** Deterministischer Zufall (mulberry32), Zustand liegt im Spielstand */
 export function rand(state: GameState): number {
@@ -52,6 +52,8 @@ export type GameEvent =
   | { type: 'moduleDone'; station: string; module: string }
   | { type: 'contractDone'; id: number }
   | { type: 'story' }
+  /** Kapitel abgeschlossen (Belohnung abgeholt) */
+  | { type: 'chapter'; index: number; title: string; credits: number; faction: FactionId }
   | { type: 'shipBuilt'; station: string; cls: string }
   | { type: 'sale'; station: string; sector: string; x: number; z: number; value: number };
 

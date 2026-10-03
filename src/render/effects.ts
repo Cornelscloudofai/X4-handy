@@ -11,7 +11,7 @@ interface Particle {
   color: string;
   size: number;
   /** Funke (mit Schweif), Punkt oder Ring (wächst) */
-  kind: 'spark' | 'dot' | 'ring';
+  kind: 'spark' | 'dot' | 'ring' | 'flash';
   drag: number;
   /** Ziel, auf das das Teilchen zufliegt (Gas-Sog) */
   tx?: number; tz?: number;
@@ -45,6 +45,12 @@ export class Effects {
       const life = 0.7 + Math.random() * 0.9;
       this.push({ sector, x, z, vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, life, max: life, color: Math.random() < 0.3 ? '#ffffff' : color, size: 1 + Math.random() * 1.6, kind: 'spark', drag: 2.2 });
     }
+  }
+
+  /** Sprungblitz an einem Tor: heller Lichtpunkt, der schnell verglüht, mit kleinem Ring */
+  flash(sector: string, x: number, z: number, color: string): void {
+    this.push({ sector, x, z, vx: 0, vz: 0, life: 0.55, max: 0.55, color, size: 16, kind: 'flash', drag: 0 });
+    this.push({ sector, x, z, vx: 0, vz: 0, life: 0.5, max: 0.5, color, size: 4, kind: 'ring', drag: 0 });
   }
 
   /** Einzelne Schweißfunken an einer Baustelle */
@@ -102,7 +108,17 @@ export class Effects {
       const [sx, sy] = cam.toScreen(p.x, p.z);
       if (sx < -40 || sy < -40 || sx > cam.w + 40 || sy > cam.h + 40) continue;
       const t = p.life / p.max;
-      if (p.kind === 'ring') {
+      if (p.kind === 'flash') {
+        const r = p.size * (0.5 + 0.5 * t) * Math.max(0.6, scale);
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+        g.addColorStop(0, rgba('#ffffff', t * 0.95 * dim));
+        g.addColorStop(0.3, rgba(p.color, t * 0.6 * dim));
+        g.addColorStop(1, rgba(p.color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === 'ring') {
         const r = (p.size + (1 - t) * p.size * 5) * scale;
         ctx.strokeStyle = rgba(p.color, t * 0.8 * dim);
         ctx.lineWidth = (0.6 + t * 2) * Math.min(1, scale);

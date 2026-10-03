@@ -10,6 +10,7 @@ import {
   type Place,
 } from './logistics';
 import { contractDeliver } from './contracts';
+import { endOf, fieldEnd, recordFlow, stationEnd } from './flows';
 import type { GameState, RestAction, RestCase, Ship, Station, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
 
@@ -134,6 +135,7 @@ function sellCargo(state: GameState, s: Ship, key: string): number {
   const n = info.npc ? Math.min(s.cargo.amount, marketRoom(state, key, s.cargo.ware)) : s.cargo.amount;
   if (n < 0.5) return 0;
   const value = applyMarketTrade(state, key, s.cargo.ware, n);
+  recordFlow(state, fieldEnd(s.miningField), { key: 'm:' + key, sector: info.sector, x: info.x, z: info.z }, s.cargo.ware, n);
   s.cargo.amount -= n;
   s.earned += value;
   const home = stationById(state, s.home);
@@ -309,6 +311,7 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
       const n = Math.min(s.cargo.amount, freeUnits(home, s.cargo.ware));
       if (n > 0.5) {
         addWare(home, s.cargo.ware, n);
+        recordFlow(state, fieldEnd(s.miningField), stationEnd(state, home.id), s.cargo.ware, n);
         s.cargo.amount -= n;
         state.totals.mined[s.cargo.ware] = (state.totals.mined[s.cargo.ware] ?? 0) + n;
         s.earned += n * WARES[s.cargo.ware].price.avg;
@@ -673,6 +676,7 @@ function doTrade(state: GameState, s: Ship): void {
     const st = stationById(state, job.to.id);
     if (st) {
       const n = receiveWare(state, st, s.cargo.ware, s.cargo.amount, job.from.kind === 'station' ? 'own' : 'market');
+      recordFlow(state, endOf(state, job.from), endOf(state, job.to), s.cargo.ware, n);
       s.cargo.amount -= n;
       s.earned += n * w.price.avg * 0.1;
     }
@@ -682,12 +686,14 @@ function doTrade(state: GameState, s: Ship): void {
       const used = contractDeliver(state, job.contract, s.cargo.ware, s.cargo.amount);
       s.cargo.amount -= used;
       state.totals.delivered += used;
+      recordFlow(state, endOf(state, job.from), endOf(state, job.to), s.cargo.ware, used);
     }
     if (s.cargo.amount > 0.5) {
       // NPC-Käufer nehmen nur, was in ihr Lager passt; der Handelsposten etwas mehr zum Mindestpreis
       const n = Math.min(s.cargo.amount, marketRoom(state, key, s.cargo.ware) + (job.to.market ? 0 : s.cargo.amount * 0.2));
       if (n > 0) {
         const value = applyMarketTrade(state, key, s.cargo.ware, n);
+        recordFlow(state, endOf(state, job.from), endOf(state, job.to), s.cargo.ware, n);
         s.cargo.amount -= n;
         s.earned += value;
         const home = stationById(state, s.home);

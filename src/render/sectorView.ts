@@ -3,7 +3,8 @@ import { MODULE_MAP } from '../data/modules';
 import { FACTIONS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, hexCorners } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { endpointPlace, fieldById, stationById } from '../engine/logistics';
+import { sectorFlows, type FlowSeg } from '../engine/flows';
+import { fieldById } from '../engine/logistics';
 import { buildProgress, storageCap, usedVolume } from '../engine/economy';
 import type { GameState, ModuleDef, Ship, Station } from '../engine/types';
 import { hashStr } from '../engine/util';
@@ -13,6 +14,7 @@ import { fmtCr } from '../ui/format';
 import { Effects } from './effects';
 import { drawRockField } from './fields';
 import { layoutReach, layoutStation, stationStyle } from './stationLayout';
+import { paintSun, nebulaLayer, sectorTheme, starFactor } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
 
 const C = {
@@ -41,6 +43,9 @@ const SECTOR_TINT: Record<string, [string, string]> = {
   zyarth: ['#7a2f4a', '#8a5a22'],
 };
 
+/** Nebelebene ist größer als der Bildschirm (Spielraum für Parallaxe) */
+const NEBULA_PAD = 1.35;
+
 interface Float { sector: string; x: number; z: number; value: number; life: number; row: number }
 /**
  * Beschriftung: minRel = Zoomstufe (relativ zur Gesamtansicht), ab der sie erscheint – verschoben durch den
@@ -55,11 +60,22 @@ interface Trail { pts: { x: number; z: number }[]; acc: number; sector: string }
 export class SectorRenderer {
   private bg: HTMLCanvasElement | null = null;
   private bgKey = '';
+  private nebula: HTMLCanvasElement | null = null;
+  private comp: HTMLCanvasElement | null = null;
+  private flowCache: { sector: string; state: GameState | null; at: number; flows: FlowSeg[] } = { sector: '', state: null, at: 0, flows: [] };
+  private compKey = '';
   private floats: Float[] = [];
   private trails = new Map<string, Trail>();
   private stars: { x: number; y: number; s: number; a: number }[] = [];
   private labels: QLabel[] = [];
   private obstacles: { x: number; y: number; w: number; h: number }[] = [];
+  /** Problemsymbole der letzten Zeichnung (für Treffer beim Antippen) */
+  private markers: { x: number; y: number; r: number; station: string; tab: string }[] = [];
+  private density = 50;
+  /** Letzter bekannter Sektor je Schiff und sichtbare NPC-Schiffe – für Sprungblitze an den Toren */
+  private shipSector = new Map<string, string>();
+  private npcSeen = new Map<string, { sector: string; x: number; z: number }>();
+  private jumpsReady = false;
   private fx = new Effects();
 
   constructor() {
@@ -83,21 +99,47 @@ export class SectorRenderer {
   }
 
 
-  /** Nur Sternenhimmel und Nebel (auch für die Galaxiekarte) */
+  /**
+   * Sternenhimmel, Nebel und Sonne (auch für die Galaxiekarte). Jeder Sektor hat seinen Charakter: Gas-Sektoren
+   * liegen in farbigen Gasschleiern, Gesteins-Sektoren hinter Staubbändern, die Sonne leuchtet nach Sonnenlicht.
+   * Nebel und Sterne verschieben sich beim Bewegen leicht gegeneinander (ferne Ebenen).
+   */
   drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, sectorId: string, now: number): void {
     const W = cam.w, H = cam.h;
     const key = `${sectorId}:${Math.round(W)}x${Math.round(H)}`;
+    const theme = SECTOR_MAP[sectorId] ? sectorTheme(sectorId) : null;
     if (key !== this.bgKey) {
-      this.bg = backgroundSprite(Math.round(W), Math.round(H), hashStr(sectorId), SECTOR_TINT[sectorId] ?? ['#1f5f8a', '#0e6f66']);
+      const glow = theme ? (theme.kind === 'mixed' ? 0.6 : 0.3) : 1;
+      this.bg = backgroundSprite(Math.round(W), Math.round(H), hashStr(sectorId), SECTOR_TINT[sectorId] ?? ['#1f5f8a', '#0e6f66'], glow, theme ? starFactor(theme) : 1);
+      if (theme) paintSun(this.bg.getContext('2d')!, Math.round(W), Math.round(H), theme);
+      this.nebula = theme ? nebulaLayer(Math.round(W * NEBULA_PAD), Math.round(H * NEBULA_PAD), theme) : null;
       this.bgKey = key;
     }
-    ctx.drawImage(this.bg!, 0, 0, W, H);
+    const limit = SECTOR_RADIUS * 1.1;
+    if (this.nebula && theme) {
+      // Ferne Ebene: verschiebt sich um bis zu 12 % der Bildbreite. Hintergrund und Nebel werden zu einem Bild
+      // zusammengesetzt – neu nur, wenn sich die Verschiebung um ein Pixel ändert (im Stillstand ein einziges Bild).
+      const px = Math.round(Math.max(-1, Math.min(1, cam.x / limit)) * W * 0.12), py = Math.round(Math.max(-1, Math.min(1, cam.z / limit)) * H * 0.08);
+      const ck = `${key}:${px}:${py}`;
+      if (ck !== this.compKey || !this.comp) {
+        if (!this.comp || this.comp.width !== this.bg!.width || this.comp.height !== this.bg!.height) {
+          this.comp = document.createElement('canvas');
+          this.comp.width = this.bg!.width;
+          this.comp.height = this.bg!.height;
+        }
+        const c = this.comp.getContext('2d')!;
+        c.drawImage(this.bg!, 0, 0);
+        c.drawImage(this.nebula, Math.round((this.comp.width - this.nebula.width) / 2) - px, Math.round((this.comp.height - this.nebula.height) / 2) - py);
+        this.compKey = ck;
+      }
+      ctx.drawImage(this.comp, 0, 0, W, H);
+    } else ctx.drawImage(this.bg!, 0, 0, W, H);
     ctx.fillStyle = '#cfe9ff';
-    for (const s of this.stars) {
-      const px = (((s.x * W - cam.x * cam.zoom * 0.08) % W) + W) % W;
-      const py = (((s.y * H - cam.z * cam.zoom * 0.08) % H) + H) % H;
-      ctx.globalAlpha = s.a * (0.7 + 0.3 * Math.sin(now / 900 + s.x * 40));
-      ctx.fillRect(px, py, s.s, s.s);
+    for (const st of this.stars) {
+      const px = (((st.x * W - cam.x * cam.zoom * 0.08) % W) + W) % W;
+      const py = (((st.y * H - cam.z * cam.zoom * 0.08) % H) + H) % H;
+      ctx.globalAlpha = st.a * (0.7 + 0.3 * Math.sin(now / 900 + st.x * 40));
+      ctx.fillRect(px, py, st.s, st.s);
     }
     ctx.globalAlpha = 1;
   }
@@ -113,6 +155,8 @@ export class SectorRenderer {
     this.drawBackdrop(ctx, cam, ui.sector, now);
     this.labels = [];
     this.obstacles = [];
+    this.markers = [];
+    this.density = ui.labelDensity;
 
     this.drawHex(ctx, cam, sec.faction === 'zya' ? '#ff8a5c' : C.amber, state.sectors.includes(ui.sector), s);
 
@@ -223,7 +267,7 @@ export class SectorRenderer {
     }
 
     // Versorgungslinien und Flugrouten
-    if (ui.routes) this.drawRoutes(ctx, state, ui, cam, now);
+    if (ui.routes || ui.selection?.kind === 'station') this.drawRoutes(ctx, state, ui, cam, now, motion);
 
     // Stationen
     for (const st of state.stations) {
@@ -272,6 +316,8 @@ export class SectorRenderer {
       }
     }
 
+    this.gateJumps(state);
+
     // Effekte (Funken, Splitter, Gas)
     this.fx.draw(ctx, cam, sec.id, s);
 
@@ -312,6 +358,42 @@ export class SectorRenderer {
       ctx.stroke();
     }
     this.cleanupTrails(state);
+  }
+
+  /**
+   * Sprungblitze: eigene Schiffe, die den Sektor wechseln, leuchten am Tor auf (auf beiden Seiten). NPC-Schiffe
+   * blitzen auf, wenn sie an einem Tor erscheinen oder dort verschwinden.
+   */
+  private gateJumps(state: GameState): void {
+    const flashAtGate = (sectorId: string, to: string) => {
+      const g = gatesOf(sectorId).find((x) => x.to === to);
+      if (g) this.fx.flash(sectorId, g.x, g.z, '#9fdcff');
+    };
+    for (const sh of state.ships) {
+      const prev = this.shipSector.get(sh.id);
+      if (prev && prev !== sh.sector && SECTOR_MAP[prev]) {
+        flashAtGate(prev, sh.sector);
+        flashAtGate(sh.sector, prev);
+      }
+      this.shipSector.set(sh.id, sh.sector);
+    }
+    const nearGate = (sectorId: string, x: number, z: number) => gatesOf(sectorId).find((g) => Math.hypot(g.x * 0.96 - x, g.z * 0.96 - z) < 6);
+    const alive = new Set<string>();
+    for (const n of state.npcs) {
+      alive.add(n.id);
+      if (!this.npcSeen.has(n.id)) {
+        const g = this.jumpsReady ? nearGate(n.sector, n.x, n.z) : undefined;
+        if (g) this.fx.flash(n.sector, g.x * 0.96, g.z * 0.96, '#9fdcff');
+      }
+      this.npcSeen.set(n.id, { sector: n.sector, x: n.x, z: n.z });
+    }
+    for (const [id, p] of this.npcSeen) {
+      if (alive.has(id)) continue;
+      const g = nearGate(p.sector, p.x, p.z);
+      if (g) this.fx.flash(p.sector, g.x * 0.96, g.z * 0.96, '#9fdcff');
+      this.npcSeen.delete(id);
+    }
+    this.jumpsReady = true;
   }
 
   /** Funkenregen an einer Station (Modul fertig, Schiff vom Stapel) */
@@ -615,21 +697,109 @@ export class SectorRenderer {
     this.labels.push({ text: st.name, x: sx, ys: [ly, sy - (ly - sy)], size: rel < 1.5 ? 13 : 14, color: problem ? '#ffd28a' : '#bff7ec', weight: 700, prio: 4, minRel: LABEL_AT.station, force: selected });
     const ob = detail ? Math.min(reach, 60) : 12 * s + 4;
     this.obstacles.push({ x: sx - ob, y: sy - ob, w: ob * 2, h: ob * 2 });
-    if (problem) {
+    // Problemsymbole: was die Station gerade ausbremst (Tipp öffnet den passenden Reiter)
+    const issues = stationIssues(st);
+    if (issues.length) {
       const o = detail ? Math.min(reach * 0.75, 70) : 12 * s + 4;
-      this.warnBadge(ctx, sx + o, sy - o);
+      this.problemMarkers(ctx, st, issues, sx, sy, o, now, rel, detail ? reach : 14 * s + 3);
     }
   }
 
-  private warnBadge(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-    ctx.fillStyle = C.amber;
+  /**
+   * Problemsymbole über einer Station. Herausgezoomt nur farbige Punkte, ab der Beschriftungs-Zoomstufe als Symbol:
+   * rot pulsierend = Vorprodukt fehlt, Kiste = Lager voll, Kran mit Sanduhr = Baulager wartet auf Material.
+   */
+  private problemMarkers(ctx: CanvasRenderingContext2D, st: Station, issues: Issue[], sx: number, sy: number, o: number, now: number, rel: number, ringR: number): void {
+    const full = rel >= LABEL_AT.station * 1.2 * Math.pow(2, (50 - this.density) / 25);
+    if (issues.includes('input')) {
+      // Langsames rotes Pulsieren um die ganze Station
+      const p = 0.5 + 0.5 * Math.sin(now / 520);
+      ctx.strokeStyle = rgba(C.red, 0.12 + 0.3 * p);
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, ringR + 3 + p * 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = rgba(C.red, 0.35 + 0.45 * p);
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+    }
+    const r = full ? 8.5 : 3.2;
+    const gap = full ? 19 : 8;
+    let x = sx + o, y = sy - o;
+    if (full) { x += 2; y -= 2; }
+    for (const kind of issues) {
+      const col = ISSUE_COLOR[kind];
+      ctx.save();
+      ctx.translate(x, y);
+      if (!full) {
+        ctx.fillStyle = rgba(col, 0.25);
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const pulse = kind === 'input' ? 0.5 + 0.5 * Math.sin(now / 520) : 1;
+        ctx.fillStyle = 'rgba(6,14,22,0.92)';
+        ctx.strokeStyle = rgba(col, 0.3);
+        ctx.lineWidth = 4;
+        roundRect(ctx, -r, -r, r * 2, r * 2, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = rgba(col, 0.6 + 0.4 * pulse);
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        this.issueGlyph(ctx, kind, col);
+      }
+      ctx.restore();
+      this.markers.push({ x, y, r: Math.max(14, r + 6), station: st.id, tab: ISSUE_TAB[kind] });
+      x += gap;
+    }
+  }
+
+  /** Kleine Bildzeichen in den Problemsymbolen (Größe ca. ±5 px) */
+  private issueGlyph(ctx: CanvasRenderingContext2D, kind: Issue, col: string): void {
+    ctx.strokeStyle = col;
+    ctx.fillStyle = col;
+    ctx.lineWidth = 1.4;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y + 5); ctx.lineTo(x - 7, y + 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#1a1206';
-    ctx.fillRect(x - 0.9, y - 3, 1.8, 4.5);
-    ctx.fillRect(x - 0.9, y + 2.4, 1.8, 1.6);
+    if (kind === 'input') {
+      // Ausrufezeichen
+      ctx.fillRect(-1, -5, 2, 6.5);
+      ctx.fillRect(-1, 3, 2, 2);
+      return;
+    }
+    if (kind === 'storage') {
+      // Volle Kiste mit Deckel
+      ctx.rect(-4.5, -2, 9, 7);
+      ctx.moveTo(-5.5, -2); ctx.lineTo(-3.5, -5); ctx.lineTo(3.5, -5); ctx.lineTo(5.5, -2);
+      ctx.moveTo(-1.5, 1); ctx.lineTo(1.5, 1);
+      ctx.stroke();
+      return;
+    }
+    // Kran mit Haken und Sanduhr
+    ctx.moveTo(-5, 5.5); ctx.lineTo(-5, -5); ctx.lineTo(5, -5);
+    ctx.moveTo(-5, -2.5); ctx.lineTo(-2.5, -5);
+    ctx.moveTo(2.5, -5); ctx.lineTo(2.5, -2.5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0.3, -1.6); ctx.lineTo(4.7, -1.6); ctx.lineTo(0.3, 5.2); ctx.lineTo(4.7, 5.2); ctx.closePath();
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  }
+
+  /** Problemsymbol unter dem Finger: öffnet die Station mit dem passenden Reiter */
+  markerAt(sx: number, sy: number): { station: string; tab: string } | null {
+    let best: { station: string; tab: string } | null = null, bd = Infinity;
+    for (const m of this.markers) {
+      const d = Math.hypot(m.x - sx, m.y - sy);
+      if (d <= m.r && d < bd) { bd = d; best = { station: m.station, tab: m.tab }; }
+    }
+    return best;
   }
 
   /** Stationskern: Neon-Sechseck mit langsam kreisendem Außenring */
@@ -1156,33 +1326,52 @@ export class SectorRenderer {
     }
   }
 
-  private drawRoutes(ctx: CanvasRenderingContext2D, state: GameState, ui: UIState, cam: Camera, now: number): void {
+  private drawRoutes(ctx: CanvasRenderingContext2D, state: GameState, ui: UIState, cam: Camera, now: number, motion: boolean): void {
     const selStation = ui.selection?.kind === 'station' ? ui.selection.id : '';
     const selShip = ui.selection?.kind === 'ship' ? ui.selection.id : '';
-    // Feste Versorgungslinien: Linie mit fließenden Punkten
-    for (const s of state.ships) {
-      if (s.mode !== 'route' || !s.route) continue;
-      const a = endpointPlace(state, s.route.from), b = endpointPlace(state, s.route.to);
-      if (!a || !b || a.sector !== ui.sector || b.sector !== ui.sector) continue;
-      const hl = s.id === selShip || s.home === selStation;
-      this.flowLine(ctx, cam, a.x, a.z, b.x, b.z, WARES[s.route.ware].color, now, hl ? 0.95 : 0.55, true);
+    const rel = cam.zoom / (cam.fitZoom || 1);
+    const s = cam.iconScale();
+    // Warenfluss: Routen an = alle Flüsse, sonst nur die der ausgewählten Station
+    // Flüsse ändern sich langsam: höchstens alle 0,3 s neu ermitteln
+    if (this.flowCache.sector !== ui.sector || this.flowCache.state !== state || now - this.flowCache.at > 300 || now < this.flowCache.at) {
+      this.flowCache = { sector: ui.sector, state, at: now, flows: sectorFlows(state, ui.sector, (w) => WARES[w]?.volume ?? 1) };
     }
+    const flows = this.flowCache.flows
+      .filter((f) => (!ui.flowWare || f.ware === ui.flowWare) && (ui.routes || f.fromKey === selStation || f.toKey === selStation));
+    // Mehrere Waren zwischen denselben Orten: nebeneinander gefächert
+    const lane = new Map<string, number>();
+    flows.sort((a, b) => b.volume - a.volume);
+    for (const f of flows) {
+      const pair = `${f.fromKey}>${f.toKey}`;
+      const idx = lane.get(pair) ?? 0;
+      lane.set(pair, idx + 1);
+      const touches = !!selStation && (f.fromKey === selStation || f.toKey === selStation);
+      const dim = selStation && !touches ? 0.3 : 1;
+      this.wareFlow(ctx, cam, f, now, motion, idx, dim * (f.kind === 'npc' ? 0.55 : 1), s);
+      // Menge pro Stunde an der ausgewählten Station oder nah herangezoomt
+      if (f.rate >= 1 && (touches || rel >= 3) && !f.viaGate) {
+        const [x1, y1] = cam.toScreen(f.ax, f.az), [x2, y2] = cam.toScreen(f.bx, f.bz);
+        const [mx, my] = bendPoint(x1, y1, x2, y2, idx);
+        this.labels.push({ text: `${WARES[f.ware].name} ${Math.round(f.rate).toLocaleString('de-DE')}/h`, x: mx, ys: [my - 9, my + 11], size: 10.5, color: rgba(WARES[f.ware].color, 0.95), weight: 600, prio: 1, minRel: LABEL_AT.amount, force: touches && rel >= 1.2 });
+      }
+    }
+    if (!ui.routes) return;
     // Aktuelle Flüge
-    for (const s of state.ships) {
-      if (s.sector !== ui.sector || !s.path.length) continue;
-      const cls = SHIP_MAP[s.cls];
-      const hl = s.id === selShip || s.home === selStation;
-      if (!hl && !selShip && !selStation && state.ships.length > 12) continue;
+    for (const sh of state.ships) {
+      if (sh.sector !== ui.sector || !sh.path.length) continue;
+      const cls = SHIP_MAP[sh.cls];
+      const hl = sh.id === selShip || sh.home === selStation;
+      if (!hl) continue;
       const color = cls.role === 'miner' ? C.miner : C.trader;
       ctx.setLineDash([6, 7]);
       ctx.lineDashOffset = -now / 50;
-      ctx.strokeStyle = rgba(color, hl ? 0.85 : 0.3);
-      ctx.lineWidth = hl ? 1.8 : 1;
+      ctx.strokeStyle = rgba(color, 0.75);
+      ctx.lineWidth = 1.4;
       ctx.beginPath();
-      let [px, py] = cam.toScreen(s.x, s.z);
+      let [px, py] = cam.toScreen(sh.x, sh.z);
       ctx.moveTo(px, py);
       let endX = px, endY = py;
-      for (const p of s.path) {
+      for (const p of sh.path) {
         if (p.sector !== ui.sector) break;
         [px, py] = cam.toScreen(p.x, p.z);
         ctx.lineTo(px, py);
@@ -1191,19 +1380,83 @@ export class SectorRenderer {
       }
       ctx.stroke();
       ctx.setLineDash([]);
-      if (hl) this.arrowHead(ctx, endX, endY, s.path.length > 0 ? Math.atan2(endY - cam.toScreen(s.x, s.z)[1], endX - cam.toScreen(s.x, s.z)[0]) : 0, color);
+      const [hx, hy] = cam.toScreen(sh.x, sh.z);
+      this.arrowHead(ctx, endX, endY, Math.atan2(endY - hy, endX - hx), color);
     }
-    // Zuordnung Miner → Feld der ausgewählten Station
-    if (selStation) {
-      const st = stationById(state, selStation);
-      if (st && st.sector === ui.sector) {
-        const fields = new Set(state.ships.filter((s) => s.home === st.id && s.miningField).map((s) => s.miningField));
-        for (const fid of fields) {
-          const info = fieldById(fid);
-          if (!info || info.sector.id !== ui.sector) continue;
-          this.flowLine(ctx, cam, info.field.x, info.field.z, st.x, st.z, WARES[info.field.ware].color, now, 0.7, false);
-        }
-      }
+  }
+
+  /**
+   * Eine Flusslinie: Stärke nach Volumen pro Stunde, Lichtpunkte laufen in Transportrichtung.
+   * Nur angekündigte Aufträge (noch nichts geliefert) sind dünn und gestrichelt.
+   */
+  private wareFlow(ctx: CanvasRenderingContext2D, cam: Camera, f: FlowSeg, now: number, motion: boolean, lane: number, alpha: number, s: number): void {
+    const [x1, y1] = cam.toScreen(f.ax, f.az);
+    const [x2, y2] = cam.toScreen(f.bx, f.bz);
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len < 6) return;
+    const minX = Math.min(x1, x2), maxX = Math.max(x1, x2), minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+    if (maxX < -40 || minX > cam.w + 40 || maxY < -40 || minY > cam.h + 40) return;
+    const color = WARES[f.ware]?.color ?? '#9fb4c8';
+    const [cx, cy] = bendPoint(x1, y1, x2, y2, lane);
+    const k = Math.min(1.15, 0.55 + s * 0.45);
+    const w = f.volume > 0 ? Math.min(9, 1.2 + 1.5 * Math.log2(1 + f.volume / 300)) * k : 1;
+    const curve = () => {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(cx, cy, x2, y2);
+    };
+    ctx.lineCap = 'round';
+    if (f.volume <= 0) {
+      ctx.setLineDash([3, 7]);
+      ctx.lineDashOffset = motion ? -now / 60 : 0;
+      ctx.strokeStyle = rgba(color, 0.4 * alpha);
+      ctx.lineWidth = 1.2;
+      curve();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+    // Breiter, blasser Strom mit hellem Kern (Neon ohne Weichzeichner)
+    ctx.strokeStyle = rgba(color, 0.12 * alpha);
+    ctx.lineWidth = w * 2.4 + 2;
+    curve();
+    ctx.stroke();
+    ctx.strokeStyle = rgba(color, 0.42 * alpha);
+    ctx.lineWidth = w;
+    ctx.stroke();
+    // Lichtpunkte entlang der Kurve – Abstand in Bildschirmpixeln, mehr Menge = dichter
+    const gap = Math.max(16, 42 - w * 3, len / 60);
+    const n = Math.floor(len / gap);
+    const off = motion ? ((now / 1000) * 34) % gap : 0;
+    const dotR = Math.max(1, w * 0.42);
+    ctx.fillStyle = rgba(color, 0.9 * alpha);
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const t = (i * gap + off) / len;
+      if (t > 1) break;
+      const u = 1 - t;
+      const px = u * u * x1 + 2 * u * t * cx + t * t * x2;
+      const py = u * u * y1 + 2 * u * t * cy + t * t * y2;
+      if (px < -10 || py < -10 || px > cam.w + 10 || py > cam.h + 10) continue;
+      ctx.moveTo(px + dotR, py);
+      ctx.arc(px, py, dotR, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    // Richtungspfeil in der Mitte
+    if (len > 70) {
+      const t = 0.5, u = 0.5;
+      const px = u * u * x1 + 2 * u * t * cx + t * t * x2, py = u * u * y1 + 2 * u * t * cy + t * t * y2;
+      const a = Math.atan2(y2 - cy - (cy - y1), x2 - cx - (cx - x1));
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(a);
+      ctx.strokeStyle = rgba(color, 0.85 * alpha);
+      ctx.lineWidth = 1.6;
+      const h = 3 + w * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(-h, -h); ctx.lineTo(h * 0.4, 0); ctx.lineTo(-h, h);
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -1219,32 +1472,6 @@ export class SectorRenderer {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-  }
-
-  private flowLine(ctx: CanvasRenderingContext2D, cam: Camera, ax: number, az: number, bx: number, bz: number, color: string, now: number, alpha: number, curved: boolean): void {
-    const [x1, y1] = cam.toScreen(ax, az);
-    const [x2, y2] = cam.toScreen(bx, bz);
-    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-    const len = Math.hypot(x2 - x1, y2 - y1);
-    const nx = -(y2 - y1) / (len || 1), ny = (x2 - x1) / (len || 1);
-    const bend = curved ? len * 0.12 : 0;
-    const cx = mx + nx * bend, cy = my + ny * bend;
-    ctx.strokeStyle = rgba(color, alpha * 0.35);
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(cx, cy, x2, y2);
-    ctx.stroke();
-    ctx.setLineDash([2, 10]);
-    ctx.lineDashOffset = -now / 40;
-    ctx.strokeStyle = rgba(color, alpha);
-    ctx.lineWidth = 2.4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(cx, cy, x2, y2);
-    ctx.stroke();
-    ctx.setLineDash([]);
   }
 
   // ---------- Treffertest ----------
@@ -1271,6 +1498,27 @@ export class SectorRenderer {
     for (const f of sec.fields) consider({ kind: 'field', id: f.id }, f.x, f.z, Math.max(24, f.r * cam.zoom));
     return best ? (best as { sel: Selection }).sel : null;
   }
+}
+
+export type Issue = 'input' | 'storage' | 'build';
+const ISSUE_COLOR: Record<Issue, string> = { input: '#ff5c6c', storage: '#ffb547', build: '#ffd27a' };
+const ISSUE_TAB: Record<Issue, string> = { input: 'overview', storage: 'storage', build: 'modules' };
+
+/** Was die Station gerade ausbremst: fehlendes Vorprodukt, volles Lager, Baulager ohne Material */
+export function stationIssues(st: Station): Issue[] {
+  const out: Issue[] = [];
+  if (st.modules.some((m) => m.stall === 'input')) out.push('input');
+  if (st.modules.some((m) => m.stall === 'storage')) out.push('storage');
+  if (st.build && st.waiting === 'material') out.push('build');
+  return out;
+}
+
+/** Kontrollpunkt einer Flusskurve: leicht gebogen, Hin- und Rückweg liegen so nebeneinander, weitere Waren gefächert */
+function bendPoint(x1: number, y1: number, x2: number, y2: number, lane: number): [number, number] {
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+  const bend = len * 0.1 + 6 + lane * 9;
+  return [(x1 + x2) / 2 + nx * bend, (y1 + y2) / 2 + ny * bend];
 }
 
 /** Stationen werden überhöht gezeichnet, damit ihre Module schon bei mittlerem Zoom erkennbar sind */

@@ -158,7 +158,8 @@ function rgbaFrom(css: string, a: number): string {
 }
 
 /** Hintergrund mit Nebel und Sternen, eingefärbt je Sektor */
-export function backgroundSprite(w: number, h: number, seed: number, tint: [string, string]): HTMLCanvasElement {
+/** glow: Stärke der eingefärbten Nebelflecken, stars: Sterndichte (je nach Sektorcharakter) */
+export function backgroundSprite(w: number, h: number, seed: number, tint: [string, string], glow = 1, stars = 1): HTMLCanvasElement {
   const [c, ctx] = canvas(1);
   c.width = w;
   c.height = h;
@@ -174,12 +175,12 @@ export function backgroundSprite(w: number, h: number, seed: number, tint: [stri
     const x = r() * w, y = r() * h, rad = Math.max(w, h) * (0.12 + r() * 0.3);
     const gg = ctx.createRadialGradient(x, y, 0, x, y, rad);
     const col = r() < 0.5 ? tint[0] : tint[1];
-    gg.addColorStop(0, rgba(col, 0.05 + r() * 0.05));
+    gg.addColorStop(0, rgba(col, (0.05 + r() * 0.05) * glow));
     gg.addColorStop(1, rgba(col, 0));
     ctx.fillStyle = gg;
     ctx.fillRect(0, 0, w, h);
   }
-  const count = Math.round((w * h) / 1400);
+  const count = Math.round(((w * h) / 1400) * stars);
   for (let i = 0; i < count; i++) {
     const x = r() * w, y = r() * h;
     const b = r();

@@ -19,6 +19,8 @@ import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
 import { GALAXY_HEX, drawGalaxy, galaxyHit, sectorCenter } from '../render/galaxyView';
 import { SectorRenderer } from '../render/sectorView';
+import { ScreenFx } from '../render/screenFx';
+import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
 import { fmtCr } from './format';
 import { icon } from './icons';
@@ -48,6 +50,9 @@ let dirtyUI = true;
 let lastCredits = 0;
 let creditFlash = '';
 let creditFlashTimer = 0;
+/** Angezeigter Kontostand: zählt sanft zum echten Wert hoch */
+let shownCredits = 0;
+const screenFx = new ScreenFx();
 let pointerInUI = false;
 
 // ---------- Start ----------
@@ -69,6 +74,8 @@ export function start(): void {
   }
   ui.sector = state.stations[0]?.sector ?? 'zhin';
   lastCredits = state.credits;
+  shownCredits = state.credits;
+  screenFx.onArrive = () => document.querySelector('#hud .chip.credits')?.animate?.([{ transform: 'scale(1)' }, { transform: 'scale(1.08)', boxShadow: '0 0 22px rgba(255,211,107,0.55)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
   resize();
   window.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(canvas);
@@ -101,7 +108,14 @@ export function start(): void {
     if (e.type === 'sale' && e.sector === ui.sector && Math.abs(e.value) >= 1000 && ui.view === 'sector') {
       renderer.addFloat(e.sector, e.x, e.z, e.value);
       if (e.value > 0) sfx.coin();
+      // Große Verkäufe: Credits fliegen zur Anzeige
+      if (e.value >= COIN_MIN) {
+        const [sx, sy] = cam.toScreen(e.x, e.z);
+        const t = creditTarget();
+        if (t && sx > -20 && sy > -20 && sx < cam.w + 20 && sy < cam.h + 20) screenFx.coinsTo(sx, sy, t[0], t[1], Math.round(4 + 3 * Math.log2(e.value / COIN_MIN)));
+      }
     }
+    if (e.type === 'chapter') chapterBanner(e);
     if (e.type === 'moduleDone') {
       sfx.build();
       navigator.vibrate?.(15);
@@ -118,7 +132,7 @@ export function start(): void {
   renderUI();
   fitSector();
   // Zugriff für automatisierte Tests
-  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector };
+  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector, renderer };
   requestAnimationFrame(frame);
   const boot = document.getElementById('boot');
   if (boot) { boot.style.opacity = '0'; setTimeout(() => boot.remove(), 500); }
@@ -170,6 +184,9 @@ function frame(now: number): void {
   } else {
     renderer.draw(ctx, state, ui, cam, now, dt);
   }
+  screenFx.enabled = !ui.reducedMotion;
+  screenFx.draw(ctx, dt);
+  tickCredits(dt);
   // Credits-Anzeige kurz einfärben
   if (Math.abs(state.credits - lastCredits) > 1) {
     creditFlash = state.credits > lastCredits ? 'flash-up' : 'flash-down';
@@ -187,6 +204,52 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
+/** Ab diesem Verkaufswert fliegen Credits zur Anzeige */
+const COIN_MIN = 20_000;
+
+/** Mitte der Credits-Anzeige in Kartenkoordinaten (Bildschirmpixel relativ zur Karte) */
+function creditTarget(): [number, number] | null {
+  const el = document.querySelector('#hud .chip.credits');
+  if (!el) return null;
+  const r = el.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+  return [r.left + r.width / 2 - c.left, r.top + r.height / 2 - c.top];
+}
+
+/** Kontostand sanft nachzählen (ohne Animationen sofort) */
+function tickCredits(dt: number): void {
+  const diff = state.credits - shownCredits;
+  if (!diff) return;
+  shownCredits = ui.reducedMotion || Math.abs(diff) < 1 ? state.credits : shownCredits + diff * (1 - Math.exp(-dt * 4.5));
+  if (Math.abs(state.credits - shownCredits) < 1) shownCredits = state.credits;
+  const el = document.querySelector('#hud .chip.credits b');
+  const text = fmtCr(shownCredits);
+  if (el && el.textContent !== text) el.textContent = text;
+}
+
+/** Großes Banner in Fraktionsfarbe, wenn ein Kapitel abgeschlossen ist */
+function chapterBanner(e: { index: number; title: string; credits: number; faction: keyof typeof FACTIONS }): void {
+  const color = FACTIONS[e.faction].color;
+  const host = $('banner');
+  host.innerHTML = `<div class="banner-in" style="--fc:${color}"><div class="banner-glow"></div><small>Kapitel ${e.index + 1} abgeschlossen</small><b>${e.title.replace(/[<&>]/g, '')}</b><span class="num">+${fmtCr(e.credits)}</span></div>`;
+  host.hidden = false;
+  host.classList.toggle('still', ui.reducedMotion);
+  host.classList.remove('show');
+  void host.offsetWidth;
+  host.classList.add('show');
+  navigator.vibrate?.([30, 60, 90]);
+  const c = canvas.getBoundingClientRect();
+  const box = host.firstElementChild!.getBoundingClientRect();
+  const cx = box.left + box.width / 2 - c.left, cy = box.top + box.height / 2 - c.top;
+  screenFx.burst(cx, cy, color, 70);
+  setTimeout(() => {
+    const t = creditTarget();
+    if (t) screenFx.coinsTo(cx, cy + 20, t[0], t[1], 16);
+  }, 900);
+  clearTimeout(bannerTimer);
+  bannerTimer = window.setTimeout(() => { host.classList.remove('show'); host.hidden = true; }, 3200);
+}
+let bannerTimer = 0;
+
 function save(): void {
   if (!state) return;
   const ok = saveLocal(state);
@@ -196,7 +259,7 @@ function save(): void {
 // ---------- Oberfläche ----------
 
 function renderUI(): void {
-  morph($('hud'), hudHtml(state, ui, creditFlash));
+  morph($('hud'), hudHtml(state, ui, creditFlash, shownCredits));
   morph($('nav'), navHtml(state, ui));
   const card = $('card');
   const cardContent = ui.panel ? '' : cardHtml(state, ui);
@@ -280,6 +343,13 @@ function onTap(sx: number, sy: number): void {
     const check = A.canPlaceStation(state, ui.sector, x, z);
     ui.placing = { x, z, valid: check.ok, msg: check.msg, set: true };
     refresh();
+    return;
+  }
+  // Problemsymbol: direkt zum passenden Reiter der Station
+  const mark = renderer.markerAt(sx, sy);
+  if (mark) {
+    ui.selection = { kind: 'station', id: mark.station };
+    openPanel('station', mark.station, mark.tab);
     return;
   }
   const sel = renderer.hitTest(state, ui, cam, sx, sy);
@@ -570,6 +640,7 @@ function onClick(e: MouseEvent): void {
       }
       case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
       case 'routes-toggle': ui.routes = !ui.routes; refresh(); break;
+      case 'flow-ware': ui.flowWare = ui.flowWare === d.ware ? '' : d.ware ?? ''; refresh(); break;
       case 'motion-toggle': ui.reducedMotion = !ui.reducedMotion; saveMotionSetting(ui.reducedMotion); refresh(); break;
       case 'zoom-in': cam.zoomAt(1.5, cam.w / 2, cam.h / 2); break;
       case 'zoom-out': cam.zoomAt(1 / 1.5, cam.w / 2, cam.h / 2); break;

@@ -79,6 +79,15 @@ input, select, textarea { font: inherit; color: var(--text); }
 .clock { font-family: var(--font-display); font-size: 12px; color: var(--muted); letter-spacing: 0.05em; }
 
 .tool-row { display: flex; gap: 8px; align-items: flex-start; padding: 0 2px; }
+.flow-filter { display: flex; gap: 6px; overflow-x: auto; padding: 0 2px 2px; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
+.flow-filter::-webkit-scrollbar { display: none; }
+.flow-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 11px; border-radius: 17px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text-2); font-size: 13px; font-weight: 600;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.flow-chip i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+.flow-chip.on { color: var(--text); border-color: rgba(63, 224, 197, 0.7); background: rgba(8, 40, 44, 0.85); }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px;
   border-radius: 12px; border: 1px solid var(--line-2); background: var(--panel);
@@ -146,6 +155,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 .stats3 .ic { color: var(--text-2); }
 .stats3 .warn .ic, .stats3 .warn { color: var(--amber); }
 .stats3 span { font-size: 12.5px; line-height: 1.2; min-width: 0; }
+.stats3 .warn span { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
 .stats3 span b { display: block; font-family: var(--font-display); font-weight: 600; font-size: 14px; }
 .card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .card-actions > .btn { flex: 1 1 auto; white-space: nowrap; }
@@ -526,3 +536,30 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 /* Fertigstellung in der Werft: eigene, gut lesbare Zeile */
 .eta-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 4px 0 6px; font-size: 15px; color: var(--amber); }
 .eta-line span { font-size: 13px; color: var(--text-2); }
+
+/* ---------- Kapitelbanner ---------- */
+#banner { position: absolute; inset: 0; z-index: 90; display: grid; place-items: center; pointer-events: none; padding: 0 16px; }
+#banner[hidden] { display: none; }
+.banner-in {
+  position: relative; width: min(100%, 380px); padding: 22px 18px 20px; text-align: center; border-radius: 18px;
+  background: linear-gradient(180deg, rgba(10, 22, 32, 0.94), rgba(6, 14, 22, 0.94));
+  border: 1px solid var(--fc); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset, 0 0 36px color-mix(in srgb, var(--fc) 45%, transparent), 0 18px 50px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.banner-in small { display: block; font-family: var(--font-display); font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fc); }
+.banner-in b { display: block; margin: 8px 0 10px; font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.15; color: #fff; text-shadow: 0 0 18px color-mix(in srgb, var(--fc) 60%, transparent); overflow-wrap: anywhere; }
+.banner-in span { font-size: 19px; font-weight: 700; color: #ffe39a; }
+.banner-glow { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fc) 35%, transparent) 50%, transparent 70%); transform: translateX(-100%); }
+#banner.show .banner-in { animation: banner-pop 3.2s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+#banner.show .banner-glow { animation: banner-sweep 1.4s 0.25s ease-out both; }
+#banner.show.still .banner-in { animation: banner-fade 3.2s linear both; }
+#banner.show.still .banner-glow { animation: none; }
+@keyframes banner-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  10% { opacity: 1; transform: scale(1.04); }
+  16% { transform: scale(1); }
+  86% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96) translateY(-12px); }
+}
+@keyframes banner-sweep { to { transform: translateX(100%); } }
+@keyframes banner-fade { 0% { opacity: 0; } 8% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }

@@ -36,6 +36,8 @@ export interface UIState {
   selection: Selection | null;
   placing: { x: number; z: number; valid: boolean; msg: string; set: boolean } | null;
   routes: boolean;
+  /** Warenfilter der Flusslinien ('' = alle Waren) */
+  flowWare: string;
   galaxySel: string | null;
   reducedMotion: boolean;
   /** Beschriftungsdichte der Karte 0 (wenig) bis 100 (viel), Standard 50 */
@@ -66,6 +68,7 @@ export const ui: UIState = {
   selection: null,
   placing: null,
   routes: true,
+  flowWare: '',
   galaxySel: null,
   reducedMotion: initialReducedMotion(),
   labelDensity: initialLabelDensity(),

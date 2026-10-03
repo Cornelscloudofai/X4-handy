@@ -390,10 +390,19 @@ export function claimMission(state: GameState): { ok: boolean; msg: string } {
   for (const [f, n] of Object.entries(m.reward.rep ?? {})) state.rep[f as FactionId] = Math.min(30, state.rep[f as FactionId] + (n ?? 0));
   for (const c of state.contracts) if (c.story && c.status === 'active') c.status = 'done';
   log(state, `Belohnung erhalten: ${m.reward.credits.toLocaleString('de-DE')} Cr.`, 'good');
+  const done = state.story.index;
   state.story.index++;
   startMission(state);
   emit({ type: 'story' });
+  emit({ type: 'chapter', index: done, title: m.title, credits: m.reward.credits, faction: missionFaction(m) });
   return { ok: true, msg: m.title + ' abgeschlossen.' };
+}
+
+/** Fraktion eines Kapitels: wer den meisten Ruf vergibt, sonst der Lieferort, sonst die Freien Familien */
+export function missionFaction(m: StoryMission): FactionId {
+  const rep = Object.entries(m.reward.rep ?? {}).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
+  if (rep.length) return rep[0][0] as FactionId;
+  return m.delivery ? sector(m.delivery.sector).faction : 'frf';
 }
 
 export function missionSectorName(m: StoryMission): string {

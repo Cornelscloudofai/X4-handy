@@ -1,4 +1,5 @@
 // HTML-Bausteine aller Bildschirme. Aktionen laufen über data-act (siehe app.ts).
+import { sectorFlows } from '../engine/flows';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, sector } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
@@ -61,7 +62,7 @@ function epName(state: GameState, ep: TradeEndpoint): string {
 
 // ---------- HUD ----------
 
-export function hudHtml(state: GameState, ui: UIState, creditFlash: string): string {
+export function hudHtml(state: GameState, ui: UIState, creditFlash: string, shownCredits = state.credits): string {
   const alerts = allAlerts(state);
   const sec = SECTOR_MAP[ui.sector];
   const speedLabel = `×${state.speed}`;
@@ -69,7 +70,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string): str
   return `
   <div class="hud-row">
     <button class="chip sector" ${act('galaxy')} aria-label="Galaxiekarte öffnen">${icon(inGalaxy ? 'sector' : 'galaxy', 18)}<b>${esc(inGalaxy ? 'Galaxie' : sec.name)}</b></button>
-    <div class="chip credits ${creditFlash}" aria-label="Credits"><b class="num">${fmtCr(state.credits)}</b></div>
+    <div class="chip credits ${creditFlash}" aria-label="Credits"><b class="num">${fmtCr(shownCredits)}</b></div>
     <div class="chip time ${ui.paused ? 'paused' : ''}">
       <button ${act('pause')} aria-label="${ui.paused ? 'Fortsetzen' : 'Pausieren'}">${icon(ui.paused ? 'play' : 'pause', 18)}</button>
       <button class="speed" ${act('speed')} aria-label="Spieltempo">${speedLabel}</button>
@@ -85,7 +86,17 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string): str
     <button class="btn ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${icon('routes', 20)}Routen</button>
     <button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button>
     <div class="zoom"><button ${act('zoom-in')} aria-label="Hineinzoomen">${icon('plus', 20)}</button><button ${act('zoom-out')} aria-label="Herauszoomen">${icon('minus', 20)}</button></div>
-  </div>`}`;
+  </div>${flowFilter(state, ui)}`}`;
+}
+
+/** Warenfilter für die Flusslinien: nur Waren, die gerade im Sektor fließen */
+function flowFilter(state: GameState, ui: UIState): string {
+  if (!ui.routes || ui.placing) return '';
+  const wares = [...new Set(sectorFlows(state, ui.sector, () => 1).map((f) => f.ware))].sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
+  if (!wares.length) return '';
+  if (ui.flowWare && !wares.includes(ui.flowWare)) wares.unshift(ui.flowWare);
+  const chip = (id: string, label: string, color?: string) => `<button class="flow-chip ${ui.flowWare === id ? 'on' : ''}" ${act('flow-ware', { ware: id })}>${color ? `<i style="background:${color}"></i>` : ''}${esc(label)}</button>`;
+  return `<div class="flow-filter" aria-label="Warenfluss filtern">${chip('', 'Alle Waren')}${wares.map((w) => chip(w, WARES[w].name, WARES[w].color)).join('')}</div>`;
 }
 
 export function objectiveHtml(state: GameState, ui: UIState): string {
@@ -150,7 +161,7 @@ function stationCard(state: GameState, st: Station): string {
     ? `<div>${icon('wrench', 22)}<span><b>${building} Modul${building === 1 ? '' : 'e'} im Bau</b>${bar(buildFrac)}</span></div>`
     : `<div>${icon('factory', 22)}<span><b>${pct(productionUtil(st))}</b>Auslastung</span></div>`;
   const cell2 = alerts.length
-    ? `<div class="warn">${icon('warn', 22)}<span><b>${esc(alerts[0].ware ? WARES[alerts[0].ware].name : 'Achtung')}</b>${esc(alerts[0].ware ? 'fehlt' : alerts[0].text.split(': ')[1] ?? '')}</span></div>`
+    ? `<div class="warn">${icon('warn', 22)}<span><b>${esc(alerts[0].ware ? WARES[alerts[0].ware].name : 'Achtung')}</b>${esc(alerts[0].ware ? 'fehlt' : alerts[0].short ?? alerts[0].text.split(': ')[1] ?? '')}</span></div>`
     : runway && runway.seconds < 6 * 3600
       ? `<div class="${runway.seconds < 3600 ? 'warn' : ''}">${icon('clock', 22)}<span><b>${esc(WARES[runway.ware].name)}</b>reicht ${fmtDur(runway.seconds)}</span></div>`
       : `<div>${icon('check', 22)}<span><b>Versorgt</b>keine Engpässe</span></div>`;

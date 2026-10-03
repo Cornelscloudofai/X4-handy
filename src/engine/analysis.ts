@@ -5,7 +5,8 @@ import { WARES } from '../data/wares';
 import { buildMissing, hasDockFor, stationRates, storageCap, usedVolume } from './economy';
 import type { GameState, Station } from './types';
 
-export interface Alert { station: string; text: string; severity: 'warn' | 'bad'; ware?: string }
+/** short: Kurzfassung für die Stationskarte auf der Karte */
+export interface Alert { station: string; text: string; severity: 'warn' | 'bad'; ware?: string; short?: string }
 
 export function stationAlerts(state: GameState, st: Station): Alert[] {
   const out: Alert[] = [];
@@ -40,15 +41,15 @@ export function stationAlerts(state: GameState, st: Station): Alert[] {
     const missing = buildMissing(st);
     const miss = Object.entries(missing).map(([id, n]) => `${Math.ceil(n).toLocaleString('de-DE')} ${WARES[id].name}`);
     const local = Object.keys(missing).filter((id) => (st.inventory[id] ?? 0) >= 1).map((id) => WARES[id].name);
-    if (miss.length) out.push({ station: st.id, text: `${st.name}: Baulager braucht noch ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? ' …' : ''}${local.length ? ` – ${local.join(', ')} liegt im Stationslager: „Umladen“` : st.autoBuyBuild === false ? ' (nur eigenes Material)' : !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') ? ' – eigene Transporter beschleunigen die Lieferung' : ''}`, severity: 'warn' });
+    if (miss.length) out.push({ station: st.id, text: `${st.name}: Baulager braucht noch ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? ' …' : ''}${local.length ? ` – ${local.join(', ')} liegt im Stationslager: „Umladen“` : st.autoBuyBuild === false ? ' (nur eigenes Material)' : !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') ? ' – eigene Transporter beschleunigen die Lieferung' : ''}`, severity: 'warn', short: 'Baulager wartet' });
   }
   // Ohne eigenen Transporter handelt niemand automatisch für diese Station
   if (hasProd && !ships.some((s) => SHIP_MAP[s.cls].role === 'trader') && state.ships.some((s) => SHIP_MAP[s.cls].role === 'trader')) {
-    out.push({ station: st.id, text: `${st.name}: kein eigener Transporter – Überschüsse werden nicht verkauft, Fehlendes nicht eingekauft. Transporter kaufen oder einen hierher versetzen.`, severity: 'warn' });
+    out.push({ station: st.id, text: `${st.name}: kein eigener Transporter – Überschüsse werden nicht verkauft, Fehlendes nicht eingekauft. Transporter kaufen oder einen hierher versetzen.`, severity: 'warn', short: 'Kein Transporter' });
   }
   // Überförderung: Miner bringen wiederholt mehr, als ins Lager passt
   const over = new Set(ships.filter((s) => SHIP_MAP[s.cls].role === 'miner' && (s.restStreak ?? 0) >= 2 && s.lastRest).map((s) => s.lastRest!.ware));
-  for (const w of over) out.push({ station: st.id, text: `${st.name}: Miner fördern mehr ${WARES[w].name}, als die Station verbraucht – Überschuss wird verkauft. Weniger Miner oder mehr Verbraucher einplanen.`, severity: 'warn' });
+  for (const w of over) out.push({ station: st.id, text: `${st.name}: Miner fördern mehr ${WARES[w].name}, als die Station verbraucht – Überschuss wird verkauft. Weniger Miner oder mehr Verbraucher einplanen.`, severity: 'warn', short: `Zu viel ${WARES[w].name}` });
   return out;
 }
 

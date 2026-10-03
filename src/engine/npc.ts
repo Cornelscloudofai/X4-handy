@@ -4,6 +4,7 @@ import { SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
 import { BUILD_TOLERANCE, addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, marketStock, receiveWare, roomAt, stationWares } from './economy';
 import { contractDeliver } from './contracts';
+import { endOf, recordFlow } from './flows';
 import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
 import type { GameState, NpcShip } from './types';
 import { emit, pick, rand, randRange, weightedPick } from './util';
@@ -137,6 +138,7 @@ function npcTrade(state: GameState, n: NpcShip): void {
     if (qty < 1) return;
     addWare(st, n.ware, -qty);
     const value = applyMarketTrade(state, n.sector, n.ware, qty);
+    recordFlow(state, endOf(state, { kind: 'station', id: st.id }), endOf(state, { kind: 'market', sector: n.sector }), n.ware, qty, 'npc');
     st.income += value;
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value });
   } else if (n.kind === 'seller') {
@@ -146,6 +148,7 @@ function npcTrade(state: GameState, n: NpcShip): void {
     if (qty < 1) return;
     const cost = applyMarketTrade(state, n.sector, n.ware, -qty);
     receiveWare(state, st, n.ware, qty, 'market');
+    recordFlow(state, endOf(state, { kind: 'market', sector: n.sector }), endOf(state, { kind: 'station', id: st.id }), n.ware, qty, 'npc');
     st.expenses += cost;
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value: -cost });
   }
