@@ -407,15 +407,22 @@ function stationYard(state: GameState, st: Station): string {
   };
   const current = y?.build ? (() => {
     const c = SHIP_MAP[y.build.cls];
+    const f = 1 - y.build.remaining / y.build.total;
     return `<div class="row build-row locked">${icon('yard', 20, 'muted')}<div class="grow"><div class="title">${esc(c.name)}</div>
-      <div class="sub">${esc(jobLabel(y.build.order))} · noch ${fmtDur(y.build.remaining)}</div>${bar(1 - y.build.remaining / y.build.total, 'amber')}</div></div>`;
+      <div class="sub wrap">${esc(jobLabel(y.build.order))}</div>
+      <div class="eta-line"><b class="num">Fertig in ${fmtDur(y.build.remaining)}</b><span class="num">${pct(f)}</span></div>${bar(f, 'amber')}</div></div>`;
   })() : '';
+  // Voraussichtliche Fertigstellung der Warteschlange (der Reihe nach, sofern Material da ist)
+  let etaAcc = y?.build ? y.build.remaining : 0;
   const rows = (y?.queue ?? []).map((j, i) => {
     const c = SHIP_MAP[j.cls];
     const lack = missingFor(st, j.cls);
     const waiting = i === 0 && !y!.build && y!.waiting;
+    etaAcc += SHIP_BUILD_TIME[c.size];
+    const missing = Object.keys(lack).length > 0;
     return `<div class="row" data-key="yq${j.uid}"><span class="pos-no num">${i + 1}</span><div class="grow"><div class="title">${esc(c.name)}</div>
       <div class="sub wrap">${esc(jobLabel(j.order))}</div>
+      <div class="sub wrap">${missing ? 'Fertig frühestens in ' : 'Voraussichtlich fertig in '}<b class="num">${fmtDur(etaAcc)}</b>${missing ? ' – sobald das Material da ist' : ''}</div>
       ${waiting ? `<div class="sub wrap warn-text">${esc(y!.waiting!)}</div>` : ''}
       ${Object.keys(lack).length ? `<div class="flow" style="margin-top:6px">${Object.entries(lack).map(([id, n]) => `<span class="io">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)} fehlt</span>`).join('')}</div>` : ''}</div>
       <button class="icon-btn sm ghost-x" ${act('yard-cancel', { st: st.id, uid: j.uid })} aria-label="Aus der Warteschlange entfernen">${icon('close', 16)}</button></div>`;

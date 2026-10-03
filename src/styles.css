@@ -522,3 +522,7 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 /* Regler in den Einstellungen */
 .range-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .range-row input[type='range'] { flex: 1; min-width: 0; }
+
+/* Fertigstellung in der Werft: eigene, gut lesbare Zeile */
+.eta-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 4px 0 6px; font-size: 15px; color: var(--amber); }
+.eta-line span { font-size: 13px; color: var(--text-2); }
