@@ -99,7 +99,7 @@ export function start(): void {
     // Während ein Dialog offen ist, stören reine Infomeldungen – sie stehen weiter im Ereignisprotokoll
     if (e.type === 'toast' && !(ui.modal && e.kind === 'info')) toast(e.text, e.kind);
     if (e.type === 'sale' && e.sector === ui.sector && Math.abs(e.value) >= 1000 && ui.view === 'sector') {
-      renderer.addFloat(e.sector, e.x, e.z, (e.value > 0 ? '+' : '') + fmtCr(e.value), e.value > 0 ? '#8ff5b0' : '#ffb4a0');
+      renderer.addFloat(e.sector, e.x, e.z, e.value);
       if (e.value > 0) sfx.coin();
     }
     if (e.type === 'moduleDone') {

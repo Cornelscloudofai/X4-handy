@@ -26,7 +26,7 @@ interface FieldData {
 }
 
 /** Tiefe je Ebene: Größen-/Abstandsfaktor und Stärke der Parallaxe */
-export const DEPTH = [0.86, 1, 1.14];
+export const DEPTH = [0.9, 1, 1.1];
 const SHADE = [-0.3, -0.08, 0.08];
 
 const dataCache = new Map<string, FieldData>();
@@ -211,10 +211,10 @@ export function drawRockField(ctx: CanvasRenderingContext2D, cam: Camera, f: { i
     const z = cam.zoom * depth;
     // Scharfes Ebenenbild passend zur Zoomstufe (wird nur bei merklicher Zoomänderung neu gezeichnet)
     const zb = Math.pow(1.15, Math.round(Math.log(cam.zoom) / Math.log(1.15)));
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
     const px = Math.ceil(data.ext * 2 * zb * depth * dpr);
-    if (px <= 2048) {
-      const img = zoomSprite(f.id, f.ware, data, layer, zb, depth, dpr, base, color);
+    const img = px <= 2048 ? zoomSprite(f.id, f.ware, data, layer, zb, depth, dpr, base, color) : null;
+    if (img) {
       const size = data.ext * 2 * z;
       ctx.drawImage(img, lx - size / 2, ly - size / 2, size, size);
     } else {
@@ -225,33 +225,43 @@ export function drawRockField(ctx: CanvasRenderingContext2D, cam: Camera, f: { i
   ctx.globalAlpha = 1;
 }
 
-const zoomCache = new Map<string, HTMLCanvasElement>();
+const zoomCache = new Map<string, { c: HTMLCanvasElement; used: number }>();
+const BUDGET = 16e6; // Pixel – Speichergrenze fürs Handy
 
-/** Ebene als scharfes Bild in der Auflösung der aktuellen Zoomstufe (kleiner Zwischenspeicher, älteste fliegen raus) */
-function zoomSprite(id: string, ware: string, data: FieldData, layer: number, zb: number, depth: number, dpr: number, base: string, accent: string): HTMLCanvasElement {
+/**
+ * Ebene als scharfes Bild in der Auflösung der aktuellen Zoomstufe. Kleiner Zwischenspeicher mit Pixelgrenze:
+ * Gerade benutzte Bilder werden nie verworfen; reicht der Platz nicht, liefert die Funktion null und die Ebene wird
+ * direkt gezeichnet – so wird nie jedes Bild neu aufgebaut.
+ */
+function zoomSprite(id: string, ware: string, data: FieldData, layer: number, zb: number, depth: number, dpr: number, base: string, accent: string): HTMLCanvasElement | null {
+  const now = performance.now();
   const key = `${id}:${layer}:${zb.toFixed(4)}:${dpr}`;
   const hit = zoomCache.get(key);
   if (hit) {
-    zoomCache.delete(key);
-    zoomCache.set(key, hit);
-    return hit;
+    hit.used = now;
+    return hit.c;
   }
   const cssSize = data.ext * 2 * zb * depth;
+  const side = Math.max(2, Math.ceil(cssSize * dpr));
+  // Platz schaffen: nur Bilder, die länger als eine halbe Sekunde nicht gebraucht wurden
+  let px = 0;
+  for (const v of zoomCache.values()) px += v.c.width * v.c.height;
+  if (px + side * side > BUDGET) {
+    const old = [...zoomCache.entries()].filter(([, v]) => now - v.used > 500).sort((x, y) => x[1].used - y[1].used);
+    for (const [k, v] of old) {
+      if (px + side * side <= BUDGET) break;
+      px -= v.c.width * v.c.height;
+      zoomCache.delete(k);
+    }
+    if (px + side * side > BUDGET) return null;
+  }
   const c = document.createElement('canvas');
-  c.width = c.height = Math.max(2, Math.ceil(cssSize * dpr));
+  c.width = c.height = side;
   const ctx = c.getContext('2d')!;
   ctx.scale(dpr, dpr);
   const fake = { w: cssSize, h: cssSize } as Camera;
   drawLayerBatched(ctx, fake, data.rocks[layer], cssSize / 2, cssSize / 2, zb * depth, 1, 0, base, accent, ware);
-  zoomCache.set(key, c);
-  // Speichergrenze fürs Handy: höchstens etwa 12 Megapixel an Ebenenbildern, älteste zuerst verwerfen
-  let px = 0;
-  for (const v of zoomCache.values()) px += v.width * v.height;
-  for (const [k, v] of zoomCache) {
-    if (px <= 12e6 || zoomCache.size <= 3) break;
-    px -= v.width * v.height;
-    zoomCache.delete(k);
-  }
+  zoomCache.set(key, { c, used: now });
   return c;
 }
 

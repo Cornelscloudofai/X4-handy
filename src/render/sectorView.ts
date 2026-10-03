@@ -9,8 +9,10 @@ import type { GameState, ModuleDef, Ship, Station } from '../engine/types';
 import { hashStr } from '../engine/util';
 import type { Selection, UIState } from '../ui/uistate';
 import type { Camera } from './camera';
+import { fmtCr } from '../ui/format';
 import { Effects } from './effects';
 import { drawRockField } from './fields';
+import { layoutReach, layoutStation, stationStyle } from './stationLayout';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
 
 const C = {
@@ -39,7 +41,7 @@ const SECTOR_TINT: Record<string, [string, string]> = {
   zyarth: ['#7a2f4a', '#8a5a22'],
 };
 
-interface Float { sector: string; x: number; z: number; text: string; color: string; life: number; row: number }
+interface Float { sector: string; x: number; z: number; value: number; life: number; row: number }
 interface QLabel { text: string; x: number; ys: number[]; size: number; color: string; weight: number; prio: number; sub?: { text: string; color: string } }
 interface Trail { pts: { x: number; z: number }[]; acc: number; sector: string }
 
@@ -57,13 +59,22 @@ export class SectorRenderer {
     for (let i = 0; i < 140; i++) this.stars.push({ x: Math.random(), y: Math.random(), s: Math.random() < 0.15 ? 1.6 : 1, a: 0.2 + Math.random() * 0.5 });
   }
 
-  addFloat(sector: string, x: number, z: number, text: string, color: string): void {
+  /**
+   * Betrag über einem Ort einblenden. Mehrere Käufe bzw. Verkäufe an derselben Stelle werden zusammengezählt
+   * (je eine Zeile für Einnahmen und Ausgaben) – statt einer ganzen Zahlenkolonne.
+   */
+  addFloat(sector: string, x: number, z: number, value: number): void {
+    const same = this.floats.find((f) => f.sector === sector && f.life > 0.35 && Math.sign(f.value) === Math.sign(value) && Math.hypot(f.x - x, f.z - z) < 8);
+    if (same) {
+      same.value += value;
+      same.life = 1;
+      return;
+    }
     if (this.floats.length > 30) this.floats.shift();
-    // Mehrere Verkäufe an derselben Stelle stapeln statt übereinander schreiben
-    const near = this.floats.filter((f) => f.sector === sector && f.life > 0.45 && Math.hypot(f.x - x, f.z - z) < 6);
-    const row = near.length ? Math.max(...near.map((f) => f.row)) + 1 : 0;
-    this.floats.push({ sector, x, z, text, color, life: 1, row: row % 4 });
+    const other = this.floats.some((f) => f.sector === sector && f.life > 0.35 && Math.hypot(f.x - x, f.z - z) < 8);
+    this.floats.push({ sector, x, z, value, life: 1, row: other ? 1 : 0 });
   }
+
 
   /** Nur Sternenhimmel und Nebel (auch für die Galaxiekarte) */
   drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, sectorId: string, now: number): void {
@@ -117,7 +128,7 @@ export class SectorRenderer {
       }
       const t = motion ? now : 0;
       // Parallaxe: beim Heranzoomen stärker – die Ebenen gleiten beim Verschieben gegeneinander
-      const parallax = Math.min(1.2, 0.45 + 0.25 * rel);
+      const parallax = Math.min(0.45, 0.15 + 0.08 * rel);
       if (isGas(f.ware)) {
         for (const layer of [0, 1]) {
           const spr = fieldSprite(f.id, f.ware, hashStr(f.id), layer);
@@ -265,7 +276,7 @@ export class SectorRenderer {
       if (f.sector !== sec.id) continue;
       const [sx, sy] = cam.toScreen(f.x, f.z);
       ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 2));
-      this.label(ctx, f.text, sx, sy - 20 * s - 10 - f.row * 15 - (1 - f.life) * 40, rel < 1.5 ? 11 : 12, f.color, 700);
+      this.label(ctx, (f.value > 0 ? '+' : '') + fmtCr(f.value), sx, sy - 20 * s - 10 - f.row * 15 - (1 - f.life) * 40, rel < 1.5 ? 11 : 12, f.value > 0 ? '#8ff5b0' : '#ffb4a0', 700);
       ctx.globalAlpha = 1;
     }
     this.floats = this.floats.filter((f) => f.life > 0);
@@ -538,7 +549,7 @@ export class SectorRenderer {
     const rel = cam.zoom / (cam.fitZoom || 1);
     const unit = stationScale(cam.zoom);
     const detail = rel >= 2.4 && unit >= 5;
-    const reach = detail ? stationReach(st, unit) : 0;
+    const reach = detail ? stationReach(st) * unit : 0;
     // Leuchten (in der Gesamtansicht klein)
     const gr = detail ? reach * 1.2 + 12 : 24 * s;
     const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, gr);
@@ -647,42 +658,61 @@ export class SectorRenderer {
     const building = st.build && MODULE_MAP[st.build.def] && MODULE_MAP[st.build.def].kind !== 'core' ? st.build : null;
     const ghosts = st.queue.slice(0, 3);
     const solid = mods.length + (building ? 1 : 0);
-    const all = solid + ghosts.length;
-    const arms = 4;
+    // Plätze nach Bauform und Modulart (Lager innen, Produktion Mitte, Docks/Werft außen)
+    const defs = [...mods.map((m) => m.def), ...(building ? [building.def] : []), ...ghosts.map((q) => q.def)];
+    const slots = layoutStation(st.id, defs);
     const pos = (i: number) => {
-      const arm = i % arms, slot = Math.floor(i / arms) + 1, ang = (arm * Math.PI) / 2;
-      return { ang, px: Math.cos(ang) * unit * slot * 1.25, py: Math.sin(ang) * unit * slot * 1.25 };
+      const p = slots[i];
+      return { ang: p.ang, px: p.x * unit, py: p.y * unit };
     };
     const cap = storageCap(st), used = usedVolume(st);
     const fill = (k: 'Container' | 'Solid' | 'Liquid') => (cap[k] > 0 ? Math.min(1, used[k] / cap[k]) : 0);
     ctx.save();
     ctx.translate(sx, sy);
     ctx.rotate(rot);
-    // Verbindungsträger: fest bis zum letzten gebauten Modul, gestrichelt zu geplanten
+    // Träger: fest zu gebauten Modulen, gestrichelt zu geplanten
     ctx.lineCap = 'round';
-    for (let a = 0; a < arms; a++) {
-      const nSolid = Math.ceil((solid - a) / arms), nAll = Math.ceil((all - a) / arms);
-      const ang = (a * Math.PI) / 2;
-      const c = Math.cos(ang), sn = Math.sin(ang);
-      if (nSolid > 0) {
-        ctx.strokeStyle = 'rgba(120,210,220,0.45)';
-        ctx.lineWidth = Math.max(1.2, unit * 0.14);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(c * unit * (nSolid * 1.25 + 0.15), sn * unit * (nSolid * 1.25 + 0.15));
-        ctx.stroke();
+    ctx.lineJoin = 'round';
+    const truss = (from: number, to: number, solidLine: boolean) => {
+      ctx.beginPath();
+      for (let i = from; i < to; i++) {
+        slots[i].path.forEach(([x, y], k) => (k ? ctx.lineTo(x * unit, y * unit) : ctx.moveTo(x * unit, y * unit)));
       }
-      if (nAll > nSolid) {
+      if (solidLine) {
+        ctx.strokeStyle = 'rgba(120,210,220,0.42)';
+        ctx.lineWidth = Math.max(1.2, unit * 0.13);
+      } else {
         ctx.strokeStyle = 'rgba(120,210,220,0.18)';
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 4]);
-        ctx.beginPath();
-        ctx.moveTo(c * unit * (Math.max(0, nSolid) * 1.25 + 0.15), sn * unit * (Math.max(0, nSolid) * 1.25 + 0.15));
-        ctx.lineTo(c * unit * (nAll * 1.25 + 0.15), sn * unit * (nAll * 1.25 + 0.15));
-        ctx.stroke();
-        ctx.setLineDash([]);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+    if (stationStyle(st.id) === 'ring') {
+      // Ringträger nur zwischen benachbarten belegten Plätzen desselben Rings
+      const byRing = new Map<number, number[]>();
+      for (const p of slots.slice(0, solid)) {
+        const r = Math.round(Math.hypot(p.x, p.y) * 100) / 100;
+        byRing.set(r, [...(byRing.get(r) ?? []), Math.atan2(p.y, p.x)]);
+      }
+      ctx.strokeStyle = 'rgba(120,210,220,0.3)';
+      ctx.lineWidth = Math.max(1, unit * 0.09);
+      for (const [r, angs] of byRing) {
+        if (angs.length < 2) continue;
+        const step = (Math.PI * 2) / Math.round((Math.PI * 2 * r) / 1.4);
+        angs.sort((a, b) => a - b);
+        for (let i = 0; i < angs.length; i++) {
+          const a = angs[i], b = i + 1 < angs.length ? angs[i + 1] : angs[0] + Math.PI * 2;
+          if (b - a > step * 2.2) continue;
+          ctx.beginPath();
+          ctx.arc(0, 0, r * unit, a, b);
+          ctx.stroke();
+        }
       }
     }
+    truss(0, solid, true);
+    if (ghosts.length) truss(solid, slots.length, false);
     mods.forEach((m, i) => {
       const p = pos(i);
       ctx.save();
@@ -1061,6 +1091,8 @@ export class SectorRenderer {
     const h = hashStr(sh.id);
     const a = ((h % 360) * Math.PI) / 180 + Math.sin(now / 900 + h) * 0.4;
     const rel = cam.zoom / (cam.fitZoom || 1);
+    // Herausgezoomt kein Abbau-Effekt (Laser, Glanzpunkt, Teilchen) – die Karte bleibt ruhig
+    if (rel < 1.6) return;
     const len = Math.max(5, Math.min(40, cam.zoom * 1.6)) * Math.min(1.5, s + 0.2);
     const tx = sx + Math.cos(a) * len, ty = sy + Math.sin(a) * len;
     if (isGas(info.field.ware)) {
@@ -1222,7 +1254,7 @@ export class SectorRenderer {
 
 /** Stationen werden überhöht gezeichnet, damit ihre Module schon bei mittlerem Zoom erkennbar sind */
 function stationScale(zoom: number): number {
-  return Math.min(46, zoom * 2.7);
+  return Math.min(30, zoom * 2.7);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -1235,10 +1267,12 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-/** Ausdehnung der Station in Pixeln (längster Arm inkl. Bau und geplanter Module) */
-function stationReach(st: Station, unit: number): number {
-  const n = st.modules.filter((m) => MODULE_MAP[m.def]?.kind !== 'core').length + (st.build && MODULE_MAP[st.build.def]?.kind !== 'core' ? 1 : 0) + Math.min(3, st.queue.length);
-  return unit * (Math.max(1, Math.ceil(n / 4)) * 1.25 + 0.7);
+/** Ausdehnung der Station in Moduleinheiten (belegte Plätze inkl. Bau und geplanter Module) */
+function stationReach(st: Station): number {
+  const mods = st.modules.filter((m) => MODULE_MAP[m.def]?.kind !== 'core').map((m) => m.def);
+  if (st.build && MODULE_MAP[st.build.def]?.kind !== 'core') mods.push(st.build.def);
+  mods.push(...st.queue.slice(0, 3).map((q) => q.def));
+  return layoutReach(layoutStation(st.id, mods));
 }
 
 /** Schiffsumrisse (Bug zeigt nach +x, Einheit = Schiffsgröße) */
