@@ -131,8 +131,8 @@ function gauss(r: () => number): number {
 }
 
 /** Hintergrund mit Nebel und Sternen, eingefärbt je Sektor */
-/** res: Pixel je Bildschirmpunkt; glow: Stärke der eingefärbten Nebelflecken, stars: Sterndichte (je nach Sektorcharakter) */
-export function backgroundSprite(w: number, h: number, seed: number, tint: [string, string], glow = 1, stars = 1, res = 1): HTMLCanvasElement {
+/** res: Pixel je Bildschirmpunkt; glow: Stärke der eingefärbten Nebelflecken, stars: Sterndichte, warm: Anteil oranger Sterne */
+export function backgroundSprite(w: number, h: number, seed: number, tint: [string, string], glow = 1, stars = 1, res = 1, warm = 0.2): HTMLCanvasElement {
   const [c, ctx] = canvas(1);
   // res: Pixel je Bildschirmpunkt – in Geräteauflösung gerechnet, damit beim Anzeigen nichts vergrößert wird
   c.width = Math.round(w * res);
@@ -155,19 +155,30 @@ export function backgroundSprite(w: number, h: number, seed: number, tint: [stri
     ctx.fillStyle = gg;
     ctx.fillRect(0, 0, w, h);
   }
-  const count = Math.round(((w * h) / 1400) * stars);
+  // Sterne mit Farbtemperatur (blauweiß bis orange); helle mit weichem Hof, ohne Strahlen
+  const count = Math.round(((w * h) / 1100) * stars);
   for (let i = 0; i < count; i++) {
     const x = r() * w, y = r() * h;
     const b = r();
-    const s = b > 0.985 ? 1.8 : b > 0.9 ? 1.2 : 0.7;
-    ctx.fillStyle = `rgba(${200 + r() * 55},${220 + r() * 35},255,${0.25 + r() * 0.6})`;
-    ctx.fillRect(x, y, s, s);
-    if (b > 0.993) {
-      const gg = ctx.createRadialGradient(x, y, 0, x, y, 6);
-      gg.addColorStop(0, 'rgba(200,235,255,0.35)');
-      gg.addColorStop(1, 'rgba(200,235,255,0)');
+    const size = b > 0.997 ? 2.1 : b > 0.985 ? 1.5 : b > 0.9 ? 1.05 : 0.65;
+    const t = r();
+    const [cr, cg, cb] = t < warm ? [255, 175 + r() * 50, 120 + r() * 50] : t < warm + 0.3 ? [245, 240, 232] : [190 + r() * 30, 212 + r() * 25, 255];
+    const a = 0.3 + r() * 0.6;
+    if (b > 0.985) {
+      const halo = size * 4.5;
+      const gg = ctx.createRadialGradient(x, y, 0, x, y, halo);
+      gg.addColorStop(0, `rgba(${cr},${cg},${cb},${0.45 * a})`);
+      gg.addColorStop(0.3, `rgba(${cr},${cg},${cb},${0.1 * a})`);
+      gg.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
       ctx.fillStyle = gg;
-      ctx.fillRect(x - 6, y - 6, 12, 12);
+      ctx.fillRect(x - halo, y - halo, halo * 2, halo * 2);
+    }
+    ctx.fillStyle = `rgba(${Math.min(255, cr + 30)},${Math.min(255, cg + 30)},${Math.min(255, cb + 30)},${a})`;
+    if (size < 1) ctx.fillRect(x, y, size, size);
+    else {
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.55, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
   ctx.globalCompositeOperation = 'source-over';

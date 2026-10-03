@@ -14,7 +14,7 @@ import { fmtCr } from '../ui/format';
 import { Effects } from './effects';
 import { drawRockField } from './fields';
 import { layoutReach, layoutStation, stationStyle } from './stationLayout';
-import { paintSun, nebulaLayer, sectorTheme, starFactor } from './sectorTheme';
+import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
 
 const C = {
@@ -111,8 +111,8 @@ export class SectorRenderer {
     const key = `${sectorId}:${Math.round(W)}x${Math.round(H)}@${res}`;
     const theme = SECTOR_MAP[sectorId] ? sectorTheme(sectorId) : null;
     if (key !== this.bgKey) {
-      const glow = theme ? 0.12 : 1;
-      this.bg = backgroundSprite(Math.round(W), Math.round(H), hashStr(sectorId), SECTOR_TINT[sectorId] ?? ['#1f5f8a', '#0e6f66'], glow, theme ? starFactor(theme) : 1, res);
+      const glow = theme ? 0.08 : 1;
+      this.bg = backgroundSprite(Math.round(W), Math.round(H), hashStr(sectorId), SECTOR_TINT[sectorId] ?? ['#1f5f8a', '#0e6f66'], glow, theme ? starParams(theme).stars : 1, res, theme ? starParams(theme).warm : 0.2);
       if (theme) {
         const bctx = this.bg.getContext('2d')!;
         bctx.setTransform(res, 0, 0, res, 0, 0);
