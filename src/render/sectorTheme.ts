@@ -7,11 +7,12 @@ import { fbm, perlin, smooth } from './noise';
 import { hexToRgb, rgba, rng } from './sprites';
 
 /**
- * Grundform des Nebels: shell = gefüllte Wolke mit leuchtendem Rand (Herz-, Seelennebel), ring = Ring mit leerem
+ * Grundform des Nebels: marble = großflächige Marmorierung über den ganzen Himmel, zwei Farben ineinander
+ * verwirbelt, shell = gefüllte Wolke mit leuchtendem Rand (Herz-, Seelennebel), ring = Ring mit leerem
  * Zentrum (Rosette), wall = leuchtende Wand mit scharfer Kante (Pferdekopf), wisps = Fasern über den ganzen
  * Himmel (Flammenstern), cloud = kompakte Wolke in Staub (Orion), none = klarer Himmel (Galaxien).
  */
-export type Shape = 'shell' | 'ring' | 'wall' | 'wisps' | 'cloud' | 'none';
+export type Shape = 'marble' | 'shell' | 'ring' | 'wall' | 'wisps' | 'cloud' | 'none';
 
 export interface Galaxy {
   /** Lage relativ zur Nebelebene (0 … 1) */
@@ -45,28 +46,29 @@ export interface Scene {
   galaxies?: Galaxy[];
   /** Sterndichte, Anteil orangefarbener Sterne */
   stars: number; warm: number;
+  /** Größe der Muster (Rauschfrequenz, kleiner = großflächiger) und Stärke der Verwirbelung */
+  scale?: number; warp?: number;
 }
 
 /** Ein Motiv je Sektor – jeder Sektor ist ein eigener Anblick */
 export const SCENES: Record<string, Scene> = {
-  // Herznebel: blauer Innenraum, orangegoldener Rand, dunkle Säulen, Sternhaufen im Zentrum
-  zhin: { name: 'Herznebel', shape: 'shell', cx: 0.52, cy: 0.42, rx: 0.17, ry: 0.19, angle: 0.15, core: '#3d74c4', rim: '#d48a3c', hi: '#cfe6ff', haze: '#2a1c12', hazeA: 0.025, glow: 0.62, cover: 0.42, edge: 1.4, dust: 0.65, fil: 0.5, globules: 10, cluster: 14, stars: 1.1, warm: 0.2 },
+  // Blau-Gold (Schmalband-Farben): großflächig marmoriert, goldene Säume an den Wolkenrändern
+  zhin: { name: 'Blau-Gold-Marmor', shape: 'marble', cx: 0.5, cy: 0.5, rx: 0.4, ry: 0.4, angle: 0, core: '#3d74c4', rim: '#c8863c', hi: '#cfe6ff', haze: '#2a1c12', hazeA: 0.03, glow: 0.62, cover: 0.42, edge: 0.7, dust: 0.5, fil: 0.55, globules: 6, cluster: 0, stars: 1.1, warm: 0.2, scale: 2.6, warp: 2.6 },
   // Galaxienfeld: klarer, sternreicher Himmel mit einer Spiralgalaxie und einer Kantengalaxie
   tkr: { name: 'Galaxienpaar', shape: 'none', cx: 0.5, cy: 0.5, rx: 0.24, ry: 0.24, angle: 0, core: '#5a4a3a', rim: '#6a5a48', hi: '#d8c8b8', haze: '#3a3024', hazeA: 0.035, glow: 0, cover: 1, edge: 0, dust: 0.3, fil: 0, globules: 0, cluster: 0,
     galaxies: [{ x: 0.66, y: 0.36, size: 0.111, angle: -0.55, tilt: 0.46, kind: 'spiral' }, { x: 0.24, y: 0.58, size: 0.065, angle: 1.05, tilt: 0.17, kind: 'edge' }, { x: 0.82, y: 0.83, size: 0.023, angle: 0.3, tilt: 0.6, kind: 'spiral' }],
     stars: 1.6, warm: 0.5 },
-  // Rosettennebel: türkisgrüner Ring mit goldenem Saum, leeres Zentrum mit Sternhaufen, viele Globulen
-  cascade: { name: 'Rosettennebel', shape: 'ring', cx: 0.5, cy: 0.5, rx: 0.16, ry: 0.17, angle: 0, core: '#2e9c94', rim: '#b8a03a', hi: '#a8f0e0', haze: '#0c2c2a', hazeA: 0.035, glow: 0.7, cover: 0.4, edge: 1, dust: 0.55, fil: 0.6, globules: 26, cluster: 18, stars: 1, warm: 0.15 },
+  // Türkis und Grüngold (Farben des Rosettennebels): sehr großflächig, stark verwirbelt – der Gas-Sektor
+  cascade: { name: 'Türkis-Marmor', shape: 'marble', cx: 0.5, cy: 0.5, rx: 0.4, ry: 0.4, angle: 0, core: '#2e9c94', rim: '#a4a83c', hi: '#a8f0e0', haze: '#0c2c2a', hazeA: 0.035, glow: 0.56, cover: 0.42, edge: 0.6, dust: 0.5, fil: 0.7, globules: 10, cluster: 0, stars: 1, warm: 0.15, scale: 2.1, warp: 3.4 },
   // Pferdekopfnebel: leuchtende rote Wand mit scharfer Kante, darunter Dunkelwolke, Silhouette auf der Kante
   ravine: { name: 'Pferdekopfnebel', shape: 'wall', cx: 0.5, cy: 0.56, rx: 0.3, ry: 0.2, angle: -0.12, core: '#b8405a', rim: '#f490aa', hi: '#ffd6e0', haze: '#3a1420', hazeA: 0.08, glow: 0.95, cover: 0.4, edge: 1.1, dust: 0.55, fil: 0.8, globules: 4, cluster: 0, stars: 0.9, warm: 0.55 },
   // Flammenstern- und Kaulquappennebel: rote Fasern über dem ganzen Himmel, dazu eine blaue Wolke
   rhy: { name: 'Flammenstern', shape: 'wisps', cx: 0.32, cy: 0.38, rx: 0.15, ry: 0.14, angle: 0.4, core: '#b8482a', rim: '#e07c34', hi: '#ffc58a', haze: '#4a1612', hazeA: 0.08, glow: 0.62, cover: 0.48, edge: 0.6, dust: 0.35, fil: 1, globules: 8, cluster: 0,
     extra: { x: 0.72, y: 0.7, r: 0.111, color: '#4a7ad0' }, stars: 1.15, warm: 0.35 },
-  // Orionnebel: magentafarbener Kern in braunem Staub, kleiner Begleitnebel
-  hoa: { name: 'Orionnebel', shape: 'cloud', cx: 0.56, cy: 0.46, rx: 0.14, ry: 0.12, angle: -0.2, core: '#c45cb8', rim: '#9a7c50', hi: '#ffe4f8', haze: '#33281a', hazeA: 0.07, glow: 0.85, cover: 0.43, edge: 0.95, dust: 0.6, fil: 0.5, globules: 6, cluster: 10,
-    extra: { x: 0.24, y: 0.62, r: 0.078, color: '#b0508a' }, stars: 1.3, warm: 0.55 },
-  // Seelennebel: hohe Wolke, blaugrau innen, kräftige goldene Säulen und Kanten
-  zyarth: { name: 'Seelennebel', shape: 'shell', cx: 0.5, cy: 0.5, rx: 0.13, ry: 0.27, angle: 0.08, core: '#5a80b8', rim: '#e0923a', hi: '#dcecff', haze: '#1e140c', hazeA: 0.025, glow: 0.6, cover: 0.44, edge: 1.5, dust: 0.8, fil: 0.6, globules: 12, cluster: 8, stars: 1.05, warm: 0.3 },
+  // Magenta und Braun (Farben des Orionnebels): weiche, großflächige Schlieren in Staub
+  hoa: { name: 'Magenta-Marmor', shape: 'marble', cx: 0.5, cy: 0.5, rx: 0.4, ry: 0.4, angle: 0, core: '#b45aa8', rim: '#8e6c46', hi: '#ffd8f0', haze: '#33281a', hazeA: 0.06, glow: 0.7, cover: 0.42, edge: 0.6, dust: 0.6, fil: 0.45, globules: 4, cluster: 0, stars: 1.3, warm: 0.55, scale: 2.4, warp: 2.2 },
+  // Stahlblau und Bernstein: feiner marmoriert, mit kräftigen Dunkelwolken
+  zyarth: { name: 'Stahl-Bernstein-Marmor', shape: 'marble', cx: 0.5, cy: 0.5, rx: 0.4, ry: 0.4, angle: 0, core: '#56789e', rim: '#d4893a', hi: '#dcecff', haze: '#1e140c', hazeA: 0.03, glow: 0.62, cover: 0.44, edge: 0.8, dust: 0.75, fil: 0.6, globules: 8, cluster: 0, stars: 1.05, warm: 0.3, scale: 3.3, warp: 2.8 },
 };
 
 export interface SectorTheme {
@@ -136,7 +138,8 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
   const core = neb(sc.core), rim = neb(sc.rim), hi = neb(sc.hi), haze = neb(sc.haze);
   const extra = sc.extra ? { ...sc.extra, rgb: neb(sc.extra.color) } : null;
   const cos = Math.cos(-sc.angle), sin = Math.sin(-sc.angle);
-  const scale = 4.2 / M;
+  const scale = (sc.scale ?? 4.2) / M;
+  const warp = sc.warp ?? 2.6;
   const dark = [3, 5, 9];
   const grain = rng(t.seed + 3);
   // Globulen: kleine, längliche Dunkelwolken – meist am Rand der Wolke, wo das Licht sie umspült
@@ -146,7 +149,7 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
     const a = gr() * Math.PI * 2, d = sc.shape === 'ring' ? 0.55 + gr() * 0.5 : 0.7 + gr() * 0.35;
     let gx = Math.cos(a) * d * sc.rx, gy = Math.sin(a) * d * sc.ry;
     if (sc.shape === 'wall') { gx = (gr() - 0.5) * 0.8; gy = -0.01 - gr() * 0.03; }
-    if (sc.shape === 'wisps' || sc.shape === 'none') { gx = (gr() - 0.5) * 0.9; gy = (gr() - 0.5) * 0.9; }
+    if (sc.shape === 'wisps' || sc.shape === 'none' || sc.shape === 'marble') { gx = (gr() - 0.5) * 0.9; gy = (gr() - 0.5) * 0.9; }
     const size = sc.shape === 'wall' && i === 0 ? 0.03 : 0.003 + Math.pow(gr(), 3) * 0.012;
     globs.push({ x: sc.cx * sw + (gx * Math.cos(sc.angle) - gy * Math.sin(sc.angle)) * M, y: sc.cy * sh + (gx * Math.sin(sc.angle) + gy * Math.cos(sc.angle)) * M, rx: size * M, ry: size * M * (0.3 + gr() * 0.7), a: gr() * Math.PI, k: 0.45 + gr() * 0.4 });
   }
@@ -162,7 +165,7 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
     for (let x = 0; x < sw; x++) {
       const u = x * scale, v = y * scale;
       const q1 = fbm(n1, u, v, 3), q2 = fbm(n2, u + 5.2, v + 1.3, 3);
-      const rr = fbm(n3, u + 2.6 * q1, v + 2.6 * q2, 5);
+      const rr = fbm(n3, u + warp * q1, v + warp * q2, 5);
       // Lage im Motiv (gedreht, auf die Halbachsen normiert), vom Rauschen leicht verbogen
       const dx = (x - sc.cx * sw) / M, dy = (y - sc.cy * sh) / M;
       const lx = dx * cos - dy * sin, ly = dx * sin + dy * cos;
@@ -171,6 +174,8 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
       let m: number;
       let wallDark = 0;
       switch (sc.shape) {
+        // Marmor: fast überall Nebel, großräumige Lücken aus langsamem Rauschen
+        case 'marble': m = 0.45 + 0.55 * smooth(0.3, 0.68, q2); break;
         case 'shell': m = 1 - smooth(0.7, 1.15, dd); break;
         case 'ring': m = Math.exp(-(((dd - 0.78) / 0.3) ** 2)); break;
         case 'cloud': m = Math.exp(-dd * dd * 1.5); break;
@@ -202,6 +207,11 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
       const wx = extra ? xm / (m + xm + 1e-6) : 0;
       let cr = core[0], cg = core[1], cb = core[2];
       if (extra) { cr += (extra.rgb[0] - cr) * wx; cg += (extra.rgb[1] - cg) * wx; cb += (extra.rgb[2] - cb) * wx; }
+      // Marmor: beide Farben großflächig ineinander verwirbelt
+      if (sc.shape === 'marble') {
+        const mixC = smooth(0.35, 0.7, q1);
+        cr += (rim[0] - cr) * mixC; cg += (rim[1] - cg) * mixC; cb += (rim[2] - cb) * mixC;
+      }
       cr += (rim[0] - cr) * edgeF; cg += (rim[1] - cg) * edgeF; cb += (rim[2] - cb) * edgeF;
       const hl = Math.min(1, fil * 1.1 + dens * dens * 0.35);
       cr += (hi[0] - cr) * hl * 0.4; cg += (hi[1] - cg) * hl * 0.4; cb += (hi[2] - cb) * hl * 0.4;
