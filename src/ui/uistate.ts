@@ -65,7 +65,7 @@ export const ui: UIState = {
   placing: null,
   routes: true,
   galaxySel: null,
-  reducedMotion: typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches,
+  reducedMotion: initialReducedMotion(),
   panel: null,
   modal: null,
   paused: false,
@@ -103,3 +103,22 @@ export function savePlan(): void {
 }
 
 export const SPEEDS = [1, 5, 20, 60];
+
+/** Animationen: gespeicherte Wahl, sonst die Systemeinstellung „Bewegung reduzieren“ */
+function initialReducedMotion(): boolean {
+  try {
+    const v = localStorage.getItem('x4-sektorbau-effects');
+    if (v) return v === 'reduced';
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+  return typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+export function saveMotionSetting(reduced: boolean): void {
+  try {
+    localStorage.setItem('x4-sektorbau-effects', reduced ? 'reduced' : 'full');
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}

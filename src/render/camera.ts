@@ -9,8 +9,19 @@ export class Camera {
   maxZoom = 40;
   vx = 0;
   vz = 0;
+  /** Zoom der Gesamtansicht (Sektor passt aufs Display) – Bezug für mitwachsende Symbole */
+  fitZoom = 1;
   /** Zielwerte für sanfte Kamerafahrten */
   private target: { x: number; z: number; zoom: number } | null = null;
+
+  /**
+   * Symbolmaßstab: in der Gesamtansicht klein (≈ 0,55), wächst beim Heranzoomen bis 1,5.
+   * Stationen, Schiffe, Tore und Beschriftungen nutzen ihn, damit der Sektor nicht überladen wirkt.
+   */
+  iconScale(): number {
+    const rel = this.zoom / (this.fitZoom || 1);
+    return Math.max(0.45, Math.min(1.5, 0.55 + 0.45 * Math.log2(Math.max(0.5, rel))));
+  }
 
   toScreen(x: number, z: number): [number, number] {
     return [(x - this.x) * this.zoom + this.w / 2, (z - this.z) * this.zoom + this.h / 2];
@@ -23,6 +34,7 @@ export class Camera {
   fit(radius: number, bottomPad = 0, topPad = 0): void {
     const usableH = this.h - bottomPad - topPad;
     this.zoom = Math.min(this.w / (radius * 2.08), usableH / (radius * 1.85));
+    this.fitZoom = this.zoom;
     this.minZoom = this.zoom * 0.6;
     this.x = 0;
     this.z = (bottomPad - topPad) / 2 / this.zoom;

@@ -26,7 +26,7 @@ import { setSound, sfx, soundEnabled } from './sound';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { saleOffers } from '../engine/sales';
-import { SPEEDS, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
+import { SPEEDS, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
 import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, nodePositions } from './plannerView';
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
@@ -102,7 +102,16 @@ export function start(): void {
       renderer.addFloat(e.sector, e.x, e.z, (e.value > 0 ? '+' : '') + fmtCr(e.value), e.value > 0 ? '#8ff5b0' : '#ffb4a0');
       if (e.value > 0) sfx.coin();
     }
-    if (e.type === 'moduleDone') { sfx.build(); navigator.vibrate?.(15); }
+    if (e.type === 'moduleDone') {
+      sfx.build();
+      navigator.vibrate?.(15);
+      const st = state.stations.find((x) => x.id === e.station);
+      if (st) renderer.burstAt(st.sector, st.x, st.z, '#3fe0c5', 1);
+    }
+    if (e.type === 'shipBuilt') {
+      const st = state.stations.find((x) => x.id === e.station);
+      if (st) renderer.burstAt(st.sector, st.x, st.z, '#ffb547', 1.4);
+    }
     if (e.type === 'contractDone' || e.type === 'story') sfx.success();
     dirtyUI = true;
   });
@@ -561,6 +570,7 @@ function onClick(e: MouseEvent): void {
       }
       case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
       case 'routes-toggle': ui.routes = !ui.routes; refresh(); break;
+      case 'motion-toggle': ui.reducedMotion = !ui.reducedMotion; saveMotionSetting(ui.reducedMotion); refresh(); break;
       case 'zoom-in': cam.zoomAt(1.5, cam.w / 2, cam.h / 2); break;
       case 'zoom-out': cam.zoomAt(1 / 1.5, cam.w / 2, cam.h / 2); break;
       case 'place-start': {

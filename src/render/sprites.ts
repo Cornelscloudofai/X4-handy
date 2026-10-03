@@ -37,86 +37,155 @@ const GAS = new Set(['hydrogen', 'helium', 'methane']);
 const cache = new Map<string, HTMLCanvasElement>();
 
 /**
- * Sprite eines Rohstofffelds (512 px ≙ Felddurchmesser × 1,3). Die Form ist unregelmäßig
- * (mehrere Ballungen) und läuft zum Rand weich aus – keine harte Kreisgrenze.
+ * Sprite eines Rohstofffelds (512 px ≙ Felddurchmesser × 1,3). Die Form ist unregelmäßig (mehrere Ballungen)
+ * und läuft zum Rand weich aus. Gasfelder haben zwei Schleier-Schichten (layer 0/1), die gegeneinander driften.
  */
-export function fieldSprite(id: string, ware: string, seed: number): HTMLCanvasElement {
-  const hit = cache.get(id);
+export function fieldSprite(id: string, ware: string, seed: number, layer = 0): HTMLCanvasElement {
+  const key = `${id}:${layer}`;
+  const hit = cache.get(key);
   if (hit) return hit;
+  const c = GAS.has(ware) ? gasSprite(ware, seed + layer * 7919, layer) : rockSprite(ware, seed);
+  cache.set(key, c);
+  return c;
+}
+
+export function isGas(ware: string): boolean {
+  return GAS.has(ware);
+}
+
+function clustersOf(r: () => number, cx: number, R: number) {
+  const clusters = Array.from({ length: 3 + Math.floor(r() * 3) }, () => {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * R * 0.6;
+    return { x: cx + Math.cos(a) * d, y: cx + Math.sin(a) * d, s: R * (0.45 + r() * 0.35) };
+  });
+  const around = (spread = 1) => {
+    const k = clusters[Math.floor(r() * clusters.length)];
+    const a = r() * Math.PI * 2, d = Math.abs(gauss(r)) * k.s * spread;
+    return { x: k.x + Math.cos(a) * d, y: k.y + Math.sin(a) * d };
+  };
+  return { clusters, around };
+}
+
+/** Weicher Rand: nach außen ausblenden */
+function softEdge(ctx: CanvasRenderingContext2D, size: number, inner: number): void {
+  const cx = size / 2;
+  ctx.globalCompositeOperation = 'destination-in';
+  const mask = ctx.createRadialGradient(cx, cx, inner, cx, cx, size / 2);
+  mask.addColorStop(0, 'rgba(0,0,0,1)');
+  mask.addColorStop(0.55, 'rgba(0,0,0,0.55)');
+  mask.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/**
+ * Gasnebel: viele große, sehr blasse Wolken und lang gezogene Schlieren, klein gezeichnet und weich hochskaliert –
+ * so entsteht ein Schleier ohne harte Kanten.
+ */
+function gasSprite(ware: string, seed: number, layer: number): HTMLCanvasElement {
+  const small = 128;
+  const [c0, g0] = canvas(small);
+  const color = WARES[ware]?.color ?? '#999999';
+  const r = rng(seed);
+  const cx = small / 2, R = small / 2 / 1.3;
+  const { around } = clustersOf(r, cx, R);
+  // Viele große, sehr blasse Wolken und Schlieren, weit gestreut
+  const n = layer ? 90 : 120;
+  for (let i = 0; i < n; i++) {
+    const p = around(1.5);
+    const rad = R * (0.3 + r() * 0.65);
+    const tone = r() < 0.3 ? shade(color, 0.3) : r() < 0.45 ? shade(color, -0.3) : color;
+    g0.save();
+    g0.translate(p.x, p.y);
+    g0.rotate(r() * Math.PI);
+    g0.scale(1, 0.25 + r() * 0.6);
+    const g = g0.createRadialGradient(0, 0, 0, 0, 0, rad);
+    const a = (layer ? 0.012 : 0.018) + r() * 0.02;
+    g.addColorStop(0, rgbaFrom(tone, a));
+    g.addColorStop(0.5, rgbaFrom(tone, a * 0.5));
+    g.addColorStop(1, rgbaFrom(tone, 0));
+    g0.fillStyle = g;
+    g0.beginPath();
+    g0.arc(0, 0, rad, 0, Math.PI * 2);
+    g0.fill();
+    g0.restore();
+  }
+  // Lücken ausstanzen: der Schleier bekommt Struktur statt eines hellen Kerns
+  g0.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 26; i++) {
+    const p = around(1.2);
+    const rad = R * (0.12 + r() * 0.3);
+    g0.save();
+    g0.translate(p.x, p.y);
+    g0.rotate(r() * Math.PI);
+    g0.scale(1, 0.3 + r() * 0.5);
+    const g = g0.createRadialGradient(0, 0, 0, 0, 0, rad);
+    g.addColorStop(0, 'rgba(0,0,0,0.45)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    g0.fillStyle = g;
+    g0.beginPath();
+    g0.arc(0, 0, rad, 0, Math.PI * 2);
+    g0.fill();
+    g0.restore();
+  }
+  g0.globalCompositeOperation = 'source-over';
+  softEdge(g0, small, R * 0.25);
+  // Weich hochskalieren (wirkt wie Weichzeichner) und wenige feine Glitzerpunkte
+  const size = 512;
+  const [c, ctx] = canvas(size);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(c0, 0, 0, size, size);
+  if (!layer) {
+    const big = size / small;
+    for (let i = 0; i < 30; i++) {
+      const p = around(1);
+      ctx.fillStyle = `rgba(255,255,255,${0.04 + r() * 0.12})`;
+      ctx.fillRect(p.x * big, p.y * big, 1.3, 1.3);
+    }
+  }
+  return c;
+}
+
+/** Gesteinsfeld: viele kleine Brocken in Ballungen über einem feinen Staubschleier */
+function rockSprite(ware: string, seed: number): HTMLCanvasElement {
   const size = 512;
   const [c, ctx] = canvas(size);
   const color = WARES[ware]?.color ?? '#999999';
   const r = rng(seed);
   const cx = size / 2, R = size / 2 / 1.3;
-  // Ballungszentren bestimmen die Form des Feldes
-  const clusters = Array.from({ length: 3 + Math.floor(r() * 3) }, () => {
-    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * R * 0.6;
-    return { x: cx + Math.cos(a) * d, y: cx + Math.sin(a) * d, s: R * (0.45 + r() * 0.35) };
-  });
-  const around = () => {
-    const k = clusters[Math.floor(r() * clusters.length)];
-    const a = r() * Math.PI * 2, d = Math.abs(gauss(r)) * k.s;
-    return { x: k.x + Math.cos(a) * d, y: k.y + Math.sin(a) * d };
-  };
-  if (GAS.has(ware)) {
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 130; i++) {
-      const p = around();
-      const rad = R * (0.14 + r() * 0.36);
-      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad);
-      const tone = r() < 0.3 ? shade(color, 0.45) : color;
-      g.addColorStop(0, rgbaFrom(tone, 0.09 + r() * 0.08));
-      g.addColorStop(1, rgbaFrom(tone, 0));
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    for (let i = 0; i < 110; i++) {
-      const p = around();
-      ctx.fillStyle = `rgba(255,255,255,${0.15 + r() * 0.45})`;
-      ctx.fillRect(p.x, p.y, 1.3, 1.3);
-    }
-    ctx.globalCompositeOperation = 'source-over';
-  } else {
-    // Staubschleier je Ballung
-    for (const k of clusters) {
-      const g = ctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, k.s * 1.4);
-      g.addColorStop(0, rgba(color, 0.26));
-      g.addColorStop(0.5, rgba(color, 0.1));
-      g.addColorStop(1, rgba(color, 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, size, size);
-    }
-    const rocks: { x: number; y: number; s: number }[] = [];
-    const n = ware === 'nividium' ? 45 : 85;
-    for (let i = 0; i < n; i++) {
-      const p = around();
-      const big = r() < 0.1;
-      rocks.push({ x: p.x, y: p.y, s: big ? 20 + r() * 22 : 5 + r() * 12 });
-    }
-    // feiner Schutt
-    for (let i = 0; i < 260; i++) {
-      const p = around();
-      ctx.fillStyle = rgba(color, 0.3 + r() * 0.4);
-      ctx.fillRect(p.x, p.y, 2.2, 2.2);
-    }
-    rocks.sort((a, b) => a.y - b.y);
-    for (const k of rocks) {
-      if (ware === 'ice') drawCrystal(ctx, k.x, k.y, k.s * 1.1, color, r);
-      else drawRock(ctx, k.x, k.y, k.s, ware === 'silicon' ? '#8f99a8' : ware === 'nividium' ? '#6b5a3a' : shade(color, -0.35), color, r, ware === 'nividium');
-    }
+  const { clusters, around } = clustersOf(r, cx, R);
+  // Feiner Staubschleier je Ballung
+  for (const k of clusters) {
+    const g = ctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, k.s * 1.5);
+    g.addColorStop(0, rgba(color, 0.11));
+    g.addColorStop(0.5, rgba(color, 0.04));
+    g.addColorStop(1, rgba(color, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
   }
-  // Weicher Rand: nach außen ausblenden
-  ctx.globalCompositeOperation = 'destination-in';
-  const mask = ctx.createRadialGradient(cx, cx, R * 0.6, cx, cx, size / 2);
-  mask.addColorStop(0, 'rgba(0,0,0,1)');
-  mask.addColorStop(0.6, 'rgba(0,0,0,0.6)');
-  mask.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = mask;
-  ctx.fillRect(0, 0, size, size);
-  ctx.globalCompositeOperation = 'source-over';
-  cache.set(id, c);
+  // Feinster Schutt
+  for (let i = 0; i < 520; i++) {
+    const p = around(1.1);
+    ctx.fillStyle = rgba(color, 0.18 + r() * 0.35);
+    const d = 1 + r() * 1.2;
+    ctx.fillRect(p.x, p.y, d, d);
+  }
+  // Viele kleine Brocken, nur wenige mittlere – keine großen
+  const rocks: { x: number; y: number; s: number }[] = [];
+  const n = ware === 'nividium' ? 160 : 330;
+  for (let i = 0; i < n; i++) {
+    const p = around();
+    const mid = r() < 0.06;
+    rocks.push({ x: p.x, y: p.y, s: mid ? 7 + r() * 5 : 2.2 + r() * 4.2 });
+  }
+  rocks.sort((a, b) => a.y - b.y);
+  for (const k of rocks) {
+    if (ware === 'ice') drawCrystal(ctx, k.x, k.y, k.s * 1.1, color, r);
+    else drawRock(ctx, k.x, k.y, k.s, ware === 'silicon' ? '#8f99a8' : ware === 'nividium' ? '#6b5a3a' : shade(color, -0.35), color, r, ware === 'nividium');
+  }
+  softEdge(ctx, size, R * 0.55);
   return c;
 }
 
