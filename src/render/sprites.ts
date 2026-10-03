@@ -1,5 +1,6 @@
 // Prozedurale Grafiken: Asteroidenfelder, Gasnebel, Hintergrund
 import { WARES } from '../data/wares';
+import { fbm, perlin, smooth } from './noise';
 
 export function rng(seed: number): () => number {
   let t = seed >>> 0 || 1;
@@ -19,12 +20,6 @@ export function hexToRgb(hex: string): [number, number, number] {
 export function rgba(hex: string, a: number): string {
   const [r, g, b] = hexToRgb(hex);
   return `rgba(${r},${g},${b},${a})`;
-}
-
-function shade(hex: string, f: number): string {
-  const [r, g, b] = hexToRgb(hex);
-  const m = (v: number) => Math.max(0, Math.min(255, Math.round(f >= 0 ? v + (255 - v) * f : v * (1 + f))));
-  return `rgb(${m(r)},${m(g)},${m(b)})`;
 }
 
 function canvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
@@ -66,79 +61,62 @@ function clustersOf(r: () => number, cx: number, R: number) {
   return { clusters, around };
 }
 
-/** Weicher Rand: nach außen ausblenden */
-function softEdge(ctx: CanvasRenderingContext2D, size: number, inner: number): void {
-  const cx = size / 2;
-  ctx.globalCompositeOperation = 'destination-in';
-  const mask = ctx.createRadialGradient(cx, cx, inner, cx, cx, size / 2);
-  mask.addColorStop(0, 'rgba(0,0,0,1)');
-  mask.addColorStop(0.55, 'rgba(0,0,0,0.55)');
-  mask.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = mask;
-  ctx.fillRect(0, 0, size, size);
-  ctx.globalCompositeOperation = 'source-over';
-}
-
 /**
- * Gasnebel: viele große, sehr blasse Wolken und lang gezogene Schlieren, klein gezeichnet und weich hochskaliert –
- * so entsteht ein Schleier ohne harte Kanten.
+ * Gasnebel aus verwirbeltem Rauschen: weiche Ballungen mit feinen Filamenten und Lücken, in Tönen der Gasfarbe.
+ * Gerechnet in Gleitkomma (keine Farbstufen), 176 px, sanft auf 512 px vergrößert und fein gekörnt.
  */
 function gasSprite(ware: string, seed: number, layer: number): HTMLCanvasElement {
-  const small = 128;
-  const [c0, g0] = canvas(small);
+  const S = 176;
   const color = WARES[ware]?.color ?? '#999999';
   const r = rng(seed);
-  const cx = small / 2, R = small / 2 / 1.3;
-  const { around } = clustersOf(r, cx, R);
-  // Viele große, sehr blasse Wolken und Schlieren, weit gestreut
-  const n = layer ? 90 : 120;
-  for (let i = 0; i < n; i++) {
-    const p = around(1.5);
-    const rad = R * (0.3 + r() * 0.65);
-    const tone = r() < 0.3 ? shade(color, 0.3) : r() < 0.45 ? shade(color, -0.3) : color;
-    g0.save();
-    g0.translate(p.x, p.y);
-    g0.rotate(r() * Math.PI);
-    g0.scale(1, 0.25 + r() * 0.6);
-    const g = g0.createRadialGradient(0, 0, 0, 0, 0, rad);
-    const a = (layer ? 0.012 : 0.018) + r() * 0.02;
-    g.addColorStop(0, rgbaFrom(tone, a));
-    g.addColorStop(0.5, rgbaFrom(tone, a * 0.5));
-    g.addColorStop(1, rgbaFrom(tone, 0));
-    g0.fillStyle = g;
-    g0.beginPath();
-    g0.arc(0, 0, rad, 0, Math.PI * 2);
-    g0.fill();
-    g0.restore();
+  const cx = S / 2, R = S / 2 / 1.3;
+  const { clusters, around } = clustersOf(r, cx, R);
+  const n1 = perlin(seed + 11), n2 = perlin(seed + 23), n3 = perlin(seed + 37);
+  const [br, bg, bb] = hexToRgb(color);
+  const dark = [br * 0.55, bg * 0.55, bb * 0.6], light = [br + (255 - br) * 0.35, bg + (255 - bg) * 0.35, bb + (255 - bb) * 0.35];
+  const [c0, g0] = canvas(S);
+  const img = g0.createImageData(S, S);
+  const px = img.data;
+  const strength = layer ? 0.32 : 0.42;
+  const off = layer * 3.7;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      // Hülle: weiche Ballungen, zum Rand hin auslaufend
+      let m = 0;
+      for (const k of clusters) {
+        const d = Math.hypot(x - k.x, y - k.y) / (k.s * 1.25);
+        m = Math.max(m, Math.exp(-d * d * 1.6));
+      }
+      m *= 1 - smooth(R * 0.95, S / 2, Math.hypot(x - cx, y - cx));
+      if (m < 0.01) continue;
+      const u = (x / S) * 3.2 + off, v = (y / S) * 3.2 - off;
+      const q1 = fbm(n1, u, v, 3), q2 = fbm(n2, u + 4.1, v + 2.7, 3);
+      const rr = fbm(n3, u + 2.2 * q1, v + 2.2 * q2, 5);
+      const dens = m * smooth(0.32, 0.78, rr * 0.75 + m * 0.35);
+      const fr = fbm(n2, u * 2.4 + q1, v * 2.4 + q2, 3);
+      const fil = Math.pow(1 - Math.abs(fr * 2 - 1), 7) * m;
+      const t = smooth(0.3, 0.75, q2);
+      const hi = Math.min(1, fil * 1.2 + dens * dens * 0.6);
+      const a = Math.min(1, (dens * 0.8 + fil * 0.35) * strength);
+      const i = (y * S + x) * 4;
+      px[i] = dark[0] + (br - dark[0]) * t + (light[0] - br) * hi;
+      px[i + 1] = dark[1] + (bg - dark[1]) * t + (light[1] - bg) * hi;
+      px[i + 2] = dark[2] + (bb - dark[2]) * t + (light[2] - bb) * hi;
+      px[i + 3] = a * 255 + (r() - 0.5) * 1.5;
+    }
   }
-  // Lücken ausstanzen: der Schleier bekommt Struktur statt eines hellen Kerns
-  g0.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 26; i++) {
-    const p = around(1.2);
-    const rad = R * (0.12 + r() * 0.3);
-    g0.save();
-    g0.translate(p.x, p.y);
-    g0.rotate(r() * Math.PI);
-    g0.scale(1, 0.3 + r() * 0.5);
-    const g = g0.createRadialGradient(0, 0, 0, 0, 0, rad);
-    g.addColorStop(0, 'rgba(0,0,0,0.45)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    g0.fillStyle = g;
-    g0.beginPath();
-    g0.arc(0, 0, rad, 0, Math.PI * 2);
-    g0.fill();
-    g0.restore();
-  }
-  g0.globalCompositeOperation = 'source-over';
-  softEdge(g0, small, R * 0.25);
-  // Weich hochskalieren (wirkt wie Weichzeichner) und wenige feine Glitzerpunkte
+  g0.putImageData(img, 0, 0);
   const size = 512;
-  const [c, ctx] = canvas(size);
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d')!;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+  ctx.filter = 'blur(1.6px)';
   ctx.drawImage(c0, 0, 0, size, size);
+  ctx.filter = 'none';
   if (!layer) {
-    const big = size / small;
+    const big = size / S;
     for (let i = 0; i < 30; i++) {
       const p = around(1);
       ctx.fillStyle = `rgba(255,255,255,${0.04 + r() * 0.12})`;
@@ -152,17 +130,14 @@ function gauss(r: () => number): number {
   return (r() + r() + r() - 1.5) / 1.5;
 }
 
-function rgbaFrom(css: string, a: number): string {
-  if (css.startsWith('#')) return rgba(css, a);
-  return css.replace('rgb(', 'rgba(').replace(')', `,${a})`);
-}
-
 /** Hintergrund mit Nebel und Sternen, eingefärbt je Sektor */
-/** glow: Stärke der eingefärbten Nebelflecken, stars: Sterndichte (je nach Sektorcharakter) */
-export function backgroundSprite(w: number, h: number, seed: number, tint: [string, string], glow = 1, stars = 1): HTMLCanvasElement {
+/** res: Pixel je Bildschirmpunkt; glow: Stärke der eingefärbten Nebelflecken, stars: Sterndichte (je nach Sektorcharakter) */
+export function backgroundSprite(w: number, h: number, seed: number, tint: [string, string], glow = 1, stars = 1, res = 1): HTMLCanvasElement {
   const [c, ctx] = canvas(1);
-  c.width = w;
-  c.height = h;
+  // res: Pixel je Bildschirmpunkt – in Geräteauflösung gerechnet, damit beim Anzeigen nichts vergrößert wird
+  c.width = Math.round(w * res);
+  c.height = Math.round(h * res);
+  ctx.scale(res, res);
   const r = rng(seed);
   const g = ctx.createLinearGradient(0, 0, w, h);
   g.addColorStop(0, '#040a14');

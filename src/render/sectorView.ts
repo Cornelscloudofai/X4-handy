@@ -106,20 +106,28 @@ export class SectorRenderer {
    */
   drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, sectorId: string, now: number): void {
     const W = cam.w, H = cam.h;
-    const key = `${sectorId}:${Math.round(W)}x${Math.round(H)}`;
+    // Hintergrund in Geräteauflösung (höchstens doppelt) – beim Anzeigen wird kaum vergrößert, kein Pixelraster
+    const res = Math.max(1, Math.min(2, ctx.getTransform().a || 1));
+    const key = `${sectorId}:${Math.round(W)}x${Math.round(H)}@${res}`;
     const theme = SECTOR_MAP[sectorId] ? sectorTheme(sectorId) : null;
     if (key !== this.bgKey) {
-      const glow = theme ? (theme.kind === 'mixed' ? 0.6 : 0.3) : 1;
-      this.bg = backgroundSprite(Math.round(W), Math.round(H), hashStr(sectorId), SECTOR_TINT[sectorId] ?? ['#1f5f8a', '#0e6f66'], glow, theme ? starFactor(theme) : 1);
-      if (theme) paintSun(this.bg.getContext('2d')!, Math.round(W), Math.round(H), theme);
-      this.nebula = theme ? nebulaLayer(Math.round(W * NEBULA_PAD), Math.round(H * NEBULA_PAD), theme) : null;
+      const glow = theme ? 0.12 : 1;
+      this.bg = backgroundSprite(Math.round(W), Math.round(H), hashStr(sectorId), SECTOR_TINT[sectorId] ?? ['#1f5f8a', '#0e6f66'], glow, theme ? starFactor(theme) : 1, res);
+      if (theme) {
+        const bctx = this.bg.getContext('2d')!;
+        bctx.setTransform(res, 0, 0, res, 0, 0);
+        paintSun(bctx, Math.round(W), Math.round(H), theme);
+        bctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      this.nebula = theme ? nebulaLayer(Math.round(W * NEBULA_PAD), Math.round(H * NEBULA_PAD), theme, res) : null;
       this.bgKey = key;
+      this.comp = null;
     }
     const limit = SECTOR_RADIUS * 1.1;
     if (this.nebula && theme) {
       // Ferne Ebene: verschiebt sich um bis zu 12 % der Bildbreite. Hintergrund und Nebel werden zu einem Bild
       // zusammengesetzt – neu nur, wenn sich die Verschiebung um ein Pixel ändert (im Stillstand ein einziges Bild).
-      const px = Math.round(Math.max(-1, Math.min(1, cam.x / limit)) * W * 0.12), py = Math.round(Math.max(-1, Math.min(1, cam.z / limit)) * H * 0.08);
+      const px = Math.round(Math.max(-1, Math.min(1, cam.x / limit)) * W * 0.12 * res), py = Math.round(Math.max(-1, Math.min(1, cam.z / limit)) * H * 0.08 * res);
       const ck = `${key}:${px}:${py}`;
       if (ck !== this.compKey || !this.comp) {
         if (!this.comp || this.comp.width !== this.bg!.width || this.comp.height !== this.bg!.height) {
@@ -1352,7 +1360,7 @@ export class SectorRenderer {
       if (f.rate >= 1 && (touches || rel >= 3) && !f.viaGate) {
         const [x1, y1] = cam.toScreen(f.ax, f.az), [x2, y2] = cam.toScreen(f.bx, f.bz);
         const [mx, my] = bendPoint(x1, y1, x2, y2, idx);
-        this.labels.push({ text: `${WARES[f.ware].name} ${Math.round(f.rate).toLocaleString('de-DE')}/h`, x: mx, ys: [my - 9, my + 11], size: 10.5, color: rgba(WARES[f.ware].color, 0.95), weight: 600, prio: 1, minRel: LABEL_AT.amount, force: touches && rel >= 1.2 });
+        this.labels.push({ text: `${WARES[f.ware].name} ${Math.round(f.rate).toLocaleString('de-DE')}/h`, x: mx, ys: [my - 9, my + 11], size: 9.5, color: rgba(WARES[f.ware].color, 0.85), weight: 500, prio: 1, minRel: LABEL_AT.amount, force: touches && rel >= 1.2 });
       }
     }
     if (!ui.routes) return;
@@ -1386,8 +1394,9 @@ export class SectorRenderer {
   }
 
   /**
-   * Eine Flusslinie: Stärke nach Volumen pro Stunde, Lichtpunkte laufen in Transportrichtung.
-   * Nur angekündigte Aufträge (noch nichts geliefert) sind dünn und gestrichelt.
+   * Eine Flusslinie im technischen Stil: feine Haarlinie, darauf kurze Striche, die in Transportrichtung laufen.
+   * Mehr Menge pro Stunde = dichtere Striche und eine minimal kräftigere Linie. Angekündigte Aufträge
+   * (noch nichts geliefert) nur fein gepunktet.
    */
   private wareFlow(ctx: CanvasRenderingContext2D, cam: Camera, f: FlowSeg, now: number, motion: boolean, lane: number, alpha: number, s: number): void {
     const [x1, y1] = cam.toScreen(f.ax, f.az);
@@ -1398,63 +1407,48 @@ export class SectorRenderer {
     if (maxX < -40 || minX > cam.w + 40 || maxY < -40 || minY > cam.h + 40) return;
     const color = WARES[f.ware]?.color ?? '#9fb4c8';
     const [cx, cy] = bendPoint(x1, y1, x2, y2, lane);
-    const k = Math.min(1.15, 0.55 + s * 0.45);
-    const w = f.volume > 0 ? Math.min(9, 1.2 + 1.5 * Math.log2(1 + f.volume / 300)) * k : 1;
     const curve = () => {
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo(cx, cy, x2, y2);
     };
-    ctx.lineCap = 'round';
+    ctx.lineCap = 'butt';
     if (f.volume <= 0) {
-      ctx.setLineDash([3, 7]);
-      ctx.lineDashOffset = motion ? -now / 60 : 0;
-      ctx.strokeStyle = rgba(color, 0.4 * alpha);
-      ctx.lineWidth = 1.2;
+      ctx.setLineDash([1.5, 5]);
+      ctx.lineDashOffset = motion ? -now / 80 : 0;
+      ctx.strokeStyle = rgba(color, 0.35 * alpha);
+      ctx.lineWidth = 0.8;
       curve();
       ctx.stroke();
       ctx.setLineDash([]);
       return;
     }
-    // Breiter, blasser Strom mit hellem Kern (Neon ohne Weichzeichner)
-    ctx.strokeStyle = rgba(color, 0.12 * alpha);
-    ctx.lineWidth = w * 2.4 + 2;
+    // 0 … 1 nach Volumen pro Stunde (logarithmisch)
+    const k = Math.min(1, Math.log2(1 + f.volume / 400) / 6);
+    const base = (0.7 + 0.6 * k) * Math.min(1.1, 0.7 + s * 0.3);
+    ctx.strokeStyle = rgba(color, (0.22 + 0.12 * k) * alpha);
+    ctx.lineWidth = base;
     curve();
     ctx.stroke();
-    ctx.strokeStyle = rgba(color, 0.42 * alpha);
-    ctx.lineWidth = w;
+    // Laufende Striche („Pakete“)
+    const gap = 34 - 18 * k;
+    ctx.setLineDash([5, gap]);
+    ctx.lineDashOffset = motion ? -((now / 1000) * 30) % (gap + 5) : 0;
+    ctx.strokeStyle = rgba(color, 0.85 * alpha);
+    ctx.lineWidth = base + 0.7;
     ctx.stroke();
-    // Lichtpunkte entlang der Kurve – Abstand in Bildschirmpixeln, mehr Menge = dichter
-    const gap = Math.max(16, 42 - w * 3, len / 60);
-    const n = Math.floor(len / gap);
-    const off = motion ? ((now / 1000) * 34) % gap : 0;
-    const dotR = Math.max(1, w * 0.42);
-    ctx.fillStyle = rgba(color, 0.9 * alpha);
-    ctx.beginPath();
-    for (let i = 0; i <= n; i++) {
-      const t = (i * gap + off) / len;
-      if (t > 1) break;
-      const u = 1 - t;
-      const px = u * u * x1 + 2 * u * t * cx + t * t * x2;
-      const py = u * u * y1 + 2 * u * t * cy + t * t * y2;
-      if (px < -10 || py < -10 || px > cam.w + 10 || py > cam.h + 10) continue;
-      ctx.moveTo(px + dotR, py);
-      ctx.arc(px, py, dotR, 0, Math.PI * 2);
-    }
-    ctx.fill();
-    // Richtungspfeil in der Mitte
-    if (len > 70) {
-      const t = 0.5, u = 0.5;
-      const px = u * u * x1 + 2 * u * t * cx + t * t * x2, py = u * u * y1 + 2 * u * t * cy + t * t * y2;
-      const a = Math.atan2(y2 - cy - (cy - y1), x2 - cx - (cx - x1));
+    ctx.setLineDash([]);
+    // Kleiner Richtungswinkel in der Mitte
+    if (len > 90) {
+      const px = 0.25 * x1 + 0.5 * cx + 0.25 * x2, py = 0.25 * y1 + 0.5 * cy + 0.25 * y2;
+      const a = Math.atan2(y2 - y1, x2 - x1);
       ctx.save();
       ctx.translate(px, py);
       ctx.rotate(a);
-      ctx.strokeStyle = rgba(color, 0.85 * alpha);
-      ctx.lineWidth = 1.6;
-      const h = 3 + w * 0.6;
+      ctx.strokeStyle = rgba(color, 0.7 * alpha);
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(-h, -h); ctx.lineTo(h * 0.4, 0); ctx.lineTo(-h, h);
+      ctx.moveTo(-3, -3); ctx.lineTo(1, 0); ctx.lineTo(-3, 3);
       ctx.stroke();
       ctx.restore();
     }
@@ -1517,7 +1511,7 @@ export function stationIssues(st: Station): Issue[] {
 function bendPoint(x1: number, y1: number, x2: number, y2: number, lane: number): [number, number] {
   const len = Math.hypot(x2 - x1, y2 - y1) || 1;
   const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
-  const bend = len * 0.1 + 6 + lane * 9;
+  const bend = len * 0.05 + 4 + lane * 6;
   return [(x1 + x2) / 2 + nx * bend, (y1 + y2) / 2 + ny * bend];
 }
 

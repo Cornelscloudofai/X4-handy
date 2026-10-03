@@ -2,7 +2,8 @@
 import { FACTIONS, SECTOR_MAP } from '../data/sectors';
 import { WARES } from '../data/wares';
 import { hashStr } from '../engine/util';
-import { hexToRgb, isGas, rgba, rng } from './sprites';
+import { fbm, perlin, smooth } from './noise';
+import { hexToRgb, isGas, rng } from './sprites';
 
 export type ThemeKind = 'gas' | 'rock' | 'mixed';
 
@@ -68,105 +69,90 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
   return [c, c.getContext('2d')!];
 }
 
-function blob(ctx: CanvasRenderingContext2D, x: number, y: number, rad: number, rot: number, squash: number, color: string, a: number): void {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rot);
-  ctx.scale(1, squash);
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rad);
-  g.addColorStop(0, rgba(color, a));
-  g.addColorStop(0.55, rgba(color, a * 0.45));
-  g.addColorStop(1, rgba(color, 0));
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(0, 0, rad, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+/** Farbe für den Nebel: Neonfarben der Waren gedämpft und in Richtung Weltraumblau gezogen */
+function nebulaRgb(hex: string, k: number): [number, number, number] {
+  const [r, g, b] = hexToRgb(hex);
+  const base = [10, 20, 36];
+  const grey = (r + g + b) / 3;
+  // etwas entsättigen, dann zum Hintergrund mischen
+  const d = (v: number, i: number) => base[i] + (v * 0.7 + grey * 0.3 - base[i]) * k;
+  return [d(r, 0), d(g, 1), d(b, 2)];
 }
 
 /**
- * Nebelschicht hinter der Karte (größer als der Bildschirm, für Parallaxe). Klein gezeichnet und weich
- * hochskaliert. Gas-Sektoren: großflächige farbige Gasschleier. Gesteins-Sektoren: dunkle Staubbänder mit
- * fernen Brocken. Gemischt: dezente Fraktionstönung.
+ * Nebelschicht hinter der Karte (größer als der Bildschirm, für Parallaxe), aus verwirbeltem Rauschen:
+ * Gas-Sektoren mit großen leuchtenden Wolken und feinen Filamenten in den Farben ihrer Gase, Gesteins-Sektoren
+ * mit bräunlichem Staub und dunklen Wolkenbändern, gemischte mit dezenten Schleiern. Dunkelwolken verdecken
+ * Sterne; eine feine Körnung verhindert Farbstufen.
  */
-export function nebulaLayer(w: number, h: number, t: SectorTheme): HTMLCanvasElement {
-  const k = 4;
+export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTMLCanvasElement {
+  const k = 2.5;
   const sw = Math.ceil(w / k), sh = Math.ceil(h / k);
-  const [c0, g] = canvas(sw, sh);
-  const r = rng(t.seed);
-  const light = Math.max(0.55, Math.min(1.35, 0.5 + t.sun * 0.5));
-  g.globalCompositeOperation = 'lighter';
-  if (t.kind === 'gas') {
-    // Große Gasbänder quer über den Himmel, mehrere Farben übereinander
-    const bands = 3 + Math.floor(r() * 2);
-    for (let b = 0; b < bands; b++) {
-      const col = t.colors[b % t.colors.length];
-      const ang = r() * Math.PI;
-      const cx = sw * (0.15 + r() * 0.7), cy = sh * (0.15 + r() * 0.7);
-      for (let i = 0; i < 26; i++) {
-        const d = (r() - 0.5) * Math.max(sw, sh) * 1.1;
-        const x = cx + Math.cos(ang) * d + (r() - 0.5) * sw * 0.18, y = cy + Math.sin(ang) * d + (r() - 0.5) * sh * 0.12;
-        blob(g, x, y, Math.max(sw, sh) * (0.08 + r() * 0.16), ang + (r() - 0.5) * 0.6, 0.3 + r() * 0.4, col, (0.05 + r() * 0.05) * light);
-      }
+  const [c0, g0] = canvas(sw, sh);
+  const img = g0.createImageData(sw, sh);
+  const px = img.data;
+  const n1 = perlin(t.seed), n2 = perlin(t.seed + 101), n3 = perlin(t.seed + 202);
+  const light = Math.max(0.6, Math.min(1.3, 0.55 + t.sun * 0.45));
+  const kind = t.kind;
+  const cols = t.colors.map((c, i) => nebulaRgb(c, kind === 'rock' ? 0.85 : i === 0 ? 0.95 : 0.8));
+  const c0c = cols[0], c1c = cols[1 % cols.length], c2c = cols[2 % cols.length];
+  // Bedeckung und Stärke je Charakter
+  const cover = kind === 'gas' ? [0.4, 0.78] : kind === 'mixed' ? [0.47, 0.84] : [0.44, 0.82];
+  const glow = (kind === 'gas' ? 0.62 : kind === 'mixed' ? 0.46 : 0.42) * light;
+  const dusty = kind === 'rock' ? 0.75 : kind === 'gas' ? 0.45 : 0.4;
+  const scale = 2.6 / Math.max(sw, sh);
+  const dark = [3, 6, 11];
+  const grain = rng(t.seed + 3);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      const u = x * scale, v = y * scale;
+      // Verwirbelung: Rauschen verschiebt die Koordinaten eines zweiten Rauschens
+      const q1 = fbm(n1, u, v, 3), q2 = fbm(n2, u + 5.2, v + 1.3, 3);
+      const r = fbm(n3, u + 2.6 * q1, v + 2.6 * q2, 5);
+      const dens = smooth(cover[0], cover[1], r);
+      // Filamente: Kämme des Rauschens, nur innerhalb der Wolken
+      const fr = fbm(n1, u * 2.3 + q2 * 1.5, v * 2.3 + q1 * 1.5, 3);
+      const fil = Math.pow(1 - Math.abs(fr * 2 - 1), 6) * dens;
+      // Dunkelwolken (Absorption)
+      const du = smooth(0.52, 0.74, fbm(n2, u * 1.4 + q1 * 1.2 + 9, v * 1.4 - q2 + 4, 4)) * dusty;
+      const mixC = smooth(0.35, 0.7, q1);
+      let cr = c0c[0] + (c1c[0] - c0c[0]) * mixC, cg = c0c[1] + (c1c[1] - c0c[1]) * mixC, cb = c0c[2] + (c1c[2] - c0c[2]) * mixC;
+      // helle Kerne und Filamente in der dritten Farbe, leicht aufgehellt
+      const hi = Math.min(1, fil * 1.4 + dens * dens * 0.25);
+      cr += (c2c[0] * 1.25 - cr) * hi * 0.5; cg += (c2c[1] * 1.25 - cg) * hi * 0.5; cb += (c2c[2] * 1.25 - cb) * hi * 0.5;
+      const ea = Math.min(1, (dens * 0.75 + fil * 0.6) * glow) * (1 - du * 0.85);
+      const da = du * (kind === 'rock' ? 0.8 : 0.6);
+      const a = ea + da * (1 - ea);
+      const i = (y * sw + x) * 4;
+      if (a <= 0.002) { px[i + 3] = 0; continue; }
+      px[i] = (cr * ea + dark[0] * da * (1 - ea)) / a;
+      px[i + 1] = (cg * ea + dark[1] * da * (1 - ea)) / a;
+      px[i + 2] = (cb * ea + dark[2] * da * (1 - ea)) / a;
+      // feine Körnung gegen Farbstufen
+      px[i + 3] = a * 255 + (grain() - 0.5) * 2;
     }
-  } else if (t.kind === 'rock') {
-    // Matter Staub, im Sonnenlicht schwach rötlich-grau
-    for (let i = 0; i < 18; i++) blob(g, r() * sw, r() * sh, Math.max(sw, sh) * (0.12 + r() * 0.2), r() * Math.PI, 0.25 + r() * 0.35, t.colors[i % t.colors.length], (0.035 + r() * 0.035) * light);
-  } else {
-    for (let i = 0; i < 16; i++) blob(g, r() * sw, r() * sh, Math.max(sw, sh) * (0.1 + r() * 0.2), r() * Math.PI, 0.4 + r() * 0.5, t.colors[i % t.colors.length], (0.04 + r() * 0.04) * light);
   }
-  g.globalCompositeOperation = 'source-over';
-  if (t.kind === 'rock') {
-    // Dunkle Staubbänder verdecken Sterne und Nebel
-    g.globalCompositeOperation = 'destination-out';
-    const ang = r() * Math.PI;
-    for (let i = 0; i < 14; i++) {
-      const d = (r() - 0.5) * Math.max(sw, sh);
-      blob(g, sw / 2 + Math.cos(ang) * d, sh / 2 + Math.sin(ang) * d, Math.max(sw, sh) * (0.1 + r() * 0.12), ang, 0.25, '#000000', 0.5);
-    }
-    g.globalCompositeOperation = 'source-over';
-  } else {
-    // Lücken: der Nebel bekommt Struktur
-    g.globalCompositeOperation = 'destination-out';
-    for (let i = 0; i < 14; i++) blob(g, r() * sw, r() * sh, Math.max(sw, sh) * (0.04 + r() * 0.08), r() * Math.PI, 0.4 + r() * 0.4, '#000000', 0.35);
-    g.globalCompositeOperation = 'source-over';
-  }
-  const [c, ctx] = canvas(w, h);
+  g0.putImageData(img, 0, 0);
+  // Ausgabe in Geräteauflösung (res), leicht weichgezeichnet: glättet die Kanten der vergrößerten Pixel
+  const [c, ctx] = canvas(w * res, h * res);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(c0, 0, 0, w, h);
-  if (t.kind === 'rock') {
-    // Ferne Brocken als Silhouetten mit Lichtkante zur Sonne
-    const sx = Math.cos(t.sunAngle), sy = Math.sin(t.sunAngle);
-    const n = Math.round((w * h) / 9000);
-    for (let i = 0; i < n; i++) {
-      const x = r() * w, y = r() * h, rad = 0.6 + Math.pow(r(), 3) * 3.2;
-      ctx.fillStyle = 'rgba(8,10,14,0.9)';
-      ctx.beginPath();
-      ctx.arc(x, y, rad, 0, Math.PI * 2);
-      ctx.fill();
-      if (rad > 1.4) {
-        ctx.strokeStyle = rgba(t.sunColor, 0.25 * light);
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        const a = Math.atan2(sy, sx);
-        ctx.arc(x, y, rad, a - 1, a + 1);
-        ctx.stroke();
-      }
-    }
-  }
+  const b = k * res;
+  ctx.filter = `blur(${b * 0.6}px)`;
+  ctx.drawImage(c0, -b, -b, c.width + 2 * b, c.height + 2 * b);
+  ctx.filter = 'none';
   return c;
 }
 
 /** Sterndichte und Helligkeit des Grundhimmels je Charakter */
 export function starFactor(t: SectorTheme): number {
-  return t.kind === 'gas' ? 0.6 : t.kind === 'rock' ? 1.2 : 1;
+  return t.kind === 'gas' ? 0.75 : t.kind === 'rock' ? 1.2 : 1;
 }
 
 /**
- * Sonne am Rand der Karte: Kern, Hof und feine Strahlen, fest in den Hintergrund gemalt (die Sonne ist so fern,
- * dass sie sich beim Verschieben nicht bewegt). Helligkeit folgt dem Sonnenlicht (60 % = matt und klein,
- * 140 % = groß und gleißend).
+ * Sonne am Rand der Karte, fest in den Hintergrund gemalt (so fern, dass sie sich beim Verschieben nicht bewegt):
+ * kleiner heller Kern mit weichem Hof, ohne Strahlen. Größe und Helligkeit folgen dem Sonnenlicht
+ * (60 % = matt und klein, 140 % = groß und hell).
  */
 export function paintSun(ctx: CanvasRenderingContext2D, W: number, H: number, t: SectorTheme): void {
   if (t.sun <= 0) return;
@@ -176,37 +162,25 @@ export function paintSun(ctx: CanvasRenderingContext2D, W: number, H: number, t:
   const [r, g, b] = hexToRgb(t.sunColor);
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const halo = m * (0.35 + 0.35 * s);
+  // Weiter, sehr blasser Lichthof (Streulicht)
+  const halo = m * (0.3 + 0.25 * s);
   const hg = ctx.createRadialGradient(x, y, 0, x, y, halo);
-  hg.addColorStop(0, `rgba(${r},${g},${b},${0.2 * s})`);
-  hg.addColorStop(0.25, `rgba(${r},${g},${b},${0.07 * s})`);
+  hg.addColorStop(0, `rgba(${r},${g},${b},${0.13 * s})`);
+  hg.addColorStop(0.15, `rgba(${r},${g},${b},${0.05 * s})`);
+  hg.addColorStop(0.5, `rgba(${r},${g},${b},${0.015 * s})`);
   hg.addColorStop(1, `rgba(${r},${g},${b},0)`);
   ctx.fillStyle = hg;
   ctx.fillRect(0, 0, W, H);
-  // Strahlen: wenige lange, sehr blasse Keile
-  const rays = 7;
-  for (let i = 0; i < rays; i++) {
-    const a = (i / rays) * Math.PI * 2 + Math.sin(i * 7.3) * 0.3 + t.seed % 7;
-    const len = halo * (0.8 + 0.5 * Math.abs(Math.sin(i * 3.1)));
-    const wdt = 0.025 + 0.02 * Math.abs(Math.cos(i * 1.7));
-    const rg = ctx.createRadialGradient(x, y, 0, x, y, len);
-    rg.addColorStop(0, `rgba(${r},${g},${b},${0.045 * s})`);
-    rg.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    ctx.fillStyle = rg;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.arc(x, y, len, a - wdt, a + wdt);
-    ctx.closePath();
-    ctx.fill();
-  }
-  const core = 6 + 10 * s;
-  const cg = ctx.createRadialGradient(x, y, 0, x, y, core * 2.2);
-  cg.addColorStop(0, `rgba(255,255,255,${Math.min(1, 0.7 * s)})`);
-  cg.addColorStop(0.35, `rgba(${r},${g},${b},${0.5 * s})`);
+  // Kern
+  const core = 3 + 4 * s;
+  const cg = ctx.createRadialGradient(x, y, 0, x, y, core * 4);
+  cg.addColorStop(0, `rgba(255,255,255,${Math.min(1, 0.85 * s)})`);
+  cg.addColorStop(0.18, `rgba(255,250,235,${Math.min(1, 0.6 * s)})`);
+  cg.addColorStop(0.45, `rgba(${r},${g},${b},${0.18 * s})`);
   cg.addColorStop(1, `rgba(${r},${g},${b},0)`);
   ctx.fillStyle = cg;
   ctx.beginPath();
-  ctx.arc(x, y, core * 2.2, 0, Math.PI * 2);
+  ctx.arc(x, y, core * 4, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
