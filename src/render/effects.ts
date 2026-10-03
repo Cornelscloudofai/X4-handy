@@ -24,6 +24,8 @@ export class Effects {
   enabled = true;
   /** Aktueller Zoom (Pixel je km): Geschwindigkeiten werden in Bildschirmpixeln angegeben */
   zoom = 1;
+  /** Symbolmaßstab der Karte: herausgezoomt sind Teilchen kleiner, langsamer, weniger und blasser */
+  scale = 1;
 
   private push(p: Particle): void {
     if (!this.enabled) return;
@@ -35,10 +37,11 @@ export class Effects {
   burst(sector: string, x: number, z: number, color: string, power = 1): void {
     this.push({ sector, x, z, vx: 0, vz: 0, life: 0.9, max: 0.9, color, size: 6 * power, kind: 'ring', drag: 0 });
     this.push({ sector, x, z, vx: 0, vz: 0, life: 0.6, max: 0.6, color: '#ffffff', size: 3 * power, kind: 'ring', drag: 0 });
-    const n = Math.round(34 * power);
+    const k = this.scale;
+    const n = Math.round(34 * power * Math.min(1, k * k));
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
-      const sp = ((40 + Math.random() * 110) * power) / this.zoom;
+      const sp = ((40 + Math.random() * 110) * power * k) / this.zoom;
       const life = 0.7 + Math.random() * 0.9;
       this.push({ sector, x, z, vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, life, max: life, color: Math.random() < 0.3 ? '#ffffff' : color, size: 1 + Math.random() * 1.6, kind: 'spark', drag: 2.2 });
     }
@@ -47,7 +50,7 @@ export class Effects {
   /** Einzelne Schweißfunken an einer Baustelle */
   weld(sector: string, x: number, z: number, spread: number): void {
     const a = Math.random() * Math.PI * 2;
-    const sp = (20 + Math.random() * 45) / this.zoom;
+    const sp = ((20 + Math.random() * 45) * this.scale) / this.zoom;
     const life = 0.25 + Math.random() * 0.35;
     this.push({ sector, x: x + (Math.random() - 0.5) * spread, z: z + (Math.random() - 0.5) * spread, vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, life, max: life, color: Math.random() < 0.5 ? '#fff4c2' : '#ffb547', size: 1 + Math.random(), kind: 'spark', drag: 3 });
   }
@@ -55,7 +58,7 @@ export class Effects {
   /** Gesteinssplitter am Abbaupunkt */
   debris(sector: string, x: number, z: number, color: string): void {
     const a = Math.random() * Math.PI * 2;
-    const sp = (8 + Math.random() * 22) / this.zoom;
+    const sp = ((8 + Math.random() * 22) * this.scale) / this.zoom;
     const life = 0.5 + Math.random() * 0.6;
     this.push({ sector, x, z, vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, life, max: life, color, size: 1 + Math.random() * 1.2, kind: 'dot', drag: 1.5 });
   }
@@ -88,7 +91,10 @@ export class Effects {
 
   draw(ctx: CanvasRenderingContext2D, cam: Camera, sector: string, scale: number): void {
     this.zoom = cam.zoom;
+    this.scale = scale;
     if (!this.ps.length) return;
+    // Herausgezoomt dezent: kleiner und blasser
+    const dim = Math.max(0.45, Math.min(1, scale));
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const p of this.ps) {
@@ -98,8 +104,8 @@ export class Effects {
       const t = p.life / p.max;
       if (p.kind === 'ring') {
         const r = (p.size + (1 - t) * p.size * 5) * scale;
-        ctx.strokeStyle = rgba(p.color, t * 0.8);
-        ctx.lineWidth = 1 + t * 2.5;
+        ctx.strokeStyle = rgba(p.color, t * 0.8 * dim);
+        ctx.lineWidth = (0.6 + t * 2) * Math.min(1, scale);
         ctx.beginPath();
         ctx.arc(sx, sy, r, 0, Math.PI * 2);
         ctx.stroke();
@@ -107,17 +113,17 @@ export class Effects {
         // Schweif entgegen der Flugrichtung
         const tail = 0.06;
         const [ex, ey] = cam.toScreen(p.x - p.vx * tail, p.z - p.vz * tail);
-        ctx.strokeStyle = rgba(p.color, Math.min(1, t * 1.4));
-        ctx.lineWidth = p.size * scale;
+        ctx.strokeStyle = rgba(p.color, Math.min(1, t * 1.4) * dim);
+        ctx.lineWidth = Math.max(0.6, p.size * scale);
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(sx, sy);
         ctx.lineTo(ex, ey);
         ctx.stroke();
       } else {
-        ctx.fillStyle = rgba(p.color, Math.min(1, t * 1.6) * 0.85);
+        ctx.fillStyle = rgba(p.color, Math.min(1, t * 1.6) * 0.85 * dim);
         ctx.beginPath();
-        ctx.arc(sx, sy, p.size * scale, 0, Math.PI * 2);
+        ctx.arc(sx, sy, Math.max(0.5, p.size * scale), 0, Math.PI * 2);
         ctx.fill();
       }
     }

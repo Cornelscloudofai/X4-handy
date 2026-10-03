@@ -10,6 +10,7 @@ import { hashStr } from '../engine/util';
 import type { Selection, UIState } from '../ui/uistate';
 import type { Camera } from './camera';
 import { Effects } from './effects';
+import { drawRockField } from './fields';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
 
 const C = {
@@ -38,7 +39,7 @@ const SECTOR_TINT: Record<string, [string, string]> = {
   zyarth: ['#7a2f4a', '#8a5a22'],
 };
 
-interface Float { sector: string; x: number; z: number; text: string; color: string; life: number }
+interface Float { sector: string; x: number; z: number; text: string; color: string; life: number; row: number }
 interface QLabel { text: string; x: number; ys: number[]; size: number; color: string; weight: number; prio: number; sub?: { text: string; color: string } }
 interface Trail { pts: { x: number; z: number }[]; acc: number; sector: string }
 
@@ -58,7 +59,10 @@ export class SectorRenderer {
 
   addFloat(sector: string, x: number, z: number, text: string, color: string): void {
     if (this.floats.length > 30) this.floats.shift();
-    this.floats.push({ sector, x, z, text, color, life: 1 });
+    // Mehrere Verkäufe an derselben Stelle stapeln statt übereinander schreiben
+    const near = this.floats.filter((f) => f.sector === sector && f.life > 0.45 && Math.hypot(f.x - x, f.z - z) < 6);
+    const row = near.length ? Math.max(...near.map((f) => f.row)) + 1 : 0;
+    this.floats.push({ sector, x, z, text, color, life: 1, row: row % 4 });
   }
 
   /** Nur Sternenhimmel und Nebel (auch für die Galaxiekarte) */
@@ -112,26 +116,24 @@ export class SectorRenderer {
         ctx.fill();
       }
       const t = motion ? now : 0;
+      // Parallaxe: beim Heranzoomen stärker – die Ebenen gleiten beim Verschieben gegeneinander
+      const parallax = Math.min(1.2, 0.45 + 0.25 * rel);
       if (isGas(f.ware)) {
         for (const layer of [0, 1]) {
           const spr = fieldSprite(f.id, f.ware, hashStr(f.id), layer);
+          const depth = layer ? 1.1 : 0.9;
+          const ox = (sx - W / 2) * (depth - 1) * parallax, oy = (sy - H / 2) * (depth - 1) * parallax;
           const breathe = 1 + (layer ? 0.05 : 0.03) * Math.sin(t / (layer ? 9000 : 13000) + layer * 2);
           ctx.save();
-          ctx.translate(sx, sy);
+          ctx.translate(sx + ox, sy + oy);
           ctx.rotate((layer ? -1 : 1) * t / (layer ? 160000 : 240000));
-          ctx.scale(breathe, 1 / breathe);
+          ctx.scale(breathe * depth, depth / breathe);
           ctx.globalAlpha = (sel ? 1 : 0.9) * (layer ? 0.8 : 1);
           ctx.drawImage(spr, -size / 2, -size / 2, size, size);
           ctx.restore();
         }
       } else {
-        const spr = fieldSprite(f.id, f.ware, hashStr(f.id));
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(t / 400000);
-        ctx.globalAlpha = sel ? 1 : 0.9;
-        ctx.drawImage(spr, -size / 2, -size / 2, size, size);
-        ctx.restore();
+        drawRockField(ctx, cam, f, hashStr(f.id), 0, sel, parallax);
       }
       // Feldnamen erst beim Heranzoomen (Gesamtansicht bleibt ruhig)
       if (rel >= 1.5 || sel) {
@@ -253,7 +255,7 @@ export class SectorRenderer {
     }
 
     // Effekte (Funken, Splitter, Gas)
-    this.fx.draw(ctx, cam, sec.id, Math.max(0.7, s));
+    this.fx.draw(ctx, cam, sec.id, s);
 
     this.flushLabels(ctx, rel);
 
@@ -263,7 +265,7 @@ export class SectorRenderer {
       if (f.sector !== sec.id) continue;
       const [sx, sy] = cam.toScreen(f.x, f.z);
       ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 2));
-      this.label(ctx, f.text, sx, sy - 20 * s - 10 - (1 - f.life) * 40, rel < 1.5 ? 11 : 12, f.color, 700);
+      this.label(ctx, f.text, sx, sy - 20 * s - 10 - f.row * 15 - (1 - f.life) * 40, rel < 1.5 ? 11 : 12, f.color, 700);
       ctx.globalAlpha = 1;
     }
     this.floats = this.floats.filter((f) => f.life > 0);
@@ -374,11 +376,13 @@ export class SectorRenderer {
     ctx.beginPath();
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.closePath();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
+    if (!owned) ctx.setLineDash([8, 8]);
+    // Leuchten ohne Weichzeichner: breiter blasser Strich unter dem schmalen
+    ctx.strokeStyle = rgba(color, owned ? 0.14 : 0.07);
+    ctx.lineWidth = 6;
+    ctx.stroke();
     ctx.strokeStyle = rgba(color, owned ? 0.75 : 0.4);
     ctx.lineWidth = 1.4;
-    if (!owned) ctx.setLineDash([8, 8]);
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = color;
@@ -402,12 +406,13 @@ export class SectorRenderer {
     ctx.beginPath();
     ctx.arc(0, 0, R * 2.2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowColor = C.amber;
-    ctx.shadowBlur = 8;
-    ctx.strokeStyle = C.amber;
-    ctx.lineWidth = sel ? 2.6 : 1.8;
     ctx.beginPath();
     ctx.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+    ctx.strokeStyle = rgba(C.amber, 0.2);
+    ctx.lineWidth = (sel ? 2.6 : 1.8) * 3;
+    ctx.stroke();
+    ctx.strokeStyle = C.amber;
+    ctx.lineWidth = sel ? 2.6 : 1.8;
     ctx.stroke();
     // rotierende Segmente
     ctx.rotate(now / 2200);
@@ -419,7 +424,6 @@ export class SectorRenderer {
       ctx.arc(0, 0, R * 1.15, a, a + 1.1);
       ctx.stroke();
     }
-    ctx.shadowBlur = 0;
     ctx.fillStyle = '#fff3d6';
     ctx.beginPath();
     ctx.arc(0, 0, Math.max(1.5, R * 0.28 * (0.8 + pulse * 0.3)), 0, Math.PI * 2);
@@ -601,10 +605,6 @@ export class SectorRenderer {
     ctx.save();
     ctx.translate(x, y);
     ctx.fillStyle = '#071722';
-    ctx.strokeStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 8;
-    ctx.lineWidth = Math.max(1.2, r * 0.16);
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
@@ -612,8 +612,12 @@ export class SectorRenderer {
     }
     ctx.closePath();
     ctx.fill();
+    ctx.strokeStyle = rgba(color, 0.22);
+    ctx.lineWidth = Math.max(1.2, r * 0.16) * 3;
     ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.2, r * 0.16);
+    ctx.stroke();
     ctx.fillStyle = color;
     const d = r * 0.42;
     ctx.beginPath();
@@ -720,14 +724,16 @@ export class SectorRenderer {
       ctx.stroke();
       // Leuchtkante am Baufortschritt
       const ex = -w / 2 + w * prog;
-      ctx.strokeStyle = waiting ? rgba(C.amber, 0.5) : '#ffe7b0';
-      ctx.shadowColor = C.amber;
-      ctx.shadowBlur = waiting ? 0 : 10;
-      ctx.lineWidth = Math.max(1.2, unit * 0.07);
       ctx.beginPath();
       ctx.moveTo(ex, -h / 2); ctx.lineTo(ex, h / 2);
+      if (!waiting) {
+        ctx.strokeStyle = rgba(C.amber, 0.3);
+        ctx.lineWidth = Math.max(1.2, unit * 0.07) * 4;
+        ctx.stroke();
+      }
+      ctx.strokeStyle = waiting ? rgba(C.amber, 0.5) : '#ffe7b0';
+      ctx.lineWidth = Math.max(1.2, unit * 0.07);
       ctx.stroke();
-      ctx.shadowBlur = 0;
       ctx.restore();
       // Schweißfunken an der Baukante (nur wenn gebaut wird)
       if (!waiting && Math.random() < dt * 12) {
@@ -768,10 +774,9 @@ export class SectorRenderer {
     o: { running: boolean; stall: string; fill: (k: 'Container' | 'Solid' | 'Liquid') => number; yardBusy: boolean }): void {
     const w = unit * 1.0, h = unit * 0.72;
     const lw = Math.max(1, unit * 0.06);
-    const neon = (col: string, glow: boolean) => {
+    const neon = (col: string) => {
       ctx.strokeStyle = rgba(col, 0.9);
       ctx.lineWidth = lw;
-      if (glow) { ctx.shadowColor = col; ctx.shadowBlur = Math.min(10, unit * 0.5); }
     };
     /** Neon-Linie ohne teuren Weichzeichner: breiter, blasser Strich unter einem schmalen, hellen */
     const neonStroke = (col: string, glow = true) => {
@@ -798,7 +803,7 @@ export class SectorRenderer {
           const k = r * cols + c;
           ctx.fillStyle = k < lit ? rgba(col, 0.35) : '#0a1721';
           ctx.fillRect(x, y, b, b);
-          neon(col, false);
+          neon(col);
           ctx.strokeRect(x, y, b, b);
         }
       } else {
@@ -831,7 +836,6 @@ export class SectorRenderer {
           ctx.restore();
         }
       }
-      ctx.shadowBlur = 0;
       return;
     }
     if (d.kind === 'dock' || d.kind === 'pier') {
@@ -937,19 +941,20 @@ export class SectorRenderer {
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
     ctx.rotate(heading);
-    if (own) {
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8;
-    }
-    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(size * 1.3, 0);
     ctx.lineTo(-size * 0.9, size * 0.8);
     ctx.lineTo(-size * 0.45, 0);
     ctx.lineTo(-size * 0.9, -size * 0.8);
     ctx.closePath();
+    if (own) {
+      ctx.strokeStyle = rgba(color, 0.25);
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+    ctx.fillStyle = color;
     ctx.fill();
-    ctx.shadowBlur = 0;
     ctx.restore();
   }
 
@@ -982,13 +987,13 @@ export class SectorRenderer {
     ctx.closePath();
     ctx.fillStyle = '#081520';
     ctx.fill();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 7;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = rgba(color, 0.2);
+    ctx.lineWidth = Math.max(1, size * 0.17) * 3.2;
+    ctx.stroke();
     ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(1, size * 0.17);
-    ctx.lineJoin = 'round';
     ctx.stroke();
-    ctx.shadowBlur = 0;
     // Details: Frachtmodule, Tank, Abbaukrallen
     ctx.lineWidth = Math.max(0.8, size * 0.1);
     ctx.strokeStyle = rgba(color, 0.65);
@@ -1055,7 +1060,8 @@ export class SectorRenderer {
     const color = WARES[info.field.ware].color;
     const h = hashStr(sh.id);
     const a = ((h % 360) * Math.PI) / 180 + Math.sin(now / 900 + h) * 0.4;
-    const len = Math.max(7, Math.min(40, cam.zoom * 1.6)) * Math.min(1.5, s + 0.3);
+    const rel = cam.zoom / (cam.fitZoom || 1);
+    const len = Math.max(5, Math.min(40, cam.zoom * 1.6)) * Math.min(1.5, s + 0.2);
     const tx = sx + Math.cos(a) * len, ty = sy + Math.sin(a) * len;
     if (isGas(info.field.ware)) {
       const spread = len * 0.45;
@@ -1070,7 +1076,7 @@ export class SectorRenderer {
       ctx.lineTo(tx - nx * spread, ty - ny * spread);
       ctx.closePath();
       ctx.fill();
-      if (Math.random() < dt * 16) {
+      if (rel >= 1.6 && Math.random() < dt * 16) {
         const k = (Math.random() - 0.5) * 2;
         const [wx, wz] = cam.toWorld(tx + nx * spread * k, ty + ny * spread * k);
         this.fx.suck(sh.sector, wx, wz, sh.x, sh.z, color);
@@ -1078,21 +1084,20 @@ export class SectorRenderer {
       return;
     }
     const flick = 0.5 + 0.5 * Math.sin(now / 60 + h);
-    ctx.save();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 6;
-    ctx.strokeStyle = rgba(color, 0.45 + flick * 0.5);
-    ctx.lineWidth = 1 + flick * Math.min(1.5, s);
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(tx, ty);
+    ctx.strokeStyle = rgba(color, 0.15 + flick * 0.15);
+    ctx.lineWidth = (1 + flick * Math.min(1.5, s)) * 3.5;
     ctx.stroke();
-    ctx.restore();
+    ctx.strokeStyle = rgba(color, 0.45 + flick * 0.5);
+    ctx.lineWidth = 1 + flick * Math.min(1.5, s);
+    ctx.stroke();
     ctx.fillStyle = rgba('#ffffff', 0.6 + flick * 0.4);
     ctx.beginPath();
     ctx.arc(tx, ty, 1.5 + flick * Math.min(2, s + 0.5), 0, Math.PI * 2);
     ctx.fill();
-    if (Math.random() < dt * 12) {
+    if (rel >= 1.6 && Math.random() < dt * 12) {
       const [wx, wz] = cam.toWorld(tx, ty);
       this.fx.debris(sh.sector, wx, wz, color);
     }

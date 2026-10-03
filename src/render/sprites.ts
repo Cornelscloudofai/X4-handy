@@ -37,14 +37,14 @@ const GAS = new Set(['hydrogen', 'helium', 'methane']);
 const cache = new Map<string, HTMLCanvasElement>();
 
 /**
- * Sprite eines Rohstofffelds (512 px ≙ Felddurchmesser × 1,3). Die Form ist unregelmäßig (mehrere Ballungen)
- * und läuft zum Rand weich aus. Gasfelder haben zwei Schleier-Schichten (layer 0/1), die gegeneinander driften.
+ * Sprite eines Gasfelds (512 px ≙ Felddurchmesser × 1,3) mit zwei Schleier-Schichten (layer 0/1), die gegeneinander
+ * driften. Die Form ist unregelmäßig (mehrere Ballungen) und läuft zum Rand weich aus. Gesteinsfelder: siehe fields.ts.
  */
 export function fieldSprite(id: string, ware: string, seed: number, layer = 0): HTMLCanvasElement {
   const key = `${id}:${layer}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const c = GAS.has(ware) ? gasSprite(ware, seed + layer * 7919, layer) : rockSprite(ware, seed);
+  const c = gasSprite(ware, seed + layer * 7919, layer);
   cache.set(key, c);
   return c;
 }
@@ -148,47 +148,6 @@ function gasSprite(ware: string, seed: number, layer: number): HTMLCanvasElement
   return c;
 }
 
-/** Gesteinsfeld: viele kleine Brocken in Ballungen über einem feinen Staubschleier */
-function rockSprite(ware: string, seed: number): HTMLCanvasElement {
-  const size = 512;
-  const [c, ctx] = canvas(size);
-  const color = WARES[ware]?.color ?? '#999999';
-  const r = rng(seed);
-  const cx = size / 2, R = size / 2 / 1.3;
-  const { clusters, around } = clustersOf(r, cx, R);
-  // Feiner Staubschleier je Ballung
-  for (const k of clusters) {
-    const g = ctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, k.s * 1.5);
-    g.addColorStop(0, rgba(color, 0.11));
-    g.addColorStop(0.5, rgba(color, 0.04));
-    g.addColorStop(1, rgba(color, 0));
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-  }
-  // Feinster Schutt
-  for (let i = 0; i < 520; i++) {
-    const p = around(1.1);
-    ctx.fillStyle = rgba(color, 0.18 + r() * 0.35);
-    const d = 1 + r() * 1.2;
-    ctx.fillRect(p.x, p.y, d, d);
-  }
-  // Viele kleine Brocken, nur wenige mittlere – keine großen
-  const rocks: { x: number; y: number; s: number }[] = [];
-  const n = ware === 'nividium' ? 160 : 330;
-  for (let i = 0; i < n; i++) {
-    const p = around();
-    const mid = r() < 0.06;
-    rocks.push({ x: p.x, y: p.y, s: mid ? 7 + r() * 5 : 2.2 + r() * 4.2 });
-  }
-  rocks.sort((a, b) => a.y - b.y);
-  for (const k of rocks) {
-    if (ware === 'ice') drawCrystal(ctx, k.x, k.y, k.s * 1.1, color, r);
-    else drawRock(ctx, k.x, k.y, k.s, ware === 'silicon' ? '#8f99a8' : ware === 'nividium' ? '#6b5a3a' : shade(color, -0.35), color, r, ware === 'nividium');
-  }
-  softEdge(ctx, size, R * 0.55);
-  return c;
-}
-
 function gauss(r: () => number): number {
   return (r() + r() + r() - 1.5) / 1.5;
 }
@@ -196,66 +155,6 @@ function gauss(r: () => number): number {
 function rgbaFrom(css: string, a: number): string {
   if (css.startsWith('#')) return rgba(css, a);
   return css.replace('rgb(', 'rgba(').replace(')', `,${a})`);
-}
-
-function drawRock(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, base: string, accent: string, r: () => number, veins: boolean): void {
-  const pts: [number, number][] = [];
-  const k = 8 + Math.floor(r() * 5);
-  const rot = r() * Math.PI;
-  for (let i = 0; i < k; i++) {
-    const a = rot + (i / k) * Math.PI * 2;
-    const rr = s * (0.7 + r() * 0.35);
-    pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr * (0.75 + r() * 0.2)]);
-  }
-  ctx.beginPath();
-  pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
-  ctx.closePath();
-  const g = ctx.createLinearGradient(x - s, y - s, x + s, y + s);
-  g.addColorStop(0, shade(base, 0.45));
-  g.addColorStop(0.45, base);
-  g.addColorStop(1, shade(base, -0.7));
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  // Krater und Glanzpunkte
-  for (let i = 0; i < Math.floor(s / 6); i++) {
-    const cx = x + (r() - 0.5) * s, cy = y + (r() - 0.5) * s * 0.7;
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 1 + r() * s * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.fillStyle = rgba(accent, veins ? 0.9 : 0.35);
-  for (let i = 0; i < (veins ? 5 : 2); i++) {
-    const cx = x + (r() - 0.6) * s * 0.8, cy = y + (r() - 0.6) * s * 0.6;
-    ctx.fillRect(cx, cy, veins ? 2.4 : 1.6, veins ? 2.4 : 1.6);
-  }
-}
-
-function drawCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, color: string, r: () => number): void {
-  const shards = 2 + Math.floor(r() * 3);
-  for (let i = 0; i < shards; i++) {
-    const a = -Math.PI / 2 + (r() - 0.5) * 1.6;
-    const len = s * (0.8 + r() * 0.9), wid = s * (0.25 + r() * 0.2);
-    const tx = x + Math.cos(a) * len, ty = y + Math.sin(a) * len;
-    const nx = Math.cos(a + Math.PI / 2) * wid, ny = Math.sin(a + Math.PI / 2) * wid;
-    ctx.beginPath();
-    ctx.moveTo(x + nx, y + ny);
-    ctx.lineTo(tx, ty);
-    ctx.lineTo(x - nx, y - ny);
-    ctx.closePath();
-    const g = ctx.createLinearGradient(x + nx, y + ny, x - nx, y - ny);
-    g.addColorStop(0, shade(color, 0.6));
-    g.addColorStop(0.5, color);
-    g.addColorStop(1, shade(color, -0.5));
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  }
 }
 
 /** Hintergrund mit Nebel und Sternen, eingefärbt je Sektor */

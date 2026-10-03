@@ -26,12 +26,14 @@ const measure = async (label, rel, x, z) => {
   await page.waitForTimeout(500);
   const r = await page.evaluate(() => new Promise((res) => { const t = []; let last = performance.now(); const f = (n) => { t.push(n - last); last = n; if (t.length < 240) requestAnimationFrame(f); else res(t); }; requestAnimationFrame(f); }));
   r.sort((a, b) => a - b);
-  console.log(label, 'Median', r[120].toFixed(1), 'ms · 90 %', r[216].toFixed(1), 'ms');
+  console.log(label, 'Mittel', (r.reduce((a, b) => a + b, 0) / r.length).toFixed(1), 'ms · Median', r[120].toFixed(1), 'ms · 90 %', r[216].toFixed(1), 'ms');
 };
 const st = await page.evaluate(() => [window.__game.state.stations[0].x, window.__game.state.stations[0].z]);
 await measure('Gesamtansicht', 1, 0, 0);
 await measure('Station nah  ', 6, st[0], st[1]);
 await measure('Gasfeld nah  ', 3, 62, 105);
+await measure('Erzfeld nah  ', 6, -115, -10);
+await measure('Erzfeld sehr nah', 14, -115, -10);
 await page.evaluate(() => { window.__game.ui.reducedMotion = true; });
 await measure('Reduziert    ', 1, 0, 0);
 await browser.close();
