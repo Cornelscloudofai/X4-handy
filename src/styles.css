@@ -497,3 +497,24 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 .build-row .build-detail { flex: 1 0 100%; min-width: 0; }
 .build-row .build-detail .flow { margin-top: 2px; }
 .build-row .build-detail .bar { margin-top: 8px; }
+
+/* ---------- Einstieg: geführte erste Schritte ---------- */
+#coach { position: fixed; inset: 0; z-index: 80; pointer-events: none; }
+#coach[hidden] { display: none; }
+.coach-ring { position: fixed; border: 2px solid var(--teal); border-radius: 14px; box-shadow: 0 0 0 4px rgba(64, 224, 200, 0.18); animation: coach-pulse 1.4s ease-in-out infinite; pointer-events: none; }
+@keyframes coach-pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(64, 224, 200, 0.25); } 50% { box-shadow: 0 0 0 10px rgba(64, 224, 200, 0.05); } }
+.coach-bubble { position: fixed; pointer-events: auto; background: #0d2433; border: 1px solid var(--teal); border-radius: 14px; padding: 12px 14px 10px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55); animation: fade 0.2s; }
+.coach-bubble p { margin: 0 0 8px; font-size: 15px; line-height: 1.45; color: var(--text); }
+.coach-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.coach-actions .linkish { font-size: 13px; color: var(--muted); }
+.coach-arrow { position: absolute; width: 12px; height: 12px; background: #0d2433; border: 1px solid var(--teal); transform: translateX(-50%) rotate(45deg); }
+.coach-arrow.up { top: -7px; border-right: none; border-bottom: none; }
+.coach-arrow.down { bottom: -7px; border-left: none; border-top: none; }
+
+/* ---------- Hilfe ---------- */
+.help-q { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--teal); font: 600 13px/1 var(--font-body, inherit); letter-spacing: 0; text-transform: none; cursor: pointer; vertical-align: middle; }
+.help-q:active { background: rgba(64, 224, 200, 0.15); }
+.help-body p { margin: 0 0 12px; line-height: 1.55; color: var(--text-2); }
+.help-body ul { margin: 0 0 12px; padding-left: 18px; color: var(--text-2); line-height: 1.5; }
+.help-body li { margin-bottom: 8px; }
+.help-body b { color: var(--text); }

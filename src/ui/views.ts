@@ -16,6 +16,7 @@ import { deliveryOptions } from '../engine/delivery';
 import { SHIP_BUILD_TIME, hasYard, materialValue, missingFor, yardSizes, yardStations } from '../engine/yard';
 import type { GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
+import { helpBtn, helpList, helpModalParts } from './help';
 import { canUndo, undoLabel } from './undo';
 import { fmtAmount, fmtClock, fmtCr, fmtDur, fmtInt, fmtNum, pct } from './format';
 import { icon, wareDot } from './icons';
@@ -431,7 +432,7 @@ function stationYard(state: GameState, st: Station): string {
       <div class="meta" style="grid-column:1/-1"><span>Vorrat für <b>${Math.floor(Math.min(...Object.entries(c.materials).map(([id, n]) => (st.inventory[id] ?? 0) / n)))}×</b></span><span>Material <b>${fmtCr(mv)}</b></span><span>Kaufpreis <b>${fmtCr(c.price)}</b></span><span>Bauzeit <b>${fmtDur(SHIP_BUILD_TIME[c.size])}</b></span></div>
       <div class="actions"><button class="btn small primary" ${act('yard-build', { st: st.id, cls: c.id })}>${icon('plus', 16)}Bauen</button></div></div>`;
   }).join('');
-  return `<div class="section"><h3>Fertigung</h3>
+  return `<div class="section"><h3>Fertigung ${helpBtn('yard')}</h3>
     ${current || rows ? `<div class="box rows">${current}${rows}</div>` : '<div class="box empty">Die Werft ist frei. Wähle unten ein Schiff.</div>'}
     <p class="small muted" style="margin:6px 0 0">Gebaut wird aus dem Lager dieser Station. Die Werft hält ihr Material ständig auf Vorrat – deine Transporter und NPC-Händler liefern laufend nach, nicht erst bei einer Bestellung. Wie viel Platz jedes Material bekommt, stellst du im Lager-Reiter ein; größere Lager (M/L) erlauben mehr Schiffe am Stück.</p></div>
     <div class="section"><h3>Schiff bauen</h3><div style="display:grid;gap:10px">${cards}</div></div>`;
@@ -464,7 +465,7 @@ function buildStoreBox(state: GameState, st: Station): string {
       ${local >= 0.5 ? `<div class="sub wrap">Im Stationslager: ${fmtAmount(local)}</div>` : ''}${bar(f, done ? '' : 'amber')}</div>
       ${canMove ? `<button class="btn small" ${act('build-move-open', { st: st.id, ware: id })}>Umladen</button>` : ''}</div>`;
   }).join('');
-  return `<div class="box" style="margin-bottom:10px"><div class="row" style="padding-bottom:4px">${icon('box', 20, 'muted')}<div class="grow"><div class="title">Baulager</div>
+  return `<div class="box buildstore" style="margin-bottom:10px"><div class="row" style="padding-bottom:4px">${icon('box', 20, 'muted')}<div class="grow"><div class="title">Baulager ${helpBtn('buildstore')}</div>
       <div class="sub wrap">Schiffe liefern das Baumaterial hierher – auch ohne Dock. Ware aus dem eigenen Stationslager lädst du mit „Umladen“ selbst hin und her. Fehlt etwas, bleibt der Bau beim erreichten Prozentwert stehen und läuft mit jeder Lieferung weiter.</div></div></div>
     ${rows ? `<div class="rows">${rows}</div>` : '<p class="small muted" style="margin:4px 14px 0">Leer – es wird gerade kein Material gebraucht.</p>'}
     <div style="padding:8px 14px 12px"><label class="check"><input type="checkbox" data-change="auto-buy-build" data-st="${st.id}" ${own ? '' : 'checked'}> NPC-Händler und Markteinkäufe dürfen liefern</label>
@@ -532,7 +533,7 @@ function stationModules(state: GameState, st: Station): string {
   const needStore = !cap.Container && !st.queue.some((q) => isContainer(q.def)) && !isContainer(st.build?.def);
   const summary = st.queue.length ? `<p class="small muted" style="margin:0 0 8px">${st.queue.length} Position${st.queue.length === 1 ? '' : 'en'} geplant · Material ca. ${fmtCr(total)} · reine Bauzeit ${fmtDur(eta)}.</p>` : '';
   return `
-    <div class="section"><h3>Baureihenfolge</h3>
+    <div class="section"><h3>Baureihenfolge ${helpBtn('buildstore')}</h3>
     <div class="card-actions" style="margin-bottom:10px"><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 16)}Modul einplanen</button><button class="btn small" ${act('plan-station', { st: st.id })}>${icon('planner', 16)}Fließdiagramm</button>${blueprintEntry(state, true)}${canUndo() ? `<button class="btn small" ${act('undo')} title="${esc(undoLabel())}">${icon('undo', 16)}Rückgängig</button>` : ''}</div>
     ${summary}
     ${buildStoreBox(state, st)}
@@ -562,7 +563,7 @@ function deliveryPrioBox(state: GameState, st: Station): string {
   const last = `<div class="row locked"><span class="pos-no num">${prio.length + 1}</span>${icon('market', 18, 'muted')}<div class="grow"><div class="title">Verkauf zum besten Preis</div><div class="sub wrap">Märkte, NPC-Käufer, Aufträge${prio.length ? ' und nicht eingetragene Stationen' : ' und eigene Stationen – je nach Ertrag'}</div></div></div>`;
   const add = others.length ? `<select class="prio-add" data-change="prio-add" data-st="${st.id}" aria-label="Station hinzufügen"><option value="">+ Station hinzufügen …</option>${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>` : '';
   const noTrader = state.ships.some((x) => x.home === st.id && SHIP_MAP[x.cls].role === 'trader') ? '' : ' <span class="warn-text">Diese Station hat noch keinen eigenen Transporter.</span>';
-  return `<div class="section"><h3>Lieferreihenfolge für Überschüsse</h3><div class="box rows">${rows}${last}</div>${add}
+  return `<div class="section"><h3>Lieferreihenfolge für Überschüsse ${helpBtn('trade')}</h3><div class="box rows">${rows}${last}</div>${add}
     <p class="small muted" style="margin:6px 0 0">Die Transporter dieser Station beliefern die Stationen der Reihe nach. Kann eine Station weniger als eine halbe Ladung abnehmen, rutschen sie eine Stufe tiefer – zuletzt wird zum besten Preis verkauft.${noTrader}</p>
     ${prio.length ? `<div class="box" style="padding:12px 14px;margin-top:10px"><label class="check"><input type="checkbox" data-change="prio-npc" data-st="${st.id}" ${st.prioBeforeNpc ? 'checked' : ''}> NPC-Händler erst kaufen lassen, wenn diese Stationen versorgt sind</label>
       <p class="small muted" style="margin:6px 0 0">Ohne Haken kaufen NPC-Händler an dieser Station alles, was zum Verkauf freigegeben ist. Mit Haken bekommen sie eine Ware erst, wenn keine Station der Reihenfolge mehr eine halbe Ladung davon braucht – so geht z. B. jedes Hüllenteil zuerst an die Werft und erst der Rest an NPC-Händler.${st.prioBeforeNpc && noTrader ? ' <span class="warn-text">Ohne eigenen Transporter holt nur ein Transporter der Zielstation die Ware ab.</span>' : ''}</p></div>` : ''}</div>`;
@@ -586,7 +587,7 @@ function stationStorage(state: GameState, st: Station): string {
   }).join('');
   return `<p class="lead">Kauf: Händler und deine Transporter liefern an. Verkauf: Überschüsse werden abgegeben, die Reserve bleibt für die eigene Produktion.</p>
     ${deliveryPrioBox(state, st)}
-    <div class="section"><div class="box rows">${rows || '<div class="empty">Das Lager ist leer.</div>'}</div></div>
+    <div class="section"><h3>Waren im Lager ${helpBtn('storage')}</h3><div class="box rows">${rows || '<div class="empty">Das Lager ist leer.</div>'}</div></div>
     <p class="small muted">Ohne Einstellung teilen sich alle Waren einer Lagerart den Platz gleichmäßig („auto“). Eingestellte Anteile gehen vor, der Rest wird verteilt.</p>`;
 }
 
@@ -633,7 +634,7 @@ function restSection(state: GameState, s: Ship): string {
     </div>`;
   }
   const streak = (s.restStreak ?? 0) >= 2 ? `<p class="small warn-text" style="margin:8px 0 0">${s.restStreak}× in Folge ein Rest: Die Miner dieser Station fördern mehr, als verbraucht wird.</p>` : '';
-  return `<div class="section"><h3>Restladung</h3><div class="pills">${pills}</div>
+  return `<div class="section"><h3>Restladung ${helpBtn('miners')}</h3><div class="pills">${pills}</div>
     <p class="small muted" style="margin:8px 0 0">${REST_HELP[mode]}</p>${streak}${casebox}</div>`;
 }
 
@@ -760,7 +761,7 @@ function blueprintsPanel(state: GameState, ui: UIState, p: Panel): string {
   const list = tab === 'buy' ? buy : tab === 'locked' ? locked : owned;
   const empty = q ? `Nichts gefunden für „${esc(q)}“.` : tab === 'buy' ? 'Gerade nichts kaufbar – mehr Ruf oder neue Sektoren schalten Vertreter frei.' : tab === 'locked' ? 'Alle Baupläne freigeschaltet.' : 'Noch keine gekauften Baupläne.';
   const head = `<div class="section"><div class="kv">${(['frf', 'zya'] as const).map((f) => `<div><small>Ruf ${esc(FACTIONS[f].short)}</small><b>${fmtNum(state.rep[f], 1)}</b></div>`).join('')}</div>
-    <p class="small muted" style="margin:8px 0 0">Baupläne gibt es nur vor Ort: Split-Baupläne bei den Handelsvertretern der Handelsposten, waffennahe Baupläne und Schiffsfertigung bei den Werftvertretern, fremde Bauweisen bei den Gesandtschaften. Im freien Planer stehen alle zum Ausprobieren bereit.</p></div>`;
+    <p class="small muted" style="margin:8px 0 0">Baupläne gibt es nur vor Ort: Split-Baupläne bei den Handelsvertretern der Handelsposten, waffennahe Baupläne und Schiffsfertigung bei den Werftvertretern, fremde Bauweisen bei den Gesandtschaften. ${helpBtn('blueprints')} Im freien Planer stehen alle zum Ausprobieren bereit.</p></div>`;
   const body = `${head}${searchBox('blueprints', q, 'Bauplan suchen …')}${list.length ? `<div class="box rows">${list.map(row).join('')}</div>` : `<div class="box empty-search">${empty}</div>`}`;
   return sheet('Baupläne', `${state.blueprints.length} vorhanden`, body, { back: !!p.back, tabs });
 }
@@ -858,7 +859,7 @@ function shipOrdersSection(state: GameState): string {
       <div class="right"><b class="pos">${fmtCr(o.price)}</b><div class="small muted">Ruf +${o.rep}</div></div>
       <div style="width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap">${tools}</div></div>`;
   }).join('');
-  return `<div class="section"><h3>Schiffsbestellungen</h3>${rows ? `<div class="box rows">${rows}</div>` : '<div class="box empty">Gerade keine Bestellungen. Mit eigener Werft kommen etwa alle 1–2 Stunden neue.</div>'}</div>`;
+  return `<div class="section"><h3>Schiffsbestellungen ${helpBtn('yard')}</h3>${rows ? `<div class="box rows">${rows}</div>` : '<div class="box empty">Gerade keine Bestellungen. Mit eigener Werft kommen etwa alle 1–2 Stunden neue.</div>'}</div>`;
 }
 
 function courierButtons(_state: GameState, contractId?: number): string {
@@ -962,12 +963,8 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="row tap" ${act('import-modal')}>${icon('down', 20)}<div class="grow"><div class="title" style="font-weight:500">Spielstand laden</div><div class="sub">Gesicherten Text einfügen</div></div>${icon('chev', 20, 'chev')}</div>
       <div class="row tap" ${act('ask-newgame')}>${icon('trash', 20, 'neg')}<div class="grow"><div class="title neg" style="font-weight:500">Neues Spiel</div><div class="sub">Löscht den aktuellen Spielstand</div></div></div>
     </div></div>
-    <div class="section"><h3>So funktioniert's</h3><div class="box" style="padding:14px"><div class="steps" style="margin:0">
-      <div><span class="n">1</span><div><b>Rohstoffe fördern</b>Miner fliegen zu Feldern und bringen Erz, Silizium, Eis oder Gas zur Heimatstation. Stationen brauchen dafür Lager und ein Dock.</div></div>
-      <div><span class="n">2</span><div><b>Veredeln</b>Produktionsmodule arbeiten mit den echten X4-Rezepten: Zykluszeit, Eingangs- und Ausgangsmengen. Solarkraftwerke liefern Energiezellen je nach Sonnenlicht.</div></div>
-      <div><span class="n">3</span><div><b>Versorgungsketten</b>Transporter verbinden Stationen und Märkte. Im Autohandel entscheiden sie selbst, Versorgungslinien pendeln fest zwischen zwei Punkten.</div></div>
-      <div><span class="n">4</span><div><b>Handeln und wachsen</b>Märkte reagieren auf Angebot und Nachfrage. Aufträge bringen Ruf, Ruf öffnet Baupläne und neue Sektoren.</div></div>
-    </div></div></div>
+    <div class="section"><h3>Hilfe</h3>${helpList()}
+      <div class="box rows" style="margin-top:8px"><div class="row tap" ${act('coach-restart')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">Erste Schritte zeigen</div><div class="sub wrap">${state.help?.coachOff ? 'Ausgeblendet – hier wieder einschalten' : 'Geführte Hinweise für den Einstieg'}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
     <div class="section"><h3>Einstellungen</h3><div class="box rows"><div class="row"><div class="grow"><div class="title" style="font-weight:500">Routen auf der Karte</div><div class="sub">Flugwege und Versorgungslinien</div></div>
       <div class="toggle"><button class="plain ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${ui.routes ? 'An' : 'Aus'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
@@ -998,6 +995,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         `<button class="btn primary" ${act('modal-close')}>Weiter</button>`);
     }
     case 'welcome': return welcomeModal();
+    case 'help': { const h = helpModalParts(m.topic); return modalShell(h.title, h.body, h.foot, m.topic ? 'Hilfe' : 'X4 Sektorbau'); }
     case 'alerts': {
       const alerts = allAlerts(state);
       return modalShell('Engpässe & Hinweise', alerts.length ? `<div class="box rows">${alerts.map((a) => `<div class="row tap" ${act('open-station', { id: a.station, tab: 'overview' })}>${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text)}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, stationById(state, a.station)!, a.ware))}</div>` : ''}</div>${icon('chev', 20, 'chev')}</div>`).join('')}</div>` : '<div class="empty">Alles läuft. Keine Engpässe.</div>', `<button class="btn" ${act('modal-close')}>Schließen</button>`);
@@ -1178,12 +1176,12 @@ function buyShipModal(state: GameState, m: Extract<Modal, { type: 'buyShip' }>):
 
 function welcomeModal(): string {
   return `<div class="modal" role="dialog" aria-modal="true" aria-label="Willkommen">
-    <div class="welcome-hero"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte, eine kleine Station und einen Miner. Mach daraus ein Wirtschaftsimperium.</p></div>
+    <div class="welcome-hero"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte, eine kleine Station mit Solarkraftwerk und Startkapital. Mach daraus ein Wirtschaftsimperium – bis zur eigenen Werft.</p></div>
     <div class="sheet-body"><div class="steps">
-      <div><span class="n">1</span><div><b>Station antippen</b>Unten erscheinen Status und „Bauplan“. Dort baust du Module.</div></div>
-      <div><span class="n">2</span><div><b>Produktionsketten aufbauen</b>Erz + Energiezellen → Veredelte Metalle. Echte X4-Rezepte und Bauzeiten.</div></div>
-      <div><span class="n">3</span><div><b>Versorgen und verkaufen</b>Miner fördern, Transporter handeln, NPC-Händler kaufen deine Überschüsse.</div></div>
-      <div><span class="n">4</span><div><b>Zeit steuern</b>Oben rechts pausieren oder beschleunigen (×1 bis ×60). Dein Imperium läuft auch weiter, wenn du weg bist.</div></div>
+      <div><span class="n">1</span><div><b>Bauen</b>Module planst du unter Stationen → Module. Das Baumaterial liefern Schiffe ins Baulager der Station.</div></div>
+      <div><span class="n">2</span><div><b>Fördern und herstellen</b>Miner holen Rohstoffe, Fabriken verarbeiten sie mit den echten X4-Rezepten.</div></div>
+      <div><span class="n">3</span><div><b>Handeln</b>Transporter und NPC-Händler verkaufen Überschüsse und bringen, was fehlt.</div></div>
+      <div><span class="n">4</span><div><b>Der Kampagne folgen</b>Unten auf der Karte steht dein nächstes Ziel. Hinweise zeigen dir die ersten Handgriffe.</div></div>
     </div></div>
     <div class="modal-foot"><button class="btn primary" ${act('modal-close')}>${icon('play', 18)}Loslegen</button></div></div>`;
 }

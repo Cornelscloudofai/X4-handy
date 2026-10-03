@@ -1,4 +1,5 @@
 // Steuerung: Spielschleife, Karte, Eingaben, Oberfläche und Speichern
+import { coachNotify, markCoachSeen, renderCoach } from './coach';
 import { undo, withUndo } from './undo';
 import * as Y from '../engine/yard';
 import { VENDOR_MAP } from '../data/vendors';
@@ -73,6 +74,9 @@ export function start(): void {
   new ResizeObserver(resize).observe(canvas);
   attachInput(canvas, () => (ui.view === 'galaxy' ? galaxyCam : cam), { onTap, onLongPress });
   document.addEventListener('click', onClick);
+  // Hinweis-Rahmen folgt dem Ziel beim Scrollen
+  let coachRaf = 0;
+  document.addEventListener('scroll', () => { if (!coachRaf) coachRaf = requestAnimationFrame(() => { coachRaf = 0; renderCoach(state, ui); }); }, true);
   initBackButton();
   document.addEventListener('change', onChange);
   initEditor();
@@ -206,6 +210,7 @@ function renderUI(): void {
   modal.hidden = !modalContent;
   if (needFit && ui.modal?.type === 'planDiagram') { needFit = false; requestAnimationFrame(fitEditor); }
   document.documentElement.style.setProperty('--bottom-stack', (ui.modal ? 96 : $('bottom').offsetHeight) + 'px');
+  renderCoach(state, ui);
 }
 
 function panelKey(): string {
@@ -372,6 +377,7 @@ function onClick(e: MouseEvent): void {
   }
   const d = el.dataset;
   const a = d.act!;
+  coachNotify(state, ui, a);
   if (a.startsWith('open') || a === 'nav' || a.endsWith('modal')) sfx.open();
   else sfx.tap();
   const run = (): void => {
@@ -383,6 +389,10 @@ function onClick(e: MouseEvent): void {
       break;
     }
     case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
+      case 'help': ui.modal = { type: 'help', topic: d.topic || undefined }; refresh(); break;
+      case 'coach-next': markCoachSeen(state, d.id!); if (d.id === 'finish') { state.help = { ...state.help, coachOff: true }; } refresh(); break;
+      case 'coach-off': state.help = { ...state.help, coachOff: true }; toast('Hinweise ausgeblendet – im Menü unter „Erste Schritte zeigen“ wieder einschalten.', 'info'); refresh(); break;
+      case 'coach-restart': state.help = { seen: [] }; ui.panel = null; ui.modal = null; toast('Hinweise sind wieder an.', 'good'); refresh(); break;
       case 'plan-pick': ui.modal = { type: 'planPick', group: 'all', back: ui.modal?.type === 'planDiagram' }; refresh(); break;
       case 'plan-pick-group': if (ui.modal?.type === 'planPick') { ui.modal = { ...ui.modal, group: d.g! }; refresh(); } break;
       case 'plan-add': {

@@ -16,6 +16,7 @@ export type Modal =
   | { type: 'rename'; station: string }
   | { type: 'offline'; seconds: number; credits: number; produced: Record<string, number>; modules: number }
   | { type: 'welcome' }
+  | { type: 'help'; topic?: string }
   | { type: 'alerts' }
   | { type: 'export' }
   | { type: 'import'; error?: string }
