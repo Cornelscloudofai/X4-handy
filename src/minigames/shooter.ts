@@ -5,7 +5,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { shipSprite } from '../render/shipArt';
+import { shipArt, shipSprite } from '../render/shipArt';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -1300,10 +1300,13 @@ export class ShooterGame implements MiniGame {
     const sprite = shipSprite('jaeger-s');
     if (sprite) {
       // Bild-Grafik: zwei Triebwerksflammen hinter den Düsen, darüber das Schiff
-      ctx.fillStyle = rgba('#9fe6ff', 0.35 + 0.5 * thrust);
-      for (const ex of [-4.2, 4.2]) {
+      // Split-Stil: orange Glut, Düsen eng beieinander; erster Entwurf: blau, weiter außen
+      const split = shipArt() !== 'render1';
+      ctx.fillStyle = rgba(split ? '#ffb070' : '#9fe6ff', 0.35 + 0.5 * thrust);
+      for (const ex of split ? [-1.9, 1.9] : [-4.2, 4.2]) {
+        const ey = split ? 20 : 18;
         ctx.beginPath();
-        ctx.moveTo(ex - 2.4, 18); ctx.lineTo(ex + 2.4, 18); ctx.lineTo(ex, 20 + thrust * 12 + Math.random() * 3);
+        ctx.moveTo(ex - 1.8, ey); ctx.lineTo(ex + 1.8, ey); ctx.lineTo(ex, ey + 2 + thrust * 12 + Math.random() * 3);
         ctx.closePath();
         ctx.fill();
       }

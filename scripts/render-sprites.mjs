@@ -25,9 +25,11 @@ const browser = await chromium.launch({ ...launchOpts(), args: ['--use-angle=swi
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.error('Fehler:', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.error(m.text()); });
-const jobs = [{ page: 'fighter', file: 'jaeger-s' }];
+// erster Entwurf (glatt, türkis) und Split-Stil (kantig, orange; im Spiel verwendet)
+const jobs = [{ page: 'fighter', file: 'jaeger-s-v1' }, { page: 'fighter-split', file: 'jaeger-s' }];
+const only = process.argv[3];
 await mkdir(join(root, 'src/assets/sprites'), { recursive: true });
-for (const job of jobs) {
+for (const job of jobs.filter((j) => !only || j.file === only)) {
   await page.goto(`http://localhost:${port}/scripts/render/${job.page}.html`);
   await page.waitForFunction(() => window.__done, null, { timeout: 120000 });
   const r = await page.evaluate(() => window.__result);

@@ -1135,7 +1135,8 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const cur = shipArt();
       const variants: { art: ShipArt; name: string; sub: string; url?: string }[] = [
         { art: 'vector', name: 'Gezeichnet', sub: 'Live per Code – bisheriger Neon-Stil', url: fighterVectorUrl() },
-        { art: 'render', name: 'Gerendert', sub: '3D-Modell, vorab gerendert', url: spriteUrl('jaeger-s') },
+        { art: 'render', name: 'Gerendert – Split-Stil', sub: '3D-Modell nach dem Designkatalog: kantig, Klauen, Stacheln, Rost-Orange', url: spriteUrl('jaeger-s') },
+        { art: 'render1', name: 'Gerendert – erster Entwurf', sub: '3D-Modell, glatt und türkis', url: spriteUrl('jaeger-s-v1') },
         { art: 'ai', name: 'KI-Bild', sub: 'Aus einem Bildgenerator', url: spriteUrl('jaeger-s-ki') },
       ];
       const cards = variants.map((v) => `<div class="art-card ${cur === v.art ? 'on' : ''}">
@@ -1143,7 +1144,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <div class="art-meta"><div class="grow"><b>${esc(v.name)}</b><small>${esc(v.sub)}</small></div>
         ${v.url ? `<div class="art-small" title="In Spielgröße"><img src="${v.url}" alt="" style="width:${v.art === 'vector' ? 30 : 46}px"></div>` : ''}</div>
         <button class="btn small ${cur === v.art ? 'on' : ''}" ${v.url ? act('ship-art', { art: v.art }) : 'disabled'}>${cur === v.art ? 'Im Spiel aktiv' : 'Im Spiel verwenden'}</button></div>`).join('');
-      const body = `<p class="lead">Das kleine Kampfschiff (dein Jäger im Kampf-Minispiel) in drei Darstellungen. Rechts unten jeweils in Spielgröße.</p>
+      const body = `<p class="lead">Das kleine Kampfschiff (dein Jäger im Kampf-Minispiel) in mehreren Darstellungen. Rechts unten jeweils in Spielgröße.</p>
         <div class="art-grid">${cards}</div>`;
       return modalShell('Kleines Kampfschiff', body, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Grafik-Vergleich');
     }
