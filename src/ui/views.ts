@@ -4,7 +4,7 @@ import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } 
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
-import { shipArt, spriteUrl, type ShipArt } from '../render/shipArt';
+import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1125,28 +1125,29 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>
         <div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
         <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>
-        <div class="section"><h3>Grafik</h3><div class="box rows"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Grafik-Vergleich: Kleines Kampfschiff</div><div class="sub wrap">Gezeichnet, gerendert oder KI-Bild</div></div>${icon('chev', 20, 'chev')}</div></div></div>
+        <div class="section"><h3>Grafik</h3><div class="box rows"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Dein Jäger: ${esc(FIGHTER_NAME[fighterKind()])}</div><div class="sub wrap">Bauart und Darstellung wählen – KI-Bild, gerendert oder gezeichnet</div></div>${icon('chev', 20, 'chev')}</div></div></div>
         <div class="section"><h3>Kampf-Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
       return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');
     }
     case 'shipArt': {
-      // Vergleich der Darstellungen am kleinen Kampfschiff: gezeichnet, vorab gerendert (3D), KI-Bild
-      const cur = shipArt();
-      const variants: { art: ShipArt; name: string; sub: string; url?: string }[] = [
-        { art: 'vector', name: 'Gezeichnet', sub: 'Live per Code – bisheriger Neon-Stil', url: fighterVectorUrl() },
-        { art: 'render', name: 'Gerendert – Split-Stil', sub: '3D-Modell nach dem Designkatalog: kantig, Klauen, Stacheln, Rost-Orange', url: spriteUrl('jaeger-s') },
-        { art: 'render1', name: 'Gerendert – erster Entwurf', sub: '3D-Modell, glatt und türkis', url: spriteUrl('jaeger-s-v1') },
-        { art: 'ai', name: 'KI-Bild', sub: 'Aus einem Bildgenerator', url: spriteUrl('jaeger-s-ki') },
-      ];
-      const cards = variants.map((v) => `<div class="art-card ${cur === v.art ? 'on' : ''}">
-        <div class="art-big">${v.url ? `<img src="${v.url}" alt="${esc(v.name)}">` : '<span>Noch kein Bild.<br>Datei <b>jaeger-s-ki.png</b> in <b>src/assets/sprites/</b> legen.</span>'}</div>
-        <div class="art-meta"><div class="grow"><b>${esc(v.name)}</b><small>${esc(v.sub)}</small></div>
-        ${v.url ? `<div class="art-small" title="In Spielgröße"><img src="${v.url}" alt="" style="width:${v.art === 'vector' ? 30 : 46}px"></div>` : ''}</div>
-        <button class="btn small ${cur === v.art ? 'on' : ''}" ${v.url ? act('ship-art', { art: v.art }) : 'disabled'}>${cur === v.art ? 'Im Spiel aktiv' : 'Im Spiel verwenden'}</button></div>`).join('');
-      const body = `<p class="lead">Das kleine Kampfschiff (dein Jäger im Kampf-Minispiel) in mehreren Darstellungen. Rechts unten jeweils in Spielgröße.</p>
-        <div class="art-grid">${cards}</div>`;
-      return modalShell('Kleines Kampfschiff', body, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Grafik-Vergleich');
+      // Vergleich der Darstellungen des eigenen Jägers: KI-Bild, vorab gerendert (3D), gezeichnet
+      const cur = shipArt(), kind = fighterKind();
+      const card = (k: FighterKind | null, a: ShipArt, name: string, sub: string, url: string | undefined) => {
+        const on = cur === a && (a === 'vector' || kind === k);
+        return `<div class="art-card ${on ? 'on' : ''}">
+        <div class="art-big">${url ? `<img src="${url}" alt="${esc(name)}">` : '<span>Noch kein Bild vorhanden.</span>'}</div>
+        <div class="art-meta"><div class="grow"><b>${esc(name)}</b><small>${esc(sub)}</small></div>
+        ${url ? `<div class="art-small" title="In Spielgröße"><img src="${url}" alt="" style="width:${a === 'vector' ? 30 : a === 'ai' ? 40 : 46}px"></div>` : ''}</div>
+        <button class="btn small ${on ? 'on' : ''}" ${url ? act('ship-art', { art: a, kind: k ?? kind }) : 'disabled'}>${on ? 'Im Spiel aktiv' : 'Im Spiel verwenden'}</button></div>`;
+      };
+      const section = (k: FighterKind) => `<div class="section"><h3>${esc(FIGHTER_NAME[k])}</h3><div class="art-grid">
+        ${card(k, 'ai', `${FIGHTER_NAME[k]} – KI-Bild`, 'Aus einem Bildgenerator (ChatGPT)', spriteUrl(spriteName(k, 'ai')))}
+        ${card(k, 'render', `${FIGHTER_NAME[k]} – gerendert`, k === 'split' ? '3D-Modell nach dem Designkatalog' : '3D-Modell, erster Entwurf', spriteUrl(spriteName(k, 'render')))}</div></div>`;
+      const body = `<p class="lead">Dein Jäger im Kampf-Minispiel. Wähle Bauart und Darstellung; unten rechts jeweils in Spielgröße.</p>
+        ${section('split')}${section('argon')}
+        <div class="section"><h3>Bisherige Grafik</h3><div class="art-grid">${card(null, 'vector', 'Gezeichnet', 'Live per Code – Neon-Stil', fighterVectorUrl())}</div></div>`;
+      return modalShell('Dein Jäger', body, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Grafik-Vergleich');
     }
     case 'alerts': {
       const alerts = allAlerts(state);

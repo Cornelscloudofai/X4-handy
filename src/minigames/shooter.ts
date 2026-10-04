@@ -5,7 +5,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { shipArt, shipSprite } from '../render/shipArt';
+import { fighterSprite, shipArt } from '../render/shipArt';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -1297,20 +1297,21 @@ export class ShooterGame implements MiniGame {
     const heading = Math.hypot(this.pvx, this.pvy) > 20 ? Math.atan2(this.pvy, this.pvx) : this.aimA;
     ctx.rotate(heading + Math.PI / 2);
     const thrust = Math.hypot(this.pvx, this.pvy) / this.speed;
-    const sprite = shipSprite('jaeger-s');
+    const sprite = fighterSprite();
     if (sprite) {
-      // Bild-Grafik: zwei Triebwerksflammen hinter den Düsen, darüber das Schiff
-      // Split-Stil: orange Glut, Düsen eng beieinander; erster Entwurf: blau, weiter außen
-      const split = shipArt() !== 'render1';
-      ctx.fillStyle = rgba(split ? '#ffb070' : '#9fe6ff', 0.35 + 0.5 * thrust);
-      for (const ex of split ? [-1.9, 1.9] : [-4.2, 4.2]) {
-        const ey = split ? 20 : 18;
+      // Bild-Grafik: flackernde Triebwerksflammen hinter den Düsen, darüber das Schiff.
+      // KI-Bilder füllen das Bild fast ganz aus, die gerenderten haben mehr Rand – daher kleiner gezeichnet.
+      const size = shipArt() === 'ai' ? SPRITE_SIZE * 0.86 : SPRITE_SIZE;
+      const { xs, y, color } = sprite.engines;
+      ctx.fillStyle = rgba(color, 0.35 + 0.5 * thrust);
+      for (const fx of xs) {
+        const ex = fx * size, ey = y * size;
         ctx.beginPath();
         ctx.moveTo(ex - 1.8, ey); ctx.lineTo(ex + 1.8, ey); ctx.lineTo(ex, ey + 2 + thrust * 12 + Math.random() * 3);
         ctx.closePath();
         ctx.fill();
       }
-      ctx.drawImage(sprite, -SPRITE_SIZE / 2, -SPRITE_SIZE / 2, SPRITE_SIZE, SPRITE_SIZE);
+      ctx.drawImage(sprite.img, -size / 2, -size / 2, size, size);
     } else {
       drawFighterVector(ctx);
       ctx.fillStyle = rgba('#9ffff0', 0.4 + 0.5 * thrust);

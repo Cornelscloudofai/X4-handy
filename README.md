@@ -90,11 +90,15 @@ src/engine    Simulation ohne Oberfläche – testbar mit Vitest
 src/render    Canvas-Grafik: Sektorkarte, Galaxiekarte, prozedurale Asteroiden und Stationen
 src/ui        Oberfläche (HUD, Blätter, Dialoge), Steuerung und Klänge
 src/minigames Minispiele mit eigenem Vollbild-Rahmen; Spiellogik ohne DOM, in Vitest mit Autopiloten geprüft
+src/assets/sprites  Bild-Grafiken (<fraktion>-<schiff>[-ki].webp), automatisch eingebunden; fehlt ein Bild, zeichnet das Spiel per Code
+docs/design   Designkatalog (Split-Stil) und Vorgaben für Bildgeneratoren
 tests         Simulationstests
 scripts       Werkzeuge: Balance-Simulation, Screenshot-Tour, Artifact-Export
 ```
 
 Alte Spielstände: `tests/fixtures/saves/` enthält echte Spielstände aus 8 älteren Versionen (erste Version bis erstes Baulager), erzeugt mit dem jeweiligen damaligen Code. `npm test` lädt jeden mit dem aktuellen Code, prüft Kampagne, Bauten, Lager und Schiffe und spielt 12 Stunden weiter.
+
+Bilder: `node scripts/import-sprite.mjs <bild.png> <name>` übernimmt ein Bild (z. B. aus ChatGPT) – Hintergrund freistellen, auf 512 px verkleinern, als WebP ablegen; `node scripts/render-sprites.mjs` rendert die 3D-Modelle aus `scripts/render/` neu (three.js, nur beim Erstellen).
 
 Nützliche Befehle: `npm test`, `npm run typecheck`, `npm run balance` (simulierter Spieler über 72 Spielstunden), `npm run e2e` (Handy-Oberfläche in 390 und 360 px: Werft, Zurück-Taste, keine abgeschnittenen Texte, dazu alte Spielstände über den echten Ladedialog und ein kompletter Durchlauf der ersten Schritte, bei dem immer genau dorthin getippt wird, wohin der Hinweis zeigt, sowie Warenfilter, Problemsymbol-Tipp und Kapitelbanner und alle Minispiele (Einführung, Antippen/Ziehen, Pause per Zurück, Auswertung, Bestwert) – läuft auch in GitHub Actions), `npm run perf` (Simulationstempo), `npm run fps` (Bildrate der Karte), `npm run kampagne -- [seed] [stunden] [--weiter]` (simulierter Spieler spielt alle 28 Kapitel (ca. 100 Spielstunden) und prüft stündlich: keine ungültigen/negativen Bestände, kein überfülltes Lager, kein festhängendes Schiff).
 
