@@ -23,7 +23,9 @@ import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
 import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
-import { minigameBack, minigameOpen, openMinigame, recordBest, type MiniKind } from '../minigames/host';
+import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
+import { unlocked } from '../minigames/records';
+import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
 import { fmtCr } from './format';
@@ -676,13 +678,16 @@ function onClick(e: MouseEvent): void {
       case 'icon-style': ui.iconStyle = d.style === 'line' ? 'line' : 'glow'; saveIconStyle(ui.iconStyle); setWareIconStyle(ui.iconStyle); refresh(); break;
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
-      case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as 1 | 2 | 3; refresh(); } break;
+      case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
       case 'mg-gear': if (ui.modal?.type === 'minigames') { ui.modal.gear = Number(d.gear) as 1 | 2 | 3; refresh(); } break;
-      case 'mg-play': {
+      case 'mg-play': case 'mg-daily': case 'mg-mode': {
         if (ui.modal?.type !== 'minigames') break;
         const { level, gear } = ui.modal;
         const kind = d.kind as MiniKind;
-        openMinigame(kind, { level, gear: { weapon: gear, shield: gear, engine: gear } }, (r) => { if (r) recordBest(kind, level, r.stars); refresh(); }, true);
+        const g = { weapon: gear, shield: gear, engine: gear };
+        const opts: MiniOpts = a === 'mg-daily' ? { ...dailyOpts(kind), gear: g } : a === 'mg-mode' ? { level: 3, gear: g, mode: d.mode as Mode, mutator: null } : { level, gear: g };
+        if (a === 'mg-play' && !unlocked(kind, level)) break;
+        openMinigame(kind, opts, () => refresh(), true);
         break;
       }
       case 'bg-prev': stepSectorImage(ui.sector, -1); refresh(); break;

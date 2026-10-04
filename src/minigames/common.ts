@@ -1,7 +1,32 @@
 // Gemeinsame Bausteine der Minispiele: Zufall mit Startwert, Partikel, Sternenhimmel, Neon-Striche.
 // Ohne DOM-Zugriff beim Laden, damit die Spiellogik in Tests (Node) läuft.
 
-export type Level = 1 | 2 | 3;
+export type Level = 1 | 2 | 3 | 4 | 5;
+
+/** Oberer Rand: Titelleiste und Punktezeile des Rahmens */
+export const TOP = 120;
+
+/** Spielart: normal, Tagesaufgabe (fester Startwert), Kette (Rohr-Puzzle) bzw. endlos (Kampf) */
+export type Mode = 'normal' | 'daily' | 'chain' | 'endless';
+
+/** Ausrüstung im Kampf */
+export interface Gear { weapon: 1 | 2 | 3; shield: 1 | 2 | 3; engine: 1 | 2 | 3 }
+
+/** Besonderheit einer Runde: verändert die Regeln, dafür mehr Punkte */
+export interface Mutator { id: string; name: string; desc: string; mult: number }
+
+export interface GoalDef { id: string; text: string }
+export interface Goal extends GoalDef { done: boolean }
+
+export interface GameCfg {
+  level: Level;
+  seed: number;
+  ware?: string;
+  gear?: Gear;
+  /** Kennung der Besonderheit (null = keine) */
+  mutator?: string | null;
+  mode?: Mode;
+}
 
 export interface GameResult {
   /** Erfolgreich abgeschlossen (sonst gescheitert oder Zeit abgelaufen) */
@@ -14,6 +39,10 @@ export interface GameResult {
   headline: string;
   /** Zeilen der Auswertung: Bezeichnung und Wert */
   lines: [string, string][];
+  /** Punkte (für Rekorde) */
+  points: number;
+  /** Nebenziele der Runde */
+  goals: Goal[];
 }
 
 export interface HudItem { label: string; value: string; warn?: boolean }
@@ -26,6 +55,13 @@ export interface MiniGame {
   readonly intro: string;
   /** Steuerung in Stichworten */
   readonly controls: string[];
+  /** Besonderheit dieser Runde */
+  readonly mutator: Mutator | null;
+  /** Nebenziele dieser Runde (laufend aktualisiert) */
+  readonly goals: Goal[];
+  /** Aktuelle Punkte und Kombo-Faktor */
+  points(): number;
+  combo(): number;
   hud(): HudItem[];
   resize(w: number, h: number): void;
   update(dt: number): void;
@@ -235,4 +271,127 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
 /** Kurzes Vibrieren, wo verfügbar */
 export function buzz(ms: number): void {
   globalThis.navigator?.vibrate?.(ms);
+}
+
+/** Besonderheit nach Kennung suchen */
+export function findMutator(list: Mutator[], id: string | null | undefined): Mutator | null {
+  return id ? list.find((m) => m.id === id) ?? null : null;
+}
+
+/** Drei Nebenziele aus dem Vorrat ziehen (gleicher Startwert, gleiche Ziele) */
+export function pickGoals(pool: GoalDef[], r: () => number, n = 3): Goal[] {
+  const left = pool.slice();
+  const out: Goal[] = [];
+  while (out.length < n && left.length) out.push({ ...left.splice(Math.floor(r() * left.length), 1)[0], done: false });
+  return out;
+}
+
+export function setGoal(goals: Goal[], id: string, done: boolean): void {
+  const g = goals.find((q) => q.id === id);
+  if (g) g.done = done;
+}
+
+/** Punkte mit Kombo und Rundenfaktor */
+export class Score {
+  points = 0;
+  combo = 1;
+  maxCombo = 1;
+  /** Restzeit, bis die Kombo verfällt */
+  hold = 0;
+
+  constructor(public mult = 1, public maxMult = 5) {}
+
+  add(base: number): number {
+    const p = Math.round(base * this.combo * this.mult);
+    this.points += p;
+    return p;
+  }
+
+  /** Kombo erhöhen (Schritt), hält `hold` Sekunden */
+  bump(step = 0.5, hold = 2.5): void {
+    this.combo = Math.min(this.maxMult, Math.round((this.combo + step) * 10) / 10);
+    this.maxCombo = Math.max(this.maxCombo, this.combo);
+    this.hold = hold;
+  }
+
+  reset(): void {
+    this.combo = 1;
+    this.hold = 0;
+  }
+
+  update(dt: number): void {
+    if (this.hold > 0) {
+      this.hold -= dt;
+      if (this.hold <= 0) this.reset();
+    }
+  }
+}
+
+/** Aufsteigende Texte (Punkte, Hinweise) */
+export class Floaters {
+  list: { x: number; y: number; text: string; color: string; t: number; size: number }[] = [];
+
+  add(x: number, y: number, text: string, color = '#ffd27a', size = 14): void {
+    if (this.list.length > 40) this.list.shift();
+    this.list.push({ x, y, text, color, t: 0, size });
+  }
+
+  update(dt: number): void {
+    for (const f of this.list) f.t += dt;
+    this.list = this.list.filter((f) => f.t < 1.1);
+  }
+
+  draw(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.textAlign = 'center';
+    for (const f of this.list) {
+      ctx.globalAlpha = Math.min(1, (1.1 - f.t) * 2.5);
+      ctx.font = `700 ${f.size}px "Chakra Petch", Barlow, sans-serif`;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(f.text, f.x + 1, f.y - f.t * 34 + 1);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y - f.t * 34);
+    }
+    ctx.restore();
+  }
+}
+
+/** Runde Taste auf der Leinwand (Fähigkeit mit Abklingzeit) */
+export function drawButton(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ready: number, color: string, label: string, t: number, charges?: number): void {
+  const ok = ready >= 1;
+  ctx.fillStyle = ok ? rgba(color, 0.16) : 'rgba(14,30,44,0.8)';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = ok ? rgba(color, 0.6 + 0.3 * Math.sin(t * 5)) : 'rgba(110,220,205,0.25)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (!ok) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r - 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ready);
+    ctx.stroke();
+  }
+  ctx.fillStyle = ok ? color : 'rgba(169,195,198,0.6)';
+  ctx.font = `700 ${Math.round(r * 0.62)}px "Chakra Petch", Barlow, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y);
+  ctx.textBaseline = 'alphabetic';
+  if (charges != null) {
+    for (let k = 0; k < charges; k++) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x - (charges - 1) * 5 + k * 10, y + r + 8, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/** Startwert für einen Tag (gleiche Aufgabe den ganzen Tag) */
+export function daySeed(date: string, kind: string): number {
+  let h = 2166136261;
+  for (const ch of date + ':' + kind) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return h >>> 0;
 }

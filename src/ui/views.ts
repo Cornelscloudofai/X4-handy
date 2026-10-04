@@ -1,6 +1,8 @@
 // HTML-Bausteine aller Bildschirme. Aktionen laufen über data-act (siehe app.ts).
 import { wareIcon, wareMark } from './wareIcons';
-import { MINI_INFO, MINI_KINDS, bestStars } from '../minigames/host';
+import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } from '../minigames/host';
+import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
+import type { Level } from '../minigames/common';
 import { sectorFlows } from '../engine/flows';
 import { H } from '../engine/history';
 import { bigChart, sparkline, type ChartSpec } from './charts';
@@ -1079,11 +1081,34 @@ export function modalHtml(state: GameState, ui: UIState): string {
       return modalShell('Warensymbole', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`);
     }
     case 'minigames': {
-      // Vorschau: alle Minispiele zum Ausprobieren, mit Stufe und Kampf-Ausrüstung
+      // Vorschau: alle Minispiele mit Stufe 1–5, Rekorden, Abzeichen, Tagesaufgaben und Herausforderungen
       const stars = (n: number) => `<span class="mg-best" aria-label="${Math.max(0, n)} von 3 Sternen">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
-      const body = `<p class="lead">Zum Ausprobieren. Wann und wie die Minispiele im Spiel auftauchen und was sie bringen, legen wir als Nächstes fest.</p>
-        <div class="section"><h3>Schwierigkeit</h3><div class="segment">${([1, 2, 3] as const).map((l) => `<button class="${m.level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>Stufe ${l}</button>`).join('')}</div></div>
-        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map((k) => `<div class="row tap" ${act('mg-play', { kind: k })}>${icon(MINI_INFO[k].icon, 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">${esc(MINI_INFO[k].sub)}</div></div>${bestStars(k, m.level) >= 0 ? stars(bestStars(k, m.level)) : ''}${icon('play', 18, 'chev')}</div>`).join('')}</div></div>
+      const pts = (n: number) => Math.round(n).toLocaleString('de-DE');
+      const lvl = m.level as Level;
+      const gameRow = (k: MiniKind) => {
+        const open = unlocked(k, lvl);
+        const b = mgBest(k, lvl);
+        const info = `${b?.points ? `Rekord ${pts(b.points)} · ` : ''}★ ${totalStars(k)}/15 · Abzeichen ${badgeCount(k)}/${goalsOf(k).length}`;
+        return open
+          ? `<div class="row tap" ${act('mg-play', { kind: k })}>${icon(MINI_INFO[k].icon, 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">${esc(MINI_INFO[k].sub)}</div><div class="sub">${info}</div></div>${b ? stars(b.stars) : ''}${icon('play', 18, 'chev')}</div>`
+          : `<div class="row mg-lock">${icon('lock', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">Stufe ${lvl} ab ${UNLOCK[lvl]} Sternen in diesem Spiel – noch ${UNLOCK[lvl] - totalStars(k)}</div></div></div>`;
+      };
+      const daily = MINI_KINDS.map((k) => {
+        const o = dailyOpts(k);
+        const mu = mutatorsOf(k).find((x) => x.id === o.mutator);
+        const db = dailyBest(k);
+        return `<div class="row tap" ${act('mg-daily', { kind: k })}>${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub">${mu ? esc(mu.name) + ' · ' : ''}${db != null ? `heute ${pts(db)} Punkte` : 'heute noch nicht gespielt'}</div></div>${icon('play', 18, 'chev')}</div>`;
+      }).join('');
+      const modes = MINI_KINDS.filter((k) => MINI_INFO[k].chain || MINI_INFO[k].endless).map((k) => {
+        const mode = MINI_INFO[k].chain ? 'chain' : 'endless';
+        const bp = mgBestPoints(k, mode);
+        return `<div class="row tap" ${act('mg-mode', { kind: k, mode })}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[0])}</div><div class="sub wrap">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[1]?.trim() ?? '')}${bp ? ` · Rekord ${pts(bp)}` : ''}</div></div>${icon('play', 18, 'chev')}</div>`;
+      }).join('');
+      const body = `<p class="lead">Zum Ausprobieren. Jede zweite Runde bringt eine Besonderheit mit mehr Punkten; Nebenziele geben Abzeichen. Mit Sternen schaltest du je Spiel Stufe 4 und 5 frei.</p>
+        <div class="section"><h3>Schwierigkeit</h3><div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${m.level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div></div>
+        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>
+        <div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
+        <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>
         <div class="section"><h3>Kampf-Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
       return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');

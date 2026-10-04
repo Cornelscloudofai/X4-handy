@@ -43,7 +43,7 @@ await page.screenshot({ path: `${out}/mg-3-pause.png` });
 await page.click('#minigame [data-mg="resume"]');
 // fast lösen, den Rest antippen
 await mg(() => window.__mg.game.debugSolve(1));
-for (let k = 0; k < 4 && (await phase()) === 'play'; k++) {
+for (let k = 0; k < 8 && (await phase()) === 'play'; k++) {
   const i = await mg(() => window.__mg.game.debugWrongCell());
   if (i < 0) break;
   const [x, y] = await mg((i) => window.__mg.game.cellCenter(i), i);
@@ -97,7 +97,7 @@ for (let k = 0; k < 25; k++) {
 }
 await page.screenshot({ path: `${out}/mg-8-gas.png` });
 await page.mouse.up();
-const got = await mg(() => window.__mg.game.got);
+const got = await mg(() => window.__mg.game.tank + window.__mg.game.secured);
 if (!(got > 0.3)) fail(`Sammler sammelt nichts (${got})`);
 await page.click('#minigame [data-mg="pause"]');
 await page.click('#minigame [data-mg="abort"]');
@@ -121,10 +121,43 @@ for (const kind of ['pirates', 'xenon']) {
   await page.screenshot({ path: `${out}/mg-9-${kind}-missiles.png` });
   const st = await mg(() => window.__mg.game.state);
   if (st.wave < 0) fail(`${kind}: keine Gegner`);
+  // Welle besiegt: Verbesserungskarten erscheinen, Antippen wählt eine
+  await mg(() => { const g = window.__mg.game; g.enemies = []; g.reinforce = null; });
+  await page.waitForTimeout(400);
+  if (!(await mg(() => window.__mg.game.state.choosing))) fail(`${kind}: keine Verbesserungskarten`);
+  await page.screenshot({ path: `${out}/mg-10-${kind}-cards.png` });
+  const rect = await mg(() => window.__mg.game.cardRects()[1]);
+  await page.mouse.click(rect[0] + rect[2] / 2, rect[1] + rect[3] / 2);
+  await page.waitForTimeout(300);
+  if (await mg(() => window.__mg.game.state.choosing)) fail(`${kind}: Karte lässt sich nicht wählen`);
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${out}/mg-11-${kind}-wave2.png` });
   await page.click('#minigame [data-mg="pause"]');
   await page.click('#minigame [data-mg="abort"]');
   await page.click('#minigame [data-mg="quit"]');
 }
+// Tagesaufgabe und Endlos-Modus: Einführung mit Besonderheit und Nebenzielen
+await page.click('#modal [data-act="mg-daily"][data-kind="ore"]');
+await page.waitForTimeout(300);
+if (!(await page.locator('#minigame .mg-mut-box').count())) fail('Tagesaufgabe ohne Besonderheit');
+if ((await page.locator('#minigame .mg-goals div').count()) !== 3) fail('Nebenziele fehlen');
+await page.screenshot({ path: `${out}/mg-12-daily-intro.png` });
+await page.click('#minigame [data-mg="quit"]');
+await page.click('#modal [data-act="mg-mode"][data-kind="pirates"]');
+await page.waitForTimeout(300);
+await page.click('#minigame [data-mg="start"]');
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${out}/mg-13-endless.png` });
+await page.click('#minigame [data-mg="pause"]');
+await page.click('#minigame [data-mg="abort"]');
+await page.waitForTimeout(300);
+await page.screenshot({ path: `${out}/mg-14-endless-result.png` });
+await page.click('#minigame [data-mg="quit"]');
+await page.click('#modal [data-act="mg-level"][data-level="5"]');
+await page.waitForTimeout(200);
+if (!(await page.locator('#modal .mg-lock').count())) fail('Stufe 5 nicht gesperrt');
+await page.screenshot({ path: `${out}/mg-15-menu-locked.png`, fullPage: false });
+await page.click('#modal [data-act="mg-level"][data-level="1"]');
 // Hauptspiel läuft danach weiter
 const t0 = await page.evaluate(() => window.__game.state.time);
 await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.refresh(); });
