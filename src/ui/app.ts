@@ -20,6 +20,7 @@ import { Camera, attachInput } from '../render/camera';
 import { GALAXY_HEX, drawGalaxy, galaxyHit, sectorCenter } from '../render/galaxyView';
 import { SectorRenderer } from '../render/sectorView';
 import { ScreenFx } from '../render/screenFx';
+import { stepSectorImage } from '../render/bgImages';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
 import { fmtCr } from './format';
@@ -641,6 +642,8 @@ function onClick(e: MouseEvent): void {
       case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
       case 'routes-toggle': ui.routes = !ui.routes; refresh(); break;
       case 'flow-ware': ui.flowWare = ui.flowWare === d.ware ? '' : d.ware ?? ''; refresh(); break;
+      case 'bg-prev': stepSectorImage(ui.sector, -1); refresh(); break;
+      case 'bg-next': stepSectorImage(ui.sector, 1); refresh(); break;
       case 'bg-toggle': ui.bgMode = ui.bgMode === 'image' ? 'procedural' : 'image'; saveBgMode(ui.bgMode); refresh(); break;
       case 'motion-toggle': ui.reducedMotion = !ui.reducedMotion; saveMotionSetting(ui.reducedMotion); refresh(); break;
       case 'zoom-in': cam.zoomAt(1.5, cam.w / 2, cam.h / 2); break;

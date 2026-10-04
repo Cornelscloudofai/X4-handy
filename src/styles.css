@@ -563,3 +563,6 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 }
 @keyframes banner-sweep { to { transform: translateX(100%); } }
 @keyframes banner-fade { 0% { opacity: 0; } 8% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }
+
+.stepper { display: flex; gap: 6px; }
+.stepper .btn { min-width: 44px; padding: 0; font-size: 22px; }

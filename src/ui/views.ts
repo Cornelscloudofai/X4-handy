@@ -1,5 +1,6 @@
 // HTML-Bausteine aller Bildschirme. Aktionen laufen über data-act (siehe app.ts).
 import { sectorFlows } from '../engine/flows';
+import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, sector } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
@@ -988,8 +989,10 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Beschriftung auf der Karte</div>
         <div class="sub">${ui.labelDensity <= 20 ? 'Wenig – Namen erst beim Heranzoomen' : ui.labelDensity >= 80 ? 'Viel – fast alles schon von Weitem' : 'Mittel – Wichtiges zuerst, Rest beim Zoomen'}</div>
         <div class="range-row"><span class="small muted">wenig</span><input type="range" min="0" max="100" step="5" value="${ui.labelDensity}" data-change="label-density" aria-label="Beschriftungsdichte"><span class="small muted">viel</span></div></div></div>
-      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Sektor-Hintergrund</div><div class="sub">${ui.bgMode === 'image' ? 'Bilder – gemalte Weltraum-Hintergründe' : 'Erzeugt – marmorierte Nebel und Galaxien je Sektor'}</div></div>
+      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Sektor-Hintergrund</div><div class="sub">${ui.bgMode === 'image' ? 'Bilder – gemalte Weltraum-Hintergründe mit Tiefenwirkung' : 'Erzeugt – marmorierte Nebel und Galaxien je Sektor'}</div></div>
       <div class="toggle"><button class="plain on" ${act('bg-toggle')}>${ui.bgMode === 'image' ? 'Bilder' : 'Erzeugt'}</button></div></div>
+      ${ui.bgMode === 'image' ? (() => { const info = bgImageInfo(sectorImageId(ui.sector)); return `<div class="row"><div class="grow"><div class="title" style="font-weight:500">Bild für ${esc(SECTOR_MAP[ui.sector]?.name ?? '')}</div><div class="sub">${info ? `${esc(info.name)} · ${info.index + 1} von ${BG_IMAGES.length}` : '–'}</div></div>
+      <div class="stepper"><button class="btn" ${act('bg-prev')} aria-label="Vorheriges Bild">‹</button><button class="btn" ${act('bg-next')} aria-label="Nächstes Bild">›</button></div></div>`; })() : ''}
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Animationen und Effekte</div><div class="sub">Funken, Triebwerke, driftende Nebel</div></div>
       <div class="toggle"><button class="plain ${ui.reducedMotion ? '' : 'on'}" ${act('motion-toggle')}>${ui.reducedMotion ? 'Reduziert' : 'Voll'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
