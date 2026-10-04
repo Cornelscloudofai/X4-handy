@@ -97,3 +97,8 @@ export function wareIcon(id: string, size = 22, style: WareIconStyle = current):
 export function wareMark(id: string, dot = 10): string {
   return `<span class="wm">${wareIcon(id, Math.round(dot * 1.6 + 2))}</span>`;
 }
+
+/** Rohe SVG-Elemente eines Warensymbols (für das Zeichnen auf der Karte) */
+export function wareGlyph(id: string): string {
+  return G[id] ?? FALLBACK;
+}

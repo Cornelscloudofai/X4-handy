@@ -13,6 +13,7 @@ import type { Camera } from './camera';
 import { fmtCr } from '../ui/format';
 import { Effects } from './effects';
 import { drawRockField } from './fields';
+import { drawWareGlyph } from './glyphs';
 import { layoutReach, layoutStation, stationStyle } from './stationLayout';
 import { sectorLayers } from './bgImages';
 import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
@@ -1177,10 +1178,13 @@ export class SectorRenderer {
       }
       return;
     }
-    // Produktion
+    // Produktion: Bauart nach Warentyp, Details wachsen mit dem Zoom
     const col = d.ware ? WARES[d.ware].color : C.teal;
-    if (d.ware === 'energycells') {
-      // Solarflügel mit wanderndem Glanz
+    const kind = productionKind(d.ware);
+    const stalled = o.stall === 'input' ? C.red : o.stall === 'storage' ? C.amber : '';
+    const det = unit >= 16, fine = unit >= 26;
+    if (kind === 'solar') {
+      // Solarflügel mit wanderndem Glanz und Zellenraster
       for (const sgn of [-1, 1]) {
         const y0 = sgn < 0 ? -h * 1.15 : h * 0.55;
         ctx.fillStyle = '#0a2240';
@@ -1189,7 +1193,9 @@ export class SectorRenderer {
         ctx.lineWidth = Math.max(0.8, lw * 0.8);
         ctx.strokeRect(-w * 0.55, y0, w * 1.1, h * 0.6);
         ctx.beginPath();
-        for (let k = 1; k < 4; k++) { const x = -w * 0.55 + (w * 1.1 * k) / 4; ctx.moveTo(x, y0); ctx.lineTo(x, y0 + h * 0.6); }
+        const cols = fine ? 8 : 4;
+        for (let k = 1; k < cols; k++) { const x = -w * 0.55 + (w * 1.1 * k) / cols; ctx.moveTo(x, y0); ctx.lineTo(x, y0 + h * 0.6); }
+        if (det) { ctx.moveTo(-w * 0.55, y0 + h * 0.3); ctx.lineTo(w * 0.55, y0 + h * 0.3); }
         ctx.stroke();
         const gx = ((now / 2600 + seed * 0.3) % 1.6 - 0.3) * w * 1.1 - w * 0.55;
         if (gx > -w * 0.55 && gx < w * 0.55) {
@@ -1198,21 +1204,141 @@ export class SectorRenderer {
         }
       }
     }
-    roundRect(ctx, -w / 2, -h / 2, w, h, unit * 0.14);
-    ctx.fillStyle = '#0a1721';
-    ctx.fill();
-    neonStroke(col, o.running);
-    // Leuchtband: läuft, wenn produziert wird; rot bei fehlenden Eingängen, gelb bei vollem Lager
-    const bx = -w * 0.36, bw = w * 0.72, by = -h * 0.11, bh = h * 0.22;
-    const stalled = o.stall === 'input' ? C.red : o.stall === 'storage' ? C.amber : '';
-    ctx.fillStyle = stalled ? rgba(stalled, 0.35 + 0.35 * (Math.sin(now / 220 + seed) > 0 ? 1 : 0)) : rgba(col, o.running ? 0.28 : 0.15);
-    ctx.fillRect(bx, by, bw, bh);
-    if (o.running && !stalled) {
-      const x = bx + ((now / 900 + seed * 0.37) % 1) * (bw - bw * 0.22);
-      ctx.fillStyle = rgba(col, 0.35);
-      ctx.fillRect(x - bw * 0.04, by - bh * 0.4, bw * 0.3, bh * 1.8);
-      ctx.fillStyle = col;
-      ctx.fillRect(x, by, bw * 0.22, bh);
+    if (kind === 'bio') {
+      // Biokuppeln: zwei Glaskuppeln mit Rippen, darin grünes Leuchten
+      const r = h * 0.5;
+      for (const cx of [-w * 0.24, w * 0.24]) {
+        ctx.beginPath();
+        ctx.arc(cx, 0, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#0a1d1a';
+        ctx.fill();
+        const glow = 0.18 + 0.1 * Math.sin(now / 1400 + seed + cx);
+        ctx.fillStyle = rgba(col, o.running ? glow : 0.08);
+        ctx.fill();
+        neonStroke(col, o.running);
+        if (det) {
+          ctx.strokeStyle = rgba(col, 0.4);
+          ctx.lineWidth = Math.max(0.6, lw * 0.6);
+          ctx.beginPath();
+          for (let k = -1; k <= 1; k++) { ctx.moveTo(cx + k * r * 0.5, -r * Math.sqrt(1 - (k * 0.5) ** 2)); ctx.lineTo(cx + k * r * 0.5, r * Math.sqrt(1 - (k * 0.5) ** 2)); }
+          ctx.moveTo(cx - r, 0); ctx.lineTo(cx + r, 0);
+          ctx.stroke();
+        }
+      }
+      // Verbindungsgang
+      ctx.fillStyle = '#0a1721';
+      ctx.fillRect(-w * 0.06, -h * 0.1, w * 0.12, h * 0.2);
+    } else if (kind === 'arms') {
+      // Rüstwerk: Sechseckbau mit rotierendem Feldring
+      const r = h * 0.62;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + Math.PI / 6; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+      ctx.closePath();
+      ctx.fillStyle = '#0a1721';
+      ctx.fill();
+      neonStroke(col, o.running);
+      if (det) {
+        ctx.save();
+        ctx.rotate(o.running ? now / 1600 + seed : seed);
+        ctx.setLineDash([r * 0.35, r * 0.25]);
+        ctx.strokeStyle = rgba(col, 0.55);
+        ctx.lineWidth = Math.max(0.8, lw * 0.8);
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    } else {
+      roundRect(ctx, -w / 2, -h / 2, w, h, unit * 0.14);
+      ctx.fillStyle = '#0a1721';
+      ctx.fill();
+      neonStroke(col, o.running);
+      if (det && kind === 'smelter') {
+        // Schlote mit glühender Hitze
+        for (const [cx, cy] of [[-w * 0.3, -h * 0.22], [-w * 0.3, h * 0.22]]) {
+          const heat = o.running ? 0.45 + 0.3 * Math.sin(now / 300 + seed + cy) : 0.12;
+          ctx.beginPath();
+          ctx.arc(cx, cy, h * 0.16, 0, Math.PI * 2);
+          ctx.fillStyle = rgba('#ff8a3c', heat);
+          ctx.fill();
+          ctx.strokeStyle = rgba(col, 0.8);
+          ctx.lineWidth = Math.max(0.7, lw * 0.7);
+          ctx.stroke();
+        }
+      } else if (det && kind === 'chem') {
+        // Kugeltanks mit Füllstand und Rohrleitung
+        ctx.strokeStyle = rgba(col, 0.5);
+        ctx.lineWidth = Math.max(0.7, lw * 0.6);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.32, 0); ctx.lineTo(w * 0.02, 0);
+        ctx.stroke();
+        for (const cy of [-h * 0.22, h * 0.22]) {
+          const r = h * 0.17;
+          ctx.beginPath();
+          ctx.arc(-w * 0.3, cy, r, 0, Math.PI * 2);
+          ctx.fillStyle = '#0a1721';
+          ctx.fill();
+          ctx.save();
+          ctx.clip();
+          const lv = 0.4 + 0.35 * Math.sin(now / 2400 + seed + cy);
+          ctx.fillStyle = rgba(col, 0.4);
+          ctx.fillRect(-w * 0.3 - r, cy + r - 2 * r * lv, 2 * r, 2 * r * lv);
+          ctx.restore();
+          ctx.strokeStyle = rgba(col, 0.85);
+          ctx.lineWidth = Math.max(0.7, lw * 0.7);
+          ctx.stroke();
+        }
+      } else if (det && kind === 'fab') {
+        // Fertigungshalle: Fensterraster, einzelne Fenster flackern
+        const cols = fine ? 4 : 3, rows = 2;
+        const fw = w * 0.11, fh = h * 0.14;
+        for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+          const on = o.running && (Math.sin(now / 700 + seed * 3 + r * 5 + c * 2.3) > -0.4);
+          ctx.fillStyle = on ? rgba(col, 0.55) : 'rgba(255,255,255,0.06)';
+          ctx.fillRect(-w * 0.4 + c * fw * 1.5, (r ? h * 0.08 : -h * 0.3), fw, fh);
+        }
+        if (d.ware === 'scanningarrays') {
+          ctx.strokeStyle = rgba(col, 0.85);
+          ctx.lineWidth = Math.max(0.7, lw * 0.7);
+          ctx.beginPath();
+          ctx.arc(w * 0.62, 0, h * 0.28, -Math.PI / 2, Math.PI / 2);
+          ctx.moveTo(w * 0.5, 0); ctx.lineTo(w * 0.78, 0);
+          ctx.stroke();
+        }
+      }
+    }
+    // Leuchtband am Rand: läuft, wenn produziert wird; rot bei fehlenden Eingängen, gelb bei vollem Lager
+    const bx = -w * 0.36, bw = w * 0.72, bh = h * (det ? 0.12 : 0.22), by = det ? h * 0.5 - bh * 1.6 : -bh / 2;
+    if (kind !== 'bio' || det) {
+      const y = kind === 'bio' ? h * 0.52 : by;
+      ctx.fillStyle = stalled ? rgba(stalled, 0.35 + 0.35 * (Math.sin(now / 220 + seed) > 0 ? 1 : 0)) : rgba(col, o.running ? 0.28 : 0.15);
+      ctx.fillRect(bx, y, bw, bh);
+      if (o.running && !stalled) {
+        const x = bx + ((now / 900 + seed * 0.37) % 1) * (bw - bw * 0.22);
+        ctx.fillStyle = rgba(col, 0.35);
+        ctx.fillRect(x - bw * 0.04, y - bh * 0.4, bw * 0.3, bh * 1.8);
+        ctx.fillStyle = col;
+        ctx.fillRect(x, y, bw * 0.22, bh);
+      }
+    }
+    // Positionslichter an den Ecken
+    if (det) {
+      const blink = Math.sin(now / 500 + seed * 1.7) > 0.6;
+      ctx.fillStyle = blink ? '#ff6b6b' : 'rgba(255,107,107,0.25)';
+      ctx.fillRect(w * 0.44, -h * 0.46, Math.max(1.2, unit * 0.05), Math.max(1.2, unit * 0.05));
+      ctx.fillStyle = !blink ? '#6bffb0' : 'rgba(107,255,176,0.25)';
+      ctx.fillRect(w * 0.44, h * 0.46 - Math.max(1.2, unit * 0.05), Math.max(1.2, unit * 0.05), Math.max(1.2, unit * 0.05));
+    }
+    // Ganz nah: Warensymbol aufrecht auf dem Modul
+    if (fine && d.ware) {
+      const t = ctx.getTransform();
+      const ang = Math.atan2(t.b, t.a);
+      ctx.save();
+      ctx.translate(kind === 'bio' ? 0 : w * 0.16, kind === 'bio' ? 0 : -h * 0.05);
+      ctx.rotate(-ang);
+      drawWareGlyph(ctx, d.ware, Math.min(h * 0.62, 30), col, o.running ? 1 : 0.6);
+      ctx.restore();
     }
   }
 
@@ -1344,7 +1470,7 @@ export class SectorRenderer {
     // Herausgezoomt kein Abbau-Effekt (Laser, Glanzpunkt, Teilchen) – die Karte bleibt ruhig
     if (rel < 1.6) return;
     // Abbaustrahl kurz und fein: Länge an der Schiffsgröße orientiert, damit bei mittlerem Zoom nichts überdeckt wird
-    const len = Math.max(6, Math.min(26, 9 * s + cam.zoom * 0.35));
+    const len = Math.max(6, Math.min(70, 8 * s + cam.zoom * 1.3));
     const tx = sx + Math.cos(a) * len, ty = sy + Math.sin(a) * len;
     if (isGas(info.field.ware)) {
       // Gas: zarter Sog-Schleier, in den feine Fäden eingesogen werden
@@ -1616,9 +1742,27 @@ function bendPoint(x1: number, y1: number, x2: number, y2: number, lane: number)
   return [(x1 + x2) / 2 + nx * bend, (y1 + y2) / 2 + ny * bend];
 }
 
+type ProdKind = 'solar' | 'smelter' | 'chem' | 'fab' | 'arms' | 'bio';
+const SMELTER = new Set(['refinedmetals', 'teladianium', 'scrapmetal', 'siliconwafers', 'siliconcarbide', 'metallicmicrolattice', 'computronicsubstrate']);
+const CHEM = new Set(['graphene', 'superfluidcoolant', 'antimattercells', 'water', 'bogas', 'spacefuel']);
+const ARMS = new Set(['shieldcomponents', 'turretcomponents', 'weaponscomponents', 'missilecomponents', 'fieldcoils', 'claytronics']);
+
+/** Bauart eines Produktionsmoduls nach seiner Ware */
+function productionKind(ware: string | undefined): ProdKind {
+  if (!ware) return 'fab';
+  if (ware === 'energycells') return 'solar';
+  if (SMELTER.has(ware)) return 'smelter';
+  if (CHEM.has(ware)) return 'chem';
+  if (ARMS.has(ware)) return 'arms';
+  const g = WARES[ware]?.group;
+  if (g === 'food' || g === 'agri' || g === 'pharma') return 'bio';
+  return 'fab';
+}
+
 /** Stationen werden überhöht gezeichnet, damit ihre Module schon bei mittlerem Zoom erkennbar sind */
 function stationScale(zoom: number): number {
-  return Math.min(30, zoom * 2.7);
+  // Nah herangezoomt dürfen Module groß werden – dann sind ihre Details erkennbar
+  return Math.min(68, zoom * 2.7);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
