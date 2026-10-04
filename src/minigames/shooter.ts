@@ -5,6 +5,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
+import { shipSprite } from '../render/shipArt';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -89,6 +90,23 @@ export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS];
 /** Normale Runde: drei Wellen und der Boss */
 const NORMAL_WAVES = 4;
 const HP_MUL: Record<Level, number> = { 1: 1, 2: 1.15, 3: 1.3, 4: 1.45, 5: 1.6 };
+/** Größe des Schiffsbilds in Bildpunkten (das Bild hat Rand, das Schiff selbst ist etwa 85 % davon) */
+const SPRITE_SIZE = 46;
+
+/** Der eigene Jäger als Neon-Zeichnung (Nase oben, etwa 25 Bildpunkte lang) */
+export function drawFighterVector(ctx: CanvasRenderingContext2D): void {
+  ctx.beginPath();
+  ctx.moveTo(0, -14); ctx.lineTo(5, -4); ctx.lineTo(12, 8); ctx.lineTo(4, 6); ctx.lineTo(0, 11); ctx.lineTo(-4, 6); ctx.lineTo(-12, 8); ctx.lineTo(-5, -4);
+  ctx.closePath();
+  ctx.fillStyle = '#0a2028';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(63,224,197,0.3)';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.strokeStyle = '#3fe0c5';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+}
 
 export class ShooterGame implements MiniGame {
   readonly eyebrow: string;
@@ -1278,23 +1296,26 @@ export class ShooterGame implements MiniGame {
     }
     const heading = Math.hypot(this.pvx, this.pvy) > 20 ? Math.atan2(this.pvy, this.pvx) : this.aimA;
     ctx.rotate(heading + Math.PI / 2);
-    ctx.beginPath();
-    ctx.moveTo(0, -14); ctx.lineTo(5, -4); ctx.lineTo(12, 8); ctx.lineTo(4, 6); ctx.lineTo(0, 11); ctx.lineTo(-4, 6); ctx.lineTo(-12, 8); ctx.lineTo(-5, -4);
-    ctx.closePath();
-    ctx.fillStyle = '#0a2028';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(63,224,197,0.3)';
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    ctx.strokeStyle = '#3fe0c5';
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
     const thrust = Math.hypot(this.pvx, this.pvy) / this.speed;
-    ctx.fillStyle = rgba('#9ffff0', 0.4 + 0.5 * thrust);
-    ctx.beginPath();
-    ctx.moveTo(-3, 10); ctx.lineTo(3, 10); ctx.lineTo(0, 12 + thrust * 10 + Math.random() * 3);
-    ctx.closePath();
-    ctx.fill();
+    const sprite = shipSprite('jaeger-s');
+    if (sprite) {
+      // Bild-Grafik: zwei Triebwerksflammen hinter den Düsen, darüber das Schiff
+      ctx.fillStyle = rgba('#9fe6ff', 0.35 + 0.5 * thrust);
+      for (const ex of [-4.2, 4.2]) {
+        ctx.beginPath();
+        ctx.moveTo(ex - 2.4, 18); ctx.lineTo(ex + 2.4, 18); ctx.lineTo(ex, 20 + thrust * 12 + Math.random() * 3);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.drawImage(sprite, -SPRITE_SIZE / 2, -SPRITE_SIZE / 2, SPRITE_SIZE, SPRITE_SIZE);
+    } else {
+      drawFighterVector(ctx);
+      ctx.fillStyle = rgba('#9ffff0', 0.4 + 0.5 * thrust);
+      ctx.beginPath();
+      ctx.moveTo(-3, 10); ctx.lineTo(3, 10); ctx.lineTo(0, 12 + thrust * 10 + Math.random() * 3);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
     ctx.strokeStyle = 'rgba(127,216,255,0.8)';
     ctx.lineWidth = 2;

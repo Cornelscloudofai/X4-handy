@@ -702,3 +702,15 @@ html.calm .mg-stars span.on svg { animation: none; }
 .mg-points small { flex-basis: 100%; text-align: center; color: var(--muted); }
 .mg-card { max-height: calc(100% - 20px); overflow-y: auto; }
 .mg-lock { opacity: 0.5; }
+
+/* Grafik-Vergleich */
+.art-grid { display: grid; gap: 12px; }
+.art-card { border: 1px solid var(--line); border-radius: 14px; padding: 10px; background: var(--panel-2); display: grid; gap: 8px; }
+.art-card.on { border-color: rgba(63, 224, 197, 0.6); box-shadow: 0 0 0 1px rgba(63, 224, 197, 0.25) inset; }
+.art-big { aspect-ratio: 1; border-radius: 10px; background: radial-gradient(circle at 50% 45%, #0e2233, #03070d 75%); display: grid; place-items: center; overflow: hidden; }
+.art-big img { width: 100%; height: 100%; object-fit: contain; }
+.art-big span { padding: 20px; text-align: center; color: var(--muted); font-size: 13.5px; }
+.art-meta { display: flex; align-items: center; gap: 10px; }
+.art-meta b { display: block; font-family: var(--font-display); font-weight: 600; }
+.art-meta small { color: var(--text-2); }
+.art-small { width: 64px; height: 64px; border-radius: 8px; background: #050b14; display: grid; place-items: center; flex: none; }

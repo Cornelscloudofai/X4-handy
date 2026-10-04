@@ -25,6 +25,7 @@ import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
+import { setShipArt, type ShipArt } from '../render/shipArt';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
@@ -678,6 +679,9 @@ function onClick(e: MouseEvent): void {
       case 'icon-style': ui.iconStyle = d.style === 'line' ? 'line' : 'glow'; saveIconStyle(ui.iconStyle); setWareIconStyle(ui.iconStyle); refresh(); break;
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
+      case 'ship-art-open': ui.modal = { type: 'shipArt' }; refresh(); break;
+      case 'ship-art': setShipArt(d.art as ShipArt); refresh(); break;
+      case 'ship-art-try': openMinigame('pirates', { level: 1, mutator: null }, () => refresh(), true); break;
       case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
       case 'mg-gear': if (ui.modal?.type === 'minigames') { ui.modal.gear = Number(d.gear) as 1 | 2 | 3; refresh(); } break;
       case 'mg-play': case 'mg-daily': case 'mg-mode': {
