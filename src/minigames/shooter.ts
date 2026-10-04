@@ -5,7 +5,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { fighterSprite, shipArt } from '../render/shipArt';
+import { enemySprite, fighterSprite, shipArt } from '../render/shipArt';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -1216,6 +1216,27 @@ export class ShooterGame implements MiniGame {
       ctx.stroke();
     }
     ctx.rotate(e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
+    const spr = enemySprite(e.kind);
+    if (spr) {
+      // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
+      const size = e.r * spr.scale;
+      ctx.fillStyle = rgba(spr.engines.color, 0.5 + 0.3 * Math.random());
+      for (const fx of spr.engines.xs) {
+        const ex = fx * size, ey = spr.engines.y * size;
+        ctx.beginPath();
+        ctx.moveTo(ex - 1.6, ey); ctx.lineTo(ex + 1.6, ey); ctx.lineTo(ex, ey + 5 + Math.random() * 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.drawImage(spr.img, -size / 2, -size / 2, size, size);
+      if (e.flash > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(spr.img, -size / 2, -size / 2, size, size);
+      }
+      ctx.restore();
+      return;
+    }
     const r = e.r;
     ctx.beginPath();
     switch (e.kind) {

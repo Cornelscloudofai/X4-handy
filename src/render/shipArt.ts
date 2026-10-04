@@ -23,6 +23,8 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'split-jaeger-s-ki': { xs: [-0.056, 0.056], y: 0.41, color: '#ff9a4a' },
   'argon-jaeger-s': { xs: [-0.091, 0.091], y: 0.39, color: '#9fe6ff' },
   'argon-jaeger-s-ki': { xs: [-0.093, 0.093], y: 0.425, color: '#7fe8ff' },
+  // Pirat: zwei ungleiche Triebwerke
+  'pirat-jaeger-s-ki': { xs: [-0.13, 0.095], y: 0.4, color: '#ff7a4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -93,4 +95,18 @@ export function fighterSprite(): FighterSprite | null {
   const img = load(name);
   if (!img) return null;
   return { img, engines: ENGINES[name] ?? { xs: [0], y: 0.42, color: '#ffb070' } };
+}
+
+/** Gegner im Kampf-Minispiel: Gegnerart → Bildname (nur KI-Bilder) und Größe im Verhältnis zum Trefferradius */
+const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
+  jaeger: { name: 'pirat-jaeger-s-ki', scale: 3.6 },
+};
+
+/** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */
+export function enemySprite(kind: string): (FighterSprite & { scale: number }) | null {
+  const def = ENEMY_SPRITES[kind];
+  if (!def || art === 'vector') return null;
+  const img = load(def.name);
+  if (!img) return null;
+  return { img, scale: def.scale, engines: ENGINES[def.name] ?? { xs: [0], y: 0.42, color: '#ff7a4a' } };
 }
