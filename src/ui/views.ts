@@ -988,6 +988,8 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Beschriftung auf der Karte</div>
         <div class="sub">${ui.labelDensity <= 20 ? 'Wenig – Namen erst beim Heranzoomen' : ui.labelDensity >= 80 ? 'Viel – fast alles schon von Weitem' : 'Mittel – Wichtiges zuerst, Rest beim Zoomen'}</div>
         <div class="range-row"><span class="small muted">wenig</span><input type="range" min="0" max="100" step="5" value="${ui.labelDensity}" data-change="label-density" aria-label="Beschriftungsdichte"><span class="small muted">viel</span></div></div></div>
+      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Sektor-Hintergrund</div><div class="sub">${ui.bgMode === 'image' ? 'Bilder – gemalte Weltraum-Hintergründe' : 'Erzeugt – marmorierte Nebel und Galaxien je Sektor'}</div></div>
+      <div class="toggle"><button class="plain on" ${act('bg-toggle')}>${ui.bgMode === 'image' ? 'Bilder' : 'Erzeugt'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Animationen und Effekte</div><div class="sub">Funken, Triebwerke, driftende Nebel</div></div>
       <div class="toggle"><button class="plain ${ui.reducedMotion ? '' : 'on'}" ${act('motion-toggle')}>${ui.reducedMotion ? 'Reduziert' : 'Voll'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>

@@ -42,6 +42,8 @@ export interface UIState {
   reducedMotion: boolean;
   /** Beschriftungsdichte der Karte 0 (wenig) bis 100 (viel), Standard 50 */
   labelDensity: number;
+  /** Sektor-Hintergrund: Bilder (Standard) oder erzeugte Himmel */
+  bgMode: 'image' | 'procedural';
   panel: Panel | null;
   modal: Modal | null;
   paused: boolean;
@@ -72,6 +74,7 @@ export const ui: UIState = {
   galaxySel: null,
   reducedMotion: initialReducedMotion(),
   labelDensity: initialLabelDensity(),
+  bgMode: initialBgMode(),
   panel: null,
   modal: null,
   paused: false,
@@ -142,6 +145,23 @@ function initialLabelDensity(): number {
 export function saveLabelDensity(v: number): void {
   try {
     localStorage.setItem('x4-sektorbau-labels', String(v));
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}
+
+function initialBgMode(): 'image' | 'procedural' {
+  try {
+    if (localStorage.getItem('x4-sektorbau-bg') === 'procedural') return 'procedural';
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+  return 'image';
+}
+
+export function saveBgMode(v: 'image' | 'procedural'): void {
+  try {
+    localStorage.setItem('x4-sektorbau-bg', v);
   } catch {
     /* Speicher nicht verfügbar */
   }

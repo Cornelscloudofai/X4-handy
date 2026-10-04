@@ -28,7 +28,7 @@ import { setSound, sfx, soundEnabled } from './sound';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { saleOffers } from '../engine/sales';
-import { SPEEDS, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
+import { SPEEDS, saveBgMode, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
 import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, nodePositions } from './plannerView';
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
@@ -641,6 +641,7 @@ function onClick(e: MouseEvent): void {
       case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
       case 'routes-toggle': ui.routes = !ui.routes; refresh(); break;
       case 'flow-ware': ui.flowWare = ui.flowWare === d.ware ? '' : d.ware ?? ''; refresh(); break;
+      case 'bg-toggle': ui.bgMode = ui.bgMode === 'image' ? 'procedural' : 'image'; saveBgMode(ui.bgMode); refresh(); break;
       case 'motion-toggle': ui.reducedMotion = !ui.reducedMotion; saveMotionSetting(ui.reducedMotion); refresh(); break;
       case 'zoom-in': cam.zoomAt(1.5, cam.w / 2, cam.h / 2); break;
       case 'zoom-out': cam.zoomAt(1 / 1.5, cam.w / 2, cam.h / 2); break;

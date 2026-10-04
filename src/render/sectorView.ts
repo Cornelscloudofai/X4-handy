@@ -14,6 +14,7 @@ import { fmtCr } from '../ui/format';
 import { Effects } from './effects';
 import { drawRockField } from './fields';
 import { layoutReach, layoutStation, stationStyle } from './stationLayout';
+import { sectorImage } from './bgImages';
 import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
 
@@ -62,6 +63,8 @@ export class SectorRenderer {
   private bgKey = '';
   private nebula: HTMLCanvasElement | null = null;
   private comp: HTMLCanvasElement | null = null;
+  private imgCanvas: HTMLCanvasElement | null = null;
+  private imgKey = '';
   private flowCache: { sector: string; state: GameState | null; at: number; flows: FlowSeg[] } = { sector: '', state: null, at: 0, flows: [] };
   private compKey = '';
   private floats: Float[] = [];
@@ -104,8 +107,40 @@ export class SectorRenderer {
    * liegen in farbigen Gasschleiern, Gesteins-Sektoren hinter Staubbändern, die Sonne leuchtet nach Sonnenlicht.
    * Nebel und Sterne verschieben sich beim Bewegen leicht gegeneinander (ferne Ebenen).
    */
-  drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, sectorId: string, now: number): void {
+  drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, sectorId: string, now: number, mode: 'image' | 'procedural' = 'procedural'): void {
     const W = cam.w, H = cam.h;
+    // Bild-Hintergrund: das Bild füllt den Bildschirm (ohne Verzerrung) und gleitet beim Verschieben minimal mit
+    const img = mode === 'image' ? sectorImage(sectorId) : undefined;
+    if (img === null) {
+      // Bild lädt noch: dunkler Grund statt kurz aufblitzendem erzeugtem Himmel
+      ctx.fillStyle = '#03060c';
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (img) {
+      // Einmal passend in Geräteauflösung vorrechnen, danach nur noch verschieben (kein Skalieren je Bild)
+      const res = Math.max(1, Math.min(3, ctx.getTransform().a || 1));
+      const ikey = `${img.src.length}:${img.naturalWidth}:${Math.round(W)}x${Math.round(H)}@${res}`;
+      if (ikey !== this.imgKey || !this.imgCanvas) {
+        const k = Math.max(W / img.naturalWidth, H / img.naturalHeight) * 1.06;
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k * res);
+        c.height = Math.round(img.naturalHeight * k * res);
+        const g = c.getContext('2d')!;
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(img, 0, 0, c.width, c.height);
+        this.imgCanvas = c;
+        this.imgKey = ikey;
+      }
+      const c = this.imgCanvas;
+      const iw = c.width / res, ih = c.height / res;
+      const limit = SECTOR_RADIUS * 1.1;
+      const px = Math.max(-1, Math.min(1, cam.x / limit)) * (iw - W) * 0.5, py = Math.max(-1, Math.min(1, cam.z / limit)) * (ih - H) * 0.5;
+      // auf ganze Gerätepixel runden, damit nicht nachgefiltert wird
+      const x = Math.round(((W - iw) / 2 - px) * res) / res, y = Math.round(((H - ih) / 2 - py) * res) / res;
+      ctx.drawImage(c, x, y, iw, ih);
+      return;
+    }
     // Hintergrund in Geräteauflösung (höchstens doppelt) – beim Anzeigen wird kaum vergrößert, kein Pixelraster
     const res = Math.max(1, Math.min(2, ctx.getTransform().a || 1));
     const key = `${sectorId}:${Math.round(W)}x${Math.round(H)}@${res}`;
@@ -160,7 +195,7 @@ export class SectorRenderer {
     this.fx.update(dt);
     const s = cam.iconScale();
     const rel = cam.zoom / (cam.fitZoom || 1);
-    this.drawBackdrop(ctx, cam, ui.sector, now);
+    this.drawBackdrop(ctx, cam, ui.sector, now, ui.bgMode);
     this.labels = [];
     this.obstacles = [];
     this.markers = [];
