@@ -52,6 +52,26 @@ await page.screenshot({ path: `${out}/p2-2b-alles-aus.png` });
 await page.click('[data-act="layer-toggle"][data-layer="routes"]');
 await page.click('[data-act="layer-menu"]');
 
+// Paket 3: Warensymbole im Lager, Verlaufslinie antippen → große Ansicht, Zeitraum wechseln, Symbolstil umschalten
+await page.evaluate(() => { const g = window.__game; g.openPanel('station', g.state.stations[0].id, 'storage'); g.refresh(); });
+await page.waitForTimeout(400);
+if (!(await page.locator('#panel .ware-tile svg.wi').count())) fail('Warensymbole fehlen im Lager');
+if (!(await page.locator('#panel .spark').count())) fail('Verlaufslinien fehlen im Lager');
+await page.locator('#panel .spark').first().click();
+await page.waitForTimeout(300);
+if (!(await page.locator('#modal svg.bigchart').isVisible())) fail('Große Diagrammansicht fehlt');
+await page.click('[data-act="chart-range"][data-hours="24"]');
+await page.waitForTimeout(200);
+await page.screenshot({ path: `${out}/p3-chart.png` });
+await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'wareIcons' }; g.refresh(); });
+await page.waitForTimeout(300);
+if ((await page.locator('#modal .wi-cell').count()) < 55) fail('Symbolübersicht unvollständig');
+await page.click('#modal [data-act="icon-style"][data-style="line"]');
+await page.waitForTimeout(200);
+if (!(await page.evaluate(() => window.__game.ui.iconStyle === 'line'))) fail('Symbolstil lässt sich nicht umschalten');
+await page.click('#modal [data-act="icon-style"][data-style="glow"]');
+await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.ui.panel = null; g.refresh(); });
+
 // Problemsymbole: Tipp auf das Lager-Symbol öffnet den Reiter „Lager“
 await page.evaluate(() => {
   const g = window.__game, a = g.state.stations[0];

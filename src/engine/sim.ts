@@ -5,6 +5,7 @@ import { stepShip } from './fleet';
 import { stepNpcs } from './npc';
 import { netWorth } from './stats';
 import { stepStory } from './story';
+import { stepHistory } from './history';
 import { stepShipOrders, stepYard } from './yard';
 import type { GameState } from './types';
 import { log, muteEvents, rand } from './util';
@@ -26,6 +27,7 @@ function substep(state: GameState, dt: number): void {
   stepMarkets(state, dt);
   stepContracts(state, dt);
   stepShipOrders(state, dt);
+  stepHistory(state, dt);
   slowTimer -= dt;
   if (slowTimer <= 0) {
     slowTimer = 5;

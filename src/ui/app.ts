@@ -21,6 +21,8 @@ import { GALAXY_HEX, drawGalaxy, galaxyHit, sectorCenter } from '../render/galax
 import { SectorRenderer } from '../render/sectorView';
 import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
+import { setWareIconStyle } from './wareIcons';
+import { initTween } from './tween';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
 import { fmtCr } from './format';
@@ -29,7 +31,7 @@ import { setSound, sfx, soundEnabled } from './sound';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { saleOffers } from '../engine/sales';
-import { SPEEDS, saveBgMode, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
+import { SPEEDS, saveBgMode, saveIconStyle, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
 import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, nodePositions } from './plannerView';
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
@@ -76,6 +78,8 @@ export function start(): void {
   ui.sector = state.stations[0]?.sector ?? 'zhin';
   lastCredits = state.credits;
   shownCredits = state.credits;
+  setWareIconStyle(ui.iconStyle);
+  initTween(() => !ui.reducedMotion);
   screenFx.onArrive = () => document.querySelector('#hud .chip.credits')?.animate?.([{ transform: 'scale(1)' }, { transform: 'scale(1.08)', boxShadow: '0 0 22px rgba(255,211,107,0.55)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
   resize();
   window.addEventListener('resize', resize);
@@ -272,7 +276,16 @@ function renderUI(): void {
   obj.hidden = !objContent;
   const panel = $('panel');
   const panelContent = panelHtml(state, ui);
-  if (panel.dataset.key !== panelKey()) { panel.innerHTML = ''; panel.dataset.key = panelKey(); const b = panel.querySelector('.sheet-body'); if (b) b.scrollTop = 0; }
+  if (panel.dataset.key !== panelKey()) {
+    panel.innerHTML = '';
+    panel.dataset.key = panelKey();
+    const b = panel.querySelector('.sheet-body');
+    if (b) b.scrollTop = 0;
+    // Neue Einträge leuchten erst auf, wenn das Blatt schon steht (nicht beim Öffnen oder Reiterwechsel)
+    panel.classList.remove('ready');
+    clearTimeout(readyTimer);
+    readyTimer = window.setTimeout(() => panel.classList.add('ready'), 700);
+  }
   morph(panel, panelContent);
   panel.hidden = !panelContent;
   panel.classList.toggle('wide', ui.panel?.type === 'planner');
@@ -283,8 +296,10 @@ function renderUI(): void {
   modal.hidden = !modalContent;
   if (needFit && ui.modal?.type === 'planDiagram') { needFit = false; requestAnimationFrame(fitEditor); }
   document.documentElement.style.setProperty('--bottom-stack', (ui.modal ? 96 : $('bottom').offsetHeight) + 'px');
+  document.documentElement.classList.toggle('calm', ui.reducedMotion);
   renderCoach(state, ui);
 }
+let readyTimer = 0;
 
 function panelKey(): string {
   const p = ui.panel;
@@ -649,6 +664,13 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       case 'flow-ware': ui.flowWare = ui.flowWare === d.ware ? '' : d.ware ?? ''; refresh(); break;
+      case 'chart':
+        ui.modal = { type: 'chart', hours: 6, spec: { key: d.key ?? '', title: d.title ?? '', color: d.color ?? '#3fe0c5', kind: d.kind === 'rate' ? 'rate' : 'level', unit: (d.unit as 'cr' | 'units' | 'pct' | 'price') ?? 'units', sub: d.sub || undefined } };
+        refresh();
+        break;
+      case 'chart-range': if (ui.modal?.type === 'chart') ui.modal = { ...ui.modal, hours: Number(d.hours) || 6 }; refresh(); break;
+      case 'icon-style': ui.iconStyle = d.style === 'line' ? 'line' : 'glow'; saveIconStyle(ui.iconStyle); setWareIconStyle(ui.iconStyle); refresh(); break;
+      case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
       case 'bg-prev': stepSectorImage(ui.sector, -1); refresh(); break;
       case 'bg-next': stepSectorImage(ui.sector, 1); refresh(); break;
       case 'bg-toggle': ui.bgMode = ui.bgMode === 'image' ? 'procedural' : 'image'; saveBgMode(ui.bgMode); refresh(); break;

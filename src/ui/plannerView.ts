@@ -1,4 +1,5 @@
 // Stationsplaner: Entwurf oder echte Station planen, Kette als Fließdiagramm bearbeiten
+import { wareIcon, wareMark } from './wareIcons';
 import { canUndo, undoLabel } from './undo';
 import { matches, searchBox } from './search';
 import { missingBlueprints, vendorOffer } from '../engine/actions';
@@ -13,7 +14,7 @@ import { computePlan, producible, stationModuleCounts, stationPlan, WORKFORCE_BO
 import type { GameState } from '../engine/types';
 import { esc } from './dom';
 import { fmtAmount, fmtCr, fmtDur, fmtInt, fmtNum } from './format';
-import { icon, wareDot } from './icons';
+import { icon } from './icons';
 
 const act = (a: string, data: Record<string, string | number> = {}) =>
   `data-act="${a}"` + Object.entries(data).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
@@ -57,8 +58,7 @@ export function activePlan(state: GameState, p: PlannerUI): { settings: PlanSett
 
 function tile(id: string): string {
   const w = WARES[id];
-  const abbr = w.name.replace(/[^A-Za-zÄÖÜäöü]/g, '').slice(0, 2);
-  return `<span class="ware-tile" style="--c:${w.color}">${esc(abbr)}</span>`;
+  return `<span class="ware-tile" style="--c:${w.color}" title="${esc(w.name)}">${wareIcon(id, 24)}</span>`;
 }
 
 type NodeState = 'deficit' | 'underfed' | 'ok' | 'surplus' | 'end' | 'mined' | 'bought';
@@ -141,19 +141,19 @@ function detailsBlock(state: GameState, r: PlanResult, isStation: boolean): stri
   const mods = Object.values(r.nodes).filter((n) => n.kind === 'module').sort((a, b) => a.column - b.column || WARES[a.ware].name.localeCompare(WARES[b.ware].name));
   const rows = mods.map((n) => {
     const st = nodeState(n);
-    return `<div class="row slim" data-key="d-${n.ware}">${wareDot(WARES[n.ware].color, 9)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[n.ware].name)}</div>
+    return `<div class="row slim" data-key="d-${n.ware}">${wareMark(n.ware, 9)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[n.ware].name)}</div>
       <div class="sub">${n.modules} Modul${n.modules === 1 ? '' : 'e'} · rechnerisch ${fmtNum(n.exact, 2)} · +${fmtInt(n.prod)} / −${fmtInt(n.use)} pro h</div></div>
       <div class="right"><b style="color:${STATE_COLOR[st]}">${n.net >= 0 ? '+' : '−'}${fmtInt(Math.abs(n.net))}</b></div>
       ${!isStation && !n.target ? `<button class="icon-btn sm" ${act('plan-buy', { ware: n.ware })} title="Stattdessen zukaufen" aria-label="${esc(WARES[n.ware].name)} zukaufen">${icon('market', 15)}</button>` : ''}</div>`;
   }).join('');
   const raw = Object.values(r.nodes).filter((n) => n.kind !== 'module').sort((a, b) => b.use - a.use).map((n) => {
     const w = WARES[n.ware];
-    return `<div class="row slim" data-key="r-${n.ware}">${wareDot(w.color, 9)}<div class="grow"><div class="title" style="font-weight:500">${esc(w.name)} <span class="small muted">${n.kind === 'mined' ? 'Abbau' : 'Zukauf'}</span></div>
+    return `<div class="row slim" data-key="r-${n.ware}">${wareMark(w.id, 9)}<div class="grow"><div class="title" style="font-weight:500">${esc(w.name)} <span class="small muted">${n.kind === 'mined' ? 'Abbau' : 'Zukauf'}</span></div>
       <div class="sub">${fmtInt(n.use)} / h${n.kind === 'mined' ? ` · ${fmtAmount(n.use * w.volume)} m³/h · ca. ${fmtNum((n.use * w.volume) / minerThroughput(w.storage === 'Liquid' ? 'alligator_gas' : 'alligator_min'), 1)} M-Miner` : ` · ca. ${fmtCr(n.use * w.price.avg)}/h`}</div></div>
       ${n.kind === 'bought' && producible(n.ware) && !isStation ? `<button class="icon-btn sm" ${act('plan-buy', { ware: n.ware })} title="Selbst herstellen" aria-label="${esc(w.name)} selbst herstellen">${icon('factory', 15)}</button>` : ''}</div>`;
   }).join('');
   const mats = Object.entries(r.materials).sort((a, b) => b[1] * WARES[b[0]].price.avg - a[1] * WARES[a[0]].price.avg)
-    .map(([id, n]) => `<span class="io">${wareDot(WARES[id].color, 7)}<b>${fmtInt(n)}</b> ${esc(WARES[id].name)}</span>`).join('');
+    .map(([id, n]) => `<span class="io">${wareMark(id, 7)}<b>${fmtInt(n)}</b> ${esc(WARES[id].name)}</span>`).join('');
   const missingBp = mods.filter((n) => n.modules && blueprintState(state, 'prod_' + n.ware) !== 'owned').map((n) => WARES[n.ware].name);
   return `<div class="box rows" style="margin-top:8px">${rows}${raw}</div>
     <p class="small muted" style="margin:8px 0">Baukosten ${fmtCr(r.cost)} · Bauzeit nacheinander ${fmtDur(r.buildTime)} · Miner-Zahl ist eine Schätzung mit den Spielwerten dieser App.</p>

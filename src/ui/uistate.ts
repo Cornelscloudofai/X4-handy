@@ -1,5 +1,6 @@
 import { defaultPlan, type PlanSettings } from '../engine/planner';
 import type { SellModal } from './sellView';
+import type { ChartSpec } from './charts';
 
 export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc' | 'npcst';
 export interface Selection { kind: SelKind; id: string }
@@ -17,6 +18,8 @@ export type Modal =
   | { type: 'offline'; seconds: number; credits: number; produced: Record<string, number>; modules: number }
   | { type: 'welcome' }
   | { type: 'help'; topic?: string }
+  | { type: 'wareIcons' }
+  | { type: 'chart'; spec: ChartSpec; hours: number }
   | { type: 'alerts' }
   | { type: 'export' }
   | { type: 'import'; error?: string }
@@ -49,6 +52,8 @@ export interface UIState {
   labelDensity: number;
   /** Sektor-Hintergrund: Bilder (Standard) oder erzeugte Himmel */
   bgMode: 'image' | 'procedural';
+  /** Stil der Warensymbole: leuchtend (gefüllt) oder Linie */
+  iconStyle: 'glow' | 'line';
   panel: Panel | null;
   modal: Modal | null;
   paused: boolean;
@@ -82,6 +87,7 @@ export const ui: UIState = {
   reducedMotion: initialReducedMotion(),
   labelDensity: initialLabelDensity(),
   bgMode: initialBgMode(),
+  iconStyle: initialIconStyle(),
   panel: null,
   modal: null,
   paused: false,
@@ -187,6 +193,23 @@ function initialLayers(): { routes: boolean; flows: boolean } {
 export function saveLayers(v: { routes: boolean; flows: boolean }): void {
   try {
     localStorage.setItem('x4-sektorbau-layers', JSON.stringify({ routes: v.routes, flows: v.flows }));
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}
+
+function initialIconStyle(): 'glow' | 'line' {
+  try {
+    if (localStorage.getItem('x4-sektorbau-icons') === 'line') return 'line';
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+  return 'glow';
+}
+
+export function saveIconStyle(v: 'glow' | 'line'): void {
+  try {
+    localStorage.setItem('x4-sektorbau-icons', v);
   } catch {
     /* Speicher nicht verfügbar */
   }

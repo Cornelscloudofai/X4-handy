@@ -575,3 +575,57 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 
 .stepper { display: flex; gap: 6px; }
 .stepper .btn { min-width: 44px; padding: 0; font-size: 22px; }
+
+/* ---------- Warensymbole ---------- */
+.wi { display: inline-block; flex: none; overflow: visible; vertical-align: middle; }
+.wi * { fill: none; stroke: var(--c); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.wi-glow { filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--c) 65%, transparent)); }
+.wi-glow * { stroke: color-mix(in srgb, var(--c) 70%, white); }
+.wi-glow .f { fill: color-mix(in srgb, var(--c) 42%, transparent); }
+.wm { display: inline-flex; align-items: center; flex: none; }
+.ware-tile .wi { margin: 0; }
+.wi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.wi-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border: 1px solid var(--line); border-radius: 12px; background: rgba(4, 14, 22, 0.5); text-align: center; }
+.wi-cell { min-width: 0; }
+.wi-cell span { font-size: 11.5px; line-height: 1.2; color: var(--text-2); overflow-wrap: anywhere; hyphens: auto; max-width: 100%; }
+.wi-pair { display: flex; gap: 12px; }
+
+/* ---------- Diagramme ---------- */
+.title-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.title-line .title { min-width: 0; }
+.spark { flex: none; display: inline-flex; padding: 3px; border-radius: 8px; border: 1px solid transparent; }
+.spark:active, .spark:hover { border-color: var(--line-2); background: rgba(63, 224, 197, 0.06); }
+.spark svg { display: block; overflow: visible; }
+.spark .ln, .bigchart .ln { fill: none; stroke: var(--c); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.spark .area, .bigchart .area { fill: color-mix(in srgb, var(--c) 16%, transparent); stroke: none; }
+.spark circle, .bigchart circle { fill: var(--c); filter: drop-shadow(0 0 3px var(--c)); }
+.trends { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.trend { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(4, 14, 22, 0.5); }
+.trend small { color: var(--muted); font-size: 12px; }
+.trend .spark { padding: 0; }
+.chart-range { margin-bottom: 12px; }
+.chart-now { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 6px; }
+.chart-now > b { font-size: 26px; color: var(--c); font-family: var(--font-display); }
+.chart-now span { font-size: 13px; color: var(--text-2); }
+.bigchart { width: 100%; height: auto; display: block; overflow: visible; }
+.bigchart .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.bigchart text { fill: var(--muted); font-size: 10.5px; font-family: var(--font-display); }
+.chart-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.chart-stats > div { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(4, 14, 22, 0.5); }
+.chart-stats small { display: block; color: var(--muted); font-size: 11.5px; }
+.chart-stats b { font-size: 14px; }
+
+/* ---------- Übergänge ---------- */
+/* Inhalt eines Blatts blendet beim Öffnen und Reiterwechsel weich ein */
+#panel .sheet-body > *, .modal .sheet-body > * { animation: contentIn 0.26s ease-out both; }
+#panel .sheet-body > *:nth-child(2) { animation-delay: 0.03s; }
+#panel .sheet-body > *:nth-child(3) { animation-delay: 0.06s; }
+#panel .sheet-body > *:nth-child(n + 4) { animation-delay: 0.09s; }
+@keyframes contentIn { from { opacity: 0; transform: translateY(6px); } }
+/* Neue Einträge (fertiges Modul, neues Schiff, neue Ware) leuchten kurz auf */
+#panel.ready .rows > .row, #panel.ready .module-card { animation: rowFlash 1.4s ease-out; }
+@keyframes rowFlash { 0% { background: rgba(63, 224, 197, 0.22); box-shadow: inset 3px 0 0 var(--teal); } 100% { background: transparent; box-shadow: inset 3px 0 0 transparent; } }
+.tabs button { transition: background 0.2s, color 0.2s, border-color 0.2s; }
+/* Animationen reduziert: alles sofort */
+html.calm *, html.calm *::before, html.calm *::after { animation-duration: 0.001s !important; animation-delay: 0s !important; transition-duration: 0.001s !important; }
+html.calm #banner.show.still .banner-in { animation-duration: 3.2s !important; }

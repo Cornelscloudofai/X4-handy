@@ -7,6 +7,12 @@ export function esc(s: string | number): string {
 
 const tpl = document.createElement('template');
 
+/** Wird für Elemente mit data-tween aufgerufen (Zielwert im Attribut, fertiger Text als Rückfall) */
+let tweenHook: ((el: HTMLElement, finalText: string, prev: string | null) => void) | null = null;
+export function setTweenHook(fn: (el: HTMLElement, finalText: string, prev: string | null) => void): void {
+  tweenHook = fn;
+}
+
 export function morph(container: Element, html: string): void {
   tpl.innerHTML = html;
   patchChildren(container, tpl.content);
@@ -45,6 +51,7 @@ function sameKind(a: Node, b: Node): boolean {
 }
 
 function patchElement(t: Element, s: Element): void {
+  const prevTween = t.getAttribute('data-tween');
   // Attribute
   for (const attr of Array.from(t.attributes)) if (!s.hasAttribute(attr.name)) t.removeAttribute(attr.name);
   for (const attr of Array.from(s.attributes)) if (t.getAttribute(attr.name) !== attr.value) t.setAttribute(attr.name, attr.value);
@@ -53,6 +60,11 @@ function patchElement(t: Element, s: Element): void {
     if (t.checked !== s.hasAttribute('checked')) t.checked = s.hasAttribute('checked');
   }
   if (t.hasAttribute('data-static')) return;
+  // Zahlen mit data-tween gleiten zum neuen Wert (siehe tween.ts) statt zu springen
+  if (tweenHook && t.hasAttribute('data-tween')) {
+    tweenHook(t as HTMLElement, s.textContent ?? '', prevTween);
+    return;
+  }
   patchChildren(t, s);
 }
 

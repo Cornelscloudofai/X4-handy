@@ -306,6 +306,9 @@ export interface Contract {
 
 export interface LogEntry { t: number; text: string; kind: 'info' | 'good' | 'warn' | 'bad' }
 
+/** Verlaufsdaten (Diagramme): Messzeitpunkte und Reihen mit gleich vielen Werten (null = keine Messung) */
+export interface HistoryData { times: number[]; s: Record<string, (number | null)[]>; last: Record<string, number> }
+
 export interface GameState {
   version: number;
   seed: number;
@@ -326,6 +329,8 @@ export interface GameState {
   help?: { coachOff?: boolean; seen?: string[] };
   totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number; shipsBuiltL?: number; buildOwn?: Record<string, number> };
   log: LogEntry[];
+  /** Verlaufsdaten der letzten 24 Spielstunden */
+  history?: HistoryData;
   nextId: number;
   npcTimer: Record<string, number>;
   contractTimer: number;

@@ -1,5 +1,9 @@
 // HTML-Bausteine aller Bildschirme. Aktionen laufen über data-act (siehe app.ts).
+import { wareIcon, wareMark } from './wareIcons';
 import { sectorFlows } from '../engine/flows';
+import { H } from '../engine/history';
+import { bigChart, sparkline, type ChartSpec } from './charts';
+import { tw } from './tween';
 import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, sector } from '../data/sectors';
@@ -21,7 +25,7 @@ import { esc } from './dom';
 import { helpBtn, helpList, helpModalParts } from './help';
 import { canUndo, undoLabel } from './undo';
 import { fmtAmount, fmtClock, fmtCr, fmtDur, fmtInt, fmtNum, pct } from './format';
-import { icon, wareDot } from './icons';
+import { icon } from './icons';
 import { soundEnabled } from './sound';
 import { buildModal, diagramEditor, pickerModal, plannerPanel } from './plannerView';
 import { sellModalHtml } from './sellView';
@@ -45,8 +49,7 @@ function moduleIcon(kind: string): string {
 
 function wareTile(id: string): string {
   const w = WARES[id];
-  const abbr = w.name.replace(/[^A-Za-zÄÖÜäöü]/g, '').slice(0, 2);
-  return `<span class="ware-tile" style="--c:${w.color}">${esc(abbr)}</span>`;
+  return `<span class="ware-tile" style="--c:${w.color}" title="${esc(w.name)}">${wareIcon(id, 24)}</span>`;
 }
 
 function bar(frac: number, cls = ''): string {
@@ -101,8 +104,8 @@ function flowFilter(state: GameState, ui: UIState): string {
   if (ui.flows) {
     const wares = [...new Set(sectorFlows(state, ui.sector, () => 1).map((f) => f.ware))].sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
     if (ui.flowWare && !wares.includes(ui.flowWare)) wares.unshift(ui.flowWare);
-    const chip = (id: string, label: string, color?: string) => `<button class="flow-chip ${ui.flowWare === id ? 'on' : ''}" ${act('flow-ware', { ware: id })}>${color ? `<i style="background:${color}"></i>` : ''}${esc(label)}</button>`;
-    if (wares.length) wareChips = `<span class="flow-sep"></span>${chip('', 'Alle Waren')}${wares.map((w) => chip(w, WARES[w].name, WARES[w].color)).join('')}`;
+    const chip = (id: string, label: string) => `<button class="flow-chip ${ui.flowWare === id ? 'on' : ''}" ${act('flow-ware', { ware: id })}>${id ? wareIcon(id, 16) : ''}${esc(label)}</button>`;
+    if (wares.length) wareChips = `<span class="flow-sep"></span>${chip('', 'Alle Waren')}${wares.map((w) => chip(w, WARES[w].name)).join('')}`;
   }
   return `<div class="flow-filter" aria-label="Kartenebenen">${layer('routes', 'Handelsrouten', ui.routes)}${layer('flows', 'Warenflüsse', ui.flows)}${wareChips}</div>`;
 }
@@ -205,7 +208,7 @@ function fieldCard(state: GameState, id: string): string {
   if (!info) return '';
   const w = WARES[info.field.ware];
   const miners = state.ships.filter((s) => s.miningField === id).length;
-  return cardShell(`<span class="ware-dot" style="--c:${w.color};width:16px;height:16px"></span>`, w.name, `Rohstofffeld · ${esc(info.sector.name)}`, `
+  return cardShell(`${wareIcon(w.id, 26)}`, w.name, `Rohstofffeld · ${esc(info.sector.name)}`, `
     <div class="stats3">
       <div>${icon('star', 22)}<span><b>${pct(info.field.richness)}</b>Ertrag</span></div>
       <div>${icon('market', 22)}<span><b>${fmtInt(marketPrice(state, info.sector.id, w.id))} Cr</b>Marktpreis</span></div>
@@ -219,7 +222,7 @@ function tradeCard(state: GameState, secId: string): string {
   const s = SECTOR_MAP[secId];
   const top = [...s.demand].slice(0, 3);
   return cardShell(icon('market', 24), s.tradeStation.name, `${esc(FACTIONS[s.faction].name)} · Handelsposten`, `
-    <div class="stats3">${top.map((id) => `<div>${wareDot(WARES[id].color, 10)}<span><b>${fmtInt(marketPrice(state, secId, id))} Cr</b>${esc(WARES[id].name)}</span></div>`).join('')}</div>
+    <div class="stats3">${top.map((id) => `<div>${wareMark(id, 10)}<span><b>${fmtInt(marketPrice(state, secId, id))} Cr</b>${esc(WARES[id].name)}</span></div>`).join('')}</div>
     <div class="card-actions"><button class="btn primary" ${act('open-market', { id: secId })}>${icon('market', 20)}Marktpreise</button>${vendorButton(state, secId)}</div>`, true);
 }
 
@@ -239,7 +242,7 @@ function npcCard(state: GameState, id: string): string {
   if (!n) return '';
   const rows = n.buys.map((w) => {
     const room = marketRoom(state, id, w);
-    return `<div class="row" style="padding:7px 10px">${wareDot(WARES[w].color, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub">nimmt noch ${fmtAmount(room)}</div></div><div class="right"><b>${fmtInt(marketPrice(state, id, w))} Cr</b></div></div>`;
+    return `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub">nimmt noch ${fmtAmount(room)}</div></div><div class="right"><b>${fmtInt(marketPrice(state, id, w))} Cr</b></div></div>`;
   }).join('');
   return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)} · kauft an`, `
     <div class="box rows npc-buys">${rows}</div>
@@ -264,7 +267,7 @@ function sectorCard(state: GameState, id: string): string {
   const known = knownSectors(state).includes(id);
   return cardShell(icon('sector', 24), known ? s.name : 'Unerforschter Sektor', `${esc(FACTIONS[s.faction].name)}${known ? ` · ☀ ${s.sunlight} %` : ''}`, `
     ${known ? `<p class="small" style="margin:0 0 10px;color:var(--text-2)">${esc(s.description)}</p>
-    <div class="pills" style="margin-bottom:10px">${s.fields.map((f) => `<span class="pill">${wareDot(WARES[f.ware].color, 8)}${esc(WARES[f.ware].name)}${f.richness > 1.05 ? ' ↑' : ''}</span>`).join('')}</div>` : '<p class="small muted" style="margin:0 0 10px">Erwirb Baulizenzen in Nachbarsektoren, um weiter vorzudringen.</p>'}
+    <div class="pills" style="margin-bottom:10px">${s.fields.map((f) => `<span class="pill">${wareMark(f.ware, 8)}${esc(WARES[f.ware].name)}${f.richness > 1.05 ? ' ↑' : ''}</span>`).join('')}</div>` : '<p class="small muted" style="margin:0 0 10px">Erwirb Baulizenzen in Nachbarsektoren, um weiter vorzudringen.</p>'}
     <div class="card-actions">
       <button class="btn primary ${known ? '' : 'disabled'}" ${act('goto-sector', { id })}>${icon('arrowRight', 20)}Ansehen</button>
       <button class="btn ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${icon(owned ? 'info' : 'lock', 20)}${owned ? 'Details' : 'Baulizenz'}</button>
@@ -369,11 +372,11 @@ function stationOverview(state: GameState, st: Station): string {
     const stall = e.stall === 'input' ? `wartet auf ${w.inputs.filter((i) => (st.inventory[i.ware] ?? 0) < i.amount).map((i) => WARES[i.ware].name).join(', ')}` : e.stall === 'storage' ? 'Lager voll' : '';
     return `<div class="row tap" ${act('open-ware', { id })}>${wareTile(id)}<div class="grow"><div class="title">${esc(w.name)} <span class="muted small">× ${e.n}</span></div>
       <div class="sub ${stall ? 'warn-text' : ''}">${stall ? esc(stall) : `${fmtInt(outputPerHour(id, sun) * e.n)} / h Nennleistung`}</div>${bar(u, stall ? 'amber' : '')}</div>
-      <div class="right"><b>${pct(u)}</b><div class="small muted">Auslastung</div></div></div>`;
+      <div class="right"><b>${tw(u, 'pct')}</b><div class="small muted">Auslastung</div></div></div>`;
   }).join('');
   const balance = Object.entries(rates).sort((a, b) => (b[1].prod - b[1].use) - (a[1].prod - a[1].use)).map(([id, r]) => {
     const net = r.prod - r.use;
-    return `<div class="row">${wareDot(WARES[id].color)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[id].name)}</div><div class="sub">+${fmtInt(r.prod)} / −${fmtInt(r.use)} pro h</div></div>
+    return `<div class="row">${wareMark(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[id].name)}</div><div class="sub">+${fmtInt(r.prod)} / −${fmtInt(r.use)} pro h</div></div>
       <div class="right"><b class="${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : '−'}${fmtInt(Math.abs(net))}</b></div></div>`;
   }).join('');
   const stor = storageUse(st).map((s) => `<div><small>${STORAGE_LABEL[s.type]}</small><b>${s.cap ? pct(s.used / s.cap) : '—'}</b>${bar(s.cap ? s.used / s.cap : 0, s.type === 'Liquid' ? 'blue' : s.type === 'Solid' ? 'solid' : '')}<div class="small muted" style="margin-top:4px">${fmtAmount(s.used)} / ${fmtAmount(s.cap)} m³</div></div>`).join('');
@@ -381,17 +384,38 @@ function stationOverview(state: GameState, st: Station): string {
   return `
     ${alerts.length ? `<div class="section"><div class="box rows">${alerts.map((a) => `<div class="row">${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text.split(': ').slice(1).join(': '))}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, st, a.ware))}</div>` : ''}</div></div>`).join('')}</div></div>` : ''}
     <div class="section"><div class="kv">
-      <div><small>Auslastung</small><b>${pct(util)}</b></div>
+      <div><small>Auslastung</small><b>${tw(util, 'pct')}</b></div>
       <div><small>Wertschöpfung</small><b>${fmtCr(stationOutputValue(st))}/h</b></div>
-      <div><small>Umsatz gesamt</small><b class="pos">${fmtCr(st.income)}</b></div>
-      <div><small>Einkauf gesamt</small><b>${fmtCr(st.expenses)}</b></div>
+      <div><small>Umsatz gesamt</small><b class="pos">${tw(st.income, 'cr')}</b></div>
+      <div><small>Einkauf gesamt</small><b>${tw(st.expenses, 'cr')}</b></div>
       <div><small>Module</small><b>${st.modules.length}${st.build || st.queue.length ? ` <span class="small muted">+${(st.build ? 1 : 0) + st.queue.length}</span>` : ''}</b></div>
       <div><small>Schiffe</small><b>${shipCount}</b></div>
     </div></div>
+    ${stationTrends(state, st)}
     <div class="section"><h3>Produktion</h3>${prodRows ? `<div class="box rows">${prodRows}</div>` : `<div class="box empty">Noch keine Produktionsmodule.<br><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 18)}Modul einplanen</button></div>`}</div>
     ${balance ? `<div class="section"><h3>Stundenbilanz bei voller Leistung</h3><div class="box rows">${balance}</div></div>` : ''}
     <div class="section"><h3>Lager</h3><div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr))">${stor}</div></div>
     <div class="section card-actions"><button class="btn" ${act('plan-from-station', { st: st.id })}>${icon('planner', 18)}Im Planer prüfen</button><button class="btn ghost" ${act('rename-modal', { st: st.id })}>Umbenennen</button></div>`;
+}
+
+/** Verlaufskachel mit Beschriftung (leer, solange zu wenig Daten da sind) */
+function trendCell(state: GameState, spec: ChartSpec): string {
+  const sp = sparkline(state, spec, 120, 28);
+  return sp ? `<div class="trend"><small>${esc(spec.title)}${spec.kind === 'rate' ? ' / h' : ''}</small>${sp}</div>` : '';
+}
+
+function trendSection(cells: string[]): string {
+  const t = cells.join('');
+  return t ? `<div class="section"><h3>Verlauf (6 h) · antippen für Details</h3><div class="trends">${t}</div></div>` : '';
+}
+
+/** Verlauf einer Station: Einnahmen, Ausgaben und Auslastung */
+function stationTrends(state: GameState, st: Station): string {
+  return trendSection([
+    trendCell(state, { key: H.income(st.id), title: 'Einnahmen', sub: st.name, color: '#5fe08a', kind: 'rate', unit: 'cr' }),
+    trendCell(state, { key: H.expenses(st.id), title: 'Ausgaben', sub: st.name, color: '#ff9b62', kind: 'rate', unit: 'cr' }),
+    trendCell(state, { key: H.util(st.id), title: 'Auslastung', sub: st.name, color: '#3fe0c5', kind: 'level', unit: 'pct' }),
+  ]);
 }
 
 function hintFor(state: GameState, st: Station, wareId: string): string {
@@ -443,14 +467,14 @@ function stationYard(state: GameState, st: Station): string {
       <div class="sub wrap">${esc(jobLabel(j.order))}</div>
       <div class="sub wrap">${missing ? 'Fertig frühestens in ' : 'Voraussichtlich fertig in '}<b class="num">${fmtDur(etaAcc)}</b>${missing ? ' – sobald das Material da ist' : ''}</div>
       ${waiting ? `<div class="sub wrap warn-text">${esc(y!.waiting!)}</div>` : ''}
-      ${Object.keys(lack).length ? `<div class="flow" style="margin-top:6px">${Object.entries(lack).map(([id, n]) => `<span class="io">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)} fehlt</span>`).join('')}</div>` : ''}</div>
+      ${Object.keys(lack).length ? `<div class="flow" style="margin-top:6px">${Object.entries(lack).map(([id, n]) => `<span class="io">${wareMark(id, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)} fehlt</span>`).join('')}</div>` : ''}</div>
       <button class="icon-btn sm ghost-x" ${act('yard-cancel', { st: st.id, uid: j.uid })} aria-label="Aus der Warteschlange entfernen">${icon('close', 16)}</button></div>`;
   }).join('');
   const cards = SHIP_CLASSES.filter((c) => sizes.has(c.size)).map((c) => {
     const mv = materialValue(c.id);
     const mats = Object.entries(c.materials).map(([id, n]) => {
       const have = st.inventory[id] ?? 0;
-      return `<span class="io ${have >= n ? '' : 'lack'}">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`;
+      return `<span class="io ${have >= n ? '' : 'lack'}">${wareMark(id, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`;
     }).join('');
     return `<div class="module-card box" data-key="yc${c.id}"><span class="ware-tile" style="--c:#8fb7c4">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
       <div style="min-width:0"><div class="title" style="font-weight:600">${esc(c.name)}</div><div class="small muted">${c.size} · ${fmtInt(c.capacity)} m³ · ${fmtNum(c.speed, 1)} km/s</div></div>
@@ -486,7 +510,7 @@ function buildStoreBox(state: GameState, st: Station): string {
     const lim = buildMoveLimits(st, id);
     const local = st.inventory[id] ?? 0;
     const canMove = lim.toBuild >= 0.5 || lim.toStation >= 0.5;
-    return `<div class="row" data-key="bs-${id}">${wareDot(WARES[id].color, 9)}<div class="grow"><div class="title">${esc(WARES[id].name)}</div>
+    return `<div class="row" data-key="bs-${id}">${wareMark(id, 9)}<div class="grow"><div class="title">${esc(WARES[id].name)}</div>
       <div class="sub wrap ${done ? '' : 'warn-text'}"><b class="num">${fmtAmount(have)}</b> von <b class="num">${fmtAmount(need)}</b> vorhanden${way >= 0.5 ? ` · ${fmtAmount(way)} unterwegs` : ''}${need < have - 0.5 ? ` · ${fmtAmount(have - need)} übrig` : ''}</div>
       ${local >= 0.5 ? `<div class="sub wrap">Im Stationslager: ${fmtAmount(local)}</div>` : ''}${bar(f, done ? '' : 'amber')}</div>
       ${canMove ? `<button class="btn small" ${act('build-move-open', { st: st.id, ware: id })}>Umladen</button>` : ''}</div>`;
@@ -531,7 +555,7 @@ function stationModules(state: GameState, st: Station): string {
       : `<div class="sub">Bau ${pct(f)} · noch ca. ${fmtDur(b.remaining)}</div>`;
     const chips = b.paid > 0 ? '' : `<div class="flow" style="margin-top:6px">${mats.map(([id, n]) => {
       const used = Math.min(n, b.used?.[id] ?? 0);
-      return `<span class="io ${lack.some(([x]) => x === id) ? 'lack' : ''}">${wareDot(WARES[id].color, 7)}<b class="num">${fmtAmount(used)}/${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`;
+      return `<span class="io ${lack.some(([x]) => x === id) ? 'lack' : ''}">${wareMark(id, 7)}<b class="num">${fmtAmount(used)}/${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`;
     }).join('')}</div>`;
     return `<div class="row build-row locked">${icon('lock', 18, 'muted')}${d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`}
       <div class="grow"><div class="title two-lines">${esc(d.name)}</div>${status}</div>
@@ -606,8 +630,9 @@ function stationStorage(state: GameState, st: Station): string {
     const rule = tradeRule(st, id);
     const share = storageShare(st, id, wl);
     const reserve = reserveFor(st, id, limit);
-    return `<div class="row" data-key="${id}">${wareTile(id)}<div class="grow"><div class="title two-lines" style="font-weight:500">${esc(w.name)}</div>
-      <div class="sub wrap">${fmtAmount(have)} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
+    const spark = sparkline(state, { key: H.stock(st.id, id), title: `${w.name} im Lager`, sub: st.name, color: w.color, kind: 'level', unit: 'units' });
+    return `<div class="row" data-key="${id}">${wareTile(id)}<div class="grow"><div class="title-line"><div class="title two-lines" style="font-weight:500">${esc(w.name)}</div>${spark}</div>
+      <div class="sub wrap">${tw(have, 'amount')} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
       <div class="row-links"><button class="linkish" ${act('storage-open', { st: st.id, ware: id })}>Lager einstellen</button>${have >= 1 && w.storage === 'Container' ? `<button class="linkish" ${act('sell-open', { st: st.id, ware: id })}>Verkaufen …</button>` : ''}</div></div>
       <div class="toggle"><button class="buy ${rule.buy ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'buy' })} aria-pressed="${rule.buy}">Kauf</button><button class="sell ${rule.sell ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'sell' })} aria-pressed="${rule.sell}">Verkauf</button></div></div>`;
   }).join('');
@@ -652,7 +677,7 @@ function restSection(state: GameState, s: Ship): string {
       <span class="rest-k">${c.choice === k ? icon('check', 14) : ''}${label}</span><span class="rest-v">${cost ?? 'nicht möglich'}</span>${note ? `<span class="rest-n">${note}</span>` : ''}</div>`;
     casebox = `<div class="rest-case">
       <div class="small muted">Letzte Restladung · vor ${fmtDur(Math.max(0, state.time - c.t))}</div>
-      <div class="rest-head">${wareDot(w.color, 9)}<b>${fmtAmount(c.amount)} ${esc(w.name)}</b> → <b class="pos">${REST_LABEL[c.choice]}</b></div>
+      <div class="rest-head">${wareMark(w.id, 9)}<b>${fmtAmount(c.amount)} ${esc(w.name)}</b> → <b class="pos">${REST_LABEL[c.choice]}</b></div>
       <p class="small" style="margin:4px 0 10px;color:var(--text-2)">${esc(c.reason)}</p>
       ${opt('topup', 'Nachfüllen', c.topup == null ? null : '± 0:00 min', c.topup == null ? '' : `spart ${fmtSecs(c.topupSaves)} Abbau`)}
       ${opt('wait', 'Warten', c.wait == null ? null : `ca. ${fmtSecs(c.wait)}`, c.wait == null ? 'Station verbraucht die Ware nicht' : 'bis der Verbrauch Platz macht')}
@@ -692,7 +717,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     const wares = [...new Set(fields.map((f) => f.ware))];
     orders = `<div class="section"><h3>Abbau</h3><div class="pills">
       <button class="pill ${!s.mineWare ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: '' })}>Automatisch nach Bedarf</button>
-      ${wares.map((w) => `<button class="pill ${s.mineWare === w ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: w })}>${wareDot(WARES[w].color, 8)}${esc(WARES[w].name)}</button>`).join('')}
+      ${wares.map((w) => `<button class="pill ${s.mineWare === w ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: w })}>${wareMark(w, 8)}${esc(WARES[w].name)}</button>`).join('')}
     </div><p class="small muted" style="margin-top:8px">${wares.length ? 'Automatisch: fördert, was im Lager am knappsten ist – Rohstoffe, auf die Module warten, zuerst. Mehrere Miner teilen sich die Waren so von selbst auf.' : 'Im Heimatsektor gibt es kein passendes Feld für diesen Miner.'}</p></div>
     ${restSection(state, s)}`;
   } else {
@@ -806,7 +831,7 @@ function vendorModal(state: GameState, ui: UIState, m: Extract<Modal, { type: 'v
     const offer = vendorOffer(state, v, d.id);
     const lack = d.blueprintCost - state.credits;
     const lead = d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
-    const ins = d.ware ? inputsPerHour(d.ware).map((i) => `<span class="io">${wareDot(WARES[i.ware].color, 7)}${esc(WARES[i.ware].name)}</span>`).join('') : '';
+    const ins = d.ware ? inputsPerHour(d.ware).map((i) => `<span class="io">${wareMark(i.ware, 7)}${esc(WARES[i.ware].name)}</span>`).join('') : '';
     const action = offer === 'owned' ? `<span class="pill teal">${icon('check', 13)} vorhanden</span>`
       : offer === 'buyable' ? `<button class="btn small ${lack > 0 ? 'disabled' : 'amber'}" style="white-space:nowrap" ${act('buy-bp', { def: d.id, vendor: v.id })}>${lack > 0 ? `fehlen ${fmtCr(lack)}` : `Kaufen · ${fmtCr(d.blueprintCost)}`}</button>`
       : `<span class="pill">${icon('lock', 13)} Ruf ${d.repRequired}</span>`;
@@ -908,7 +933,8 @@ function marketPanel(state: GameState, ui: UIState): string {
     const mine = state.stations.some((st) => st.modules.some((mm) => MODULE_MAP[mm.def]?.ware === id));
     return `<div class="row tap" ${act('open-ware', { id })} data-key="${id}">${wareTile(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(w.name)}${mine ? ' <span class="pill teal" style="padding:1px 6px;font-size:10px">EIGEN</span>' : ''}</div>
       <div class="sub">Bestand ${pct(m.stock / m.cap)} · Spanne ${fmtInt(w.price.min)}–${fmtInt(w.price.max)}</div></div>
-      <div class="right"><b>${fmtInt(price)} Cr</b><div class="small ${rel > 0.05 ? 'pos' : rel < -0.05 ? 'neg' : 'muted'}">${rel >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(rel * 100))} %</div></div></div>`;
+      ${sparkline(state, { key: H.price(secId, id), title: `Preis ${w.name}`, sub: SECTOR_MAP[secId].tradeStation.name, color: w.color, kind: 'level', unit: 'price' }, 52, 22)}
+      <div class="right"><b>${tw(price)} Cr</b><div class="small ${rel > 0.05 ? 'pos' : rel < -0.05 ? 'neg' : 'muted'}">${rel >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(rel * 100))} %</div></div></div>`;
   }).join('');
   return sheet('Handel', SECTOR_MAP[secId].tradeStation.name, `
     <p class="lead">Preise folgen dem Bestand: Leere Lager zahlen den Höchstpreis, volle nur den Mindestpreis. Große Verkäufe drücken die Preise.</p>
@@ -923,8 +949,8 @@ function warePanel(state: GameState, id: string, p: Panel): string {
   const d = MODULE_MAP['prod_' + id];
   const known = knownSectors(state);
   const recipe = w.cycle ? `<div class="section"><h3>Rezept pro Zyklus · ${fmtDur(w.cycle)}</h3><div class="box" style="padding:12px">
-    <div class="flow">${w.inputs.length ? w.inputs.map((i) => `<span class="io">${wareDot(WARES[i.ware].color, 8)}<b>${fmtInt(i.amount)}</b> ${esc(WARES[i.ware].name)}</span>`).join('<span class="arrow">+</span>') : '<span class="io">Sonnenlicht</span>'}
-    <span class="arrow">${icon('arrowRight', 18)}</span><span class="io" style="border-color:${w.color}">${wareDot(w.color, 8)}<b>${fmtInt(w.batch)}</b> ${esc(w.name)}</span></div>
+    <div class="flow">${w.inputs.length ? w.inputs.map((i) => `<span class="io">${wareMark(i.ware, 8)}<b>${fmtInt(i.amount)}</b> ${esc(WARES[i.ware].name)}</span>`).join('<span class="arrow">+</span>') : '<span class="io">Sonnenlicht</span>'}
+    <span class="arrow">${icon('arrowRight', 18)}</span><span class="io" style="border-color:${w.color}">${wareMark(w.id, 8)}<b>${fmtInt(w.batch)}</b> ${esc(w.name)}</span></div>
     <div class="small muted" style="margin-top:10px">Pro Stunde und Modul: ${inputsPerHour(id).map((i) => `${fmtInt(i.amount)} ${esc(WARES[i.ware].name)}`).join(', ') || '—'} → <b style="color:var(--text)">${fmtInt(outputPerHour(id))} ${esc(w.name)}</b>${id === 'energycells' ? ' bei 100 % Sonnenlicht' : ''}</div></div></div>` : `<div class="section"><div class="box" style="padding:12px"><p class="small" style="margin:0;color:var(--text-2)">${esc(w.name)} wird von Minern in Rohstofffeldern gefördert. Lagerart: ${esc(STORAGE_LABEL[w.storage])}.</p></div></div>`;
   let module = '';
   if (d) {
@@ -947,7 +973,7 @@ function warePanel(state: GameState, id: string, p: Panel): string {
     </div>${w.estimated ? '<p class="small muted">Preis geschätzt – nicht im Datensatz.</p>' : ''}</div>
     ${recipe}${module}
     ${producible(id) ? `<div class="section"><button class="btn outline-teal block" ${act('plan-from-ware', { ware: id })}>${icon('planner', 20)}Im Stationsplaner öffnen</button></div>` : ''}
-    ${users.length ? `<div class="section"><h3>Wird verbraucht für</h3><div class="pills">${users.map((u) => `<button class="pill" ${act('open-ware', { id: u })}>${wareDot(WARES[u].color, 8)}${esc(WARES[u].name)}</button>`).join('')}</div></div>` : ''}
+    ${users.length ? `<div class="section"><h3>Wird verbraucht für</h3><div class="pills">${users.map((u) => `<button class="pill" ${act('open-ware', { id: u })}>${wareMark(u, 8)}${esc(WARES[u].name)}</button>`).join('')}</div></div>` : ''}
     <div class="section"><h3>Käufer und Preise in bekannten Sektoren</h3><div class="box rows">${prices}</div></div>`, { back: !!p.back });
 }
 
@@ -978,10 +1004,14 @@ function morePanel(state: GameState, ui: UIState): string {
   const logRows = [...state.log].reverse().slice(0, 25).map((l) => `<div class="row"><span class="small muted num" style="flex:none;width:74px">${fmtClock(l.t).replace('Tag ', 'T')}</span><div class="grow"><div class="sub wrap ${l.kind === 'good' ? 'pos' : l.kind === 'bad' ? 'neg' : l.kind === 'warn' ? 'warn-text' : ''}" style="${l.kind === 'info' ? 'color:var(--text-2)' : ''}">${esc(l.text)}</div></div></div>`).join('');
   return sheet('Leitstand', 'Mehr', `
     <div class="section"><h3>Unternehmen</h3><div class="kv">
-      <div><small>Unternehmenswert</small><b>${fmtCr(worth)}</b></div><div><small>Spielzeit</small><b style="font-size:15px">${fmtClock(state.time)}</b></div>
+      <div><small>Unternehmenswert</small><b>${tw(worth, 'cr')}</b></div><div><small>Spielzeit</small><b style="font-size:15px">${fmtClock(state.time)}</b></div>
       <div><small>Verkäufe gesamt</small><b class="pos">${fmtCr(state.totals.sold)}</b></div><div><small>Einkäufe gesamt</small><b>${fmtCr(state.totals.bought)}</b></div>
       <div><small>Stationen</small><b>${state.stations.length}</b></div><div><small>Schiffe</small><b>${state.ships.length}</b></div>
     </div></div>
+    ${trendSection([
+      trendCell(state, { key: H.worth, title: 'Unternehmenswert', color: '#ffd36b', kind: 'level', unit: 'cr' }),
+      trendCell(state, { key: H.credits, title: 'Guthaben', color: '#3fe0c5', kind: 'level', unit: 'cr' }),
+    ])}
     <div class="section"><div class="box rows">${blueprintEntry(state)}</div></div>
     <div class="section"><h3>Spielstand</h3><div class="box rows">
       <div class="row">${icon('save', 20)}<div class="grow"><div class="title" style="font-weight:500">Automatisch gespeichert</div><div class="sub wrap">${esc(ui.saveStatus || 'Auf diesem Gerät')}</div></div></div>
@@ -1002,6 +1032,8 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="toggle"><button class="plain on" ${act('bg-toggle')}>${ui.bgMode === 'image' ? 'Bilder' : 'Erzeugt'}</button></div></div>
       ${ui.bgMode === 'image' ? (() => { const info = bgImageInfo(sectorImageId(ui.sector)); return `<div class="row"><div class="grow"><div class="title" style="font-weight:500">Bild für ${esc(SECTOR_MAP[ui.sector]?.name ?? '')}</div><div class="sub">${info ? `${esc(info.name)} · ${info.index + 1} von ${BG_IMAGES.length}` : '–'}</div></div>
       <div class="stepper"><button class="btn" ${act('bg-prev')} aria-label="Vorheriges Bild">‹</button><button class="btn" ${act('bg-next')} aria-label="Nächstes Bild">›</button></div></div>`; })() : ''}
+      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Warensymbole</div><div class="sub">${ui.iconStyle === 'glow' ? 'Leuchtend – gefüllt mit Glühen' : 'Linie – nur Umrisse'} · <a class="link" ${act('ware-icons')}>alle ansehen</a></div></div>
+      <div class="toggle"><button class="plain on" ${act('icon-style', { style: ui.iconStyle === 'glow' ? 'line' : 'glow' })}>${ui.iconStyle === 'glow' ? 'Leuchtend' : 'Linie'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Animationen und Effekte</div><div class="sub">Funken, Triebwerke, driftende Nebel</div></div>
       <div class="toggle"><button class="plain ${ui.reducedMotion ? '' : 'on'}" ${act('motion-toggle')}>${ui.reducedMotion ? 'Reduziert' : 'Voll'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
@@ -1028,11 +1060,22 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const prod = Object.entries(m.produced).sort((a, b) => b[1] * WARES[b[0]].price.avg - a[1] * WARES[a[0]].price.avg).slice(0, 6);
       return modalShell('Willkommen zurück', `<p class="lead">Während du weg warst, lief dein Imperium ${fmtDur(m.seconds)} weiter.</p>
         <div class="kv"><div><small>Credits</small><b class="${m.credits >= 0 ? 'pos' : 'neg'}">${m.credits >= 0 ? '+' : ''}${fmtCr(m.credits)}</b></div><div><small>Neue Module</small><b>${m.modules}</b></div></div>
-        ${prod.length ? `<div class="section" style="margin-top:14px"><h3>Produziert</h3><div class="box rows">${prod.map(([id, n]) => `<div class="row">${wareDot(WARES[id].color)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[id].name)}</div></div><div class="right"><b>${fmtAmount(n)}</b></div></div>`).join('')}</div></div>` : ''}`,
+        ${prod.length ? `<div class="section" style="margin-top:14px"><h3>Produziert</h3><div class="box rows">${prod.map(([id, n]) => `<div class="row">${wareMark(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[id].name)}</div></div><div class="right"><b>${fmtAmount(n)}</b></div></div>`).join('')}</div></div>` : ''}`,
         `<button class="btn primary" ${act('modal-close')}>Weiter</button>`);
     }
     case 'welcome': return welcomeModal();
     case 'help': { const h = helpModalParts(m.topic); return modalShell(h.title, h.body, h.foot, m.topic ? 'Hilfe' : 'X4 Sektorbau'); }
+    case 'chart':
+      return modalShell(m.spec.title, bigChart(state, m.spec, m.hours), `<button class="btn" ${act('modal-close')}>Schließen</button>`, m.spec.sub ?? '');
+    case 'wareIcons': {
+      // Vergleich: alle Waren in beiden Stilen nebeneinander, nach Gruppen
+      const groups = new Map<string, string[]>();
+      for (const w of Object.values(WARES).sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name, 'de'))) groups.set(w.group, [...(groups.get(w.group) ?? []), w.id]);
+      const body = `<p class="lead">Links „Leuchtend“, rechts „Linie“. Den Stil stellst du in den Einstellungen ein.</p>
+        <div class="segment" style="margin:10px 0 14px">${(['glow', 'line'] as const).map((st) => `<button class="${ui.iconStyle === st ? 'on' : ''}" ${act('icon-style', { style: st })}>${st === 'glow' ? 'Leuchtend' : 'Linie'}</button>`).join('')}</div>
+        ${[...groups].map(([g, ids]) => `<div class="section"><h3>${esc(GROUP_LABEL[g as keyof typeof GROUP_LABEL] ?? g)}</h3><div class="wi-grid">${ids.map((id) => `<div class="wi-cell"><div class="wi-pair">${wareIcon(id, 30, 'glow')}${wareIcon(id, 30, 'line')}</div><span>${esc(WARES[id].name)}</span></div>`).join('')}</div></div>`).join('')}`;
+      return modalShell('Warensymbole', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`);
+    }
     case 'alerts': {
       const alerts = allAlerts(state);
       return modalShell('Engpässe & Hinweise', alerts.length ? `<div class="box rows">${alerts.map((a) => `<div class="row tap" ${act('open-station', { id: a.station, tab: 'overview' })}>${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text)}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, stationById(state, a.station)!, a.ware))}</div>` : ''}</div>${icon('chev', 20, 'chev')}</div>`).join('')}</div>` : '<div class="empty">Alles läuft. Keine Engpässe.</div>', `<button class="btn" ${act('modal-close')}>Schließen</button>`);
@@ -1169,7 +1212,7 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
     let io = '';
     if (d.kind === 'production' && d.ware) {
       const ins = inputsPerHour(d.ware);
-      io = `<div class="flow" style="grid-column:1/-1">${ins.map((i) => `<span class="io">${wareDot(WARES[i.ware].color, 7)}<b>${fmtAmount(i.amount)}</b>${esc(WARES[i.ware].name)}</span>`).join('')}${ins.length ? `<span class="arrow">${icon('arrowRight', 16)}</span>` : ''}<span class="io" style="border-color:${WARES[d.ware].color}">${wareDot(WARES[d.ware].color, 7)}<b>${fmtAmount(outputPerHour(d.ware, sun))}</b>${esc(WARES[d.ware].name)} / h</span></div>`;
+      io = `<div class="flow" style="grid-column:1/-1">${ins.map((i) => `<span class="io">${wareMark(i.ware, 7)}<b>${fmtAmount(i.amount)}</b>${esc(WARES[i.ware].name)}</span>`).join('')}${ins.length ? `<span class="arrow">${icon('arrowRight', 16)}</span>` : ''}<span class="io" style="border-color:${WARES[d.ware].color}">${wareMark(d.ware, 7)}<b>${fmtAmount(outputPerHour(d.ware, sun))}</b>${esc(WARES[d.ware].name)} / h</span></div>`;
     }
     const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
     const desc = d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe – die kommen mit den Kampfschiffen. Größte und teuerste Werft.' : d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
@@ -1181,7 +1224,7 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
         return `${lockPill}${go ? `<button class="btn small ${bp === 'buyable' ? 'amber' : ''}" ${act('goto-vendor', { id: go.id })}>${icon('arrowRight', 15)}${go.npc ? 'Zur Werft' : 'Zum Vertreter'}</button>` : ''}`;
       })();
     return `<div class="module-card box ${bp === 'locked' ? 'locked' : ''}" data-key="${d.id}">${lead}<div style="min-width:0"><div class="title" style="font-weight:600">${esc(d.name)}</div><div class="small muted">${desc}</div></div>
-      ${io}<div class="flow" style="grid-column:1/-1">${Object.entries(d.materials).map(([id, n]) => `<span class="io ${(st.buildStore?.[id] ?? 0) + marketSupply(state, id) < n ? 'lack' : ''}">${wareDot(WARES[id].color, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`).join('')}</div>
+      ${io}<div class="flow" style="grid-column:1/-1">${Object.entries(d.materials).map(([id, n]) => `<span class="io ${(st.buildStore?.[id] ?? 0) + marketSupply(state, id) < n ? 'lack' : ''}">${wareMark(id, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`).join('')}</div>
       <div class="meta" style="grid-column:1/-1"><span>Material ca. <b>${fmtCr(d.cost)}</b></span><span>Bauzeit <b>${fmtDur(d.buildTime)}</b></span></div>
       <div class="actions">${action}</div></div>`;
   }).join('');
