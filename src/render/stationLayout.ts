@@ -22,8 +22,10 @@ export interface Slot {
   reserve?: boolean;
 }
 
-/** Größte Entfernung eines Platzes vom Kern (in Moduleinheiten) – Stationen werden nie größer */
+/** Größte Entfernung eines Platzes der Bauformen vom Kern (in Moduleinheiten) */
 export const MAX_REACH = 4.7;
+/** Reservering und Erweiterungsringe (Radius, Plätze) für sehr volle Stationen */
+const EXTRA_RINGS: [number, number][] = [[MAX_REACH, 28], [5.7, 34], [6.7, 40]];
 /** Mindestabstand zweier Plätze (ein Modul ist 1,0 × 0,72 Einheiten groß) */
 const MIN_GAP = 0.95;
 
@@ -136,11 +138,15 @@ function slotsOf(style: LayoutStyle): Slot[] {
   // Plätze, die einem früheren zu nahe kommen, fallen weg – Module überlappen nie
   const list: Slot[] = [];
   for (const p of raw) if (list.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= MIN_GAP)) list.push(p);
-  // Reserve: freie Lücken auf einem äußeren Ring (für sehr volle Stationen)
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2, r = MAX_REACH;
-    const p: Slot = { x: Math.cos(a) * r, y: Math.sin(a) * r, ang: a, band: 2, path: [[0, 0], [Math.cos(a) * r, Math.sin(a) * r]] };
-    if (list.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= MIN_GAP)) list.push({ ...p, reserve: true });
+  // Reserve: freie Lücken auf einem äußeren Ring, danach Erweiterungsringe – nur für sehr volle Stationen
+  // (bis 100 Module); kleinere Stationen bleiben kompakt
+  for (const [r, n] of EXTRA_RINGS) {
+    const off = (r * 7.3) % 1;
+    for (let i = 0; i < n; i++) {
+      const a = ((i + off) / n) * Math.PI * 2;
+      const p: Slot = { x: Math.cos(a) * r, y: Math.sin(a) * r, ang: a, band: 2, path: [[0, 0], [Math.cos(a) * r, Math.sin(a) * r]] };
+      if (list.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= MIN_GAP)) list.push({ ...p, reserve: true });
+    }
   }
   cache.set(style, list);
   return list;
@@ -175,7 +181,7 @@ export function layoutStation(id: string, defs: string[]): Slot[] {
         }
       }
     }
-    // Mehr Module als Plätze (nur theoretisch, Stationen haben höchstens 40): am Kern stapeln
+    // Mehr Module als Plätze (nur theoretisch, Stationen haben höchstens 100): am Kern stapeln
     return { x: 0, y: 0, ang: 0, band: 0, path: [[0, 0]] };
   });
 }

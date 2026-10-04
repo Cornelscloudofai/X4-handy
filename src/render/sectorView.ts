@@ -1343,43 +1343,51 @@ export class SectorRenderer {
     const rel = cam.zoom / (cam.fitZoom || 1);
     // Herausgezoomt kein Abbau-Effekt (Laser, Glanzpunkt, Teilchen) – die Karte bleibt ruhig
     if (rel < 1.6) return;
-    const len = Math.max(5, Math.min(40, cam.zoom * 1.6)) * Math.min(1.5, s + 0.2);
+    // Abbaustrahl kurz und fein: Länge an der Schiffsgröße orientiert, damit bei mittlerem Zoom nichts überdeckt wird
+    const len = Math.max(6, Math.min(26, 9 * s + cam.zoom * 0.35));
     const tx = sx + Math.cos(a) * len, ty = sy + Math.sin(a) * len;
     if (isGas(info.field.ware)) {
-      const spread = len * 0.45;
+      // Gas: zarter Sog-Schleier, in den feine Fäden eingesogen werden
+      const spread = len * 0.4;
       const nx = -Math.sin(a), ny = Math.cos(a);
       const g = ctx.createLinearGradient(sx, sy, tx, ty);
-      g.addColorStop(0, rgba(color, 0.35));
+      g.addColorStop(0, rgba(color, 0.14));
       g.addColorStop(1, rgba(color, 0));
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(sx, sy);
-      ctx.lineTo(tx + nx * spread, ty + ny * spread);
+      ctx.quadraticCurveTo(tx + nx * spread * 0.4, ty + ny * spread * 0.4, tx + nx * spread, ty + ny * spread);
       ctx.lineTo(tx - nx * spread, ty - ny * spread);
-      ctx.closePath();
+      ctx.quadraticCurveTo(tx - nx * spread * 0.4, ty - ny * spread * 0.4, sx, sy);
       ctx.fill();
-      if (rel >= 1.6 && Math.random() < dt * 16) {
+      if (Math.random() < dt * 14) {
         const k = (Math.random() - 0.5) * 2;
-        const [wx, wz] = cam.toWorld(tx + nx * spread * k, ty + ny * spread * k);
+        const far = 1 + Math.random() * 0.5;
+        const [wx, wz] = cam.toWorld(sx + Math.cos(a) * len * far + nx * spread * k, sy + Math.sin(a) * len * far + ny * spread * k);
         this.fx.suck(sh.sector, wx, wz, sh.x, sh.z, color);
       }
       return;
     }
+    // Erz: feiner Laser, kleiner Glanz an der Abbaustelle, unförmige Bröckchen
     const flick = 0.5 + 0.5 * Math.sin(now / 60 + h);
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(tx, ty);
-    ctx.strokeStyle = rgba(color, 0.15 + flick * 0.15);
-    ctx.lineWidth = (1 + flick * Math.min(1.5, s)) * 3.5;
+    ctx.strokeStyle = rgba(color, 0.1 + flick * 0.1);
+    ctx.lineWidth = 2.2;
     ctx.stroke();
-    ctx.strokeStyle = rgba(color, 0.45 + flick * 0.5);
-    ctx.lineWidth = 1 + flick * Math.min(1.5, s);
+    ctx.strokeStyle = rgba(color, 0.45 + flick * 0.4);
+    ctx.lineWidth = 0.8;
     ctx.stroke();
-    ctx.fillStyle = rgba('#ffffff', 0.6 + flick * 0.4);
+    // Glanz als kleiner Lichtstern statt Kugel
+    const gl = 1.2 + flick * 1.3;
+    ctx.strokeStyle = rgba('#ffffff', 0.5 + flick * 0.4);
+    ctx.lineWidth = 0.7;
     ctx.beginPath();
-    ctx.arc(tx, ty, 1.5 + flick * Math.min(2, s + 0.5), 0, Math.PI * 2);
-    ctx.fill();
-    if (rel >= 1.6 && Math.random() < dt * 12) {
+    ctx.moveTo(tx - gl, ty); ctx.lineTo(tx + gl, ty);
+    ctx.moveTo(tx, ty - gl); ctx.lineTo(tx, ty + gl);
+    ctx.stroke();
+    if (Math.random() < dt * 7) {
       const [wx, wz] = cam.toWorld(tx, ty);
       this.fx.debris(sh.sector, wx, wz, color);
     }

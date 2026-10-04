@@ -67,7 +67,7 @@ export function bestStorage(state: GameState, type: string): string {
   return own[0]?.id ?? 'storage_' + type.toLowerCase();
 }
 
-export const MAX_MODULES = 40;
+export const MAX_MODULES = 100;
 
 /** Plant ein Modul ein – am Ende oder an Position `at` der Bauliste. Gebaut wird aus dem Material im Baulager. */
 export function queueModule(state: GameState, stationId: string, defId: string, at?: number): Result & { uid?: number } {
