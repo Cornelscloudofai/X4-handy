@@ -81,7 +81,7 @@ export function hasWareIcon(id: string): boolean {
   return id in G;
 }
 
-let current: WareIconStyle = 'glow';
+let current: WareIconStyle = 'line';
 /** Stil für alle Warensymbole (aus den Einstellungen) */
 export function setWareIconStyle(s: WareIconStyle): void {
   current = s;

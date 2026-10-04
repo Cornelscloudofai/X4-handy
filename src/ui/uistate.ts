@@ -200,11 +200,11 @@ export function saveLayers(v: { routes: boolean; flows: boolean }): void {
 
 function initialIconStyle(): 'glow' | 'line' {
   try {
-    if (localStorage.getItem('x4-sektorbau-icons') === 'line') return 'line';
+    if (localStorage.getItem('x4-sektorbau-icons') === 'glow') return 'glow';
   } catch {
     /* Speicher nicht verfügbar */
   }
-  return 'glow';
+  return 'line';
 }
 
 export function saveIconStyle(v: 'glow' | 'line'): void {

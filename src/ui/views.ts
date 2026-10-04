@@ -1072,8 +1072,8 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const groups = new Map<string, string[]>();
       for (const w of Object.values(WARES).sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name, 'de'))) groups.set(w.group, [...(groups.get(w.group) ?? []), w.id]);
       const body = `<p class="lead">Links „Leuchtend“, rechts „Linie“. Den Stil stellst du in den Einstellungen ein.</p>
-        <div class="segment" style="margin:10px 0 14px">${(['glow', 'line'] as const).map((st) => `<button class="${ui.iconStyle === st ? 'on' : ''}" ${act('icon-style', { style: st })}>${st === 'glow' ? 'Leuchtend' : 'Linie'}</button>`).join('')}</div>
-        ${[...groups].map(([g, ids]) => `<div class="section"><h3>${esc(GROUP_LABEL[g as keyof typeof GROUP_LABEL] ?? g)}</h3><div class="wi-grid">${ids.map((id) => `<div class="wi-cell"><div class="wi-pair">${wareIcon(id, 30, 'glow')}${wareIcon(id, 30, 'line')}</div><span>${esc(WARES[id].name)}</span></div>`).join('')}</div></div>`).join('')}`;
+        <div class="segment" style="margin:10px 0 14px">${(['line', 'glow'] as const).map((st) => `<button class="${ui.iconStyle === st ? 'on' : ''}" ${act('icon-style', { style: st })}>${st === 'glow' ? 'Leuchtend' : 'Linie'}</button>`).join('')}</div>
+        ${[...groups].map(([g, ids]) => `<div class="section"><h3>${esc(GROUP_LABEL[g as keyof typeof GROUP_LABEL] ?? g)}</h3><div class="wi-grid">${ids.map((id) => `<div class="wi-cell"><div class="wi-pair">${wareIcon(id, 30, 'line')}${wareIcon(id, 30, 'glow')}</div><span>${esc(WARES[id].name)}</span></div>`).join('')}</div></div>`).join('')}`;
       return modalShell('Warensymbole', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`);
     }
     case 'alerts': {

@@ -1071,12 +1071,21 @@ export class SectorRenderer {
       ctx.stroke();
     };
     ctx.fillStyle = '#0a1721';
+    const det = unit >= 16, fine = unit >= 26;
+    const thin = Math.max(0.6, lw * 0.55);
+    /** Kleines Licht (an/aus) */
+    const lamp = (x: number, y: number, on: boolean, c = '#9fffe8', r = Math.max(0.9, unit * 0.035)) => {
+      ctx.fillStyle = on ? c : rgba(c, 0.22);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
     if (d.kind === 'storage') {
       const col = d.storage === 'Liquid' ? '#5fb4ff' : d.storage === 'Solid' ? '#ffae5c' : '#8fd3ff';
       const n = d.id.endsWith('_l') ? 3 : d.id.endsWith('_m') ? 2 : 1;
       const level = o.fill(d.storage ?? 'Container');
       if (d.storage === 'Container') {
-        // gestapelte Container: Füllstand leuchtet
+        // gestapelte Container: Füllstand leuchtet; nah mit Rippen, Kran und Ladelicht
         const b = unit * 0.3, cols = 2, rows = n;
         const total = cols * rows, lit = Math.round(level * total);
         for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
@@ -1086,11 +1095,46 @@ export class SectorRenderer {
           ctx.fillRect(x, y, b, b);
           neon(col);
           ctx.strokeRect(x, y, b, b);
+          if (det) {
+            // Wellblech-Rippen
+            ctx.strokeStyle = rgba(col, k < lit ? 0.5 : 0.25);
+            ctx.lineWidth = thin;
+            ctx.beginPath();
+            const ribs = fine ? 4 : 2;
+            for (let q = 1; q <= ribs; q++) { const xx = x + (b * q) / (ribs + 1); ctx.moveTo(xx, y + b * 0.12); ctx.lineTo(xx, y + b * 0.88); }
+            ctx.stroke();
+          }
+        }
+        if (det) {
+          // Portalkran über dem Stapel, fährt langsam auf und ab
+          const top = (-(rows - 1) / 2) * b * 1.05 - b / 2 - b * 0.18;
+          const bot = ((rows - 1) / 2) * b * 1.05 + b / 2 + b * 0.18;
+          const cy = top + (bot - top) * (0.5 + 0.5 * Math.sin(now / 2200 + seed));
+          ctx.strokeStyle = rgba(col, 0.75);
+          ctx.lineWidth = thin;
+          ctx.beginPath();
+          ctx.moveTo(-b * 1.22, top); ctx.lineTo(-b * 1.22, bot);
+          ctx.moveTo(b * 1.18, top); ctx.lineTo(b * 1.18, bot);
+          ctx.stroke();
+          ctx.strokeStyle = rgba('#ffd27a', 0.85);
+          ctx.lineWidth = Math.max(0.8, lw * 0.8);
+          ctx.beginPath();
+          ctx.moveTo(-b * 1.22, cy); ctx.lineTo(b * 1.18, cy);
+          ctx.stroke();
+          if (fine) lamp(-b * 0.05 + Math.sin(now / 900 + seed) * b * 0.8, cy, true, '#ffd27a');
         }
       } else {
         const r = unit * (0.2 + n * 0.03);
         const offs = n === 3 ? [-0.38, 0, 0.38] : n === 2 ? [-0.21, 0.21] : [0];
-        for (const off of offs) {
+        if (det && offs.length > 1) {
+          // Verbindungsrohre zwischen den Behältern
+          ctx.strokeStyle = rgba(col, 0.4);
+          ctx.lineWidth = Math.max(1, lw * 1.4);
+          ctx.beginPath();
+          ctx.moveTo(r * 0.75, offs[0] * unit); ctx.lineTo(r * 0.75, offs[offs.length - 1] * unit);
+          ctx.stroke();
+        }
+        for (const [oi, off] of offs.entries()) {
           ctx.save();
           ctx.translate(0, off * unit);
           ctx.beginPath();
@@ -1105,6 +1149,19 @@ export class SectorRenderer {
           ctx.clip();
           ctx.fillStyle = rgba(col, 0.32);
           ctx.fillRect(-r, r - 2 * r * level, 2 * r, 2 * r * level);
+          if (det && d.storage === 'Liquid' && level > 0.02) {
+            // leicht wogende Oberfläche
+            const sy = r - 2 * r * level;
+            ctx.strokeStyle = rgba(col, 0.8);
+            ctx.lineWidth = thin;
+            ctx.beginPath();
+            for (let q = 0; q <= 8; q++) {
+              const xx = -r + (2 * r * q) / 8;
+              const yy = sy + Math.sin(now / 500 + q * 1.3 + seed + oi) * r * 0.04;
+              q ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy);
+            }
+            ctx.stroke();
+          }
           ctx.restore();
           neonStroke(col);
           if (d.storage === 'Liquid') {
@@ -1113,10 +1170,54 @@ export class SectorRenderer {
             ctx.beginPath();
             ctx.arc(0, 0, r * 0.65, -Math.PI * 0.85, -Math.PI * 0.55);
             ctx.stroke();
+            if (det) {
+              // Haltebänder
+              ctx.strokeStyle = rgba(col, 0.35);
+              ctx.lineWidth = thin;
+              ctx.beginPath();
+              for (const f of [-0.45, 0.45]) { const hw = Math.sqrt(1 - f * f) * r; ctx.moveTo(-hw, f * r); ctx.lineTo(hw, f * r); }
+              ctx.stroke();
+            }
+            if (fine) {
+              // Ventil mit Druckanzeige
+              ctx.fillStyle = '#0a1721';
+              ctx.beginPath();
+              ctx.arc(r * 0.75, 0, r * 0.18, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = rgba(col, 0.9);
+              ctx.stroke();
+              lamp(r * 0.75, 0, Math.sin(now / 700 + seed + oi * 2) > 0.3, level > 0.92 ? '#ffb547' : '#9fffe8');
+            }
+          } else if (det) {
+            // Silo: innerer Ring und Speichen zur Ladeluke
+            ctx.strokeStyle = rgba(col, 0.4);
+            ctx.lineWidth = thin;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+              const a = (i / 6) * Math.PI * 2;
+              ctx.moveTo(Math.cos(a) * r * 0.32, Math.sin(a) * r * 0.32);
+              ctx.lineTo(Math.cos(a) * r * 0.92, Math.sin(a) * r * 0.92);
+            }
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+            ctx.fillStyle = '#0a1721';
+            ctx.fill();
+            ctx.strokeStyle = rgba(col, 0.85);
+            ctx.stroke();
+            if (fine) {
+              // Luke dreht sich beim Befüllen
+              const a0 = now / 1500 + seed;
+              ctx.beginPath();
+              ctx.moveTo(Math.cos(a0) * r * 0.3, Math.sin(a0) * r * 0.3);
+              ctx.lineTo(-Math.cos(a0) * r * 0.3, -Math.sin(a0) * r * 0.3);
+              ctx.stroke();
+            }
           }
           ctx.restore();
         }
       }
+      if (fine) lamp(-unit * 0.42, -unit * 0.42, Math.sin(now / 600 + seed * 1.3) > 0.5, '#ff6b6b');
       return;
     }
     if (d.kind === 'dock' || d.kind === 'pier') {
@@ -1130,6 +1231,50 @@ export class SectorRenderer {
         ctx.beginPath();
         ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2);
         ctx.stroke();
+        if (det) {
+          // Landefeld: Markierungen und eine kreisende Anflugleuchte
+          ctx.strokeStyle = rgba(col, 0.4);
+          ctx.lineWidth = thin;
+          ctx.beginPath();
+          for (let k = 0; k < 8; k++) {
+            const a = (k / 8) * Math.PI * 2;
+            ctx.moveTo(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62);
+            ctx.lineTo(Math.cos(a) * r * 0.86, Math.sin(a) * r * 0.86);
+          }
+          ctx.stroke();
+          const a = now / 900 + seed;
+          ctx.strokeStyle = rgba('#9fffe8', 0.6);
+          ctx.lineWidth = Math.max(1, lw);
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.74, a, a + 0.6);
+          ctx.stroke();
+          // Landekreuz in der Mitte
+          ctx.strokeStyle = rgba(col, 0.55);
+          ctx.lineWidth = thin;
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.22, 0); ctx.lineTo(r * 0.22, 0);
+          ctx.moveTo(0, -r * 0.22); ctx.lineTo(0, r * 0.22);
+          ctx.stroke();
+        }
+        if (fine) {
+          // Ab und zu steht ein kleines Schiff auf dem Feld
+          const cycle = (now / 7000 + seed * 0.37) % 1;
+          if (cycle < 0.55) {
+            const al = cycle < 0.08 ? cycle / 0.08 : cycle > 0.47 ? (0.55 - cycle) / 0.08 : 1;
+            ctx.save();
+            ctx.rotate(seed * 1.3);
+            ctx.globalAlpha = al;
+            ctx.fillStyle = '#0a1721';
+            ctx.beginPath();
+            ctx.moveTo(r * 0.36, 0); ctx.lineTo(-r * 0.24, r * 0.2); ctx.lineTo(-r * 0.14, 0); ctx.lineTo(-r * 0.24, -r * 0.2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = rgba(C.trader, 0.9);
+            ctx.lineWidth = thin;
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
         for (let k = 0; k < 3; k++) {
           const on = Math.floor(now / 350 + seed) % 3 === k;
           const a = (k / 3) * Math.PI * 2 + Math.PI / 2;
@@ -1145,6 +1290,37 @@ export class SectorRenderer {
         ctx.rect(-w * 0.5, -h * 0.12, w * 1.1, h * 0.24);
         ctx.rect(w * 0.45, -h * 0.7, w * 0.16, h * 1.4);
         neonStroke(col);
+        if (det) {
+          // Versorgungsleitung im Steg und Andockklammern am Querarm
+          ctx.strokeStyle = rgba(col, 0.4);
+          ctx.lineWidth = thin;
+          ctx.beginPath();
+          ctx.moveTo(-w * 0.45, 0); ctx.lineTo(w * 0.42, 0);
+          for (const k of [-1, 1]) {
+            const y = k * h * 0.6;
+            ctx.moveTo(w * 0.61, y); ctx.lineTo(w * 0.72, y);
+            ctx.moveTo(w * 0.72, y - h * 0.08); ctx.lineTo(w * 0.72, y + h * 0.08);
+          }
+          ctx.stroke();
+          // Lauflicht entlang des Stegs
+          const t = (now / 1200 + seed * 0.3) % 1;
+          lamp(-w * 0.45 + t * w * 0.87, 0, true, '#9fffe8', Math.max(0.8, unit * 0.028));
+        }
+        if (fine) {
+          // Schiff am Liegeplatz, wechselt zwischen oben und unten
+          const slot = Math.floor(now / 6000 + seed) % 3;
+          if (slot < 2) {
+            const y = (slot ? 1 : -1) * h * 0.6;
+            ctx.fillStyle = '#0a1721';
+            ctx.beginPath();
+            ctx.moveTo(w * 1.08, y); ctx.lineTo(w * 0.76, y - h * 0.16); ctx.lineTo(w * 0.8, y); ctx.lineTo(w * 0.76, y + h * 0.16);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = rgba(C.trader, 0.85);
+            ctx.lineWidth = thin;
+            ctx.stroke();
+          }
+        }
         for (let k = -1; k <= 1; k++) {
           const on = Math.floor(now / 300 + seed + k) % 3 === 0;
           ctx.fillStyle = on ? '#9fffe8' : 'rgba(159,255,232,0.25)';
@@ -1154,7 +1330,7 @@ export class SectorRenderer {
       return;
     }
     if (d.kind === 'shipyard') {
-      // Bauportal: zwei Schienen mit Querträgern
+      // Bauportal: zwei Schienen mit Querträgern; nah mit Fachwerk, Laufkran und Schweißfunken
       const col = C.amber;
       const L = unit * (d.yardSize === 'XL' ? 1.5 : d.yardSize === 'L' ? 1.3 : 1.1), H2 = unit * (d.yardSize === 'M' ? 0.42 : 0.55);
       ctx.fillStyle = 'rgba(255,181,71,0.06)';
@@ -1167,6 +1343,35 @@ export class SectorRenderer {
       ctx.strokeStyle = rgba(col, 0.45);
       ctx.lineWidth = Math.max(0.8, lw * 0.7);
       for (let k = 1; k < 4; k++) { const x = -L / 2 + (L * k) / 4; ctx.beginPath(); ctx.moveTo(x, -H2); ctx.lineTo(x, H2); ctx.stroke(); }
+      if (det) {
+        // Fachwerk in den Schienen
+        const band = H2 * 0.16;
+        ctx.strokeStyle = rgba(col, 0.35);
+        ctx.lineWidth = thin;
+        ctx.beginPath();
+        for (const sgn of [-1, 1]) {
+          const y0 = sgn * H2, y1 = sgn * (H2 - band);
+          ctx.moveTo(-L / 2, y1); ctx.lineTo(L / 2, y1);
+          const seg = fine ? 12 : 6;
+          for (let k = 0; k < seg; k++) {
+            const xa = -L / 2 + (L * k) / seg, xb = -L / 2 + (L * (k + 1)) / seg;
+            ctx.moveTo(xa, k % 2 ? y0 : y1); ctx.lineTo(xb, k % 2 ? y1 : y0);
+          }
+        }
+        ctx.stroke();
+        // Laufkran: fährt beim Bauen hin und her, sonst in Parkstellung
+        const cx = o.yardBusy ? Math.sin(now / 1800 + seed) * L * 0.38 : L * 0.42;
+        ctx.strokeStyle = rgba('#ffd27a', 0.9);
+        ctx.lineWidth = Math.max(1, lw);
+        ctx.beginPath();
+        ctx.moveTo(cx, -H2 * 1.08); ctx.lineTo(cx, H2 * 1.08);
+        ctx.stroke();
+        if (o.yardBusy) {
+          const hy = Math.sin(now / 700 + seed * 2) * H2 * 0.5;
+          ctx.fillStyle = '#ffd27a';
+          ctx.fillRect(cx - unit * 0.04, hy - unit * 0.04, unit * 0.08, unit * 0.08);
+        }
+      }
       if (o.yardBusy) {
         // Schiff im Portal
         ctx.strokeStyle = rgba(C.trader, 0.55 + 0.25 * Math.sin(now / 300));
@@ -1175,6 +1380,27 @@ export class SectorRenderer {
         ctx.moveTo(L * 0.35, 0); ctx.lineTo(-L * 0.25, H2 * 0.6); ctx.lineTo(-L * 0.35, 0); ctx.lineTo(-L * 0.25, -H2 * 0.6);
         ctx.closePath();
         ctx.stroke();
+        if (fine) {
+          // Schweißfunken an wechselnden Stellen der Hülle
+          for (let k = 0; k < 3; k++) {
+            const ph = Math.floor(now / 160 + k * 7 + seed);
+            const rnd = Math.sin(ph * 12.9898 + k * 78.233) * 43758.5453;
+            const f = rnd - Math.floor(rnd);
+            if (f > 0.55) continue;
+            const t = f / 0.55;
+            const x = L * 0.35 - t * L * 0.6, y = (k - 1) * H2 * 0.3 * (1 - t * 0.3);
+            ctx.fillStyle = k % 2 ? '#fff4c2' : '#8fe8ff';
+            ctx.beginPath();
+            ctx.arc(x, y, Math.max(0.8, unit * 0.03), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+      if (fine) {
+        // Warnlichter an den Portalecken
+        const on = Math.sin(now / 450 + seed) > 0.4;
+        lamp(-L / 2, -H2, on, '#ffb547');
+        lamp(-L / 2, H2, !on, '#ffb547');
       }
       return;
     }
@@ -1182,7 +1408,6 @@ export class SectorRenderer {
     const col = d.ware ? WARES[d.ware].color : C.teal;
     const kind = productionKind(d.ware);
     const stalled = o.stall === 'input' ? C.red : o.stall === 'storage' ? C.amber : '';
-    const det = unit >= 16, fine = unit >= 26;
     if (kind === 'solar') {
       // Solarflügel mit wanderndem Glanz und Zellenraster
       for (const sgn of [-1, 1]) {

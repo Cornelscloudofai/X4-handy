@@ -66,10 +66,11 @@ await page.screenshot({ path: `${out}/p3-chart.png` });
 await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'wareIcons' }; g.refresh(); });
 await page.waitForTimeout(300);
 if ((await page.locator('#modal .wi-cell').count()) < 55) fail('Symbolübersicht unvollständig');
-await page.click('#modal [data-act="icon-style"][data-style="line"]');
-await page.waitForTimeout(200);
-if (!(await page.evaluate(() => window.__game.ui.iconStyle === 'line'))) fail('Symbolstil lässt sich nicht umschalten');
+if (!(await page.evaluate(() => window.__game.ui.iconStyle === 'line'))) fail('Standard-Symbolstil ist nicht „Linie“');
 await page.click('#modal [data-act="icon-style"][data-style="glow"]');
+await page.waitForTimeout(200);
+if (!(await page.evaluate(() => window.__game.ui.iconStyle === 'glow'))) fail('Symbolstil lässt sich nicht umschalten');
+await page.click('#modal [data-act="icon-style"][data-style="line"]');
 await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.ui.panel = null; g.refresh(); });
 
 // Problemsymbole: Tipp auf das Lager-Symbol öffnet den Reiter „Lager“
