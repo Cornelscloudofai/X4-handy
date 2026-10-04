@@ -23,6 +23,7 @@ import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
 import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
+import { minigameBack, minigameOpen, openMinigame, recordBest, type MiniKind } from '../minigames/host';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
 import { fmtCr } from './format';
@@ -179,6 +180,8 @@ function fitGalaxy(): void {
 function frame(now: number): void {
   const dt = Math.min(0.25, lastFrame ? (now - lastFrame) / 1000 : 0.016);
   lastFrame = now;
+  // Während eines Minispiels ruht das Hauptspiel (keine Simulation, kein Zeichnen)
+  if (minigameOpen()) { requestAnimationFrame(frame); return; }
   if (!ui.paused && !(ui.modal && (ui.modal.type === 'welcome' || ui.modal.type === 'offline'))) step(state, dt * state.speed);
   const c = ui.view === 'galaxy' ? galaxyCam : cam;
   c.update(dt, ui.view === 'galaxy' ? GALAXY_HEX * 3 : SECTOR_RADIUS * 1.1);
@@ -388,6 +391,7 @@ function onLongPress(sx: number, sy: number): void {
 
 /** Schließt die oberste Ebene. false = nichts mehr offen */
 function goBack(): boolean {
+  if (minigameBack()) return true;
   if (ui.modal) {
     if (ui.modal.type === 'welcome') return true;
     if (ui.modal.type === 'planPick' && ui.modal.back) { ui.modal = { type: 'planDiagram' }; needFit = true; }
@@ -671,6 +675,16 @@ function onClick(e: MouseEvent): void {
       case 'chart-range': if (ui.modal?.type === 'chart') ui.modal = { ...ui.modal, hours: Number(d.hours) || 6 }; refresh(); break;
       case 'icon-style': ui.iconStyle = d.style === 'line' ? 'line' : 'glow'; saveIconStyle(ui.iconStyle); setWareIconStyle(ui.iconStyle); refresh(); break;
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
+      case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
+      case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as 1 | 2 | 3; refresh(); } break;
+      case 'mg-gear': if (ui.modal?.type === 'minigames') { ui.modal.gear = Number(d.gear) as 1 | 2 | 3; refresh(); } break;
+      case 'mg-play': {
+        if (ui.modal?.type !== 'minigames') break;
+        const { level, gear } = ui.modal;
+        const kind = d.kind as MiniKind;
+        openMinigame(kind, { level, gear: { weapon: gear, shield: gear, engine: gear } }, (r) => { if (r) recordBest(kind, level, r.stars); refresh(); }, true);
+        break;
+      }
       case 'bg-prev': stepSectorImage(ui.sector, -1); refresh(); break;
       case 'bg-next': stepSectorImage(ui.sector, 1); refresh(); break;
       case 'bg-toggle': ui.bgMode = ui.bgMode === 'image' ? 'procedural' : 'image'; saveBgMode(ui.bgMode); refresh(); break;

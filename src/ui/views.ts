@@ -1,5 +1,6 @@
 // HTML-Bausteine aller Bildschirme. Aktionen laufen über data-act (siehe app.ts).
 import { wareIcon, wareMark } from './wareIcons';
+import { MINI_INFO, MINI_KINDS, bestStars } from '../minigames/host';
 import { sectorFlows } from '../engine/flows';
 import { H } from '../engine/history';
 import { bigChart, sparkline, type ChartSpec } from './charts';
@@ -1036,6 +1037,7 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="toggle"><button class="plain on" ${act('icon-style', { style: ui.iconStyle === 'glow' ? 'line' : 'glow' })}>${ui.iconStyle === 'glow' ? 'Leuchtend' : 'Linie'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Animationen und Effekte</div><div class="sub">Funken, Triebwerke, driftende Nebel</div></div>
       <div class="toggle"><button class="plain ${ui.reducedMotion ? '' : 'on'}" ${act('motion-toggle')}>${ui.reducedMotion ? 'Reduziert' : 'Voll'}</button></div></div>
+      <div class="row tap" ${act('minigames')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Minispiele (Vorschau)</div><div class="sub wrap">Rohr-Puzzle, Bergbau, Gas sammeln und Kampf ausprobieren</div></div>${icon('chev', 20, 'chev')}</div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
       <div class="toggle"><button class="plain ${soundEnabled() ? 'on' : ''}" ${act('sound-toggle')}>${soundEnabled() ? 'An' : 'Aus'}</button></div></div></div></div>
     <div class="section"><h3>Ereignisse</h3><div class="box rows">${logRows}</div></div>
@@ -1071,10 +1073,20 @@ export function modalHtml(state: GameState, ui: UIState): string {
       // Vergleich: alle Waren in beiden Stilen nebeneinander, nach Gruppen
       const groups = new Map<string, string[]>();
       for (const w of Object.values(WARES).sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name, 'de'))) groups.set(w.group, [...(groups.get(w.group) ?? []), w.id]);
-      const body = `<p class="lead">Links „Leuchtend“, rechts „Linie“. Den Stil stellst du in den Einstellungen ein.</p>
+      const body = `<p class="lead">Links „Linie“, rechts „Leuchtend“. Den Stil stellst du in den Einstellungen ein.</p>
         <div class="segment" style="margin:10px 0 14px">${(['line', 'glow'] as const).map((st) => `<button class="${ui.iconStyle === st ? 'on' : ''}" ${act('icon-style', { style: st })}>${st === 'glow' ? 'Leuchtend' : 'Linie'}</button>`).join('')}</div>
         ${[...groups].map(([g, ids]) => `<div class="section"><h3>${esc(GROUP_LABEL[g as keyof typeof GROUP_LABEL] ?? g)}</h3><div class="wi-grid">${ids.map((id) => `<div class="wi-cell"><div class="wi-pair">${wareIcon(id, 30, 'line')}${wareIcon(id, 30, 'glow')}</div><span>${esc(WARES[id].name)}</span></div>`).join('')}</div></div>`).join('')}`;
       return modalShell('Warensymbole', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`);
+    }
+    case 'minigames': {
+      // Vorschau: alle Minispiele zum Ausprobieren, mit Stufe und Kampf-Ausrüstung
+      const stars = (n: number) => `<span class="mg-best" aria-label="${Math.max(0, n)} von 3 Sternen">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
+      const body = `<p class="lead">Zum Ausprobieren. Wann und wie die Minispiele im Spiel auftauchen und was sie bringen, legen wir als Nächstes fest.</p>
+        <div class="section"><h3>Schwierigkeit</h3><div class="segment">${([1, 2, 3] as const).map((l) => `<button class="${m.level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>Stufe ${l}</button>`).join('')}</div></div>
+        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map((k) => `<div class="row tap" ${act('mg-play', { kind: k })}>${icon(MINI_INFO[k].icon, 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">${esc(MINI_INFO[k].sub)}</div></div>${bestStars(k, m.level) >= 0 ? stars(bestStars(k, m.level)) : ''}${icon('play', 18, 'chev')}</div>`).join('')}</div></div>
+        <div class="section"><h3>Kampf-Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
+      return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');
     }
     case 'alerts': {
       const alerts = allAlerts(state);

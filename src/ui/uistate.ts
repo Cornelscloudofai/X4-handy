@@ -19,6 +19,7 @@ export type Modal =
   | { type: 'welcome' }
   | { type: 'help'; topic?: string }
   | { type: 'wareIcons' }
+  | { type: 'minigames'; level: 1 | 2 | 3; gear: 1 | 2 | 3 }
   | { type: 'chart'; spec: ChartSpec; hours: number }
   | { type: 'alerts' }
   | { type: 'export' }
