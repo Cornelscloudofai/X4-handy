@@ -5,7 +5,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { enemySprite, fighterSprite, projectileSprite, shipArt } from '../render/shipArt';
+import { enemySprite, fighterKind, fighterSprite, projectileSprite, shipArt } from '../render/shipArt';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -795,7 +795,9 @@ export class ShooterGame implements MiniGame {
       }
       m.x += m.vx * dt;
       m.y += m.vy * dt;
-      if (Math.random() < 0.8) this.fx.add({ x: m.x, y: m.y, color: '#ffb070', size: 1.3, max: 0.3 });
+      // Rauchspur hinter dem Heck
+      const v = Math.hypot(m.vx, m.vy) || 1;
+      if (Math.random() < 0.8) this.fx.add({ x: m.x - (m.vx / v) * 12, y: m.y - (m.vy / v) * 12, color: '#ffb070', size: 1.3, max: 0.3 });
       if (m.life > 0) km.push(m);
     }
     this.missiles = km;
@@ -1032,13 +1034,28 @@ export class ShooterGame implements MiniGame {
       ctx.lineWidth = b.w;
       ctx.stroke();
     }
-    for (const m of this.missiles) {
+    // Eigene Raketen: beim Split-Jäger als Bild, sonst als Leuchtpunkt
+    const ownMissile = fighterKind() === 'split' ? projectileSprite('split-rakete-ki') : null;
+    if (!ownMissile) for (const m of this.missiles) {
       ctx.fillStyle = '#fff2c8';
       ctx.beginPath();
       ctx.arc(m.x, m.y, 2.4, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
+    if (ownMissile) for (const m of this.missiles) {
+      const size = 20;
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(Math.atan2(m.vy, m.vx) + Math.PI / 2);
+      ctx.fillStyle = rgba('#ffb070', 0.6 + 0.3 * Math.random());
+      ctx.beginPath();
+      ctx.moveTo(-1.8, size * 0.46); ctx.lineTo(1.8, size * 0.46); ctx.lineTo(0, size * 0.46 + 4 + Math.random() * 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.drawImage(ownMissile, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    }
     for (const m of this.eMissiles) {
       const a = Math.atan2(m.vy, m.vx);
       ctx.save();
