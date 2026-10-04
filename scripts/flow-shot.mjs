@@ -24,6 +24,15 @@ await page.evaluate(() => {
   g.refresh();
 });
 await page.waitForTimeout(800);
+await page.screenshot({ path: `${out}/p2-0-routes.png` });
+// Standard: Handelsrouten an, Warenflüsse aus; über „Routen“ die Ebenen öffnen und Warenflüsse zuschalten
+const layers0 = await page.evaluate(() => ({ r: window.__game.ui.routes, f: window.__game.ui.flows }));
+if (!layers0.r || layers0.f) fail('Standard-Ebenen falsch: ' + JSON.stringify(layers0));
+await page.click('[data-act="layer-menu"]');
+await page.waitForTimeout(200);
+if ((await page.locator('.layer-chip').count()) !== 2) fail('Ebenen-Schalter fehlen');
+await page.click('[data-act="layer-toggle"][data-layer="flows"]');
+await page.waitForTimeout(400);
 await page.screenshot({ path: `${out}/p2-1-flows.png` });
 const chips = await page.locator('.flow-chip').count();
 if (chips < 2) fail(`Warenfilter fehlt (${chips} Chips)`);
@@ -33,6 +42,15 @@ const filtered = await page.evaluate(() => window.__game.ui.flowWare);
 if (!filtered) fail('Warenfilter greift nicht');
 await page.screenshot({ path: `${out}/p2-2-filter.png` });
 await page.locator('.flow-chip').first().click();
+// Alles aus: beide Ebenen abschalten
+await page.click('[data-act="layer-toggle"][data-layer="routes"]');
+await page.click('[data-act="layer-toggle"][data-layer="flows"]');
+await page.waitForTimeout(300);
+const layers1 = await page.evaluate(() => ({ r: window.__game.ui.routes, f: window.__game.ui.flows }));
+if (layers1.r || layers1.f) fail('Ebenen lassen sich nicht ausschalten: ' + JSON.stringify(layers1));
+await page.screenshot({ path: `${out}/p2-2b-alles-aus.png` });
+await page.click('[data-act="layer-toggle"][data-layer="routes"]');
+await page.click('[data-act="layer-menu"]');
 
 // Problemsymbole: Tipp auf das Lager-Symbol öffnet den Reiter „Lager“
 await page.evaluate(() => {

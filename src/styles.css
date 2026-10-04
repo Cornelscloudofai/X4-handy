@@ -87,6 +87,15 @@ input, select, textarea { font: inherit; color: var(--text); }
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 .flow-chip i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+.layer-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 13px; font-weight: 600;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.layer-chip i { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid currentColor; }
+.layer-chip.on { color: var(--text); border-color: rgba(63, 224, 197, 0.7); background: rgba(8, 40, 44, 0.85); }
+.layer-chip.on i { background: var(--teal); border-color: var(--teal); box-shadow: 0 0 6px rgba(63, 224, 197, 0.6); }
+.flow-sep { flex: none; width: 1px; margin: 6px 2px; background: var(--line-2); }
 .flow-chip.on { color: var(--text); border-color: rgba(63, 224, 197, 0.7); background: rgba(8, 40, 44, 0.85); }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px;

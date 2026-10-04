@@ -84,20 +84,27 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
   </div>
   ${inGalaxy ? `<div class="tool-row"><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button></div>` : `<div class="tool-row">
     <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 20)}Station</button>
-    <button class="btn ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${icon('routes', 20)}Routen</button>
+    <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 20)}Routen</button>
     <button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button>
     <div class="zoom"><button ${act('zoom-in')} aria-label="Hineinzoomen">${icon('plus', 20)}</button><button ${act('zoom-out')} aria-label="Herauszoomen">${icon('minus', 20)}</button></div>
   </div>${flowFilter(state, ui)}`}`;
 }
 
-/** Warenfilter für die Flusslinien: nur Waren, die gerade im Sektor fließen */
+/**
+ * Kartenebenen (nach Tipp auf „Routen“): Handelsrouten und Warenflüsse einzeln schaltbar, beide aus = nichts.
+ * Bei eingeschalteten Warenflüssen folgt der Warenfilter (nur Waren, die gerade im Sektor fließen).
+ */
 function flowFilter(state: GameState, ui: UIState): string {
-  if (!ui.routes || ui.placing) return '';
-  const wares = [...new Set(sectorFlows(state, ui.sector, () => 1).map((f) => f.ware))].sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
-  if (!wares.length) return '';
-  if (ui.flowWare && !wares.includes(ui.flowWare)) wares.unshift(ui.flowWare);
-  const chip = (id: string, label: string, color?: string) => `<button class="flow-chip ${ui.flowWare === id ? 'on' : ''}" ${act('flow-ware', { ware: id })}>${color ? `<i style="background:${color}"></i>` : ''}${esc(label)}</button>`;
-  return `<div class="flow-filter" aria-label="Warenfluss filtern">${chip('', 'Alle Waren')}${wares.map((w) => chip(w, WARES[w].name, WARES[w].color)).join('')}</div>`;
+  if (!ui.layerMenu || ui.placing) return '';
+  const layer = (key: string, label: string, on: boolean) => `<button class="layer-chip ${on ? 'on' : ''}" ${act('layer-toggle', { layer: key })} aria-pressed="${on}"><i></i>${label}</button>`;
+  let wareChips = '';
+  if (ui.flows) {
+    const wares = [...new Set(sectorFlows(state, ui.sector, () => 1).map((f) => f.ware))].sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
+    if (ui.flowWare && !wares.includes(ui.flowWare)) wares.unshift(ui.flowWare);
+    const chip = (id: string, label: string, color?: string) => `<button class="flow-chip ${ui.flowWare === id ? 'on' : ''}" ${act('flow-ware', { ware: id })}>${color ? `<i style="background:${color}"></i>` : ''}${esc(label)}</button>`;
+    if (wares.length) wareChips = `<span class="flow-sep"></span>${chip('', 'Alle Waren')}${wares.map((w) => chip(w, WARES[w].name, WARES[w].color)).join('')}`;
+  }
+  return `<div class="flow-filter" aria-label="Kartenebenen">${layer('routes', 'Handelsrouten', ui.routes)}${layer('flows', 'Warenflüsse', ui.flows)}${wareChips}</div>`;
 }
 
 export function objectiveHtml(state: GameState, ui: UIState): string {
@@ -984,8 +991,10 @@ function morePanel(state: GameState, ui: UIState): string {
     </div></div>
     <div class="section"><h3>Hilfe</h3>${helpList()}
       <div class="box rows" style="margin-top:8px"><div class="row tap" ${act('coach-restart')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">Erste Schritte zeigen</div><div class="sub wrap">${state.help?.coachOff ? 'Ausgeblendet – hier wieder einschalten' : 'Geführte Hinweise für den Einstieg'}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
-    <div class="section"><h3>Einstellungen</h3><div class="box rows"><div class="row"><div class="grow"><div class="title" style="font-weight:500">Routen auf der Karte</div><div class="sub">Flugwege und Versorgungslinien</div></div>
-      <div class="toggle"><button class="plain ${ui.routes ? 'on' : ''}" ${act('routes-toggle')}>${ui.routes ? 'An' : 'Aus'}</button></div></div>
+    <div class="section"><h3>Einstellungen</h3><div class="box rows"><div class="row"><div class="grow"><div class="title" style="font-weight:500">Handelsrouten auf der Karte</div><div class="sub">Flugwege und feste Versorgungsrouten deiner Schiffe</div></div>
+      <div class="toggle"><button class="plain ${ui.routes ? 'on' : ''}" ${act('layer-toggle', { layer: 'routes' })}>${ui.routes ? 'An' : 'Aus'}</button></div></div>
+      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Warenflüsse auf der Karte</div><div class="sub">Gelieferte Mengen pro Stunde zwischen Stationen, Märkten und Feldern</div></div>
+      <div class="toggle"><button class="plain ${ui.flows ? 'on' : ''}" ${act('layer-toggle', { layer: 'flows' })}>${ui.flows ? 'An' : 'Aus'}</button></div></div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Beschriftung auf der Karte</div>
         <div class="sub">${ui.labelDensity <= 20 ? 'Wenig – Namen erst beim Heranzoomen' : ui.labelDensity >= 80 ? 'Viel – fast alles schon von Weitem' : 'Mittel – Wichtiges zuerst, Rest beim Zoomen'}</div>
         <div class="range-row"><span class="small muted">wenig</span><input type="range" min="0" max="100" step="5" value="${ui.labelDensity}" data-change="label-density" aria-label="Beschriftungsdichte"><span class="small muted">viel</span></div></div></div>

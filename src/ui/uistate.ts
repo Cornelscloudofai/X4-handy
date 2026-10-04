@@ -35,7 +35,12 @@ export interface UIState {
   sector: string;
   selection: Selection | null;
   placing: { x: number; z: number; valid: boolean; msg: string; set: boolean } | null;
+  /** Kartenebene Handelsrouten: Flugwege und feste Versorgungsrouten der eigenen Schiffe (Standard an) */
   routes: boolean;
+  /** Kartenebene Warenflüsse: gemessene Mengen zwischen Stationen, Märkten und Feldern (Standard aus) */
+  flows: boolean;
+  /** Auswahl der Kartenebenen unter der Werkzeugleiste geöffnet */
+  layerMenu: boolean;
   /** Warenfilter der Flusslinien ('' = alle Waren) */
   flowWare: string;
   galaxySel: string | null;
@@ -69,7 +74,9 @@ export const ui: UIState = {
   sector: 'zhin',
   selection: null,
   placing: null,
-  routes: true,
+  routes: initialLayers().routes,
+  flows: initialLayers().flows,
+  layerMenu: false,
   flowWare: '',
   galaxySel: null,
   reducedMotion: initialReducedMotion(),
@@ -162,6 +169,24 @@ function initialBgMode(): 'image' | 'procedural' {
 export function saveBgMode(v: 'image' | 'procedural'): void {
   try {
     localStorage.setItem('x4-sektorbau-bg', v);
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}
+
+function initialLayers(): { routes: boolean; flows: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem('x4-sektorbau-layers') ?? 'null');
+    if (v && typeof v === 'object') return { routes: v.routes !== false, flows: v.flows === true };
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+  return { routes: true, flows: false };
+}
+
+export function saveLayers(v: { routes: boolean; flows: boolean }): void {
+  try {
+    localStorage.setItem('x4-sektorbau-layers', JSON.stringify({ routes: v.routes, flows: v.flows }));
   } catch {
     /* Speicher nicht verfügbar */
   }

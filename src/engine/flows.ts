@@ -83,7 +83,7 @@ export interface FlowSeg {
 }
 
 /** Ein Fluss im Sektor: Endpunkte außerhalb werden durch das Sprungtor auf dem Weg dorthin ersetzt */
-function segIn(sectorId: string, from: FlowEnd, to: FlowEnd): { ax: number; az: number; bx: number; bz: number; viaGate: boolean } | null {
+export function segIn(sectorId: string, from: FlowEnd, to: FlowEnd): { ax: number; az: number; bx: number; bz: number; viaGate: boolean } | null {
   if (from.sector === sectorId && to.sector === sectorId) return { ax: from.x, az: from.z, bx: to.x, bz: to.z, viaGate: false };
   const path = sectorPath(from.sector, to.sector);
   const i = path.indexOf(sectorId);

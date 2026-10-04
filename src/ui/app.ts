@@ -29,7 +29,7 @@ import { setSound, sfx, soundEnabled } from './sound';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { saleOffers } from '../engine/sales';
-import { SPEEDS, saveBgMode, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
+import { SPEEDS, saveBgMode, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
 import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, nodePositions } from './plannerView';
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
@@ -640,7 +640,14 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
-      case 'routes-toggle': ui.routes = !ui.routes; refresh(); break;
+      case 'layer-menu': ui.layerMenu = !ui.layerMenu; refresh(); break;
+      case 'layer-toggle':
+        if (d.layer === 'flows') ui.flows = !ui.flows;
+        else ui.routes = !ui.routes;
+        if (!ui.flows) ui.flowWare = '';
+        saveLayers(ui);
+        refresh();
+        break;
       case 'flow-ware': ui.flowWare = ui.flowWare === d.ware ? '' : d.ware ?? ''; refresh(); break;
       case 'bg-prev': stepSectorImage(ui.sector, -1); refresh(); break;
       case 'bg-next': stepSectorImage(ui.sector, 1); refresh(); break;

@@ -3,7 +3,7 @@ import { MODULE_MAP } from '../data/modules';
 import { FACTIONS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, hexCorners } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { sectorFlows, type FlowSeg } from '../engine/flows';
+import { endOf, sectorFlows, segIn, type FlowSeg } from '../engine/flows';
 import { fieldById } from '../engine/logistics';
 import { buildProgress, storageCap, usedVolume } from '../engine/economy';
 import type { GameState, ModuleDef, Ship, Station } from '../engine/types';
@@ -324,7 +324,9 @@ export class SectorRenderer {
     }
 
     // Versorgungslinien und Flugrouten
-    if (ui.routes || ui.selection?.kind === 'station') this.drawRoutes(ctx, state, ui, cam, now, motion);
+    // Kartenebenen: Warenflüsse und Handelsrouten einzeln schaltbar
+    if (ui.flows) this.drawFlows(ctx, state, ui, cam, now, motion);
+    if (ui.routes) this.drawTradeRoutes(ctx, state, ui, cam, now);
 
     // Stationen
     for (const st of state.stations) {
@@ -1383,18 +1385,16 @@ export class SectorRenderer {
     }
   }
 
-  private drawRoutes(ctx: CanvasRenderingContext2D, state: GameState, ui: UIState, cam: Camera, now: number, motion: boolean): void {
+  /** Warenflüsse: gemessene Mengen; ist eine Station ausgewählt, treten die übrigen Flüsse zurück */
+  private drawFlows(ctx: CanvasRenderingContext2D, state: GameState, ui: UIState, cam: Camera, now: number, motion: boolean): void {
     const selStation = ui.selection?.kind === 'station' ? ui.selection.id : '';
-    const selShip = ui.selection?.kind === 'ship' ? ui.selection.id : '';
     const rel = cam.zoom / (cam.fitZoom || 1);
     const s = cam.iconScale();
-    // Warenfluss: Routen an = alle Flüsse, sonst nur die der ausgewählten Station
     // Flüsse ändern sich langsam: höchstens alle 0,3 s neu ermitteln
     if (this.flowCache.sector !== ui.sector || this.flowCache.state !== state || now - this.flowCache.at > 300 || now < this.flowCache.at) {
       this.flowCache = { sector: ui.sector, state, at: now, flows: sectorFlows(state, ui.sector, (w) => WARES[w]?.volume ?? 1) };
     }
-    const flows = this.flowCache.flows
-      .filter((f) => (!ui.flowWare || f.ware === ui.flowWare) && (ui.routes || f.fromKey === selStation || f.toKey === selStation));
+    const flows = this.flowCache.flows.filter((f) => !ui.flowWare || f.ware === ui.flowWare);
     // Mehrere Waren zwischen denselben Orten: nebeneinander gefächert
     const lane = new Map<string, number>();
     flows.sort((a, b) => b.volume - a.volume);
@@ -1412,18 +1412,60 @@ export class SectorRenderer {
         this.labels.push({ text: `${WARES[f.ware].name} ${Math.round(f.rate).toLocaleString('de-DE')}/h`, x: mx, ys: [my - 9, my + 11], size: 9.5, color: rgba(WARES[f.ware].color, 0.85), weight: 500, prio: 1, minRel: LABEL_AT.amount, force: touches && rel >= 1.2 });
       }
     }
-    if (!ui.routes) return;
+  }
+
+  /**
+   * Handelsrouten: feste Versorgungsrouten als Linie zwischen ihren Endpunkten (in andere Sektoren bis zum Tor) und
+   * die aktuellen Flugwege aller eigenen Schiffe gestrichelt. Ausgewähltes Schiff bzw. Schiffe der ausgewählten
+   * Station kräftig mit Pfeil, die übrigen dezent.
+   */
+  private drawTradeRoutes(ctx: CanvasRenderingContext2D, state: GameState, ui: UIState, cam: Camera, now: number): void {
+    const selStation = ui.selection?.kind === 'station' ? ui.selection.id : '';
+    const selShip = ui.selection?.kind === 'ship' ? ui.selection.id : '';
+    const anySel = !!(selStation || selShip);
+    // Feste Routen
+    const drawn = new Set<string>();
+    for (const sh of state.ships) {
+      if (sh.mode !== 'route' || !sh.route) continue;
+      const a = endOf(state, sh.route.from), b = endOf(state, sh.route.to);
+      if (!a || !b) continue;
+      const seg = segIn(ui.sector, a, b);
+      if (!seg) continue;
+      const hl = sh.id === selShip || sh.home === selStation;
+      const key = `${a.key}>${b.key}:${sh.route.ware}`;
+      if (drawn.has(key) && !hl) continue;
+      drawn.add(key);
+      const [x1, y1] = cam.toScreen(seg.ax, seg.az), [x2, y2] = cam.toScreen(seg.bx, seg.bz);
+      const alpha = hl ? 0.9 : anySel ? 0.25 : 0.55;
+      ctx.strokeStyle = rgba(C.trader, alpha * 0.35);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.strokeStyle = rgba(C.trader, alpha);
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      // Ware als Punkt an beiden Enden, Richtungspfeil in der Mitte
+      const wc = WARES[sh.route.ware]?.color ?? C.trader;
+      ctx.fillStyle = rgba(wc, alpha);
+      for (const [x, y] of [[x1, y1], [x2, y2]]) {
+        ctx.beginPath();
+        ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (Math.hypot(x2 - x1, y2 - y1) > 60) this.arrowHead(ctx, (x1 + x2) / 2 + (x2 - x1) * 0.04, (y1 + y2) / 2 + (y2 - y1) * 0.04, Math.atan2(y2 - y1, x2 - x1), rgba(C.trader, alpha));
+    }
     // Aktuelle Flüge
     for (const sh of state.ships) {
       if (sh.sector !== ui.sector || !sh.path.length) continue;
       const cls = SHIP_MAP[sh.cls];
       const hl = sh.id === selShip || sh.home === selStation;
-      if (!hl) continue;
       const color = cls.role === 'miner' ? C.miner : C.trader;
-      ctx.setLineDash([6, 7]);
+      ctx.setLineDash(hl ? [6, 7] : [3, 7]);
       ctx.lineDashOffset = -now / 50;
-      ctx.strokeStyle = rgba(color, 0.75);
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = rgba(color, hl ? 0.8 : anySel ? 0.12 : 0.3);
+      ctx.lineWidth = hl ? 1.4 : 1;
       ctx.beginPath();
       let [px, py] = cam.toScreen(sh.x, sh.z);
       ctx.moveTo(px, py);
@@ -1437,8 +1479,10 @@ export class SectorRenderer {
       }
       ctx.stroke();
       ctx.setLineDash([]);
-      const [hx, hy] = cam.toScreen(sh.x, sh.z);
-      this.arrowHead(ctx, endX, endY, Math.atan2(endY - hy, endX - hx), color);
+      if (hl) {
+        const [hx, hy] = cam.toScreen(sh.x, sh.z);
+        this.arrowHead(ctx, endX, endY, Math.atan2(endY - hy, endX - hx), color);
+      }
     }
   }
 
