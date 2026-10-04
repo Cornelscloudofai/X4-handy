@@ -26,6 +26,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   // Pirat: zwei ungleiche Triebwerke
   'pirat-jaeger-s-ki': { xs: [-0.13, 0.095], y: 0.4, color: '#ff7a4a' },
   'pirat-raketenboot-s-ki': { xs: [-0.09, 0.096], y: 0.42, color: '#ff7a4a' },
+  'pirat-kanonenboot-s-ki': { xs: [-0.207, 0, 0.198], y: 0.43, color: '#ff7a4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -102,6 +103,7 @@ export function fighterSprite(): FighterSprite | null {
 const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
   jaeger: { name: 'pirat-jaeger-s-ki', scale: 3.6 },
   rakete: { name: 'pirat-raketenboot-s-ki', scale: 3.4 },
+  kanone: { name: 'pirat-kanonenboot-s-ki', scale: 3.4 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */
