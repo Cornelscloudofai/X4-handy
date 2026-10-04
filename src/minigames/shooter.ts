@@ -5,7 +5,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { enemySprite, fighterSprite, shipArt } from '../render/shipArt';
+import { enemySprite, fighterSprite, projectileSprite, shipArt } from '../render/shipArt';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -1043,15 +1043,28 @@ export class ShooterGame implements MiniGame {
       const a = Math.atan2(m.vy, m.vx);
       ctx.save();
       ctx.translate(m.x, m.y);
-      ctx.rotate(a);
-      ctx.fillStyle = '#2a1008';
-      ctx.strokeStyle = '#ff8a5c';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(8, 0); ctx.lineTo(-6, 4); ctx.lineTo(-6, -4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      const img = projectileSprite('pirat-rakete-ki');
+      if (img) {
+        // Bild: Spitze zeigt im Bild nach oben, Flamme flackert am Heck
+        ctx.rotate(a + Math.PI / 2);
+        const size = 24;
+        ctx.fillStyle = rgba('#ff9a4a', 0.6 + 0.3 * Math.random());
+        ctx.beginPath();
+        ctx.moveTo(-2, size * 0.44); ctx.lineTo(2, size * 0.44); ctx.lineTo(0, size * 0.44 + 5 + Math.random() * 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      } else {
+        ctx.rotate(a);
+        ctx.fillStyle = '#2a1008';
+        ctx.strokeStyle = '#ff8a5c';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(8, 0); ctx.lineTo(-6, 4); ctx.lineTo(-6, -4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
       ctx.restore();
       // Warnring: abschießen!
       ctx.strokeStyle = 'rgba(255,138,92,0.45)';

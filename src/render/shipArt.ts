@@ -112,3 +112,8 @@ export function enemySprite(kind: string): (FighterSprite & { scale: number }) |
   if (!img) return null;
   return { img, scale: def.scale, engines: ENGINES[def.name] ?? { xs: [0], y: 0.42, color: '#ff7a4a' } };
 }
+
+/** Geschoss-Bild (z. B. Piratenrakete), falls vorhanden und Bilder eingeschaltet */
+export function projectileSprite(name: string): HTMLImageElement | null {
+  return art === 'vector' ? null : load(name);
+}
