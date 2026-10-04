@@ -1,7 +1,7 @@
 // Minispiel „Piratenangriff“ / „Xenon-Schwarm“: Den Frachter bis zum Sprungtor beschützen.
 // Großes Spielfeld (Kamera folgt dem Jäger, Radar oben rechts), schwebender Joystick, Autofeuer mit Vorhalt,
 // Raketensalve und Ausweichmanöver. Nach jeder besiegten Welle wählt man eine von drei Verbesserungen.
-// Gegner: Jäger, Kanonenboote, Raketenboote (Raketen abschießbar), Schildträger, Kamikaze; Xenon N, M, Rammer,
+// Gegner: Jäger, Kanonenboote, Raketenboote (Raketen abschießbar), Schildträger; Xenon N, M, Rammer,
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
@@ -14,7 +14,7 @@ import {
 export type { Gear } from './common';
 
 type Side = 'pirate' | 'xenon';
-type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'kamikaze' | 'n' | 'm' | 'xr' | 'xs' | 'boss' | 'turret';
+type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xr' | 'xs' | 'boss' | 'turret';
 
 interface Enemy {
   kind: EKind; x: number; y: number; vx: number; vy: number;
@@ -39,7 +39,6 @@ const SPEC: Record<EKind, { hp: number; speed: number; r: number; color: string;
   kanone: { hp: 95, speed: 70, r: 16, color: '#ffb547', name: 'Kanonenboot', pts: 250, cost: 4 },
   rakete: { hp: 55, speed: 90, r: 13, color: '#ffd27a', name: 'Raketenboot', pts: 200, cost: 3.5 },
   schild: { hp: 70, speed: 85, r: 13, color: '#7fd8ff', name: 'Schildträger', pts: 250, cost: 4 },
-  kamikaze: { hp: 14, speed: 255, r: 8, color: '#ff6a4a', name: 'Kamikaze', pts: 80, cost: 1.5 },
   n: { hp: 15, speed: 205, r: 8, color: '#ff3b4a', name: 'Xenon N', pts: 60, cost: 1 },
   m: { hp: 75, speed: 95, r: 14, color: '#ff5c6c', name: 'Xenon M', pts: 250, cost: 4 },
   xr: { hp: 12, speed: 275, r: 7, color: '#ff7a8a', name: 'Xenon-Rammer', pts: 70, cost: 1.5 },
@@ -369,7 +368,7 @@ export class ShooterGame implements MiniGame {
     const swarm = this.mutator?.id === 'swarm' ? 1.45 : 1;
     let budget = (5 + i * 3 + this.level * 1.6) * swarm * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
     const pool: EKind[] = this.side === 'pirate'
-      ? (i === 0 ? ['jaeger', 'jaeger', 'kamikaze'] : i === 1 ? ['jaeger', 'jaeger', 'kamikaze', 'rakete', 'schild'] : ['jaeger', 'kamikaze', 'rakete', 'kanone', 'schild'])
+      ? (i === 0 ? ['jaeger'] : i === 1 ? ['jaeger', 'jaeger', 'rakete', 'schild'] : ['jaeger', 'jaeger', 'rakete', 'kanone', 'schild'])
       : (i === 0 ? ['n', 'n', 'xr'] : i === 1 ? ['n', 'n', 'xr', 'm', 'xs'] : ['n', 'xr', 'm', 'xs']);
     const out: EKind[] = [];
     let shields = 0;
@@ -658,7 +657,7 @@ export class ShooterGame implements MiniGame {
       const tx = e.target === 'f' ? fx : this.px, ty = e.target === 'f' ? fy : this.py;
       const dx = tx - e.x, dy = ty - e.y, d = Math.hypot(dx, dy) || 1;
       let wx: number, wy: number;
-      if (e.kind === 'kamikaze' || e.kind === 'xr') {
+      if (e.kind === 'xr') {
         wx = dx / d; wy = dy / d;
       } else if (e.kind === 'n') {
         const sideW = d < 70 ? 1.4 : 0.25;
@@ -696,7 +695,7 @@ export class ShooterGame implements MiniGame {
       }
       if (e.kind !== 'kanone' && e.kind !== 'rakete' && e.kind !== 'boss' && Math.hypot(this.px - e.x, this.py - e.y) < 90 && this.r() < dt) e.target = 'p';
       // Rammen
-      if (e.kind === 'kamikaze' || e.kind === 'xr') {
+      if (e.kind === 'xr') {
         if (Math.hypot(fx - e.x, (fy - e.y) * 0.45) < 22 && e.target === 'f') { this.hitFreighter(30 * this.enemyDmg, e.x, e.y); this.killEnemy(e, false); continue; }
         if (Math.hypot(this.px - e.x, this.py - e.y) < 16) { this.damagePlayer(20 * this.enemyDmg); this.killEnemy(e, false); continue; }
       }
@@ -1244,7 +1243,7 @@ export class ShooterGame implements MiniGame {
       case 'kanone': for (let k = 0; k < 6; k++) { const q = (k / 6) * Math.PI * 2; ctx.lineTo(Math.cos(q) * r, Math.sin(q) * r * 1.15); } break;
       case 'rakete': ctx.moveTo(0, -r); ctx.lineTo(r * 0.6, -r * 0.2); ctx.lineTo(r * 0.6, r); ctx.lineTo(-r * 0.6, r); ctx.lineTo(-r * 0.6, -r * 0.2); break;
       case 'schild': case 'xs': ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); break;
-      case 'kamikaze': case 'xr': ctx.moveTo(0, -r * 1.3); ctx.lineTo(r * 0.5, r * 0.6); ctx.lineTo(-r * 0.5, r * 0.6); break;
+      case 'xr': ctx.moveTo(0, -r * 1.3); ctx.lineTo(r * 0.5, r * 0.6); ctx.lineTo(-r * 0.5, r * 0.6); break;
       case 'n': ctx.moveTo(0, -r); ctx.lineTo(r * 0.8, r * 0.8); ctx.lineTo(-r * 0.8, r * 0.8); break;
       case 'm': ctx.moveTo(0, -r * 1.2); ctx.lineTo(r * 0.5, -r * 0.2); ctx.lineTo(r, r); ctx.lineTo(0, r * 0.5); ctx.lineTo(-r, r); ctx.lineTo(-r * 0.5, -r * 0.2); break;
       case 'turret': ctx.rect(-r * 0.7, -r * 0.7, r * 1.4, r * 1.4); ctx.moveTo(0, -r * 0.7); ctx.lineTo(0, -r * 1.5); break;
@@ -1276,7 +1275,7 @@ export class ShooterGame implements MiniGame {
       ctx.arc(0, r * 0.1, r * 0.25, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (e.kind === 'kamikaze' || e.kind === 'xr') {
+    if (e.kind === 'xr') {
       ctx.fillStyle = rgba('#ffd27a', 0.5 + 0.5 * Math.sin(t * 20));
       ctx.beginPath();
       ctx.arc(0, r * 0.8, 2.5, 0, Math.PI * 2);
