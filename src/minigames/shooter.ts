@@ -627,7 +627,7 @@ export class ShooterGame implements MiniGame {
       const pts: number[] = [];
       for (let k = 0; k < 9; k++) pts.push(0.75 + this.r() * 0.35);
       const [x, y] = this.fieldPoint();
-      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts, v: Math.floor(this.r() * 4) });
+      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts, v: Math.floor(r * 7) % 4 });
     }
   }
 

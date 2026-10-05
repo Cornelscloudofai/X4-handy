@@ -146,7 +146,8 @@ function resize(): void {
   const s = cur;
   if (!s) return;
   const r = s.root.getBoundingClientRect();
-  s.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  // volle Bildschirmauflösung (moderne Handys haben 3 Bildpunkte je CSS-Pixel), sonst wirkt alles verwaschen
+  s.dpr = Math.min(window.devicePixelRatio || 1, 3);
   s.w = Math.max(1, r.width);
   s.h = Math.max(1, r.height);
   s.canvas.width = Math.round(s.w * s.dpr);
@@ -260,6 +261,9 @@ function loop(now: number): void {
   }
   const ctx = s.ctx;
   ctx.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  // Bilder beim Verkleinern sauber glätten (sonst flimmern und verschwimmen die Schiffsbilder)
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   s.game.draw(ctx, now);
   // Statusleiste und Punktezeile nur bei Änderung neu schreiben
   const items = s.game.hud();

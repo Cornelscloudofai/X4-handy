@@ -1,19 +1,21 @@
 // Bild (z. B. aus einem KI-Bildgenerator) als Sprite übernehmen: Hintergrund freistellen (falls nicht schon
 // transparent: schwarzer Rand wird von außen her entfernt, dunkle Stellen im Schiff bleiben), auf 512 px
-// verkleinern, als WebP nach src/assets/sprites/<name>.webp schreiben.
-// node scripts/import-sprite.mjs <eingabe.png> <name> [vorschau.png]
+// verkleinern (große Objekte wie Sprungtor und Boss mit 1024 px), als WebP nach src/assets/sprites/<name>.webp schreiben.
+// node scripts/import-sprite.mjs <eingabe.png> <name> [vorschau.png|-] [größe]
 import { chromium } from 'playwright';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { launchOpts } from './browser.mjs';
 
-const [input, name, preview] = process.argv.slice(2);
+const [input, name, previewArg, sizeArg] = process.argv.slice(2);
+const preview = previewArg && previewArg !== '-' ? previewArg : undefined;
+const SIZE = Number(sizeArg) || 512;
 if (!input || !name) { console.error('Aufruf: node scripts/import-sprite.mjs <eingabe> <name> [vorschau]'); process.exit(1); }
 const root = new URL('..', import.meta.url).pathname;
 const src = `data:image/png;base64,${(await readFile(input)).toString('base64')}`;
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage();
-const r = await page.evaluate(async (src) => {
+const r = await page.evaluate(async ([src, SIZE]) => {
   const img = new Image();
   img.src = src;
   await img.decode();
@@ -72,15 +74,15 @@ const r = await page.evaluate(async (src) => {
     og.drawImage(cur, 0, 0, size, size);
     return o;
   };
-  const out = shrink(c, 512);
+  const out = shrink(c, Math.min(SIZE, W));
   const pv = document.createElement('canvas');
-  pv.width = pv.height = 512;
+  pv.width = pv.height = out.width;
   const pg = pv.getContext('2d');
   pg.fillStyle = '#050b14';
-  pg.fillRect(0, 0, 512, 512);
+  pg.fillRect(0, 0, out.width, out.width);
   pg.drawImage(out, 0, 0);
   return { keyed, corners, sprite: out.toDataURL('image/webp', 0.9), preview: pv.toDataURL('image/png') };
-}, src);
+}, [src, SIZE]);
 await browser.close();
 const buf = Buffer.from(r.sprite.split(',')[1], 'base64');
 await writeFile(join(root, 'src/assets/sprites', `${name}.webp`), buf);
