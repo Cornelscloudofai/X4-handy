@@ -1259,6 +1259,16 @@ export class ShooterGame implements MiniGame {
         ctx.fill();
       }
       ctx.drawImage(spr.img, -size / 2, -size / 2, size, size);
+      if (e.kind === 'schild' || e.kind === 'xs') {
+        // Reichweite des Schutzschilds
+        ctx.strokeStyle = rgba('#7fd8ff', 0.5);
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 9]);
+        ctx.beginPath();
+        ctx.arc(0, 0, 115, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       if (e.flash > 0) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.55;
