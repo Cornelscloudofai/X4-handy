@@ -115,14 +115,22 @@ for (const kind of ['pirates', 'xenon']) {
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${out}/mg-9-${kind}.png` });
   await page.mouse.up();
+  // Feuertaste halten: Bordkanonen feuern geradeaus
+  await page.mouse.move(width - 66, 844 - 80);
+  await page.mouse.down();
+  await page.waitForTimeout(400);
+  const shots = await mg(() => window.__mg.game.bullets.filter((b) => b.from === 'p').length);
+  await page.mouse.up();
+  if (!(shots > 0)) fail(`${kind}: Feuertaste feuert nicht`);
   // Raketentaste
-  await page.mouse.click(width - 52, 844 - 64);
+  await page.mouse.click(width - 160, 844 - 54);
   await page.waitForTimeout(500);
+  if (!(await mg(() => window.__mg.game.missilesUsed))) fail(`${kind}: Raketentaste reagiert nicht`);
   await page.screenshot({ path: `${out}/mg-9-${kind}-missiles.png` });
   const st = await mg(() => window.__mg.game.state);
   if (st.wave < 0) fail(`${kind}: keine Gegner`);
   // Welle besiegt: Verbesserungskarten erscheinen, Antippen wählt eine
-  await mg(() => { const g = window.__mg.game; g.enemies = []; g.reinforce = null; });
+  await mg(() => { const g = window.__mg.game; g.enemies = []; g.reinforce = []; });
   await page.waitForTimeout(400);
   if (!(await mg(() => window.__mg.game.state.choosing))) fail(`${kind}: keine Verbesserungskarten`);
   await page.screenshot({ path: `${out}/mg-10-${kind}-cards.png` });

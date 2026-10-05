@@ -234,8 +234,8 @@ export class Starfield {
     this.h = h;
   }
 
-  /** scroll: zurückgelegte Strecke in Pixeln (für Flug nach oben) */
-  draw(ctx: CanvasRenderingContext2D, scroll = 0, tint = '#9fd8ff'): void {
+  /** scroll: zurückgelegte Strecke in Pixeln (für Flug nach oben), scrollX: seitlich */
+  draw(ctx: CanvasRenderingContext2D, scroll = 0, tint = '#9fd8ff', scrollX = 0): void {
     const g = ctx.createRadialGradient(this.w / 2, this.h * 0.4, 0, this.w / 2, this.h * 0.4, Math.max(this.w, this.h) * 0.8);
     g.addColorStop(0, '#0a1a2a');
     g.addColorStop(1, '#03070d');
@@ -245,7 +245,8 @@ export class Starfield {
       const y = (((s.y * this.h + scroll * s.z) % this.h) + this.h) % this.h;
       ctx.fillStyle = rgba(tint, s.b * (0.35 + s.z * 0.5));
       const r = 0.5 + s.z * 0.9;
-      ctx.fillRect(s.x * this.w - r / 2, y - r / 2, r, r);
+      const x = (((s.x * this.w + scrollX * s.z) % this.w) + this.w) % this.w;
+      ctx.fillRect(x - r / 2, y - r / 2, r, r);
     }
   }
 }
