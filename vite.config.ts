@@ -1,11 +1,17 @@
 import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
-// Das Spiel wird als eine einzige HTML-Datei gebaut: läuft offline,
-// lässt sich direkt auf dem Handy öffnen und ohne Server teilen.
-export default defineConfig({
-  base: './',
-  plugins: [viteSingleFile()],
-  build: { target: 'es2020', assetsInlineLimit: 100_000_000, chunkSizeWarningLimit: 2000 },
-  test: { environment: 'node' },
+// Normal: Code und Bilder als getrennte Dateien in dist/ (dist/index.html + dist/assets/…) – das Spiel startet
+// schnell, Bilder werden erst geladen, wenn sie gebraucht werden, und bleiben im Zwischenspeicher des Handys.
+// „npm run build:einzeldatei“: alles in einer einzigen HTML-Datei (offline teilbar, z. B. als Sicherung).
+export default defineConfig(({ mode }) => {
+  const single = mode === 'einzeldatei';
+  return {
+    base: './',
+    plugins: single ? [viteSingleFile()] : [],
+    build: single
+      ? { target: 'es2020', assetsInlineLimit: 100_000_000, chunkSizeWarningLimit: 2000, outDir: 'dist-einzeldatei' }
+      : { target: 'es2020', assetsInlineLimit: 0, chunkSizeWarningLimit: 2000 },
+    test: { environment: 'node' },
+  };
 });

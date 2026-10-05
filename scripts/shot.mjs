@@ -1,12 +1,12 @@
 // Screenshots für die Entwicklung: node scripts/shot.mjs <outdir> <szenario>
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
-import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { distUrl } from './serve.mjs';
 
 const out = process.argv[2] ?? '.';
 const scenario = process.argv[3] ?? 'start';
-const file = pathToFileURL(path.resolve('dist/index.html')).href;
+const file = await distUrl();
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 const errors = [];

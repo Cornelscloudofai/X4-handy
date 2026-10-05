@@ -2,13 +2,13 @@
 // node scripts/fps.mjs
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
-import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { distUrl } from './serve.mjs';
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
 const cdp = await page.context().newCDPSession(page);
 
-await page.goto(pathToFileURL(path.resolve('dist/index.html')).href);
+await page.goto(await distUrl());
 await page.waitForTimeout(800);
 await page.click('text=Loslegen');
 await page.evaluate(() => {

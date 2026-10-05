@@ -2,7 +2,7 @@
 // node scripts/minigame-shot.mjs <outdir> [breite]
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
-import { pathToFileURL } from 'node:url';
+import { distUrl } from './serve.mjs';
 const out = process.argv[2];
 const width = Number(process.argv[3] ?? 390);
 const browser = await chromium.launch(launchOpts());
@@ -10,7 +10,7 @@ const page = await browser.newPage({ viewport: { width, height: 844 }, deviceSca
 const errors = [];
 const fail = (msg) => errors.push(msg);
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(pathToFileURL('/home/user/X4-handy/dist/index.html').href);
+await page.goto(await distUrl());
 await page.waitForTimeout(700);
 await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });

@@ -11,8 +11,11 @@ einem Solarkraftwerk und einem Miner.
 
 - **Online:** nach dem ersten Push auf `main` baut GitHub Actions das Spiel und veröffentlicht es
   auf GitHub Pages (einmalig in den Repo-Einstellungen unter *Pages → Source* „GitHub Actions“ wählen).
-- **Offline:** `npm run build` erzeugt eine einzige Datei `dist/index.html`. Die lässt sich direkt
-  im Browser öffnen oder aufs Handy kopieren.
+- **Bauen:** `npm run build` legt das Spiel in `dist/` ab – `index.html`, Code und alle Bilder als eigene Dateien
+  in `dist/assets/` (Bilder werden erst geladen, wenn sie gebraucht werden, und bleiben im Zwischenspeicher).
+  Zum Ausprobieren braucht es einen Webserver, z. B. `npm run preview`.
+- **Offline / zum Weitergeben:** `npm run build:einzeldatei` packt alles in eine einzige Datei
+  `dist-einzeldatei/index.html`, die sich direkt im Browser öffnen oder aufs Handy kopieren lässt.
 - **Entwickeln:** `npm install`, dann `npm run dev` – die angezeigte Netzwerkadresse funktioniert
   auch auf dem Handy im selben WLAN.
 

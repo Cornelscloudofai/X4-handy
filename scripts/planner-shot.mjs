@@ -1,14 +1,14 @@
 // Handy-Test Planer + Vollbild-Editor mit Touch-Gesten: node scripts/planner-shot.mjs <outdir>
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
-import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { distUrl } from './serve.mjs';
 const out = process.argv[2] ?? '.';
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(pathToFileURL(path.resolve('dist/index.html')).href);
+await page.goto(await distUrl());
 await page.waitForTimeout(600);
 await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.ui.paused = true; g.state.blueprints.push('prod_hullparts'); });

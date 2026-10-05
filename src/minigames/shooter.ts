@@ -7,7 +7,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { enemySprite, fighterKind, fighterSprite, projectileSprite, shipArt } from '../render/shipArt';
+import { enemySprite, fighterKind, fighterSprite, preloadSprites, projectileSprite, shipArt } from '../render/shipArt';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -272,6 +272,8 @@ export class ShooterGame implements MiniGame {
     this.r = rng(cfg.seed);
     this.gear = cfg.gear ?? { weapon: 1, shield: 1, engine: 1 };
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
+    // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
+    preloadSprites();
     this.score = new Score(this.mutator?.mult ?? 1, 6);
     this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : NORMAL_GOALS, rng(cfg.seed ^ 0x77));
     this.shield = this.shieldMax;

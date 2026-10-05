@@ -98,6 +98,12 @@ function load(name: string): HTMLImageElement | null {
   return img.complete && img.naturalWidth ? img : null;
 }
 
+/** Alle Bilder schon einmal anfordern (z. B. beim Öffnen eines Kampfs), damit sie bereitliegen, wenn sie gebraucht werden */
+export function preloadSprites(): void {
+  if (art === 'vector') return;
+  for (const name of URLS.keys()) load(name);
+}
+
 export interface FighterSprite { img: HTMLImageElement; engines: { xs: number[]; y: number; color: string } }
 
 /** Bild des eigenen Jägers für die aktuelle Einstellung, sonst null (dann per Code zeichnen) */

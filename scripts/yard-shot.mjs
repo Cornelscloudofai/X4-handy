@@ -2,12 +2,12 @@
 // node scripts/yard-shot.mjs <outdir> [breite]
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
-import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { distUrl } from './serve.mjs';
 
 const out = process.argv[2] ?? '.';
 const width = Number(process.argv[3] ?? 390);
-const file = pathToFileURL(path.resolve('dist/index.html')).href;
+const file = await distUrl();
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage({ viewport: { width, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 const errors = [];

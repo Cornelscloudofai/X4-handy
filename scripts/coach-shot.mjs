@@ -2,8 +2,8 @@
 // node scripts/coach-shot.mjs <outdir> [breite]
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
-import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { distUrl } from './serve.mjs';
 
 const out = process.argv[2] ?? '.';
 const width = Number(process.argv[3] ?? 390);
@@ -12,7 +12,7 @@ const page = await browser.newPage({ viewport: { width, height: 844 }, deviceSca
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT')) errors.push(m.text()); });
-await page.goto(pathToFileURL(path.resolve('dist/index.html')).href);
+await page.goto(await distUrl());
 await page.waitForTimeout(700);
 await page.screenshot({ path: `${out}/coach-${width}-00-welcome.png` });
 await page.click('text=Loslegen');

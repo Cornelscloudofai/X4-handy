@@ -2,9 +2,9 @@
 // node scripts/oldsave-shot.mjs <outdir> [breite]
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
-import { pathToFileURL } from 'node:url';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { distUrl } from './serve.mjs';
 
 const out = process.argv[2] ?? '.';
 const width = Number(process.argv[3] ?? 390);
@@ -18,7 +18,7 @@ for (const f of files) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT')) errors.push(m.text()); });
-  await page.goto(pathToFileURL(path.resolve('dist/index.html')).href);
+  await page.goto(await distUrl());
   await page.waitForTimeout(600);
   await page.click('text=Loslegen');
   // Über den echten Ladedialog importieren
