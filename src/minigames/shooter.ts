@@ -127,8 +127,18 @@ const ENDLESS_GOALS: GoalDef[] = [
 ];
 export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS];
 
-/** Kamera-Zoom des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick) */
-const VIEW_ZOOM = 0.72;
+/** Zoomstufen des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick); per Taste wählbar, wird gemerkt */
+const ZOOMS = [0.72, 0.58, 0.46, 0.36];
+const ZOOM_KEY = 'x4-sektorbau-kampfzoom';
+function readZoom(): number {
+  try {
+    const v = Number(globalThis.localStorage?.getItem(ZOOM_KEY));
+    if (ZOOMS.includes(v)) return v;
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+  return 0.58;
+}
 
 /** Normale Runde: drei Wellen und der Boss */
 const NORMAL_WAVES = 4;
@@ -174,6 +184,9 @@ export class ShooterGame implements MiniGame {
   private WH = 1300;
   private camX = 0;
   private camY = 0;
+  /** aktueller Zoom (gleitet zur gewählten Stufe) */
+  private zoom = readZoom();
+  private zoomGoal = this.zoom;
   // Spieler
   private px = 0;
   private py = 0;
@@ -298,8 +311,8 @@ export class ShooterGame implements MiniGame {
       this.fY = this.fGoal = this.WH - MAP_PAD;
       this.px = this.fX;
       this.py = this.fY + 120;
-      this.camX = this.px - w / 2 / VIEW_ZOOM;
-      this.camY = this.py - (h * 0.58) / VIEW_ZOOM;
+      this.camX = this.px - w / 2 / this.zoom;
+      this.camY = this.py - (h * 0.58) / this.zoom;
     }
   }
 
@@ -308,6 +321,9 @@ export class ShooterGame implements MiniGame {
   // Tasten rechts unten: Feuer groß unter dem Daumen, Raketen links daneben, Ausweichen darüber
   private get btnFire(): [number, number, number] { return [this.w - 66, this.h - 80, 40]; }
   private get btnMissile(): [number, number, number] { return [this.w - 160, this.h - 54, 27]; }
+  /** Zoom-Tasten unter dem Radar: weiter weg (−) und näher heran (+) */
+  private get btnZoomOut(): [number, number, number] { return [this.w - 82, TOP + 124, 15]; }
+  private get btnZoomIn(): [number, number, number] { return [this.w - 38, TOP + 124, 15]; }
   private get btnDash(): [number, number, number] { return [this.w - 60, this.h - 182, 25]; }
 
   hud(): HudItem[] {
@@ -326,6 +342,9 @@ export class ShooterGame implements MiniGame {
     if (this.choosing) { this.pickCardAt(x, y); return; }
     const [fbx, fby, fbr] = this.btnFire;
     if (Math.hypot(x - fbx, y - fby) < fbr + 12) { this.fireId = id; return; }
+    for (const [btn, step] of [[this.btnZoomOut, 1], [this.btnZoomIn, -1]] as const) {
+      if (Math.hypot(x - btn[0], y - btn[1]) < btn[2] + 8) { this.setZoom(step); return; }
+    }
     const [bx, by, br] = this.btnMissile;
     if (Math.hypot(x - bx, y - by) < br + 10) { this.fireMissiles(); return; }
     const [dx, dy, dr] = this.btnDash;
@@ -352,6 +371,14 @@ export class ShooterGame implements MiniGame {
   pointerUp(id: number): void {
     if (this.joy?.id === id) this.joy = null;
     if (this.fireId === id) this.fireId = null;
+  }
+
+  /** Zoomstufe wechseln (+1 = weiter weg) und merken */
+  private setZoom(step: number): void {
+    const i = clamp(ZOOMS.indexOf(this.zoomGoal) + step, 0, ZOOMS.length - 1);
+    this.zoomGoal = ZOOMS[i];
+    try { globalThis.localStorage?.setItem(ZOOM_KEY, String(this.zoomGoal)); } catch { /* Speicher nicht verfügbar */ }
+    sfx.tap();
   }
 
   private cardRects(): [number, number, number, number][] {
@@ -724,8 +751,16 @@ export class ShooterGame implements MiniGame {
   }
 
   private followCam(dt: number, toFreighter: boolean): void {
+    // sanft zoomen, dabei die Bildmitte festhalten
+    if (this.zoom !== this.zoomGoal) {
+      const cx = this.camX + this.w / 2 / this.zoom, cy = this.camY + this.h / 2 / this.zoom;
+      this.zoom += (this.zoomGoal - this.zoom) * Math.min(1, dt * 8);
+      if (Math.abs(this.zoom - this.zoomGoal) < 0.002) this.zoom = this.zoomGoal;
+      this.camX = cx - this.w / 2 / this.zoom;
+      this.camY = cy - this.h / 2 / this.zoom;
+    }
     // camX/camY: Weltpunkt in der linken oberen Bildschirmecke; Bildschirm = (Welt − cam) · Zoom
-    const Z = VIEW_ZOOM, vw = this.w / Z, vh = this.h / Z;
+    const Z = this.zoom, vw = this.w / Z, vh = this.h / Z;
     const tx = (toFreighter ? this.fx1 : this.px) - vw / 2;
     const ty = (toFreighter ? this.fy1 : this.py) - (TOP + (this.h - TOP) * 0.5) / Z;
     const k = Math.min(1, dt * 4);
@@ -1243,7 +1278,7 @@ export class ShooterGame implements MiniGame {
     this.stars.draw(ctx, -this.camY * 0.3, this.side === 'xenon' ? '#ffd0d0' : '#cfe4ff', -this.camX * 0.3);
     ctx.save();
     if (this.shake > 0 && !document.documentElement.classList.contains('calm')) ctx.translate((Math.random() - 0.5) * 12 * this.shake, (Math.random() - 0.5) * 12 * this.shake);
-    ctx.scale(VIEW_ZOOM, VIEW_ZOOM);
+    ctx.scale(this.zoom, this.zoom);
     ctx.translate(-this.camX, -this.camY);
     // Rand des Spielfelds
     ctx.strokeStyle = 'rgba(110,220,205,0.12)';
@@ -1600,7 +1635,8 @@ export class ShooterGame implements MiniGame {
     const xen = this.side === 'xenon';
     const base = e.kind === 'turret' ? (xen ? '#ff5c6c' : '#ffd27a') : e.kind === 'boss' ? (xen ? '#ff3b4a' : '#ffb547') : s.color;
     const col = e.flash > 0 ? '#ffffff' : base;
-    const a = Math.atan2(e.vy, e.vx) + Math.PI / 2;
+    // Blickrichtung (Bordkanonen und Boss-Sockel hängen daran)
+    const a = e.ang + Math.PI / 2;
     ctx.save();
     ctx.translate(e.x, e.y);
     if (e.shielded) {
@@ -1799,11 +1835,11 @@ export class ShooterGame implements MiniGame {
   /** Pfeile am Rand für Gegner (und Frachter) außerhalb des Bildes */
   private drawIndicators(ctx: CanvasRenderingContext2D): void {
     const arrow = (wx: number, wy: number, color: string, size = 6): [number, number] | null => {
-      const sx = (wx - this.camX) * VIEW_ZOOM, sy = (wy - this.camY) * VIEW_ZOOM;
+      const sx = (wx - this.camX) * this.zoom, sy = (wy - this.camY) * this.zoom;
       if (sx > 0 && sx < this.w && sy > TOP && sy < this.h) return null;
       const x = clamp(sx, 12, this.w - 12);
       // nicht unter dem Radar oben rechts
-      const y = clamp(sy, x > this.w - 116 ? TOP + 116 : TOP + 12, this.h - 12);
+      const y = clamp(sy, x > this.w - 116 ? TOP + 162 : TOP + 12, this.h - 12);
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(Math.atan2(sy - y, sx - x));
@@ -1870,7 +1906,7 @@ export class ShooterGame implements MiniGame {
     ctx.strokeStyle = 'rgba(110,220,205,0.18)';
     ctx.strokeRect(cx + (0 - this.px) * sc, cy + (0 - this.py) * sc, this.WW * sc, this.WH * sc);
     ctx.strokeStyle = 'rgba(228,243,240,0.3)';
-    ctx.strokeRect(cx + (this.camX - this.px) * sc, cy + (this.camY + TOP / VIEW_ZOOM - this.py) * sc, (this.w / VIEW_ZOOM) * sc, ((this.h - TOP) / VIEW_ZOOM) * sc);
+    ctx.strokeRect(cx + (this.camX - this.px) * sc, cy + (this.camY + TOP / this.zoom - this.py) * sc, (this.w / this.zoom) * sc, ((this.h - TOP) / this.zoom) * sc);
     // Kreis um den Frachter: ab hier wird es für ihn gefährlich
     const fp = pos(this.fx1, this.fy1, true)!;
     ctx.strokeStyle = 'rgba(95,240,216,0.25)';
@@ -1936,6 +1972,25 @@ export class ShooterGame implements MiniGame {
       ctx.arc(j.ox + j.kx * 52, j.oy + j.ky * 52, 20, 0, Math.PI * 2);
       ctx.fill();
     }
+    for (const [btn, label, can] of [[this.btnZoomOut, '−', this.zoomGoal > ZOOMS[ZOOMS.length - 1]], [this.btnZoomIn, '+', this.zoomGoal < ZOOMS[0]]] as const) {
+      ctx.fillStyle = 'rgba(5,14,22,0.78)';
+      ctx.strokeStyle = can ? 'rgba(110,220,205,0.55)' : 'rgba(110,220,205,0.18)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(btn[0], btn[1], btn[2], 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = can ? '#9ffff0' : 'rgba(159,255,240,0.3)';
+      ctx.font = '700 18px "Chakra Petch", Barlow, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, btn[0], btn[1] + 1);
+      ctx.textBaseline = 'alphabetic';
+    }
+    ctx.fillStyle = 'rgba(169,195,198,0.7)';
+    ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ZOOM', this.w - 60, TOP + 152);
     const [fbx, fby, fbr] = this.btnFire;
     if (this.fireId !== null && this.fireId !== 99) {
       ctx.fillStyle = 'rgba(127,255,240,0.25)';
