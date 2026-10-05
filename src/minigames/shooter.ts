@@ -42,7 +42,7 @@ interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy 
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
 interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p' }
 interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile'; life: number }
-interface Rock { x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[] }
+interface Rock { x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches der vier Asteroidenbilder */ v: number }
 interface Mine { x: number; y: number; vx: number; vy: number; armed: number; hp: number }
 interface Card { id: string; name: string; desc: string; max: number }
 
@@ -627,7 +627,7 @@ export class ShooterGame implements MiniGame {
       const pts: number[] = [];
       for (let k = 0; k < 9; k++) pts.push(0.75 + this.r() * 0.35);
       const [x, y] = this.fieldPoint();
-      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts });
+      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts, v: Math.floor(this.r() * 4) });
     }
   }
 
@@ -1459,6 +1459,14 @@ export class ShooterGame implements MiniGame {
     ctx.save();
     ctx.translate(k.x, k.y);
     ctx.rotate(k.rot);
+    const img = projectileSprite(`asteroid-${k.v + 1}-ki`);
+    if (img) {
+      // Bild-Grafik: der Brocken füllt rund 70 % des Bildes – so passt er zum Kollisionsradius
+      const size = k.r * 2.9;
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      ctx.restore();
+      return;
+    }
     ctx.beginPath();
     for (let i = 0; i < k.pts.length; i++) {
       const a = (i / k.pts.length) * Math.PI * 2, r = k.r * k.pts[i];
