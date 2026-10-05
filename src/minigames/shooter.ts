@@ -797,7 +797,7 @@ export class ShooterGame implements MiniGame {
       m.y += m.vy * dt;
       // Rauchspur hinter dem Heck
       const v = Math.hypot(m.vx, m.vy) || 1;
-      if (Math.random() < 0.8) this.fx.add({ x: m.x - (m.vx / v) * 12, y: m.y - (m.vy / v) * 12, color: '#ffb070', size: 1.3, max: 0.3 });
+      if (Math.random() < 0.8) this.fx.add({ x: m.x - (m.vx / v) * 12, y: m.y - (m.vy / v) * 12, color: fighterKind() === 'argon' ? '#7fe8ff' : '#ffb070', size: 1.3, max: 0.3 });
       if (m.life > 0) km.push(m);
     }
     this.missiles = km;
@@ -1034,8 +1034,9 @@ export class ShooterGame implements MiniGame {
       ctx.lineWidth = b.w;
       ctx.stroke();
     }
-    // Eigene Raketen: beim Split-Jäger als Bild, sonst als Leuchtpunkt
-    const ownMissile = fighterKind() === 'split' ? projectileSprite('split-rakete-ki') : null;
+    // Eigene Raketen: passend zur Bauart des Jägers als Bild, sonst als Leuchtpunkt
+    const ownKind = fighterKind();
+    const ownMissile = projectileSprite(`${ownKind}-rakete-ki`);
     if (!ownMissile) for (const m of this.missiles) {
       ctx.fillStyle = '#fff2c8';
       ctx.beginPath();
@@ -1048,7 +1049,7 @@ export class ShooterGame implements MiniGame {
       ctx.save();
       ctx.translate(m.x, m.y);
       ctx.rotate(Math.atan2(m.vy, m.vx) + Math.PI / 2);
-      ctx.fillStyle = rgba('#ffb070', 0.6 + 0.3 * Math.random());
+      ctx.fillStyle = rgba(ownKind === 'argon' ? '#7fe8ff' : '#ffb070', 0.6 + 0.3 * Math.random());
       ctx.beginPath();
       ctx.moveTo(-1.8, size * 0.46); ctx.lineTo(1.8, size * 0.46); ctx.lineTo(0, size * 0.46 + 4 + Math.random() * 5);
       ctx.closePath();
