@@ -434,7 +434,8 @@ export class ShooterGame implements MiniGame {
     b.r = this.side === 'pirate' ? 34 : 30;
     this.enemies.push(b);
     const offs: [number, number][] = this.side === 'pirate'
-      ? [[-50, -6], [50, -6], [0, 50], ...(this.level >= 4 ? [[0, -56] as [number, number]] : [])]
+      // auf den drei Sockeln im Bild der Fregatte (Flügelenden links/rechts, Heckmitte); ab Stufe 4 ein vierter auf dem Bug
+      ? [[-53, 4], [54, 4], [0, 30], ...(this.level >= 4 ? [[0, -40] as [number, number]] : [])]
       : [[-46, -46], [46, -46], [-46, 46], [46, 46], ...(this.level >= 4 ? [[0, -62] as [number, number]] : [])];
     for (const [ox, oy] of offs) {
       const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
@@ -1242,11 +1243,12 @@ export class ShooterGame implements MiniGame {
       ctx.strokeStyle = rgba('#7fd8ff', 0.35 + 0.2 * Math.sin(t * 6));
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(0, 0, e.r + 7, 0, Math.PI * 2);
+      // Boss: Schild umschließt den ganzen Rumpf
+      ctx.arc(0, 0, e.kind === 'boss' ? e.r * 2.1 : e.r + 7, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.rotate(e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
-    const spr = enemySprite(e.kind);
+    const spr = enemySprite(e.kind, this.side === 'pirate' ? 'pirat' : 'xenon');
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
       const size = e.r * spr.scale;

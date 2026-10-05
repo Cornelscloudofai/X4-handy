@@ -28,6 +28,9 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'pirat-raketenboot-s-ki': { xs: [-0.09, 0.096], y: 0.42, color: '#ff7a4a' },
   'pirat-kanonenboot-s-ki': { xs: [-0.207, 0, 0.198], y: 0.43, color: '#ff7a4a' },
   'pirat-schildtraeger-s-ki': { xs: [-0.275, 0.276], y: 0.43, color: '#ff7a4a' },
+  'pirat-fregatte-ki': { xs: [-0.163, -0.056, 0.052, 0.164], y: 0.452, color: '#ff7a4a' },
+  // Geschützturm: keine Triebwerke
+  'pirat-turm-ki': { xs: [], y: 0, color: '#ff7a4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -100,17 +103,23 @@ export function fighterSprite(): FighterSprite | null {
   return { img, engines: ENGINES[name] ?? { xs: [0], y: 0.42, color: '#ffb070' } };
 }
 
-/** Gegner im Kampf-Minispiel: Gegnerart → Bildname (nur KI-Bilder) und Größe im Verhältnis zum Trefferradius */
+/**
+ * Gegner im Kampf-Minispiel: Gegnerart → Bildname (nur KI-Bilder) und Größe im Verhältnis zum Trefferradius.
+ * Arten beider Seiten mit gleichem Namen (Boss, Turm) haben ein Präfix: „pirat:“ bzw. „xenon:“.
+ */
 const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
   jaeger: { name: 'pirat-jaeger-s-ki', scale: 3.6 },
   rakete: { name: 'pirat-raketenboot-s-ki', scale: 3.4 },
   kanone: { name: 'pirat-kanonenboot-s-ki', scale: 3.4 },
   schild: { name: 'pirat-schildtraeger-s-ki', scale: 3.4 },
+  // Piratenfregatte: 130 px bei Trefferradius 34; die Türme sitzen auf den Sockeln im Bild (siehe shooter.ts)
+  'pirat:boss': { name: 'pirat-fregatte-ki', scale: 3.82 },
+  'pirat:turret': { name: 'pirat-turm-ki', scale: 2.4 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */
-export function enemySprite(kind: string): (FighterSprite & { scale: number }) | null {
-  const def = ENEMY_SPRITES[kind];
+export function enemySprite(kind: string, side: 'pirat' | 'xenon' = 'pirat'): (FighterSprite & { scale: number }) | null {
+  const def = ENEMY_SPRITES[`${side}:${kind}`] ?? ENEMY_SPRITES[kind];
   if (!def || art === 'vector') return null;
   const img = load(def.name);
   if (!img) return null;
