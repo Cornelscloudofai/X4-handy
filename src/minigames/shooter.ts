@@ -213,6 +213,8 @@ export class ShooterGame implements MiniGame {
   private dashVx = 0;
   private dashVy = 0;
   private droneA = 0;
+  /** Blickrichtung je Drohne: zum letzten Ziel, sonst wie der Jäger */
+  private droneAim: number[] = [];
   private droneCd = 0;
   // Frachter: Position auf der Route, Ziel des aktuellen Abschnitts, eigene Abwehrtürme
   private fX = 0;
@@ -833,6 +835,7 @@ export class ShooterGame implements MiniGame {
     if (drones) {
       this.droneA += dt * 2.4;
       this.droneCd -= dt;
+      for (let k = 0; k < drones; k++) this.droneAim[k] = wrapA(turnTo(this.droneAim[k] ?? this.aimA, this.aimA, dt * 1.5));
       if (this.droneCd <= 0) {
         this.droneCd = 0.6 / drones;
         const k2 = Math.floor(this.time * 10) % drones;
@@ -841,7 +844,8 @@ export class ShooterGame implements MiniGame {
         for (const e of this.enemies) { const d = Math.hypot(e.x - dx, e.y - dy); if (d < td && !(e.kind === 'boss' && this.enemies.some((q) => q.parent === e))) { td = d; tgt = e; } }
         if (tgt) {
           const a = Math.atan2(tgt.y - dy, tgt.x - dx);
-          this.bullets.push({ x: dx, y: dy, vx: Math.cos(a) * 560, vy: Math.sin(a) * 560, dmg: 5, from: 'p', life: 0.5, color: '#b690ff', w: 1.6, pierce: 0 });
+          this.droneAim[k2] = a;
+          this.bullets.push({ x: dx + Math.cos(a) * 10, y: dy + Math.sin(a) * 10, vx: Math.cos(a) * 560, vy: Math.sin(a) * 560, dmg: 5, from: 'p', life: 0.5, color: '#ffb547', w: 1.6, pierce: 0 });
         }
       }
     }
@@ -849,7 +853,7 @@ export class ShooterGame implements MiniGame {
 
   private dronePos(k: number): [number, number] {
     const a = this.droneA + (k * Math.PI * 2) / Math.max(1, this.c('drone'));
-    return [this.px + Math.cos(a) * 30, this.py + Math.sin(a) * 30];
+    return [this.px + Math.cos(a) * 38, this.py + Math.sin(a) * 38];
   }
 
   private updateEnemies(dt: number): void {
@@ -1771,8 +1775,24 @@ export class ShooterGame implements MiniGame {
 
   private drawPlayer(ctx: CanvasRenderingContext2D, t: number): void {
     // Drohnen
+    const dImg = projectileSprite('split-drohne-ki');
     for (let k = 0; k < this.c('drone'); k++) {
       const [dx, dy] = this.dronePos(k);
+      if (dImg) {
+        // Bild-Grafik: Split-Drohne, Bug zum Ziel, flackernde Düse
+        const size = 24;
+        ctx.save();
+        ctx.translate(dx, dy);
+        ctx.rotate((this.droneAim[k] ?? this.aimA) + Math.PI / 2);
+        ctx.fillStyle = rgba('#ffa040', 0.5 + 0.3 * Math.random());
+        ctx.beginPath();
+        ctx.moveTo(-1.2, 0.4 * size); ctx.lineTo(1.2, 0.4 * size); ctx.lineTo(0, 0.4 * size + 3 + Math.random() * 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.drawImage(dImg, -size / 2, -size / 2, size, size);
+        ctx.restore();
+        continue;
+      }
       ctx.fillStyle = '#1a1030';
       ctx.strokeStyle = '#b690ff';
       ctx.lineWidth = 1.3;
