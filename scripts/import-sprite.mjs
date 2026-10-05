@@ -1,6 +1,7 @@
 // Bild (z. B. aus einem KI-Bildgenerator) als Sprite übernehmen: Hintergrund freistellen (falls nicht schon
 // transparent: schwarzer Rand wird von außen her entfernt, dunkle Stellen im Schiff bleiben), auf 512 px
-// verkleinern (große Objekte wie Sprungtor und Boss mit 1024 px), als WebP nach src/assets/sprites/<name>.webp schreiben.
+// in hoher Qualität als WebP nach src/assets/sprites/<name>.webp schreiben – Standard 1024 px (volle Auflösung der
+// KI-Bilder), kleinere Vorlagen bleiben in ihrer Originalgröße.
 // node scripts/import-sprite.mjs <eingabe.png> <name> [vorschau.png|-] [größe]
 import { chromium } from 'playwright';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -9,7 +10,7 @@ import { launchOpts } from './browser.mjs';
 
 const [input, name, previewArg, sizeArg] = process.argv.slice(2);
 const preview = previewArg && previewArg !== '-' ? previewArg : undefined;
-const SIZE = Number(sizeArg) || 512;
+const SIZE = Number(sizeArg) || 1024;
 if (!input || !name) { console.error('Aufruf: node scripts/import-sprite.mjs <eingabe> <name> [vorschau]'); process.exit(1); }
 const root = new URL('..', import.meta.url).pathname;
 const src = `data:image/png;base64,${(await readFile(input)).toString('base64')}`;
@@ -81,7 +82,7 @@ const r = await page.evaluate(async ([src, SIZE]) => {
   pg.fillStyle = '#050b14';
   pg.fillRect(0, 0, out.width, out.width);
   pg.drawImage(out, 0, 0);
-  return { keyed, corners, sprite: out.toDataURL('image/webp', 0.9), preview: pv.toDataURL('image/png') };
+  return { keyed, corners, sprite: out.toDataURL('image/webp', 0.95), preview: pv.toDataURL('image/png') };
 }, [src, SIZE]);
 await browser.close();
 const buf = Buffer.from(r.sprite.split(',')[1], 'base64');

@@ -364,7 +364,7 @@ function scaled(src, size, type) {
   const g = c.getContext('2d');
   g.imageSmoothingQuality = 'high';
   g.drawImage(cur, 0, 0, size, size);
-  return c.toDataURL(type, 0.92);
+  return c.toDataURL(type, 0.95);
 }
 
 const img = render();
@@ -374,5 +374,5 @@ const bgc = bg.getContext('2d');
 bgc.fillStyle = '#050b14';
 bgc.fillRect(0, 0, S, S);
 bgc.drawImage(img, 0, 0);
-window.__result = { preview: scaled(bg, 1024, 'image/png'), sprite: scaled(img, 512, 'image/webp') };
+window.__result = { preview: scaled(bg, 1024, 'image/png'), sprite: scaled(img, 1024, 'image/webp') };
 window.__done = true;

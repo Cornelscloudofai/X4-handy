@@ -307,7 +307,7 @@ function scaled(src, size, type) {
     cur = h;
   }
   g.drawImage(cur, 0, 0, size, size);
-  return c.toDataURL(type, 0.92);
+  return c.toDataURL(type, 0.95);
 }
 
 const img = render();
@@ -319,6 +319,6 @@ dg.fillRect(0, 0, S, S);
 dg.drawImage(img, 0, 0);
 window.__result = {
   preview: scaled(dark2, 1024, 'image/png'),
-  sprite: scaled(img, 512, 'image/webp'),
+  sprite: scaled(img, 1024, 'image/webp'),
 };
 window.__done = true;
