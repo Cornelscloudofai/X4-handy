@@ -34,6 +34,8 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'xenon-n-ki': { xs: [0], y: 0.37, color: '#ff3b4a' },
   'xenon-m-ki': { xs: [0], y: 0.47, color: '#ff3b4a' },
   'xenon-schirmdrohne-ki': { xs: [0], y: 0.33, color: '#ff3b4a' },
+  'xenon-turm-laser-ki': { xs: [], y: 0, color: '#ff3b4a' },
+  'xenon-turm-plasma-ki': { xs: [], y: 0, color: '#ff6a3d' },
   'xenon-k-ki': { xs: [-0.217, -0.115, 0, 0.11, 0.218], y: 0.42, color: '#ff3b4a' },
 };
 
@@ -111,7 +113,7 @@ export function fighterSprite(): FighterSprite | null {
  * Gegner im Kampf-Minispiel: Gegnerart → Bildname (nur KI-Bilder) und Größe im Verhältnis zum Trefferradius.
  * Arten beider Seiten mit gleichem Namen (Boss, Turm) haben ein Präfix: „pirat:“ bzw. „xenon:“.
  */
-const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
+const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }> = {
   jaeger: { name: 'pirat-jaeger-s-ki', scale: 3.6 },
   rakete: { name: 'pirat-raketenboot-s-ki', scale: 3.4 },
   kanone: { name: 'pirat-kanonenboot-s-ki', scale: 3.4 },
@@ -124,15 +126,18 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
   xs: { name: 'xenon-schirmdrohne-ki', scale: 4.2 },
   // Xenon-K-Segment: 160 px bei Trefferradius 34; Laser- und Plasmatürme sitzen auf den vier Sockeln (siehe shooter.ts)
   'xenon:boss': { name: 'xenon-k-ki', scale: 4.7 },
+  // Xenon-Türme: der runde Sockel ist der Drehpunkt; beim Plasmaturm liegt er unter der Bildmitte (oy)
+  'xenon:turret-laser': { name: 'xenon-turm-laser-ki', scale: 4.8 },
+  'xenon:turret-plasma': { name: 'xenon-turm-plasma-ki', scale: 2.8, oy: 0.11 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */
-export function enemySprite(kind: string, side: 'pirat' | 'xenon' = 'pirat'): (FighterSprite & { scale: number }) | null {
+export function enemySprite(kind: string, side: 'pirat' | 'xenon' = 'pirat'): (FighterSprite & { scale: number; oy: number }) | null {
   const def = ENEMY_SPRITES[`${side}:${kind}`] ?? ENEMY_SPRITES[kind];
   if (!def || art === 'vector') return null;
   const img = load(def.name);
   if (!img) return null;
-  return { img, scale: def.scale, engines: ENGINES[def.name] ?? { xs: [0], y: 0.42, color: '#ff7a4a' } };
+  return { img, scale: def.scale, oy: def.oy ?? 0, engines: ENGINES[def.name] ?? { xs: [0], y: 0.42, color: '#ff7a4a' } };
 }
 
 /** Geschoss-Bild (z. B. Piratenrakete), falls vorhanden und Bilder eingeschaltet */

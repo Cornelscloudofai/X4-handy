@@ -669,6 +669,9 @@ export class ShooterGame implements MiniGame {
             // dicke, langsame Plasmakugel: leicht gestreut, gut sichtbar, schwer
             const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08;
             this.enemyShot(e, a2, 175, 16, '#ff6a3d', 6, 2.6);
+            // aus den Mündungen, nicht aus der Turmmitte
+            const pb = this.bullets[this.bullets.length - 1];
+            pb.x += Math.cos(a2) * 19; pb.y += Math.sin(a2) * 19;
           }
           continue;
         }
@@ -1080,9 +1083,11 @@ export class ShooterGame implements MiniGame {
     ctx.lineCap = 'round';
     for (const e of this.enemies) {
       if (!e.beamT || e.beamT <= 0) continue;
-      const ex = e.x + Math.cos(e.beamA!) * LASER_LEN, ey = e.y + Math.sin(e.beamA!) * LASER_LEN;
+      const c = Math.cos(e.beamA!), sn = Math.sin(e.beamA!);
+      const ex = e.x + c * LASER_LEN, ey = e.y + sn * LASER_LEN;
       ctx.beginPath();
-      ctx.moveTo(e.x, e.y);
+      // ab der Spitze des Laserrohrs
+      ctx.moveTo(e.x + c * 26, e.y + sn * 26);
       ctx.lineTo(ex, ey);
       if (e.beamT > LASER_FIRE) {
         const k = 1 - (e.beamT - LASER_FIRE) / LASER_CHARGE;
@@ -1387,7 +1392,8 @@ export class ShooterGame implements MiniGame {
         ctx.closePath();
         ctx.fill();
       }
-      ctx.drawImage(spr.img, -size / 2, -size / 2, size, size);
+      const top = -size / 2 - spr.oy * size;
+      ctx.drawImage(spr.img, -size / 2, top, size, size);
       if (e.kind === 'schild' || e.kind === 'xs') {
         // Reichweite des Schutzschilds
         ctx.strokeStyle = rgba('#7fd8ff', 0.5);
@@ -1401,7 +1407,7 @@ export class ShooterGame implements MiniGame {
       if (e.flash > 0) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.55;
-        ctx.drawImage(spr.img, -size / 2, -size / 2, size, size);
+        ctx.drawImage(spr.img, -size / 2, top, size, size);
       }
       ctx.restore();
       return;
