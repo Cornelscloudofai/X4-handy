@@ -1478,6 +1478,44 @@ export class ShooterGame implements MiniGame {
 
   private drawMine(ctx: CanvasRenderingContext2D, m: Mine, t: number): void {
     const blink = m.armed >= 0 ? Math.sin(t * 40) > 0 : Math.sin(t * 3 + m.x) > 0.7;
+    const img = projectileSprite('mine-ki');
+    if (img) {
+      // Bild-Grafik: dreht sich langsam, rote Lampe in der Mitte blinkt (scharf: schnell und hell), Wirkungskreis
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      if (m.armed >= 0) {
+        ctx.strokeStyle = 'rgba(255,92,108,0.35)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, 70, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // schwacher Warnschein, damit die dunkle Mine auch weit herausgezoomt auffällt
+      const halo = ctx.createRadialGradient(0, 0, 6, 0, 0, 22);
+      halo.addColorStop(0, m.armed >= 0 ? 'rgba(255,92,108,0.35)' : 'rgba(255,181,71,0.28)');
+      halo.addColorStop(1, 'rgba(255,181,71,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.rotate(t * 0.3 + m.y * 0.01);
+      const size = 30;
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      if (blink) {
+        ctx.globalCompositeOperation = 'lighter';
+        const r = m.armed >= 0 ? 7 : 4.5;
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+        g.addColorStop(0, 'rgba(255,200,200,0.95)');
+        g.addColorStop(0.35, 'rgba(255,60,70,0.8)');
+        g.addColorStop(1, 'rgba(255,40,50,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.translate(m.x, m.y);
     ctx.strokeStyle = m.armed >= 0 ? '#ff5c6c' : 'rgba(255,181,71,0.8)';
