@@ -317,7 +317,14 @@ export class ShooterGame implements MiniGame {
   }
 
   private get fx1(): number { return this.fX + Math.sin(this.time * 0.35) * 30; }
-  private get fy1(): number { return this.fY - (this.gateT >= 0 ? this.gateT * this.gateT * 140 : 0); }
+  private get fy1(): number {
+    if (this.gateT < 0) return this.fY;
+    // ins Tor: beschleunigt bis genau in die Mitte des Wirbels
+    const k = Math.min(1, this.gateT / 1.7);
+    return this.fY + (this.gateCy - this.fY) * k * k;
+  }
+  /** Mitte des Sprungtors (rückt beim Öffnen etwas heran) */
+  private get gateCy(): number { return this.gateY + Math.min(1, this.gateT * 0.8) * 60; }
   // Tasten rechts unten: Feuer groß unter dem Daumen, Raketen links daneben, Ausweichen darüber
   private get btnFire(): [number, number, number] { return [this.w - 66, this.h - 80, 40]; }
   private get btnMissile(): [number, number, number] { return [this.w - 160, this.h - 54, 27]; }
@@ -667,7 +674,7 @@ export class ShooterGame implements MiniGame {
       // Welle besiegt
       if (this.wave + 1 >= this.totalWaves) {
         this.gateT = 0;
-        this.gateX = this.fX;
+        this.gateX = this.fx1;
         this.gateY = this.fY - 330;
         this.outcome = 'win';
         this.endT = 0;
@@ -1516,7 +1523,38 @@ export class ShooterGame implements MiniGame {
   }
 
   private drawGate(ctx: CanvasRenderingContext2D, t: number): void {
-    const gx = this.gateX, gy = this.gateY + Math.min(1, this.gateT * 0.8) * 60;
+    const gx = this.gateX, gy = this.gateCy;
+    const img = projectileSprite('sprungtor-ki');
+    if (img) {
+      // Bild-Grafik (von oben, flach im Raum): öffnet sich mit einem Lichtblitz, darüber ein sich drehender Lichtwirbel
+      const open = Math.min(1, this.gateT / 0.6);
+      const size = 300 * (0.55 + 0.45 * (1 - Math.pow(1 - open, 3)));
+      ctx.save();
+      ctx.translate(gx, gy);
+      ctx.globalAlpha = open;
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.rotate(t * 0.8);
+      ctx.strokeStyle = 'rgba(160,230,255,0.35)';
+      ctx.lineWidth = 3;
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        ctx.arc(0, 0, size * (0.16 + k * 0.08), k * 2.1, k * 2.1 + 2.2);
+        ctx.stroke();
+      }
+      const flash = Math.max(0, 1 - this.gateT * 1.6);
+      if (flash > 0) {
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.5);
+        g.addColorStop(0, `rgba(230,250,255,${0.9 * flash})`);
+        g.addColorStop(1, 'rgba(120,200,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.translate(gx, gy);
     ctx.scale(1, 0.45);
@@ -1544,7 +1582,7 @@ export class ShooterGame implements MiniGame {
 
   private drawFreighter(ctx: CanvasRenderingContext2D, t: number): void {
     const x = this.fx1, y = this.fy1;
-    const shrink = this.gateT >= 0 ? Math.max(0, 1 - Math.max(0, this.gateT - 1.3) * 1.4) : 1;
+    const shrink = this.gateT >= 0 ? Math.max(0, 1 - Math.max(0, this.gateT - 1.2) * 1.6) : 1;
     if (shrink <= 0) return;
     ctx.save();
     ctx.translate(x, y);
