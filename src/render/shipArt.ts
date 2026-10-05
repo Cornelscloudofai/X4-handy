@@ -33,6 +33,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'pirat-turm-ki': { xs: [], y: 0, color: '#ff7a4a' },
   'xenon-n-ki': { xs: [0], y: 0.37, color: '#ff3b4a' },
   'xenon-m-ki': { xs: [0], y: 0.47, color: '#ff3b4a' },
+  'xenon-schirmdrohne-ki': { xs: [0], y: 0.33, color: '#ff3b4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -119,6 +120,7 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
   'pirat:turret': { name: 'pirat-turm-ki', scale: 2.4 },
   n: { name: 'xenon-n-ki', scale: 4.5 },
   m: { name: 'xenon-m-ki', scale: 5 },
+  xs: { name: 'xenon-schirmdrohne-ki', scale: 4.2 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */
