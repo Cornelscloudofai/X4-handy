@@ -34,6 +34,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'xenon-n-ki': { xs: [0], y: 0.37, color: '#ff3b4a' },
   'xenon-m-ki': { xs: [0], y: 0.47, color: '#ff3b4a' },
   'xenon-schirmdrohne-ki': { xs: [0], y: 0.33, color: '#ff3b4a' },
+  'xenon-k-ki': { xs: [-0.217, -0.115, 0, 0.11, 0.218], y: 0.42, color: '#ff3b4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -121,6 +122,8 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
   n: { name: 'xenon-n-ki', scale: 4.5 },
   m: { name: 'xenon-m-ki', scale: 5 },
   xs: { name: 'xenon-schirmdrohne-ki', scale: 4.2 },
+  // Xenon-K-Segment: 160 px bei Trefferradius 34; Laser- und Plasmatürme sitzen auf den vier Sockeln (siehe shooter.ts)
+  'xenon:boss': { name: 'xenon-k-ki', scale: 4.7 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */

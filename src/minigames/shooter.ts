@@ -22,6 +22,10 @@ interface Enemy {
   target: 'f' | 'p'; orbit: number; flash: number; dir: number;
   /** Boss-Teile: Eltern und Versatz */
   parent?: Enemy; ox?: number; oy?: number;
+  /** Xenon-Türme: Laserstrahl (zielt, lädt auf, feuert einen Strahl) oder dicke Plasmakugeln */
+  weapon?: 'laser' | 'plasma';
+  /** Laserstrahl: Restzeit (aufladen, dann feuern), Richtung, angesammelter Schaden am Frachter */
+  beamT?: number; beamA?: number; beamAcc?: number;
   shielded: boolean;
   inside?: boolean;
 }
@@ -33,6 +37,9 @@ interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile'; 
 interface Rock { x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[] }
 interface Mine { x: number; y: number; vx: number; vy: number; armed: number; hp: number }
 interface Card { id: string; name: string; desc: string; max: number }
+
+/** Laserturm der Xenon: Reichweite, Aufladezeit, Brenndauer, Schaden pro Sekunde */
+const LASER_LEN = 400, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
 
 const SPEC: Record<EKind, { hp: number; speed: number; r: number; color: string; name: string; pts: number; cost: number }> = {
   jaeger: { hp: 30, speed: 165, r: 10, color: '#ff8a5c', name: 'Piratenjäger', pts: 100, cost: 2 },
@@ -433,15 +440,18 @@ export class ShooterGame implements MiniGame {
   private spawnBoss(): void {
     const b = this.makeEnemy('boss', this.WW / 2, -80);
     b.hp = b.max = SPEC.boss.hp * HP_MUL[this.level] * (this.mode === 'endless' ? 1 + this.wave * 0.05 : 1);
-    b.r = this.side === 'pirate' ? 34 : 30;
+    b.r = 34;
     this.enemies.push(b);
-    const offs: [number, number][] = this.side === 'pirate'
+    const offs: [number, number, ('laser' | 'plasma')?][] = this.side === 'pirate'
       // auf den drei Sockeln im Bild der Fregatte (Flügelenden links/rechts, Heckmitte); ab Stufe 4 ein vierter auf dem Bug
       ? [[-53, 4], [54, 4], [0, 30], ...(this.level >= 4 ? [[0, -40] as [number, number]] : [])]
-      : [[-46, -46], [46, -46], [-46, 46], [46, 46], ...(this.level >= 4 ? [[0, -62] as [number, number]] : [])];
-    for (const [ox, oy] of offs) {
+      // auf den vier Sockeln des K-Segments: Laser auf den Flügeln, Plasma auf Bug und Heck
+      : [[-61, 17, 'laser'], [61, 17, 'laser'], [0, -46, 'plasma'], [0, 39, 'plasma']];
+    for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
-      t.parent = b; t.ox = ox; t.oy = oy;
+      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = weapon;
+      // Xenon-Türme feuern versetzt; ab Stufe 4 schneller (statt eines fünften Turms)
+      if (weapon) t.cd = 1.5 + this.r() * 2;
       this.enemies.push(t);
     }
     this.bossT = 0;
@@ -650,8 +660,18 @@ export class ShooterGame implements MiniGame {
         e.x = p.x + e.ox! * c - e.oy! * sn;
         e.y = p.y + e.ox! * sn + e.oy! * c;
         e.vx = p.vx; e.vy = p.vy;
+        if (e.weapon === 'laser') { this.updateLaser(e, dt, fx, fy); continue; }
         e.cd -= dt;
         const tx = this.r() < 0.5 ? this.px : fx, ty = tx === this.px ? this.py : fy;
+        if (e.weapon === 'plasma') {
+          if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < 380) {
+            e.cd = (this.level >= 4 ? 2.2 : 2.8) + this.r() * 0.8;
+            // dicke, langsame Plasmakugel: leicht gestreut, gut sichtbar, schwer
+            const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08;
+            this.enemyShot(e, a2, 175, 16, '#ff6a3d', 6, 2.6);
+          }
+          continue;
+        }
         if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < 340) {
           e.cd = 2.2 + this.r() * 0.8;
           const a2 = Math.atan2(ty - e.y, tx - e.x);
@@ -734,8 +754,43 @@ export class ShooterGame implements MiniGame {
     this.eMissiles = this.eMissiles.filter((m) => m.life > 0 && m.hp > 0);
   }
 
-  private enemyShot(e: Enemy, a: number, v: number, dmg: number, color: string, w = 2): void {
-    this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: dmg * this.enemyDmg, from: 'e', life: 1.8, color, w, pierce: 0 });
+  private enemyShot(e: Enemy, a: number, v: number, dmg: number, color: string, w = 2, life = 1.8): void {
+    this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: dmg * this.enemyDmg, from: 'e', life, color, w, pierce: 0 });
+  }
+
+  /**
+   * Laserturm: zielt auf Jäger oder Frachter, lädt LASER_CHARGE s sichtbar auf (dünne Ziellinie, Richtung steht fest),
+   * dann brennt der Strahl LASER_FIRE s – wer rechtzeitig ausweicht, bleibt heil.
+   */
+  private updateLaser(e: Enemy, dt: number, fx: number, fy: number): void {
+    if (e.beamT && e.beamT > 0) {
+      e.beamT -= dt;
+      if (e.beamT > 0 && e.beamT < LASER_FIRE) {
+        const a = e.beamA!, cx = Math.cos(a), cy = Math.sin(a);
+        const dist = (x: number, y: number): number => {
+          const t = clamp((x - e.x) * cx + (y - e.y) * cy, 0, LASER_LEN);
+          return Math.hypot(e.x + cx * t - x, e.y + cy * t - y);
+        };
+        if (dist(this.px, this.py) < 9) this.damagePlayer(LASER_DPS * this.enemyDmg * dt);
+        // Frachter: entlang seiner Längsachse prüfen; Schaden gesammelt, damit nicht jedes Bild Funken sprühen
+        let onF = false;
+        for (let k = -40; k <= 40 && !onF; k += 10) onF = dist(fx, fy + k) < 16;
+        if (onF) {
+          e.beamAcc = (e.beamAcc ?? 0) + LASER_DPS * this.enemyDmg * dt;
+          if (e.beamAcc > 4) { this.hitFreighter(e.beamAcc, fx, fy); e.beamAcc = 0; }
+        }
+      }
+      return;
+    }
+    e.cd -= dt;
+    const toP = this.r() < 0.55;
+    const tx = toP ? this.px : fx, ty = toP ? this.py : fy;
+    if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < LASER_LEN - 20) {
+      e.cd = (this.level >= 4 ? 2.6 : 3.4) + this.r();
+      e.beamT = LASER_CHARGE + LASER_FIRE;
+      e.beamA = Math.atan2(ty - e.y, tx - e.x);
+      e.beamAcc = 0;
+    }
   }
 
   private hitFreighter(dmg: number, x: number, y: number): void {
@@ -989,6 +1044,7 @@ export class ShooterGame implements MiniGame {
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.outcome !== 'freighter') this.drawFreighter(ctx, t);
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
+    this.drawBeams(ctx, t);
     this.drawShots(ctx);
     if (this.outcome !== 'player') this.drawPlayer(ctx, t);
     this.fx.draw(ctx);
@@ -1017,11 +1073,57 @@ export class ShooterGame implements MiniGame {
     if (this.choosing) this.drawCards(ctx);
   }
 
+  /** Laserstrahlen der Xenon-Türme: erst dünne, blinkende Ziellinie, dann der Strahl */
+  private drawBeams(ctx: CanvasRenderingContext2D, t: number): void {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const e of this.enemies) {
+      if (!e.beamT || e.beamT <= 0) continue;
+      const ex = e.x + Math.cos(e.beamA!) * LASER_LEN, ey = e.y + Math.sin(e.beamA!) * LASER_LEN;
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y);
+      ctx.lineTo(ex, ey);
+      if (e.beamT > LASER_FIRE) {
+        const k = 1 - (e.beamT - LASER_FIRE) / LASER_CHARGE;
+        ctx.strokeStyle = rgba('#ff3b4a', 0.25 + 0.35 * k * (0.6 + 0.4 * Math.sin(t * 40)));
+        ctx.lineWidth = 1 + k;
+        ctx.setLineDash([6, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        const k = Math.min(1, e.beamT / 0.12, (LASER_FIRE - e.beamT) / 0.06);
+        ctx.strokeStyle = rgba('#ff3b4a', 0.35 * k);
+        ctx.lineWidth = 14;
+        ctx.stroke();
+        ctx.strokeStyle = rgba('#ff7a84', 0.8 * k);
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        ctx.strokeStyle = rgba('#fff0f0', k);
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   private drawShots(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     for (const b of this.bullets) {
+      if (b.w >= 5) {
+        // Plasmakugel: glühender Kern mit Hof
+        const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.w * 2.2);
+        g.addColorStop(0, '#fff1d8');
+        g.addColorStop(0.3, b.color);
+        g.addColorStop(1, rgba(b.color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.w * 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
       const v = Math.hypot(b.vx, b.vy) || 1, L = b.from === 'p' ? 12 : 8;
       ctx.beginPath();
       ctx.moveTo(b.x, b.y);
@@ -1269,11 +1371,11 @@ export class ShooterGame implements MiniGame {
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       // Boss: Schild umschließt den ganzen Rumpf
-      ctx.arc(0, 0, e.kind === 'boss' ? e.r * 2.1 : e.r + 7, 0, Math.PI * 2);
+      ctx.arc(0, 0, e.kind === 'boss' ? e.r * (xen ? 2.4 : 2.1) : e.r + 7, 0, Math.PI * 2);
       ctx.stroke();
     }
-    ctx.rotate(e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
-    const spr = enemySprite(e.kind, this.side === 'pirate' ? 'pirat' : 'xenon');
+    ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
+    const spr = enemySprite(e.weapon ? `turret-${e.weapon}` : e.kind, this.side === 'pirate' ? 'pirat' : 'xenon');
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
       const size = e.r * spr.scale;
@@ -1313,7 +1415,10 @@ export class ShooterGame implements MiniGame {
       case 'schild': case 'xs': ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); break;
       case 'n': ctx.moveTo(0, -r); ctx.lineTo(r * 0.8, r * 0.8); ctx.lineTo(-r * 0.8, r * 0.8); break;
       case 'm': ctx.moveTo(0, -r * 1.2); ctx.lineTo(r * 0.5, -r * 0.2); ctx.lineTo(r, r); ctx.lineTo(0, r * 0.5); ctx.lineTo(-r, r); ctx.lineTo(-r * 0.5, -r * 0.2); break;
-      case 'turret': ctx.rect(-r * 0.7, -r * 0.7, r * 1.4, r * 1.4); ctx.moveTo(0, -r * 0.7); ctx.lineTo(0, -r * 1.5); break;
+      case 'turret':
+        if (e.weapon === 'plasma') { ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); ctx.moveTo(r * 0.3, -r * 0.6); ctx.lineTo(r * 0.3, -r * 1.3); ctx.moveTo(-r * 0.3, -r * 0.6); ctx.lineTo(-r * 0.3, -r * 1.3); break; }
+        if (e.weapon === 'laser') { ctx.moveTo(0, -r * 1.7); ctx.lineTo(r * 0.7, r * 0.7); ctx.lineTo(-r * 0.7, r * 0.7); ctx.lineTo(0, -r * 1.7); break; }
+        ctx.rect(-r * 0.7, -r * 0.7, r * 1.4, r * 1.4); ctx.moveTo(0, -r * 0.7); ctx.lineTo(0, -r * 1.5); break;
       case 'boss':
         if (xen) for (let k = 0; k < 6; k++) { const q = (k / 6) * Math.PI * 2 + Math.PI / 6; ctx.lineTo(Math.cos(q) * r, Math.sin(q) * r); }
         else { ctx.moveTo(0, -r * 1.5); ctx.lineTo(r * 0.7, -r * 0.6); ctx.lineTo(r * 0.8, r); ctx.lineTo(0, r * 1.3); ctx.lineTo(-r * 0.8, r); ctx.lineTo(-r * 0.7, -r * 0.6); }
