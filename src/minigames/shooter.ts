@@ -86,6 +86,9 @@ const ENDLESS_GOALS: GoalDef[] = [
 ];
 export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS];
 
+/** Kamera-Zoom des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick) */
+const VIEW_ZOOM = 0.72;
+
 /** Normale Runde: drei Wellen und der Boss */
 const NORMAL_WAVES = 4;
 const HP_MUL: Record<Level, number> = { 1: 1, 2: 1.15, 3: 1.3, 4: 1.45, 5: 1.6 };
@@ -229,15 +232,15 @@ export class ShooterGame implements MiniGame {
     this.h = h;
     this.stars.resize(w, h);
     // Spielfeld deutlich größer als der Bildschirm
-    this.WW = Math.max(w * 2.3, 860);
-    this.WH = Math.max(h * 1.6, 1250);
+    this.WW = Math.max(w * 2.8, 1050);
+    this.WH = Math.max(h * 2, 1600);
     this.fx0 = this.WW / 2;
     this.fy0 = this.WH * 0.6;
     if (first) {
       this.px = this.fx0;
       this.py = this.fy0 + 120;
-      this.camX = this.px - w / 2;
-      this.camY = this.py - h * 0.58;
+      this.camX = this.px - w / 2 / VIEW_ZOOM;
+      this.camY = this.py - (h * 0.58) / VIEW_ZOOM;
     }
   }
 
@@ -547,11 +550,13 @@ export class ShooterGame implements MiniGame {
   }
 
   private followCam(dt: number, toFreighter: boolean): void {
-    const tx = (toFreighter ? this.fx1 : this.px) - this.w / 2;
-    const ty = (toFreighter ? this.fy1 : this.py) - (TOP + (this.h - TOP) * 0.5);
+    // camX/camY: Weltpunkt in der linken oberen Bildschirmecke; Bildschirm = (Welt − cam) · Zoom
+    const Z = VIEW_ZOOM, vw = this.w / Z, vh = this.h / Z;
+    const tx = (toFreighter ? this.fx1 : this.px) - vw / 2;
+    const ty = (toFreighter ? this.fy1 : this.py) - (TOP + (this.h - TOP) * 0.5) / Z;
     const k = Math.min(1, dt * 4);
-    this.camX += (clamp(tx, -40, this.WW - this.w + 40) - this.camX) * k;
-    this.camY += (clamp(ty, -TOP - 40, this.WH - this.h + 40) - this.camY) * k;
+    this.camX += (clamp(tx, -40, this.WW - vw + 40) - this.camX) * k;
+    this.camY += (clamp(ty, -TOP / Z - 40, this.WH - vh + 40) - this.camY) * k;
   }
 
   private updatePlayer(dt: number): void {
@@ -978,7 +983,8 @@ export class ShooterGame implements MiniGame {
     this.stars.draw(ctx, this.scroll - this.camY * 0.25, this.side === 'xenon' ? '#ffd0d0' : '#cfe4ff');
     ctx.save();
     if (this.shake > 0 && !document.documentElement.classList.contains('calm')) ctx.translate((Math.random() - 0.5) * 12 * this.shake, (Math.random() - 0.5) * 12 * this.shake);
-    ctx.translate(-Math.round(this.camX), -Math.round(this.camY));
+    ctx.scale(VIEW_ZOOM, VIEW_ZOOM);
+    ctx.translate(-this.camX, -this.camY);
     // Rand des Spielfelds
     ctx.strokeStyle = 'rgba(110,220,205,0.12)';
     ctx.setLineDash([6, 10]);
@@ -1422,7 +1428,7 @@ export class ShooterGame implements MiniGame {
   /** Pfeile am Rand für Gegner (und Frachter) außerhalb des Bildes */
   private drawIndicators(ctx: CanvasRenderingContext2D): void {
     const arrow = (wx: number, wy: number, color: string, size = 6) => {
-      const sx = wx - this.camX, sy = wy - this.camY;
+      const sx = (wx - this.camX) * VIEW_ZOOM, sy = (wy - this.camY) * VIEW_ZOOM;
       if (sx > 0 && sx < this.w && sy > TOP && sy < this.h) return;
       const x = clamp(sx, 12, this.w - 12), y = clamp(sy, TOP + 12, this.h - 12);
       ctx.save();
@@ -1451,7 +1457,7 @@ export class ShooterGame implements MiniGame {
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, rw - 1, rh - 1);
     // Bildausschnitt
     ctx.strokeStyle = 'rgba(228,243,240,0.35)';
-    ctx.strokeRect(x0 + clamp(this.camX * sx, 0, rw), y0 + clamp((this.camY + TOP) * sy, 0, rh), (this.w * sx), ((this.h - TOP) * sy));
+    ctx.strokeRect(x0 + clamp(this.camX * sx, 0, rw), y0 + clamp((this.camY + TOP / VIEW_ZOOM) * sy, 0, rh), (this.w / VIEW_ZOOM) * sx, ((this.h - TOP) / VIEW_ZOOM) * sy);
     const dot = (x: number, y: number, c: string, r = 1.6) => { ctx.fillStyle = c; ctx.fillRect(x0 + x * sx - r, y0 + y * sy - r, r * 2, r * 2); };
     for (const k of this.rocks) dot(k.x, k.y, 'rgba(168,154,138,0.6)', 1.2);
     for (const m of this.mines) dot(m.x, m.y, 'rgba(255,181,71,0.7)', 1);

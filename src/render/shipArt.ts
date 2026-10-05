@@ -31,6 +31,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'pirat-fregatte-ki': { xs: [-0.163, -0.056, 0.052, 0.164], y: 0.452, color: '#ff7a4a' },
   // Geschützturm: keine Triebwerke
   'pirat-turm-ki': { xs: [], y: 0, color: '#ff7a4a' },
+  'xenon-n-ki': { xs: [0], y: 0.37, color: '#ff3b4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -115,6 +116,7 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number }> = {
   // Piratenfregatte: 130 px bei Trefferradius 34; die Türme sitzen auf den Sockeln im Bild (siehe shooter.ts)
   'pirat:boss': { name: 'pirat-fregatte-ki', scale: 3.82 },
   'pirat:turret': { name: 'pirat-turm-ki', scale: 2.4 },
+  n: { name: 'xenon-n-ki', scale: 4.5 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */
