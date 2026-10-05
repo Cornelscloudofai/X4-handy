@@ -1199,6 +1199,28 @@ export class ShooterGame implements MiniGame {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(shrink, shrink);
+    const spr = projectileSprite('frachter-m-ki');
+    if (spr) {
+      // Bild-Grafik: Containerschiff, gut 105 px lang; vier flackernde Triebwerke; Treffer blitzen hell auf
+      const size = 110;
+      ctx.fillStyle = rgba('#ffa040', 0.5 + 0.3 * Math.random());
+      for (const fx of [-0.104, -0.053, 0.05, 0.105]) {
+        const ex = fx * size, ey = 0.462 * size;
+        ctx.beginPath();
+        ctx.moveTo(ex - 2, ey); ctx.lineTo(ex + 2, ey); ctx.lineTo(ex, ey + 5 + Math.random() * 5 + (this.gateT >= 0 ? 10 : 0));
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.drawImage(spr, -size / 2, -size / 2, size, size);
+      if (this.fFlash > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.5;
+        ctx.drawImage(spr, -size / 2, -size / 2, size, size);
+      }
+      ctx.restore();
+      this.drawFreighterHull(ctx, x, y);
+      return;
+    }
     const col = this.fFlash > 0 ? '#ffffff' : '#5ff0d8';
     ctx.beginPath();
     ctx.moveTo(0, -48); ctx.lineTo(12, -36); ctx.lineTo(14, 34); ctx.lineTo(8, 46); ctx.lineTo(-8, 46); ctx.lineTo(-14, 34); ctx.lineTo(-12, -36);
@@ -1224,11 +1246,16 @@ export class ShooterGame implements MiniGame {
     ctx.fillRect(-7, 46, 5, 6 + Math.random() * 4);
     ctx.fillRect(2, 46, 5, 6 + Math.random() * 4);
     ctx.restore();
+    this.drawFreighterHull(ctx, x, y);
+  }
+
+  /** Hüllenbalken unter dem Frachter */
+  private drawFreighterHull(ctx: CanvasRenderingContext2D, x: number, y: number): void {
     const f = this.fHull / this.fMax;
     ctx.fillStyle = 'rgba(14,30,44,0.85)';
-    ctx.fillRect(x - 30, y + 58, 60, 4);
+    ctx.fillRect(x - 30, y + 62, 60, 4);
     ctx.fillStyle = f > 0.5 ? '#3fe0c5' : f > 0.25 ? '#ffb547' : '#ff5c6c';
-    ctx.fillRect(x - 30, y + 58, 60 * f, 4);
+    ctx.fillRect(x - 30, y + 62, 60 * f, 4);
   }
 
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
