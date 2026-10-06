@@ -64,6 +64,15 @@ interface GameGun {
 /** Streuung aus den Daten (Grad) wird verdreifacht, damit sie auf dem kleinen Bildschirm sichtbar bleibt */
 const JITTER = 3 * (Math.PI / 180);
 
+/** Kurzes haptisches Signal (wo das Gerät es kann) */
+function vibrate(ms: number): void {
+  try {
+    globalThis.navigator?.vibrate?.(ms);
+  } catch {
+    /* nicht unterstützt */
+  }
+}
+
 function gameGun(g: X4Gun, o: { beam?: boolean; sticky?: boolean; rail?: boolean; gimbal?: number; color: string; w: number }): GameGun {
   const beam = !!o.beam, range = gameRange(g, beam), speed = beam ? 0 : gameSpeed(g.v);
   return {
@@ -354,8 +363,8 @@ export class ShooterGame implements MiniGame {
     const lo: Loadout = cfg.loadout ?? loadout();
     this.ctrl = cfg.controls ?? (cfg.loadout ? 'eins' : controlMode());
     if (this.ctrl === 'zwei') this.controls = [
-      'Zwei Sticks: links hinhalten und ziehen zum Fliegen – Schub in jede Richtung – seitwärts mit einem Viertel, rückwärts mit einem Drittel der Kraft und des Tempos; der Jäger driftet mit Trägheit',
-      'Rechts hinhalten und ziehen zum Zielen: der Jäger dreht sich dorthin; weit ausgelenkt feuern die Bordkanonen (nur geradeaus)',
+      'Zwei Sticks: links hinhalten und ziehen zum Fliegen, aus Sicht des Jägers – nach oben Schub geradeaus, zur Seite seitwärts, nach unten rückwärts – seitwärts mit einem Viertel, rückwärts mit einem Drittel der Kraft und des Tempos; der Jäger driftet mit Trägheit',
+      'Rechts hinhalten und ziehen zum Zielen: der Jäger dreht sich dorthin (so entsteht auch Drift); über den Ring hinaus feuern die Bordkanonen – mit kurzem Vibrieren',
       'Raketen (R) suchen ihr Ziel selbst, Spezialtaste darüber; ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
     ];
@@ -951,12 +960,19 @@ export class ShooterGame implements MiniGame {
       // auch seitwärts und rückwärts, dort schwächer
       const a = this.aim, ad = a ? Math.min(1, Math.hypot(a.kx, a.ky)) : 0;
       if (a && ad > 0.15) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * dt));
-      if (this.fireId !== 99) this.fireId = a && ad > AIM_FIRE ? a.id : null;
+      if (this.fireId !== 99) {
+        const fire = a && ad > AIM_FIRE ? a.id : null;
+        // kurzes Vibrieren, sobald der rechte Stick über den Ring geht und die Waffen auslösen
+        if (fire !== null && this.fireId === null) vibrate(14);
+        this.fireId = fire;
+      }
       thr = clamp((defl - 0.12) / 0.88, 0, 1);
       if (j && thr > 0) {
-        thrA = Math.atan2(j.ky, j.kx);
+        // Stick aus Sicht des Jägers: nach oben = geradeaus Schub, zur Seite = seitwärts, nach unten = rückwärts
+        const rel = Math.atan2(j.ky, j.kx) + Math.PI / 2;
+        thrA = wrapA(this.aimA + rel);
         // Steuerdüsen: seitwärts ein Viertel, rückwärts ein Drittel von Schub und Tempo nach vorn
-        const c = Math.cos(wrapA(thrA - this.aimA));
+        const c = Math.cos(rel);
         eff = c >= 0 ? SIDE_THRUST + (1 - SIDE_THRUST) * c * c : SIDE_THRUST + (BACK_THRUST - SIDE_THRUST) * c * c;
       }
     } else {
