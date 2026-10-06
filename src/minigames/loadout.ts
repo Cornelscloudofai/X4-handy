@@ -106,7 +106,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
   asp: ship('S', {
     name: 'Asp', role: 'Jäger', desc: 'Wendiger, mittelgroßer Jäger, bei Split-Söldnern beliebt: drei Waffenplätze, ein Raketenwerfer, mehr Hülle als die Mamba, aber nur ein Schild. Ausweichmanöver.',
     x4: { hull: 4600, engines: 2, shields: 1, weapons: 3, launchers: 1, turrets: 0, missiles: 3, v: 347, dragYaw: 2.9 },
-    gunWidth: 14, turrets: [], r: 12, size: 44, special: 'dash', sprite: 'split-asp', fallback: 'split-jaeger-s',
+    gunWidth: 9, turrets: [], r: 12, size: 44, special: 'dash', sprite: 'split-asp', fallback: 'split-jaeger-s',
   }),
   balaur: ship('S', {
     name: 'Balaur', role: 'Schwerer Jäger', desc: 'Meisterstück der Freien Familien: vier Waffenplätze, drei Triebwerke, keine Raketen – „hart zuschlagen, schnell zuschlagen, dann weg“. Ausweichmanöver.',
