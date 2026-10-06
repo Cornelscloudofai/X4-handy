@@ -40,3 +40,21 @@ Chimera 2,93 · Dragon Raider 2,96 · Cobra 6,73 · Dragon 7,02.
 - **Dragon:** galt anfangs als verfluchtes Schiff, heute als furchteinflößendes Kriegsschiff, das im Zweikampf gegen jedes Schiff bestehen kann.
 - **Dragon Raider:** aus einem Umbau-Wettbewerb der Freien Familien entstanden; eine Flotte davon terrorisiert selbst gut verteidigte Systeme.
 - **Cobra:** Schiff der Freibeuterin Ra t'Knt, die damit Geschütztürme von den Schiffen säumiger Schuldner schoss.
+
+## Umsetzung im Kampf-Minispiel (`src/minigames/loadout.ts`)
+
+Bezug ist die Mamba (= 1). Exakt aus den Daten übernommen:
+
+- **Hülle:** Hülle ÷ 3 500 (Cobra 9,14-fach).
+- **Schild:** Schildstärke ÷ Mamba (2 × 703); M-Schild 4 375 (Dragon 3,1-fach, Cobra 6,2-fach).
+- **Tempo:** Tempo ÷ 341.
+- **Wendigkeit:** Mamba-Drehwiderstand ÷ eigener Drehwiderstand.
+- **Waffenplätze und Türme:** Anzahl wie im Original. Jeder Waffenplatz trägt eine Bordkanone oder einen Raketenwerfer (wählbar). Raketenlager wie im Original.
+
+Annahmen, wo die Daten nichts hergeben:
+
+- Eine M-Waffe richtet 2,5-mal so viel Schaden an wie eine S-Waffe (der Datensatz enthält keine Waffenschäden).
+- M-Steuerdüsen haben das doppelte Drehmoment von S-Steuerdüsen.
+
+Ausgleich: Die Stärke des Schiffs (Haltbarkeit × Feuerkraft) bestimmt die Gegner. Bis zum 2,5-Fachen kommen
+entsprechend mehr Gegner, darüber werden sie zusätzlich zäher und gefährlicher.

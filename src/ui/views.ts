@@ -5,7 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
-import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, type ShipId } from '../minigames/loadout';
+import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, maxLaunchers, type ShipId } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1137,14 +1137,16 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const ship = SHIPS[lo.ship];
       const pic = (id: ShipId) => spriteUrl(SHIPS[id].sprite + '-ki') ?? spriteUrl(SHIPS[id].fallback + '-ki');
       const bar = (label: string, v: number) => `<div class="lo-bar"><span>${label}</span><i><b style="width:${Math.round(Math.max(0.08, Math.min(1, v)) * 100)}%"></b></i></div>`;
-      const fire = (id: ShipId) => { const d = SHIPS[id]; return (d.salvo * d.dmg) / d.rate + d.turrets.length * 0.7; };
+      const fire = (id: ShipId) => { const d = SHIPS[id]; return d.x4.weapons * d.gunDmg + d.turrets.length * 0.8; };
+      const num = (n: number) => n.toLocaleString('de-DE');
       const shipRow = (id: ShipId) => {
         const d = SHIPS[id], on = lo.ship === id, url = pic(id), real = spriteUrl(d.sprite + '-ki');
         return `<div class="lo-ship ${on ? 'on' : ''}" ${act('loadout-set', { key: 'ship', value: id })}>
           <div class="lo-pic">${url ? `<img src="${url}" alt="" style="${real ? '' : 'opacity:.45'}">` : ''}${real ? '' : '<small>Bild folgt</small>'}</div>
           <div class="grow"><div class="title">${esc(d.name)} <span class="muted small">${d.cls} · ${esc(d.role)}</span></div>
           <div class="sub wrap">${esc(d.desc)}</div>
-          <div class="lo-bars">${bar('Tempo', d.speed)}${bar('Wendigkeit', d.turn)}${bar('Hülle', d.hull / 4)}${bar('Schild', d.shield / 2.2)}${bar('Feuerkraft', fire(id) / 4)}</div></div>
+          <div class="sub wrap lo-data">Hülle ${num(d.x4.hull)} · ${d.x4.engines} Triebwerk${d.x4.engines > 1 ? 'e' : ''} · ${d.x4.shields} Schild${d.x4.shields > 1 ? 'e' : ''} ${d.cls} · ${d.x4.weapons} Waffenplätze${d.x4.turrets ? ` · ${d.x4.turrets} Türme` : ''} · ${d.x4.missiles} Raketen · ${d.x4.v} m/s</div>
+          <div class="lo-bars">${bar('Tempo', d.speed / 1.5)}${bar('Wendigkeit', d.turn / 1.2)}${bar('Hülle', d.hull / 9.2)}${bar('Schild', d.shield / 6.3)}${bar('Feuerkraft', fire(id) / 9)}</div></div>
           ${on ? icon('check', 22, 'pos') : ''}</div>`;
       };
       const choice = (key: string, cur: string, ids: string[], defs: Record<string, { name: string; desc: string }>) =>
@@ -1152,7 +1154,9 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const body = `<p class="lead">Wähle Schiff und Ausrüstung für den Kampf. Mk-Stufe (Standard bis Spitze) stellst du im Minispiel-Menü ein. Später baust du Schiffe und Teile in deiner Werft.</p>
         <div class="section"><h3>Schiff</h3><div class="lo-ships">${SHIP_IDS.map(shipRow).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Spezialfähigkeit der ${esc(ship.name)}: ${esc(SPECIALS[ship.special].name)} (Taste ${SPECIALS[ship.special].key}).</p></div>
-        <div class="section"><h3>Bordwaffen${ship.guns.length > 1 ? ` (${ship.guns.length})` : ''}</h3>${choice('weapon', lo.weapon, WEAPON_IDS, WEAPONS)}</div>
+        ${maxLaunchers(lo.ship) > 0 ? `<div class="section"><h3>Waffenplätze (${ship.x4.weapons})</h3><div class="segment">${Array.from({ length: maxLaunchers(lo.ship) + 1 }, (_, n) => `<button class="${lo.launchers === n ? 'on' : ''}" ${act('loadout-set', { key: 'launchers', value: n })}>${n === 0 ? 'Keine Werfer' : `${n} Werfer`}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">Wie in X4 trägt jeder Waffenplatz eine Bordkanone oder einen Raketenwerfer: ${ship.x4.weapons - lo.launchers} Bordkanone${ship.x4.weapons - lo.launchers > 1 ? 'n' : ''}${lo.launchers ? `, ${lo.launchers} Raketenwerfer (je 2 Raketen pro Salve, Lager ${ship.x4.missiles})` : ' – ohne Werfer keine Raketen'}.</p></div>` : ''}
+        <div class="section"><h3>Bordkanonen (${ship.x4.weapons - lo.launchers})</h3>${choice('weapon', lo.weapon, WEAPON_IDS, WEAPONS)}</div>
         ${ship.turrets.length ? `<div class="section"><h3>Türme (${ship.turrets.length})</h3>${choice('turret', lo.turret, WEAPON_IDS.filter((w) => w !== 'strahl'), WEAPONS)}</div>` : ''}
         <div class="section"><h3>Schild</h3>${choice('shield', lo.shield, SHIELD_IDS, SHIELDS)}</div>
         <div class="section"><h3>Darstellung</h3><div class="segment">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>

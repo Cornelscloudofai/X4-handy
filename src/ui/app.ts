@@ -26,7 +26,7 @@ import { initTween } from './tween';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
-import { loadout, setLoadout, type Loadout } from '../minigames/loadout';
+import { SHIPS, loadout, setLoadout, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
@@ -683,7 +683,9 @@ function onClick(e: MouseEvent): void {
       case 'ship-art-open': ui.modal = { type: 'shipArt' }; refresh(); break;
       case 'loadout-open': ui.modal = { type: 'loadout' }; refresh(); break;
       case 'loadout-set': {
-        const patch = { [String(d.key)]: d.value } as Partial<Loadout>;
+        const patch = { [String(d.key)]: d.key === 'launchers' ? Number(d.value) : d.value } as Partial<Loadout>;
+        // neues Schiff: ab drei Waffenplätzen standardmäßig ein Raketenwerfer
+        if (d.key === 'ship') patch.launchers = (SHIPS[d.value as keyof typeof SHIPS]?.x4.weapons ?? 0) >= 3 ? 1 : 0;
         setLoadout(patch);
         // Bauart der Raketen und Jäger-Bilder: Argon-Jäger argonisch, alle anderen Split
         if (d.key === 'ship') setShipArt(shipArt(), d.value === 'argon' ? 'argon' : 'split');

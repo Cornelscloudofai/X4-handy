@@ -26,6 +26,8 @@ await page.waitForTimeout(200);
 await page.screenshot({ path: `${out}/mg-0-loadout.png` });
 if (!(await page.locator('#modal [data-key="turret"]').count())) fail('Cobra: keine Türme wählbar');
 await page.click('#modal [data-act="loadout-set"][data-value="mamba"]');
+// Mamba mit einem Raketenwerfer (für den Test der Raketentaste)
+await page.click('#modal [data-act="loadout-set"][data-key="launchers"][data-value="1"]');
 await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="impuls"]');
 await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
 await page.waitForTimeout(200);
