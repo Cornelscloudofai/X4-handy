@@ -7,7 +7,8 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { enemySprite, fighterKind, fighterSprite, preloadSprites, projectileSprite, shipArt } from '../render/shipArt';
+import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite } from '../render/shipArt';
+import { BEAM_LEN, SHIELDS, SHIPS, SPECIALS, WEAPONS, loadout, type Loadout, type ShieldDef, type ShipDef, type WeaponDef } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -37,7 +38,7 @@ interface Enemy {
   shielded: boolean;
   inside?: boolean;
 }
-interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy> }
+interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Plasma) */ splash?: number }
 interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number }
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
 interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p' }
@@ -59,8 +60,6 @@ const AGGRO = 380;
 const MAP_W = 2600, LEG = 900, MAP_PAD = 520;
 /** Frachter-Tempo auf seiner Route */
 const F_SPEED = 24;
-/** Geschwindigkeit der eigenen Geschosse */
-const BULLET_V = 640;
 /** Zielhilfe: liegt der Vorhaltepunkt so nah vor der Nase (rad), gehen die Schüsse genau dorthin */
 const AIM_ASSIST = 0.15;
 
@@ -99,7 +98,7 @@ const CARDS: Card[] = [
   { id: 'regen', name: 'Schnellladung', desc: 'Schild lädt schneller und früher', max: 2 },
   { id: 'drone', name: 'Begleitdrohne', desc: 'Eine Drohne kämpft an deiner Seite', max: 2 },
   { id: 'repair', name: 'Reparatur', desc: 'Frachter +25 %, Jäger wieder voll', max: 99 },
-  { id: 'dash', name: 'Ausweichtriebwerk', desc: 'Ausweichen lädt 25 % schneller', max: 2 },
+  { id: 'dash', name: 'Bereitschaft', desc: 'Spezialfähigkeit lädt 25 % schneller', max: 2 },
   { id: 'speed', name: 'Nachbrenner', desc: '+12 % Tempo', max: 2 },
 ];
 
@@ -210,6 +209,20 @@ export class ShooterGame implements MiniGame {
   private missilesUsed = 0;
   private dashCd = 0;
   private dashT = 0;
+  // Ausrüstung: Schiff, Bordwaffe, Turmwaffe, Schild
+  private readonly ship: ShipDef;
+  private readonly wpn: WeaponDef;
+  private readonly tw: WeaponDef;
+  private readonly sh: ShieldDef;
+  /** Waffenüberladung / Schildüberladung: Restzeit */
+  private odT = 0;
+  private ocT = 0;
+  /** nächste Bordkanone (reihum) */
+  private gunI = 0;
+  /** Türme des eigenen Schiffs: Pause und Richtung */
+  private pTur: { cd: number; a: number }[] = [];
+  /** Strahler: Strahlen dieses Bilds (von – bis) für die Darstellung */
+  private beams: [number, number, number, number][] = [];
   private dashVx = 0;
   private dashVy = 0;
   private droneA = 0;
@@ -272,6 +285,12 @@ export class ShooterGame implements MiniGame {
     this.r = rng(cfg.seed);
     this.gear = cfg.gear ?? { weapon: 1, shield: 1, engine: 1 };
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
+    const lo: Loadout = cfg.loadout ?? loadout();
+    this.ship = SHIPS[lo.ship];
+    this.wpn = WEAPONS[lo.weapon];
+    this.tw = WEAPONS[lo.turret];
+    this.sh = SHIELDS[lo.shield];
+    this.pTur = this.ship.turrets.map(() => ({ cd: 0, a: -Math.PI / 2 }));
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
     this.score = new Score(this.mutator?.mult ?? 1, 6);
@@ -291,13 +310,17 @@ export class ShooterGame implements MiniGame {
   // ---------- abgeleitete Werte ----------
 
   private c(id: string): number { return this.cards[id] ?? 0; }
-  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')); }
-  private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')); }
-  private get fireRate(): number { return [0.26, 0.21, 0.17][this.gear.weapon - 1] / (1 + 0.25 * this.c('rapid')); }
-  private get damage(): number { return [6, 8, 11][this.gear.weapon - 1] * (1 + 0.3 * this.c('heavy')) * (this.mutator?.id === 'glass' ? 2 : 1); }
-  private get shieldMax(): number { return [40, 70, 100][this.gear.shield - 1] * (1 + 0.4 * this.c('shield')) * (this.mutator?.id === 'glass' ? 0.5 : 1); }
+  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed; }
+  private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn; }
+  private get fireRate(): number { return [0.26, 0.21, 0.17][this.gear.weapon - 1] / (1 + 0.25 * this.c('rapid')) * this.ship.rate * this.wpn.rate * (this.odT > 0 ? 0.5 : 1); }
+  /** Grundschaden je Mk-Stufe mit Verbesserungen (ohne Schiff und Waffentyp) */
+  private get baseDmg(): number { return [6, 8, 11][this.gear.weapon - 1] * (1 + 0.3 * this.c('heavy')) * (this.mutator?.id === 'glass' ? 2 : 1); }
+  /** Reichweite der Bordwaffe */
+  private get reach(): number { return this.wpn.beam ? BEAM_LEN : this.wpn.speed * this.wpn.life; }
+  private get damage(): number { return this.baseDmg * this.ship.dmg * this.wpn.dmg; }
+  private get shieldMax(): number { return [40, 70, 100][this.gear.shield - 1] * (1 + 0.4 * this.c('shield')) * (this.mutator?.id === 'glass' ? 0.5 : 1) * this.ship.shield * this.sh.cap; }
   private get missileCdMax(): number { return 9 * Math.pow(0.8, this.c('mreload')); }
-  private get dashCdMax(): number { return 3 * Math.pow(0.75, this.c('dash')); }
+  private get dashCdMax(): number { return SPECIALS[this.ship.special].cd * Math.pow(0.75, this.c('dash')); }
   private get enemyDmg(): number { return this.level >= 5 ? 1.3 : this.level >= 3 ? 1.15 : 1; }
   private get totalWaves(): number { return this.mode === 'endless' ? Infinity : NORMAL_WAVES; }
   private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : i === NORMAL_WAVES - 1; }
@@ -359,7 +382,7 @@ export class ShooterGame implements MiniGame {
     const [bx, by, br] = this.btnMissile;
     if (Math.hypot(x - bx, y - by) < br + 10) { this.fireMissiles(); return; }
     const [dx, dy, dr] = this.btnDash;
-    if (Math.hypot(x - dx, y - dy) < dr + 10) { this.doDash(); return; }
+    if (Math.hypot(x - dx, y - dy) < dr + 10) { this.doSpecial(); return; }
     if (!this.joy) this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 };
   }
 
@@ -432,7 +455,7 @@ export class ShooterGame implements MiniGame {
     this.missilesUsed++;
     setGoal(this.goals, 'nomissile', false);
     const targets = [...this.enemies].filter((e) => !e.shielded || e.kind !== 'boss').sort((a, b) => Math.hypot(a.x - this.px, a.y - this.py) - Math.hypot(b.x - this.px, b.y - this.py));
-    const n = 4 + 2 * this.c('missiles');
+    const n = this.ship.missiles + 2 * this.c('missiles');
     for (let k = 0; k < n; k++) {
       const a = this.aimA + (k - (n - 1) / 2) * 0.4;
       this.missiles.push({ x: this.px, y: this.py, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, target: targets[k % Math.max(1, targets.length)] ?? null, life: 3.2 });
@@ -440,8 +463,24 @@ export class ShooterGame implements MiniGame {
     sfx.open();
   }
 
-  private doDash(): void {
+  /** Spezialfähigkeit des Schiffs: Ausweichen, Waffenüberladung oder Schildüberladung */
+  private doSpecial(): void {
     if (this.dashCd > 0 || this.outcome || this.choosing) return;
+    if (this.ship.special === 'overdrive') {
+      this.odT = 3;
+      this.dashCd = this.dashCdMax;
+      this.floats.add(this.px, this.py - 30, 'Waffenüberladung', '#ffb547', 13);
+      sfx.tap();
+      return;
+    }
+    if (this.ship.special === 'overcharge') {
+      this.ocT = 2.5;
+      this.shield = this.shieldMax;
+      this.dashCd = this.dashCdMax;
+      this.floats.add(this.px, this.py - 40, 'Schildüberladung', '#7fd8ff', 13);
+      sfx.tap();
+      return;
+    }
     const j = this.joy;
     let dx = j ? j.kx : Math.cos(this.aimA), dy = j ? j.ky : Math.sin(this.aimA);
     const d = Math.hypot(dx, dy) || 1;
@@ -470,7 +509,7 @@ export class ShooterGame implements MiniGame {
     let tx = this.fx1, ty = this.fy1 - 140;
     if (near && !best) { tx = near.x; ty = near.y; }
     if (best) {
-      const d = Math.hypot(best.x - this.px, best.y - this.py), t = d / BULLET_V;
+      const d = Math.hypot(best.x - this.px, best.y - this.py), t = this.wpn.beam ? 0 : d / this.wpn.speed;
       tx = best.x + best.vx * t; ty = best.y + best.vy * t;
     }
     const dx = tx - this.px, dy = ty - this.py, d = Math.hypot(dx, dy) || 1;
@@ -493,12 +532,12 @@ export class ShooterGame implements MiniGame {
       if (along > 0 && along < LASER_LEN && Math.abs(across) < 30) {
         const sgn = across >= 0 ? 1 : -1;
         this.joy = { id: 99, ox: 0, oy: 0, kx: -sn * sgn, ky: c * sgn };
-        if (e.beamT < LASER_FIRE + 0.25) this.doDash();
+        if (e.beamT < LASER_FIRE + 0.25) this.doSpecial();
       }
     }
-    this.fireId = best && off < 0.15 && d < 420 ? 99 : null;
+    this.fireId = best && off < 0.15 && d < this.reach - 15 ? 99 : null;
     if (this.enemies.filter((e) => Math.hypot(e.x - this.px, e.y - this.py) < 450).length >= 3) this.fireMissiles();
-    if (this.eMissiles.some((m) => Math.hypot(m.x - this.px, m.y - this.py) < 60)) this.doDash();
+    if (this.eMissiles.some((m) => Math.hypot(m.x - this.px, m.y - this.py) < 60)) this.doSpecial();
   }
 
   // ---------- Wellen ----------
@@ -800,38 +839,50 @@ export class ShooterGame implements MiniGame {
     this.missileCd = Math.max(0, this.missileCd - dt);
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.shieldWait = Math.max(0, this.shieldWait - dt);
-    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * (1 + 0.5 * this.c('regen')) * dt);
+    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.shield * this.sh.regen * (1 + 0.5 * this.c('regen')) * dt);
+    this.odT = Math.max(0, this.odT - dt);
+    this.ocT = Math.max(0, this.ocT - dt);
     // Vorhaltekreuz: Gegner vor der Nase bevorzugt, sonst der nächste in Reichweite
     let best: Enemy | null = null, bs = 1e9;
     for (const e of this.enemies) {
       if (e.kind === 'boss' && e.shielded) continue;
       const d = Math.hypot(e.x - this.px, e.y - this.py);
-      if (d > 520) continue;
+      if (d > Math.max(520, this.reach + 80)) continue;
       const off = Math.abs(wrapA(Math.atan2(e.y - this.py, e.x - this.px) - this.aimA));
       const score = d * (1 + off * 1.5);
       if (score < bs) { bs = score; best = e; }
     }
     if (best) {
-      const t = Math.hypot(best.x - this.px, best.y - this.py) / BULLET_V;
+      const t = this.wpn.beam ? 0 : Math.hypot(best.x - this.px, best.y - this.py) / this.wpn.speed;
       const lx = best.x + (best.vx - this.pvx * 0.3) * t, ly = best.y + (best.vy - this.pvy * 0.3) * t;
       const off = Math.abs(wrapA(Math.atan2(ly - this.py, lx - this.px) - this.aimA));
       this.lock = { e: best, x: lx, y: ly, ok: off < AIM_ASSIST };
     } else this.lock = null;
     // Bordkanonen: nur geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4)
     this.fireCd -= dt;
-    if (this.fireId !== null && this.fireCd <= 0) {
+    this.beams = [];
+    if (this.wpn.beam) {
+      if (this.fireId !== null) this.fireBeams(dt);
+    } else if (this.fireId !== null && this.fireCd <= 0) {
       this.fireCd = this.fireRate;
       let a0 = this.aimA;
       if (this.lock) {
         const la = Math.atan2(this.lock.y - this.py, this.lock.x - this.px);
         if (Math.abs(wrapA(la - this.aimA)) < AIM_ASSIST) a0 = la;
       }
-      const spread = this.c('spread');
-      for (let s = -spread; s <= spread; s++) {
-        const a = a0 + s * 0.16;
-        this.bullets.push({ x: this.px + Math.cos(a) * 14, y: this.py + Math.sin(a) * 14, vx: Math.cos(a) * BULLET_V + this.pvx * 0.3, vy: Math.sin(a) * BULLET_V + this.pvy * 0.3, dmg: this.damage * (s === 0 ? 1 : 0.7), from: 'p', life: 0.65, color: '#7ffff0', w: 2, pierce: this.c('pierce') });
+      const w = this.wpn, spread = this.c('spread');
+      const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
+      for (let g = 0; g < this.ship.salvo; g++) {
+        // Bordkanonen reihum; Lage quer zur Flugrichtung
+        const gx = this.ship.guns[this.gunI++ % this.ship.guns.length];
+        const ox = this.px - sn * gx + c * (this.ship.size * 0.3), oy = this.py + c * gx + sn * (this.ship.size * 0.3);
+        for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < w.pellets; p++) {
+          const a = a0 + s2 * 0.16 + (w.pellets > 1 ? (p / (w.pellets - 1) - 0.5) * 2 * w.spread + (this.r() - 0.5) * 0.04 : 0);
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), splash: w.splash || undefined });
+        }
       }
     }
+    this.updateTurrets(dt);
     // Drohnen kreisen und feuern selbst
     const drones = this.c('drone');
     if (drones) {
@@ -848,6 +899,68 @@ export class ShooterGame implements MiniGame {
           const a = Math.atan2(tgt.y - dy, tgt.x - dx);
           this.droneAim[k2] = a;
           this.bullets.push({ x: dx + Math.cos(a) * 10, y: dy + Math.sin(a) * 10, vx: Math.cos(a) * 560, vy: Math.sin(a) * 560, dmg: 5, from: 'p', life: 0.5, color: '#ffb547', w: 1.6, pierce: 0 });
+        }
+      }
+    }
+  }
+
+  /** Strahler: je feuernde Bordkanone ein Strahl geradeaus; trifft das erste Ziel im Strahl (Schaden pro Sekunde) */
+  private fireBeams(dt: number): void {
+    const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
+    // je Strahl so viel Schaden pro Sekunde wie eine Bordkanone mit Geschossen
+    const dps = this.damage / this.fireRate;
+    const n = this.ship.salvo;
+    for (let g = 0; g < n; g++) {
+      const gx = this.ship.guns.length === 1 ? 0 : this.ship.guns[Math.round((g + 0.5) * this.ship.guns.length / n - 0.5)];
+      const ox = this.px - sn * gx + c * (this.ship.size * 0.3), oy = this.py + c * gx + sn * (this.ship.size * 0.3);
+      // erstes Ziel entlang des Strahls
+      let hitT = BEAM_LEN, hitE: Enemy | null = null, hitM: EMissile | null = null;
+      const along = (x: number, y: number, r: number): number | null => {
+        const t = (x - ox) * c + (y - oy) * sn;
+        if (t < 0 || t > hitT) return null;
+        return Math.abs(-(x - ox) * sn + (y - oy) * c) < r ? t : null;
+      };
+      for (const e of this.enemies) {
+        if (e.kind === 'boss' && e.shielded) continue;
+        const t = along(e.x, e.y, e.r + 3);
+        if (t != null) { hitT = t; hitE = e; hitM = null; }
+      }
+      for (const m of this.eMissiles) { const t = along(m.x, m.y, 8); if (t != null) { hitT = t; hitM = m; hitE = null; } }
+      for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitE = null; hitM = null; } }
+      if (hitE) {
+        this.damageEnemy(hitE, dps * dt);
+        if (Math.random() < 0.5) this.fx.add({ x: ox + c * hitT, y: oy + sn * hitT, color: '#bffff6', size: 1.6, max: 0.15 });
+      }
+      if (hitM) { hitM.hp -= dps * dt; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y); } }
+      this.beams.push([ox, oy, ox + c * hitT, oy + sn * hitT]);
+    }
+  }
+
+  /** Eigene Türme (Korvette): zielen frei mit Vorhalt – Raketen zuerst, sonst der nächste Gegner */
+  private updateTurrets(dt: number): void {
+    if (!this.pTur.length) return;
+    const w = this.tw, range = w.speed * w.life;
+    const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
+    for (const [i, t] of this.pTur.entries()) {
+      const [tx0, ty0] = this.ship.turrets[i];
+      const x = this.px + tx0 * c - ty0 * sn, y = this.py + tx0 * sn + ty0 * c;
+      t.cd -= dt;
+      let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = range;
+      for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
+      if (!tgt) for (const e of this.enemies) {
+        if (e.kind === 'boss' && e.shielded) continue;
+        const d = Math.hypot(e.x - x, e.y - y);
+        if (d < bd) { bd = d; tgt = e; }
+      }
+      if (!tgt) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
+      const lt = bd / w.speed;
+      const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
+      t.a = wrapA(turnTo(t.a, want, dt * 5));
+      if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < 0.15) {
+        t.cd = [0.4, 0.34, 0.28][this.gear.weapon - 1] * w.rate;
+        for (let p = 0; p < w.pellets; p++) {
+          const a = t.a + (w.pellets > 1 ? (p / (w.pellets - 1) - 0.5) * 2 * w.spread : 0);
+          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * 0.4 * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0, splash: w.splash ? w.splash * 0.7 : undefined });
         }
       }
     }
@@ -1007,7 +1120,7 @@ export class ShooterGame implements MiniGame {
       m.life -= dt;
       if (Math.random() < 0.6) this.fx.add({ x: m.x, y: m.y, color: '#ff8a5c', size: 1.2, max: 0.3 });
       if (m.target === 'f' && Math.abs(m.x - fx) < 22 && Math.abs(m.y - fy) < 48) { this.hitFreighter(18 * this.enemyDmg, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
-      else if (Math.hypot(this.px - m.x, this.py - m.y) < 14) { this.damagePlayer(18 * this.enemyDmg); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
+      else if (Math.hypot(this.px - m.x, this.py - m.y) < this.ship.r + 2) { this.damagePlayer(18 * this.enemyDmg); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
     }
     this.eMissiles = this.eMissiles.filter((m) => m.life > 0 && m.hp > 0);
   }
@@ -1029,7 +1142,7 @@ export class ShooterGame implements MiniGame {
           const t = clamp((x - e.x) * cx + (y - e.y) * cy, 0, LASER_LEN);
           return Math.hypot(e.x + cx * t - x, e.y + cy * t - y);
         };
-        if (dist(this.px, this.py) < 9) this.damagePlayer(LASER_DPS * this.enemyDmg * dt);
+        if (dist(this.px, this.py) < this.ship.r - 3) this.damagePlayer(LASER_DPS * this.enemyDmg * dt);
         // Frachter: entlang seiner Längsachse prüfen; Schaden gesammelt, damit nicht jedes Bild Funken sprühen
         let onF = false;
         for (let k = -40; k <= 40 && !onF; k += 10) onF = dist(fx, fy + k) < 16;
@@ -1081,12 +1194,17 @@ export class ShooterGame implements MiniGame {
         const e = this.enemies.find((q) => !b.hit?.has(q) && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < q.r + 3);
         if (e) {
           this.damageEnemy(e, b.dmg);
+          if (b.splash) {
+            // Plasma: Flächenschaden in der Umgebung
+            for (const q of [...this.enemies]) if (q !== e && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < b.splash + q.r) this.damageEnemy(q, b.dmg * 0.5);
+            this.fx.add({ x: b.x, y: b.y, color: b.color, size: b.splash * 0.5, kind: 'ring', max: 0.3 });
+          }
           this.fx.burst(b.x, b.y, '#bffff6', 3, 120, 1.2, 'spark', 0.2);
           if (b.pierce > 0) { b.pierce--; (b.hit ??= new Set()).add(e); keep.push(b); }
           continue;
         }
       } else {
-        if (Math.hypot(this.px - b.x, this.py - b.y) < 12) { this.damagePlayer(b.dmg); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
+        if (Math.hypot(this.px - b.x, this.py - b.y) < this.ship.r) { this.damagePlayer(b.dmg); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
         if (Math.abs(b.x - fx) < 20 && Math.abs(b.y - fy) < 46) { this.hitFreighter(b.dmg, b.x, b.y); continue; }
       }
       keep.push(b);
@@ -1121,10 +1239,11 @@ export class ShooterGame implements MiniGame {
       k.rot += k.vr * dt;
       // Jäger prallt ab
       const d = Math.hypot(this.px - k.x, this.py - k.y);
-      if (d < k.r + 10 && d > 0) {
+      const pr = k.r + this.ship.r - 2;
+      if (d < pr && d > 0) {
         const nx = (this.px - k.x) / d, ny = (this.py - k.y) / d;
-        this.px = k.x + nx * (k.r + 10);
-        this.py = k.y + ny * (k.r + 10);
+        this.px = k.x + nx * pr;
+        this.py = k.y + ny * pr;
         this.pvx = nx * 120; this.pvy = ny * 120;
         if (this.dashT <= 0) this.damagePlayer(3);
       }
@@ -1213,8 +1332,8 @@ export class ShooterGame implements MiniGame {
   }
 
   private damagePlayer(dmg: number): void {
-    if (this.dashT > 0) return;
-    this.shieldWait = 2.5 / (1 + 0.5 * this.c('regen'));
+    if (this.dashT > 0 || this.ocT > 0) return;
+    this.shieldWait = (2.5 * this.sh.delay) / (1 + 0.5 * this.c('regen'));
     if (this.shield > 0) {
       const s = Math.min(this.shield, dmg);
       this.shield -= s;
@@ -1222,7 +1341,8 @@ export class ShooterGame implements MiniGame {
       this.shieldHit = 0.25;
     }
     if (dmg > 0) {
-      this.hull = Math.max(0, this.hull - dmg);
+      // Hülle in Prozent: größere Schiffe halten entsprechend mehr aus
+      this.hull = Math.max(0, this.hull - dmg / this.ship.hull);
       this.shake = Math.max(this.shake, 0.2);
       buzz(20);
     }
@@ -1849,35 +1969,72 @@ export class ShooterGame implements MiniGame {
       ctx.fill();
       ctx.stroke();
     }
+    // Strahler: Strahlen unter dem Schiff
+    if (this.beams.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (const [x1, y1, x2, y2] of this.beams) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = rgba(this.wpn.color, 0.3);
+        ctx.lineWidth = 7;
+        ctx.stroke();
+        ctx.strokeStyle = rgba('#e8ffff', 0.85 + 0.15 * Math.random());
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    const R = this.ship.r;
     ctx.save();
     ctx.translate(this.px, this.py);
     if (this.dashT > 0) ctx.globalAlpha = 0.55;
-    if (this.shieldHit > 0 || this.shield < this.shieldMax) {
+    if (this.ocT > 0) {
+      // Schildüberladung: leuchtende Blase
+      ctx.fillStyle = rgba('#7fd8ff', 0.12 + 0.06 * Math.sin(t * 20));
+      ctx.strokeStyle = rgba('#bff0ff', 0.8);
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, R + 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else if (this.shieldHit > 0 || this.shield < this.shieldMax) {
       const sa = this.shieldHit > 0 ? 0.6 : 0.12 * (this.shield / Math.max(1, this.shieldMax));
       ctx.strokeStyle = rgba('#7fd8ff', sa);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      ctx.arc(0, 0, R + 6, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.rotate(this.aimA + Math.PI / 2);
     const thrust = Math.min(1.6, Math.hypot(this.pvx, this.pvy) / this.speed);
-    const sprite = fighterSprite();
+    const sprite = shipSprite(this.ship.sprite, this.ship.fallback);
     if (sprite) {
       // Bild-Grafik: flackernde Triebwerksflammen hinter den Düsen, darüber das Schiff.
-      // KI-Bilder füllen das Bild fast ganz aus, die gerenderten haben mehr Rand – daher kleiner gezeichnet.
-      const size = shipArt() === 'ai' ? SPRITE_SIZE * 0.86 : SPRITE_SIZE;
+      // Jäger: KI-Bilder füllen das Bild fast ganz aus, die gerenderten haben mehr Rand – daher kleiner gezeichnet.
+      const size = this.ship.size === 40 ? (shipArt() === 'ai' ? SPRITE_SIZE * 0.86 : SPRITE_SIZE) : this.ship.size;
       const { xs, y, color } = sprite.engines;
       ctx.fillStyle = rgba(color, 0.35 + 0.5 * thrust);
+      const fw = size / 22;
       for (const fx of xs) {
         const ex = fx * size, ey = y * size;
         ctx.beginPath();
-        ctx.moveTo(ex - 1.8, ey); ctx.lineTo(ex + 1.8, ey); ctx.lineTo(ex, ey + 2 + thrust * 12 + Math.random() * 3);
+        ctx.moveTo(ex - fw, ey); ctx.lineTo(ex + fw, ey); ctx.lineTo(ex, ey + 2 + (thrust * 12 + Math.random() * 3) * (size / 40));
         ctx.closePath();
         ctx.fill();
       }
       ctx.drawImage(sprite.img, -size / 2, -size / 2, size, size);
+      if (this.odT > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.3 + 0.2 * Math.sin(t * 30);
+        ctx.drawImage(sprite.img, -size / 2, -size / 2, size, size);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
     } else {
+      ctx.scale(this.ship.size / 40, this.ship.size / 40);
       drawFighterVector(ctx);
       ctx.fillStyle = rgba('#9ffff0', 0.4 + 0.5 * thrust);
       ctx.beginPath();
@@ -1886,10 +2043,31 @@ export class ShooterGame implements MiniGame {
       ctx.fill();
     }
     ctx.restore();
+    // eigene Türme (zielen frei)
+    const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
+    for (const [i, tur] of this.pTur.entries()) {
+      const [tx0, ty0] = this.ship.turrets[i];
+      ctx.save();
+      ctx.translate(this.px + tx0 * c - ty0 * sn, this.py + tx0 * sn + ty0 * c);
+      ctx.fillStyle = '#2a1408';
+      ctx.strokeStyle = '#ffb070';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#ffd0a0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(tur.a) * 3, Math.sin(tur.a) * 3);
+      ctx.lineTo(Math.cos(tur.a) * 11, Math.sin(tur.a) * 11);
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.strokeStyle = 'rgba(127,216,255,0.8)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(this.px, this.py, 23, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
+    ctx.arc(this.px, this.py, R + 11, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
     ctx.stroke();
     void t;
   }
@@ -1899,7 +2077,7 @@ export class ShooterGame implements MiniGame {
     const L = this.lock;
     ctx.save();
     // kurze Visierlinie vor der Nase (Reichweite der Bordkanonen)
-    const reach = BULLET_V * 0.65;
+    const reach = this.reach;
     ctx.strokeStyle = 'rgba(127,255,240,0.12)';
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 8]);
@@ -2108,7 +2286,7 @@ export class ShooterGame implements MiniGame {
     const [bx, by, br] = this.btnMissile;
     drawButton(ctx, bx, by, br, 1 - this.missileCd / this.missileCdMax, '#ffb547', 'R', t);
     const [dx, dy, dr] = this.btnDash;
-    drawButton(ctx, dx, dy, dr, 1 - this.dashCd / this.dashCdMax, '#5ff0d8', 'A', t);
+    drawButton(ctx, dx, dy, dr, 1 - this.dashCd / this.dashCdMax, '#5ff0d8', SPECIALS[this.ship.special].key, t);
   }
 
   private drawCards(ctx: CanvasRenderingContext2D): void {

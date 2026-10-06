@@ -17,6 +17,19 @@ await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: 
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
 if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 5) fail('Minispiel-Liste unvollständig');
+// Ausrüstung: Schiff und Waffe wählen, Auswahl erscheint im Menü; danach zurück zur Grundausstattung
+await page.click('#modal [data-act="loadout-open"]');
+await page.waitForTimeout(300);
+await page.click('#modal [data-act="loadout-set"][data-value="asp"]');
+await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="plasma"]');
+await page.waitForTimeout(200);
+await page.screenshot({ path: `${out}/mg-0-loadout.png` });
+if (!(await page.locator('#modal [data-key="turret"]').count())) fail('Asp: keine Türme wählbar');
+await page.click('#modal [data-act="loadout-set"][data-value="mamba"]');
+await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="impuls"]');
+await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
+await page.waitForTimeout(200);
+if (!(await page.locator('#modal [data-act="loadout-open"]').innerText()).includes('Mamba')) fail('Schiffswahl erscheint nicht im Menü');
 
 const phase = () => page.evaluate(() => window.__mg?.phase ?? null);
 const mg = (fn, arg) => page.evaluate(fn, arg);

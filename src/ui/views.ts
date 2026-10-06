@@ -5,6 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
+import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, type ShipId } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1125,10 +1126,38 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>
         <div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
         <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>
-        <div class="section"><h3>Grafik</h3><div class="box rows"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Dein Jäger: ${esc(FIGHTER_NAME[fighterKind()])}</div><div class="sub wrap">Bauart und Darstellung wählen – KI-Bild, gerendert oder gezeichnet</div></div>${icon('chev', 20, 'chev')}</div></div></div>
+        <div class="section"><h3>Kampf: dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SHIPS[loadout().ship].name)} – ${esc(SHIPS[loadout().ship].role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
         <div class="section"><h3>Kampf-Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
       return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');
+    }
+    case 'loadout': {
+      // Schiff, Bordwaffe, Türme, Schild und Darstellung für das Kampf-Minispiel
+      const lo = loadout();
+      const ship = SHIPS[lo.ship];
+      const pic = (id: ShipId) => spriteUrl(SHIPS[id].sprite + '-ki') ?? spriteUrl(SHIPS[id].fallback + '-ki');
+      const bar = (label: string, v: number) => `<div class="lo-bar"><span>${label}</span><i><b style="width:${Math.round(Math.max(0.08, Math.min(1, v)) * 100)}%"></b></i></div>`;
+      const fire = (id: ShipId) => { const d = SHIPS[id]; return (d.salvo * d.dmg) / d.rate + d.turrets.length * 0.7; };
+      const shipRow = (id: ShipId) => {
+        const d = SHIPS[id], on = lo.ship === id, url = pic(id), real = spriteUrl(d.sprite + '-ki');
+        return `<div class="lo-ship ${on ? 'on' : ''}" ${act('loadout-set', { key: 'ship', value: id })}>
+          <div class="lo-pic">${url ? `<img src="${url}" alt="" style="${real ? '' : 'opacity:.45'}">` : ''}${real ? '' : '<small>Bild folgt</small>'}</div>
+          <div class="grow"><div class="title">${esc(d.name)} <span class="muted small">${d.cls} · ${esc(d.role)}</span></div>
+          <div class="sub wrap">${esc(d.desc)}</div>
+          <div class="lo-bars">${bar('Tempo', d.speed)}${bar('Wendigkeit', d.turn)}${bar('Hülle', d.hull / 4)}${bar('Schild', d.shield / 2.2)}${bar('Feuerkraft', fire(id) / 4)}</div></div>
+          ${on ? icon('check', 22, 'pos') : ''}</div>`;
+      };
+      const choice = (key: string, cur: string, ids: string[], defs: Record<string, { name: string; desc: string }>) =>
+        `<div class="box rows">${ids.map((id) => `<div class="row tap" ${act('loadout-set', { key, value: id })}><div class="grow"><div class="title" style="font-weight:500">${esc(defs[id].name)}</div><div class="sub wrap">${esc(defs[id].desc)}</div></div>${cur === id ? icon('check', 20, 'pos') : '<span class="lo-radio"></span>'}</div>`).join('')}</div>`;
+      const body = `<p class="lead">Wähle Schiff und Ausrüstung für den Kampf. Mk-Stufe (Standard bis Spitze) stellst du im Minispiel-Menü ein. Später baust du Schiffe und Teile in deiner Werft.</p>
+        <div class="section"><h3>Schiff</h3><div class="lo-ships">${SHIP_IDS.map(shipRow).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">Spezialfähigkeit der ${esc(ship.name)}: ${esc(SPECIALS[ship.special].name)} (Taste ${SPECIALS[ship.special].key}).</p></div>
+        <div class="section"><h3>Bordwaffen${ship.guns.length > 1 ? ` (${ship.guns.length})` : ''}</h3>${choice('weapon', lo.weapon, WEAPON_IDS, WEAPONS)}</div>
+        ${ship.turrets.length ? `<div class="section"><h3>Türme (${ship.turrets.length})</h3>${choice('turret', lo.turret, WEAPON_IDS.filter((w) => w !== 'strahl'), WEAPONS)}</div>` : ''}
+        <div class="section"><h3>Schild</h3>${choice('shield', lo.shield, SHIELD_IDS, SHIELDS)}</div>
+        <div class="section"><h3>Darstellung</h3><div class="segment">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
+        <div class="box rows" style="margin-top:10px"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Grafikvergleich der Jäger</div><div class="sub">KI-Bild, gerendert und gezeichnet nebeneinander</div></div>${icon('chev', 20, 'chev')}</div></div></div>`;
+      return modalShell('Dein Schiff', body, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Kampf-Ausrüstung');
     }
     case 'shipArt': {
       // Vergleich der Darstellungen des eigenen Jägers: KI-Bild, vorab gerendert (3D), gezeichnet

@@ -4,6 +4,7 @@ import { GasGame } from '../src/minigames/gas';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
+import { SHIP_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
 import { Score, pickGoals, rng, type GameResult, type Level, type MiniGame, type Mode } from '../src/minigames/common';
 import { recordResult, resetRecords, totalStars, unlocked, badgeCount } from '../src/minigames/records';
 
@@ -231,6 +232,20 @@ describe('Kampf', () => {
     const { r, g } = play('pirate', 1, 3, true, 3, 'endless');
     expect(g.state.wave).toBeGreaterThanOrEqual(3);
     expect(r.lines[0][0]).toBe('Wellen');
+  });
+
+  it('alle Schiffe, Waffen, Türme und Schilde sind spielbar', () => {
+    let wins = 0;
+    for (const ship of SHIP_IDS) for (const weapon of WEAPON_IDS) {
+      const lo = { ship, weapon, turret: weapon === 'strahl' ? 'splitter' : weapon, shield: weapon === 'plasma' ? 'schwer' : 'leicht' } as Loadout;
+      const g = new ShooterGame({ ...cfg(1, 3), loadout: lo }, 'xenon');
+      g.resize(W, H);
+      const r = run(g, () => g.autopilot(), 600);
+      expect(r.points).toBeGreaterThan(0);
+      if (r.success) wins++;
+    }
+    // die meisten Zusammenstellungen schafft auch der einfache Autopilot
+    expect(wins).toBeGreaterThanOrEqual(SHIP_IDS.length * WEAPON_IDS.length * 0.6);
   });
 
   it('Besonderheiten laufen fehlerfrei', () => {

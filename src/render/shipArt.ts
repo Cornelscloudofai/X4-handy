@@ -116,6 +116,19 @@ export function fighterSprite(): FighterSprite | null {
 }
 
 /**
+ * Bild eines eigenen Schiffs (Name ohne Endung, z. B. „split-chimera“) in der gewählten Darstellung;
+ * fehlt es, das Ersatzbild – und fehlt auch das, null (dann per Code zeichnen).
+ */
+export function shipSprite(base: string, fallback: string): (FighterSprite & { fallback: boolean }) | null {
+  if (art === 'vector') return null;
+  for (const [name, fb] of [[base + SUFFIX[art], false], [base + '-ki', false], [fallback + SUFFIX[art], true], [fallback + '-ki', true]] as const) {
+    const img = load(name);
+    if (img) return { img, fallback: fb, engines: ENGINES[name] ?? { xs: [0], y: 0.42, color: '#ffb070' } };
+  }
+  return null;
+}
+
+/**
  * Gegner im Kampf-Minispiel: Gegnerart → Bildname (nur KI-Bilder) und Größe im Verhältnis zum Trefferradius.
  * Arten beider Seiten mit gleichem Namen (Boss, Turm) haben ein Präfix: „pirat:“ bzw. „xenon:“.
  */

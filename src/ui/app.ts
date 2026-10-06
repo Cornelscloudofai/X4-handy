@@ -25,7 +25,8 @@ import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
-import { setShipArt, type FighterKind, type ShipArt } from '../render/shipArt';
+import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
+import { loadout, setLoadout, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
@@ -680,7 +681,23 @@ function onClick(e: MouseEvent): void {
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
       case 'ship-art-open': ui.modal = { type: 'shipArt' }; refresh(); break;
-      case 'ship-art': setShipArt(d.art as ShipArt, d.kind as FighterKind); refresh(); break;
+      case 'loadout-open': ui.modal = { type: 'loadout' }; refresh(); break;
+      case 'loadout-set': {
+        const patch = { [String(d.key)]: d.value } as Partial<Loadout>;
+        setLoadout(patch);
+        // Bauart der Raketen und Jäger-Bilder: Argon-Jäger argonisch, alle anderen Split
+        if (d.key === 'ship') setShipArt(shipArt(), d.value === 'argon' ? 'argon' : 'split');
+        refresh();
+        break;
+      }
+      case 'ship-art': {
+        setShipArt(d.art as ShipArt, d.kind as FighterKind);
+        // im Grafikvergleich gewählte Jäger-Bauart auch als Schiff übernehmen
+        if (d.kind === 'argon') setLoadout({ ship: 'argon' });
+        else if (d.kind === 'split' && loadout().ship === 'argon') setLoadout({ ship: 'mamba' });
+        refresh();
+        break;
+      }
       case 'ship-art-try': openMinigame('pirates', { level: 1, mutator: null }, () => refresh(), true); break;
       case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
       case 'mg-gear': if (ui.modal?.type === 'minigames') { ui.modal.gear = Number(d.gear) as 1 | 2 | 3; refresh(); } break;
