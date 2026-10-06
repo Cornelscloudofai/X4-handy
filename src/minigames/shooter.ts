@@ -1,7 +1,7 @@
 // Minispiel „Piratenangriff“ / „Xenon-Schwarm“: Den Frachter bis zum Sprungtor beschützen.
 // Große Karte: der Frachter fliegt seine Route bis zum Sprungtor, Gegner kommen in Gruppen von weit her und
 // werden abgefangen. Alle Schiffe haben feste Bordkanonen (schießen nur geradeaus) – frei zielen nur
-// Geschütztürme (Boss, Frachter), Lenkraketen und die Begleitdrohne. Schwebender Joystick (Drehen + Schub),
+// Geschütztürme (Boss, Frachter), Lenkraketen und die Begleitdrohne. Schwebender Joystick (Drehen + Schub, mit Trägheit),
 // Feuertaste mit Vorhaltekreuz, Reiseantrieb ohne Gegner in der Nähe, Raketensalve und Ausweichmanöver. Nach jeder besiegten Welle wählt man eine von drei Verbesserungen.
 // Gegner: Jäger, Kanonenboote, Raketenboote (Raketen abschießbar), Schildträger; Xenon N, M und
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
@@ -25,8 +25,8 @@ interface Enemy {
   target: 'f' | 'p'; orbit: number; flash: number; dir: number;
   /** Blickrichtung (Bordkanonen feuern nur dorthin) */
   ang: number;
-  /** Jäger-Anflug: nach dem Überflug kurz abdrehen (Restzeit, Richtung) */
-  brk?: number; brkA?: number;
+  /** Jäger-Anflug: nach Salve oder Überflug abdrehen (Restzeit, Richtung); Schüsse und Dauer des laufenden Anflugs */
+  brk?: number; brkA?: number; shots?: number; runT?: number;
   /** Gruppe, mit der der Gegner angeflogen kam */
   grp?: number;
   /** Boss-Teile: Eltern und Versatz */
@@ -94,6 +94,10 @@ const MAP_W = 2600, LEG = 900, MAP_PAD = 520;
 /** Frachter-Tempo auf seiner Route */
 const F_SPEED = 24;
 /** Zielhilfe: liegt der Vorhaltepunkt so nah vor der Nase (rad), gehen die Schüsse genau dorthin */
+/** Trägheit: Beschleunigung (× Höchsttempo pro Sekunde), Abbremsen der Drift pro Sekunde, Joystick-Bereich nur zum Drehen */
+const ACCEL = 2.4;
+const DRIFT_DAMP = 0.35;
+const TURN_ONLY = 0.32;
 const AIM_ASSIST = 0.15;
 
 /** Winkel auf (−π, π] */
@@ -198,7 +202,7 @@ export class ShooterGame implements MiniGame {
   readonly title: string;
   readonly intro: string;
   readonly controls = [
-    'Links hinhalten und ziehen: Joystick – der Jäger dreht sich in die Richtung und fliegt vorwärts',
+    'Links hinhalten und ziehen: Joystick – der Jäger dreht sich in die Richtung und gibt Schub; im inneren Ring dreht er nur und driftet weiter (Trägheit) – so kannst du wenden und rückwärts fliegend schießen',
     'Bordkanonen schießen nur geradeaus: Feuertaste (F) halten; der Kreis vor dem Ziel zeigt, wohin du zielen musst',
     'Raketen (R) suchen ihr Ziel selbst, Ausweichen (A); ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
     'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
@@ -222,6 +226,8 @@ export class ShooterGame implements MiniGame {
   // Spieler
   private px = 0;
   private py = 0;
+  /** Schub 0…1 (für Triebwerksflamme) */
+  private thrust = 0;
   private pvx = 0;
   private pvy = 0;
   private hull = 100;
@@ -624,6 +630,11 @@ export class ShooterGame implements MiniGame {
     this.fireId = best && off < 0.15 && d < this.reach - 15 ? 99 : null;
     if (this.enemies.filter((e) => Math.hypot(e.x - this.px, e.y - this.py) < 450).length >= 3) this.fireMissiles();
     if (this.eMissiles.some((m) => Math.hypot(m.x - this.px, m.y - this.py) < 60)) this.doSpecial();
+    // Ausschlag als Schub verstehen: über den inneren Ring (nur drehen) hinaus abbilden
+    if (this.joy) {
+      const m = Math.hypot(this.joy.kx, this.joy.ky);
+      if (m > 0.01) { const f = Math.min(1, TURN_ONLY + m * (1 - TURN_ONLY)) / m; this.joy.kx *= f; this.joy.ky *= f; }
+    }
   }
 
   // ---------- Wellen ----------
@@ -907,17 +918,27 @@ export class ShooterGame implements MiniGame {
 
   private updatePlayer(dt: number): void {
     // Joystick: Richtung = Kurs (der Jäger dreht sich mit begrenzter Rate dorthin), Ausschlag = Schub nach vorn
+    // Trägheit wie in der Schwerelosigkeit: Schub beschleunigt in Blickrichtung, ohne Schub driftet der Jäger weiter.
+    // Leichter Ausschlag (innerer Ring) dreht nur – so kann man im Driften wenden und nach hinten schießen.
     const j = this.joy;
-    const thr = j ? Math.min(1, Math.hypot(j.kx, j.ky)) : 0;
-    if (j && thr > 0.12) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(j.ky, j.kx), this.turnRate * dt));
+    const defl = j ? Math.min(1, Math.hypot(j.kx, j.ky)) : 0;
+    if (j && defl > 0.12) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(j.ky, j.kx), this.turnRate * dt));
+    const thr = clamp((defl - TURN_ONLY) / (1 - TURN_ONLY), 0, 1);
+    this.thrust = thr;
     // Reiseantrieb: ohne Gegner in der Nähe und bei vollem Schub deutlich schneller
     const calm = this.fireId === null && !this.enemies.some((e) => Math.hypot(e.x - this.px, e.y - this.py) < 560) && !this.eMissiles.some((m) => Math.hypot(m.x - this.px, m.y - this.py) < 400);
     this.cruise = clamp(this.cruise + (calm && thr > 0.85 ? dt * 0.7 : -dt * 3), 0, 1);
-    const sp = this.speed * thr * (1 + 1.5 * this.cruise);
-    const tvx = Math.cos(this.aimA) * sp, tvy = Math.sin(this.aimA) * sp;
-    const k = Math.min(1, dt * 4);
-    this.pvx += (tvx - this.pvx) * k;
-    this.pvy += (tvy - this.pvy) * k;
+    const vmax = this.speed * (1 + 1.5 * this.cruise);
+    // Schub in Blickrichtung; etwas Flugassistent bremst die Drift langsam ab
+    const acc = this.speed * ACCEL * thr * (1 + this.cruise);
+    this.pvx += Math.cos(this.aimA) * acc * dt;
+    this.pvy += Math.sin(this.aimA) * acc * dt;
+    const damp = Math.exp(-DRIFT_DAMP * dt);
+    this.pvx *= damp;
+    this.pvy *= damp;
+    const v = Math.hypot(this.pvx, this.pvy);
+    // über dem Höchsttempo (z. B. nach dem Reiseantrieb) zügig zurück
+    if (v > vmax) { const f = Math.max(vmax / v, Math.exp(-2.5 * dt)); this.pvx *= f; this.pvy *= f; }
     let vx = this.pvx, vy = this.pvy;
     if (this.dashT > 0) { this.dashT -= dt; vx = this.dashVx; vy = this.dashVy; if (Math.random() < 0.7) this.fx.add({ x: this.px, y: this.py, color: '#9ffff0', size: 2, max: 0.25 }); }
     if (this.cruise > 0.4 && Math.random() < this.cruise) this.fx.add({ x: this.px - Math.cos(this.aimA) * 14, y: this.py - Math.sin(this.aimA) * 14, color: '#9ffff0', size: 1.4, max: 0.35 });
@@ -1156,11 +1177,31 @@ export class ShooterGame implements MiniGame {
       const fighter = e.kind === 'jaeger' || e.kind === 'n';
       let want: number, sp = s.speed, face = aimAt;
       if (fighter) {
-        // Anflug wie ein Flugzeug: draufhalten, nach dem Überflug abdrehen, wenden, neuer Anflug
-        if (e.brk && e.brk > 0) { e.brk -= dt; want = e.brkA!; }
-        else {
-          want = aimAt;
-          if (d < (onP ? 70 : 95)) { e.brk = 0.8 + this.r() * 0.7; e.brkA = e.ang + e.dir * (1.1 + this.r() * 0.6); e.dir = this.r() < 0.5 ? 1 : -1; }
+        // Angriff in Anflügen: anfliegen, Salve abgeben, abdrehen und in einem Bogen weg, dann neuer Anflug.
+        // Auf den Jäger greifen höchstens zwei zugleich an – die anderen kreisen solange in Abstand.
+        if (e.brk && e.brk > 0) {
+          e.brk -= dt;
+          want = e.brkA!;
+          sp = s.speed * 1.15;
+        } else {
+          const attackers = onP ? this.enemies.filter((q) => q !== e && q.target === 'p' && (q.kind === 'jaeger' || q.kind === 'n') && (q.runT ?? 0) > 0).length : 0;
+          if (onP && attackers >= 2 && d < 420) {
+            // warten: seitlich um den Jäger kreisen
+            want = Math.atan2(dy, dx) + e.dir * (d < 260 ? 2.1 : 1.4);
+            sp = s.speed * 0.8;
+          } else {
+            want = aimAt;
+            e.runT = (e.runT ?? 0) + dt;
+            const salvo = 3;
+            // Anflug vorbei: Salve abgegeben, zu nah dran oder zu lange
+            if ((e.shots ?? 0) >= salvo || d < (onP ? 90 : 95) || e.runT > 4) {
+              e.dir = this.r() < 0.5 ? 1 : -1;
+              e.brk = 1.5 + this.r() * 1.1;
+              e.brkA = e.ang + e.dir * (0.9 + this.r() * 0.6);
+              e.shots = 0;
+              e.runT = 0;
+            }
+          }
         }
         face = want;
       } else {
@@ -1206,12 +1247,14 @@ export class ShooterGame implements MiniGame {
       const off = Math.abs(wrapA(aimAt - e.ang));
       const range = e.kind === 'n' ? 200 : e.kind === 'boss' ? 380 : e.kind === 'rakete' ? 360 : 320;
       const cone = e.kind === 'kanone' ? 0.2 : e.kind === 'rakete' ? 0.5 : 0.12;
-      if (e.cd <= 0 && d < range && (e.kind === 'boss' || off < cone)) {
+      // Jäger feuern nur im Anflug, nicht beim Abdrehen
+      const breaking = fighter && !!e.brk && e.brk > 0;
+      if (e.cd <= 0 && !breaking && d < range && (e.kind === 'boss' || off < cone)) {
         const a = e.ang + (this.r() - 0.5) * (fighter ? 0.14 : 0.06);
-        if (e.kind === 'jaeger') { e.cd = 1.1; this.enemyShot(e, a, 300, 6, '#ffb070'); }
+        if (e.kind === 'jaeger') { e.cd = 0.4; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 300, 6, '#ffb070'); }
         else if (e.kind === 'kanone') { e.cd = 2.4; for (let q = 0; q < 3; q++) this.enemyShot(e, a + (q - 1) * 0.08, 240, 8, '#ffd27a'); }
         else if (e.kind === 'rakete') { e.cd = 4; this.eMissiles.push({ x: e.x, y: e.y, vx: Math.cos(e.ang) * 90, vy: Math.sin(e.ang) * 90, hp: 6, life: 7, target: e.target }); }
-        else if (e.kind === 'n') { e.cd = 0.85; this.enemyShot(e, a, 340, 4, '#ff5c6c'); }
+        else if (e.kind === 'n') { e.cd = 0.32; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 340, 4, '#ff5c6c'); }
         else if (e.kind === 'm') { e.cd = 1.8; this.enemyShot(e, a, 430, 11, '#ff3b4a', 3); }
         else if (e.kind === 'boss') {
           e.cd = 3.5;
@@ -2125,7 +2168,8 @@ export class ShooterGame implements MiniGame {
       ctx.stroke();
     }
     ctx.rotate(this.aimA + Math.PI / 2);
-    const thrust = Math.min(1.6, Math.hypot(this.pvx, this.pvy) / this.speed);
+    // Flamme nach Schub (driftet der Jäger ohne Schub, glimmen die Düsen nur)
+    const thrust = Math.min(1.6, 0.15 + this.thrust * (1 + this.cruise * 0.6));
     const sprite = shipSprite(this.ship.sprite, this.ship.fallback);
     if (sprite) {
       // Bild-Grafik: flackernde Triebwerksflammen hinter den Düsen, darüber das Schiff.
@@ -2367,6 +2411,13 @@ export class ShooterGame implements MiniGame {
       ctx.beginPath();
       ctx.arc(j.ox, j.oy, 52, 0, Math.PI * 2);
       ctx.stroke();
+      // innerer Ring: nur drehen, ohne Schub (der Jäger driftet weiter)
+      ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = 'rgba(110,220,205,0.3)';
+      ctx.beginPath();
+      ctx.arc(j.ox, j.oy, 52 * TURN_ONLY, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(63,224,197,0.35)';
       ctx.beginPath();
       ctx.arc(j.ox + j.kx * 52, j.oy + j.ky * 52, 20, 0, Math.PI * 2);
