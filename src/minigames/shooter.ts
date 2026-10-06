@@ -102,8 +102,10 @@ const DRIFT_DAMP = 0.35;
 const TURN_ONLY = 0.35;
 /** Radius der Steuerkreise (Bildpunkte) */
 const JOY_R = 78;
-/** Zwei Sticks: rechts ab diesem Ausschlag wird gefeuert; Schub seitlich/rückwärts schwächer (Annahme) */
+/** Zwei Sticks: rechts ab diesem Ausschlag wird gefeuert; Schub seitwärts ein Viertel, rückwärts ein Drittel */
 const AIM_FIRE = 0.55;
+const SIDE_THRUST = 1 / 4;
+const BACK_THRUST = 1 / 3;
 const AIM_ASSIST = 0.15;
 
 /** Winkel auf (−π, π] */
@@ -352,7 +354,7 @@ export class ShooterGame implements MiniGame {
     const lo: Loadout = cfg.loadout ?? loadout();
     this.ctrl = cfg.controls ?? (cfg.loadout ? 'eins' : controlMode());
     if (this.ctrl === 'zwei') this.controls = [
-      'Zwei Sticks: links hinhalten und ziehen zum Fliegen – Schub in jede Richtung, auch seitwärts und rückwärts (dort schwächer); der Jäger driftet mit Trägheit',
+      'Zwei Sticks: links hinhalten und ziehen zum Fliegen – Schub in jede Richtung – seitwärts mit einem Viertel, rückwärts mit einem Drittel der Kraft und des Tempos; der Jäger driftet mit Trägheit',
       'Rechts hinhalten und ziehen zum Zielen: der Jäger dreht sich dorthin; weit ausgelenkt feuern die Bordkanonen (nur geradeaus)',
       'Raketen (R) suchen ihr Ziel selbst, Spezialtaste darüber; ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
@@ -943,7 +945,7 @@ export class ShooterGame implements MiniGame {
     // Leichter Ausschlag (innerer Ring) dreht nur – so kann man im Driften wenden und nach hinten schießen.
     const j = this.joy;
     const defl = j ? Math.min(1, Math.hypot(j.kx, j.ky)) : 0;
-    let thr: number, thrA = this.aimA;
+    let thr: number, thrA = this.aimA, eff = 1;
     if (this.ctrl === 'zwei' && j?.id !== 99) {
       // zwei Sticks: rechts bestimmt die Blickrichtung (weit ausgelenkt: feuern), links der Schub in jede Richtung –
       // auch seitwärts und rückwärts, dort schwächer
@@ -953,7 +955,9 @@ export class ShooterGame implements MiniGame {
       thr = clamp((defl - 0.12) / 0.88, 0, 1);
       if (j && thr > 0) {
         thrA = Math.atan2(j.ky, j.kx);
-        thr *= 0.75 + 0.25 * Math.cos(wrapA(thrA - this.aimA));
+        // Steuerdüsen: seitwärts ein Viertel, rückwärts ein Drittel von Schub und Tempo nach vorn
+        const c = Math.cos(wrapA(thrA - this.aimA));
+        eff = c >= 0 ? SIDE_THRUST + (1 - SIDE_THRUST) * c * c : SIDE_THRUST + (BACK_THRUST - SIDE_THRUST) * c * c;
       }
     } else {
       if (j && defl > 0.12) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(j.ky, j.kx), this.turnRate * dt));
@@ -966,7 +970,9 @@ export class ShooterGame implements MiniGame {
     this.cruise = clamp(this.cruise + (calm && thr > 0.85 ? dt * 0.7 : -dt * 3), 0, 1);
     const vmax = this.speed * (1 + 1.5 * this.cruise);
     // Schub in Blickrichtung; etwas Flugassistent bremst die Drift langsam ab
-    const acc = this.speed * ACCEL * thr * (1 + this.cruise);
+    // in Schubrichtung höchstens so schnell, wie die Düsen dorthin schaffen (seitlich und rückwärts weniger)
+    const along = this.pvx * Math.cos(thrA) + this.pvy * Math.sin(thrA);
+    const acc = along < vmax * eff ? this.speed * ACCEL * thr * eff * (1 + this.cruise) : 0;
     this.pvx += Math.cos(thrA) * acc * dt;
     this.pvy += Math.sin(thrA) * acc * dt;
     const damp = Math.exp(-DRIFT_DAMP * dt);
