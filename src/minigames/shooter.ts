@@ -8,7 +8,7 @@
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite } from '../render/shipArt';
-import { BEAM_LEN, SHIELDS, SHIPS, SPECIALS, TURRET_DMG, WEAPONS, loadout, type Loadout, type ShieldDef, type ShipDef, type WeaponDef } from './loadout';
+import { DMG_SCALE, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, effectiveDps, sustainedDps, type Loadout, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -38,7 +38,40 @@ interface Enemy {
   shielded: boolean;
   inside?: boolean;
 }
-interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Plasma) */ splash?: number }
+/** Waffe in Spielwerten (aus den X4-Werten umgerechnet) */
+interface GameGun {
+  /** Schaden je Geschoss (bzw. pro Sekunde beim Strahl) als Faktor auf den Grundschaden */
+  dmg: number;
+  /** Pause zwischen Schüssen, Salve bzw. Magazin und Nachladezeit (Spielsekunden) */
+  interval: number;
+  mag: number;
+  reload: number;
+  speed: number;
+  life: number;
+  range: number;
+  pellets: number;
+  /** Streuung je Geschoss (rad, ± zufällig) */
+  jitter: number;
+  beam: boolean;
+  sticky: boolean;
+  gimbal: number;
+  color: string;
+  w: number;
+}
+
+/** Streuung aus den Daten (Grad) wird verdreifacht, damit sie auf dem kleinen Bildschirm sichtbar bleibt */
+const JITTER = 3 * (Math.PI / 180);
+
+function gameGun(g: X4Gun, o: { beam?: boolean; sticky?: boolean; gimbal?: number; color: string; w: number }): GameGun {
+  const beam = !!o.beam, range = gameRange(g, beam), speed = beam ? 0 : gameSpeed(g.v);
+  return {
+    dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME,
+    speed, life: beam ? 0 : range / speed, range, pellets: g.amt, jitter: g.angle * JITTER,
+    beam, sticky: !!o.sticky, gimbal: o.gimbal ?? 1, color: o.color, w: o.w,
+  };
+}
+
+interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** haftet und brennt nach (Thermal-Desintegrator) */ sticky?: boolean }
 interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number }
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
 interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p' }
@@ -211,8 +244,13 @@ export class ShooterGame implements MiniGame {
   private dashT = 0;
   // Ausrüstung: Schiff, Bordwaffe, Turmwaffe, Schild
   private readonly ship: ShipDef;
-  private readonly wpn: WeaponDef;
-  private readonly tw: WeaponDef;
+  private readonly wpn: GameGun;
+  private readonly tw: GameGun;
+  /** Schuss im Magazin bzw. in der Salve; Zeit ohne Feuern (danach ist das Magazin wieder voll) */
+  private mag = 0;
+  private idle = 0;
+  /** Nachbrand haftender Geschosse: Gegner, Schaden pro Sekunde, Restzeit */
+  private burns: { e: Enemy; dps: number; t: number }[] = [];
   private readonly sh: ShieldDef;
   /** Waffenüberladung, Nachbrenner, Begleitjäger: Restzeit */
   private odT = 0;
@@ -227,7 +265,9 @@ export class ShooterGame implements MiniGame {
   private foeCount = 1;
   private foeMul = 1;
   /** Türme des eigenen Schiffs: Pause und Richtung */
-  private pTur: { cd: number; a: number }[] = [];
+  private pTur: { cd: number; a: number; mag: number }[] = [];
+  /** Drehtempo der Türme (rad/s) */
+  private turTurn = 5;
   /** Strahler: Strahlen dieses Bilds (von – bis) für die Darstellung */
   private beams: [number, number, number, number][] = [];
   private dashVx = 0;
@@ -294,10 +334,14 @@ export class ShooterGame implements MiniGame {
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
     const lo: Loadout = cfg.loadout ?? loadout();
     this.ship = SHIPS[lo.ship];
-    this.wpn = WEAPONS[lo.weapon];
-    this.tw = WEAPONS[lo.turret];
+    const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret];
+    this.wpn = gameGun(wd[this.ship.gunSize], wd);
+    this.tw = gameGun(td.gun, td);
+    // Drehtempo der Türme aus den Daten (Pulsturm 180°/s = bisheriges Tempo)
+    this.turTurn = (5 * td.turn) / 180;
+    this.mag = this.wpn.mag;
     this.sh = SHIELDS[lo.shield];
-    this.pTur = this.ship.turrets.map(() => ({ cd: 0, a: -Math.PI / 2 }));
+    this.pTur = this.ship.turrets.map(() => ({ cd: 0, a: -Math.PI / 2, mag: this.tw.mag }));
     // Bordkanonen auf allen Waffenplätzen; Raketenwerfer haben (seit X4 9.0) eigene Plätze – nur bei manchen Schiffen
     this.guns = [...this.ship.guns];
     this.launchers = this.ship.x4.launchers ? [0] : [];
@@ -305,9 +349,10 @@ export class ShooterGame implements MiniGame {
     // Stärke des Schiffs gegenüber der Mamba (Haltbarkeit × Feuerkraft): die Gegner werden zahlreicher, ab dem
     // 2,5-Fachen zusätzlich zäher und gefährlicher – so bleibt der Kampf mit den Originalwerten fordernd
     const durability = (this.ship.hull + this.ship.shield) / 2;
-    const firepower = (this.guns.length * this.ship.gunDmg) / (2 * 0.5) + this.ship.turrets.length * TURRET_DMG * 0.5;
+    // Feuerkraft: Dauerleistung aller Bordkanonen und Türme (X4-Werte), zwei S-Pulslaser der Mamba = 1
+    const firepower = (this.guns.length * effectiveDps(wd[this.ship.gunSize], wd.beam) + this.ship.turrets.length * effectiveDps(td.gun)) / (2 * sustainedDps(WEAPONS.puls.s));
     const power = Math.sqrt(durability * firepower);
-    this.foeCount = clamp(power, 0.7, 2.5);
+    this.foeCount = clamp(power, 0.5, 2.5);
     this.foeMul = Math.max(1, power / this.foeCount);
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
@@ -332,13 +377,14 @@ export class ShooterGame implements MiniGame {
   private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn * (this.sprintT > 0 ? 1.3 : 1); }
   /** Drohnen: aus Verbesserungen, dazu der Begleitjäger der Cobra (immer der letzte) */
   private get droneN(): number { return this.c('drone') + (this.escortT > 0 ? 1 : 0); }
-  private get fireRate(): number { return [0.26, 0.21, 0.17][this.gear.weapon - 1] / (1 + 0.25 * this.c('rapid')) * this.wpn.rate * (this.odT > 0 ? 0.5 : 1); }
+  /** Takt der Waffen: Mk-Stufe, Schnellfeuer-Verbesserung und Waffenüberladung verkürzen Schusspausen und Nachladen */
+  private get tempo(): number { return [0.26, 0.21, 0.17][this.gear.weapon - 1] / 0.26 / (1 + 0.25 * this.c('rapid')) * (this.odT > 0 ? 0.5 : 1); }
   /** Grundschaden je Mk-Stufe mit Verbesserungen (ohne Schiff und Waffentyp) */
   private get baseDmg(): number { return [6, 8, 11][this.gear.weapon - 1] * (1 + 0.3 * this.c('heavy')) * (this.mutator?.id === 'glass' ? 2 : 1); }
   /** Reichweite der Bordwaffe */
-  private get reach(): number { return this.wpn.beam ? BEAM_LEN : this.wpn.speed * this.wpn.life; }
-  /** Schaden je Geschoss einer Bordkanone */
-  private get damage(): number { return this.baseDmg * this.ship.gunDmg * this.wpn.dmg; }
+  private get reach(): number { return this.wpn.range; }
+  /** Schaden je Geschoss einer Bordkanone (Strahl: pro Sekunde) */
+  private get damage(): number { return this.baseDmg * this.wpn.dmg; }
   private get shieldMax(): number { return [40, 70, 100][this.gear.shield - 1] * (1 + 0.4 * this.c('shield')) * (this.mutator?.id === 'glass' ? 0.5 : 1) * this.ship.shield * this.sh.cap; }
   private get missileCdMax(): number { return 8 * Math.pow(0.8, this.c('mreload')); }
   private get dashCdMax(): number { return SPECIALS[this.ship.special].cd * Math.pow(0.75, this.c('dash')); }
@@ -555,7 +601,8 @@ export class ShooterGame implements MiniGame {
     const off = Math.abs(wrapA(Math.atan2(dy, dx) - this.aimA));
     // Anflug, nah dran abdrehen und neu anfliegen (Boss-Teile schon früher), weit weg volle Fahrt
     this.apBrk -= 1 / 60;
-    if (best && d < 70 + best.r * 2 && this.apBrk <= -0.6) this.apBrk = 0.6;
+    // große Ziele (Boss) aus kurzer Entfernung beharken statt ständig abzudrehen
+    if (best && d < (best.r >= 30 ? best.r + 45 : 70 + best.r * 2) && this.apBrk <= -0.6) this.apBrk = 0.6;
     if (this.apBrk > 0) {
       const a = Math.atan2(dy, dx) + Math.PI * 0.6 * this.seedDir;
       this.joy = { id: 99, ox: 0, oy: 0, kx: Math.cos(a), ky: Math.sin(a) };
@@ -903,27 +950,46 @@ export class ShooterGame implements MiniGame {
     // Bordkanonen: nur geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4)
     this.fireCd -= dt;
     this.beams = [];
-    if (this.wpn.beam) {
+    const w = this.wpn;
+    // Magazin bzw. Salve: nach einer Pause ohne Feuern ist es wieder voll (wie in X4)
+    if (this.fireId === null) {
+      this.idle += dt;
+      if (w.mag && this.idle >= w.reload * this.tempo) this.mag = w.mag;
+    } else this.idle = 0;
+    if (w.beam) {
       if (this.fireId !== null) this.fireBeams(dt);
     } else if (this.fireId !== null && this.fireCd <= 0) {
-      this.fireCd = this.fireRate;
       let a0 = this.aimA;
       if (this.lock) {
         const la = Math.atan2(this.lock.y - this.py, this.lock.x - this.px);
-        if (Math.abs(wrapA(la - this.aimA)) < AIM_ASSIST) a0 = la;
+        if (Math.abs(wrapA(la - this.aimA)) < AIM_ASSIST * w.gimbal) a0 = la;
       }
-      const w = this.wpn, spread = this.c('spread');
+      const spread = this.c('spread');
       const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
       for (const gx of this.guns) {
         // alle Bordkanonen feuern; Lage quer zur Flugrichtung
         const ox = this.px - sn * gx + c * (this.ship.size * 0.3), oy = this.py + c * gx + sn * (this.ship.size * 0.3);
         for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < w.pellets; p++) {
-          const a = a0 + s2 * 0.16 + (w.pellets > 1 ? (p / (w.pellets - 1) - 0.5) * 2 * w.spread + (this.r() - 0.5) * 0.04 : 0);
-          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), splash: w.splash || undefined });
+          const a = a0 + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter;
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), sticky: w.sticky || undefined });
         }
       }
+      // nächster Schuss; ist das Magazin leer, erst nachladen
+      this.fireCd = w.interval * this.tempo;
+      if (w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; }
     }
     this.updateTurrets(dt);
+    // Nachbrand: dringt zum Teil durch fremde Schilde (Annahme: 65 % statt 30 %)
+    if (this.burns.length) {
+      for (const bn of this.burns) {
+        bn.t -= dt;
+        if (this.enemies.includes(bn.e)) {
+          this.damageEnemy(bn.e, bn.dps * dt, 0.65);
+          if (Math.random() < dt * 8) this.fx.add({ x: bn.e.x + (Math.random() - 0.5) * bn.e.r, y: bn.e.y + (Math.random() - 0.5) * bn.e.r, color: '#ff9d2e', size: 1.4, max: 0.25 });
+        }
+      }
+      this.burns = this.burns.filter((bn) => bn.t > 0 && this.enemies.includes(bn.e));
+    }
     // Drohnen kreisen und feuern selbst
     const drones = this.droneN;
     if (drones) {
@@ -948,13 +1014,20 @@ export class ShooterGame implements MiniGame {
 
   /** Strahler: je feuernde Bordkanone ein Strahl geradeaus; trifft das erste Ziel im Strahl (Schaden pro Sekunde) */
   private fireBeams(dt: number): void {
-    const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
-    // je Strahl so viel Schaden pro Sekunde wie eine Bordkanone mit Geschossen
-    const dps = this.damage / this.fireRate;
+    const c0 = Math.cos(this.aimA), s0 = Math.sin(this.aimA);
+    // Zielhilfe wie bei den Geschossen: liegt der Gegner fast genau vorn, schwenkt der Strahl auf ihn
+    let ba = this.aimA;
+    if (this.lock) {
+      const la = Math.atan2(this.lock.y - this.py, this.lock.x - this.px);
+      if (Math.abs(wrapA(la - this.aimA)) < AIM_ASSIST * this.wpn.gimbal) ba = la;
+    }
+    const c = Math.cos(ba), sn = Math.sin(ba);
+    // Schaden pro Sekunde aus den Daten; Mk-Stufe und Verbesserungen wirken wie auf den Takt
+    const dps = this.damage / TIME / this.tempo;
     for (const gx of this.guns) {
-      const ox = this.px - sn * gx + c * (this.ship.size * 0.3), oy = this.py + c * gx + sn * (this.ship.size * 0.3);
+      const ox = this.px - s0 * gx + c0 * (this.ship.size * 0.3), oy = this.py + c0 * gx + s0 * (this.ship.size * 0.3);
       // erstes Ziel entlang des Strahls
-      let hitT = BEAM_LEN, hitE: Enemy | null = null, hitM: EMissile | null = null;
+      let hitT = this.wpn.range, hitE: Enemy | null = null, hitM: EMissile | null = null;
       const along = (x: number, y: number, r: number): number | null => {
         const t = (x - ox) * c + (y - oy) * sn;
         if (t < 0 || t > hitT) return null;
@@ -968,7 +1041,8 @@ export class ShooterGame implements MiniGame {
       for (const m of this.eMissiles) { const t = along(m.x, m.y, 8); if (t != null) { hitT = t; hitM = m; hitE = null; } }
       for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitE = null; hitM = null; } }
       if (hitE) {
-        this.damageEnemy(hitE, dps * dt);
+        // auf Schilde ausgelegt: fremde Schutzschilde halten den Strahl nicht ab
+        this.damageEnemy(hitE, dps * dt, 1);
         if (Math.random() < 0.5) this.fx.add({ x: ox + c * hitT, y: oy + sn * hitT, color: '#bffff6', size: 1.6, max: 0.15 });
       }
       if (hitM) { hitM.hp -= dps * dt; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y); } }
@@ -979,7 +1053,7 @@ export class ShooterGame implements MiniGame {
   /** Eigene Türme (Korvette): zielen frei mit Vorhalt – Raketen zuerst, sonst der nächste Gegner */
   private updateTurrets(dt: number): void {
     if (!this.pTur.length) return;
-    const w = this.tw, range = w.speed * w.life;
+    const w = this.tw, range = w.range;
     const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
     for (const [i, t] of this.pTur.entries()) {
       const [tx0, ty0] = this.ship.turrets[i];
@@ -995,13 +1069,14 @@ export class ShooterGame implements MiniGame {
       if (!tgt) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
       const lt = bd / w.speed;
       const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
-      t.a = wrapA(turnTo(t.a, want, dt * 5));
+      t.a = wrapA(turnTo(t.a, want, dt * this.turTurn));
       if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < 0.15) {
-        t.cd = [0.4, 0.34, 0.28][this.gear.weapon - 1] * w.rate;
         for (let p = 0; p < w.pellets; p++) {
-          const a = t.a + (w.pellets > 1 ? (p / (w.pellets - 1) - 0.5) * 2 * w.spread : 0);
-          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * 0.5 * TURRET_DMG * (0.4 / 0.26) * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0, splash: w.splash ? w.splash * 0.7 : undefined });
+          const a = t.a + (this.r() - 0.5) * 2 * w.jitter;
+          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0 });
         }
+        t.cd = w.interval * this.tempo;
+        if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
       }
     }
   }
@@ -1234,9 +1309,13 @@ export class ShooterGame implements MiniGame {
         // Der geschützte Boss-Rumpf lässt Geschosse durch – so erreicht man auch die Türme dahinter
         const e = this.enemies.find((q) => !b.hit?.has(q) && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < q.r + 3);
         if (e) {
-          this.damageEnemy(e, b.dmg);
+          if (b.sticky) {
+            // haftet am Ziel und brennt nach (Annahme: Schaden verteilt über 2 Sekunden)
+            this.burns.push({ e, dps: b.dmg / 2, t: 2 });
+            e.flash = 0.08;
+          } else this.damageEnemy(e, b.dmg);
           if (b.splash) {
-            // Plasma: Flächenschaden in der Umgebung
+            // Torpedo: Flächenschaden in der Umgebung
             for (const q of [...this.enemies]) if (q !== e && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < b.splash + q.r) this.damageEnemy(q, b.dmg * 0.5);
             this.fx.add({ x: b.x, y: b.y, color: b.color, size: b.splash * 0.5, kind: 'ring', max: 0.3 });
           }
@@ -1344,9 +1423,10 @@ export class ShooterGame implements MiniGame {
     if (p >= 50) this.floats.add(x, y - 14, `+${p}`, '#ffd27a', p >= 500 ? 18 : 13);
   }
 
-  private damageEnemy(e: Enemy, dmg: number): void {
+  /** bypass: Anteil des Schadens, der durch fremde Schilde dringt (Thermal-Desintegrator: teilweise) */
+  private damageEnemy(e: Enemy, dmg: number, bypass = 0.3): void {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
-    e.hp -= e.shielded ? dmg * 0.3 : dmg;
+    e.hp -= e.shielded ? dmg * bypass : dmg;
     e.flash = 0.08;
     if (e.hp <= 0) this.killEnemy(e, true);
   }

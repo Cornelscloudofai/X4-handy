@@ -29,19 +29,39 @@ gut für den Vergleich untereinander, nicht die Werte mit besseren Triebwerken.
 
 **Schilde (Split, Mk1):** S 740 (lädt 35/s nach 3,5 s), M 3 848 (74/s nach 2 s), L 38 845.
 
-**Waffen (Schaden pro Sekunde, Mk1):**
+## Waffen (X4 9.0, Mk1)
 
-| Waffe | S | M |
-|---|---|---|
-| Impulslaser | 216 | 440 |
-| Bolzenrepetierer | 252 | 368 |
-| Splitterbatterie | 259 | 408 |
-| Split: Neutronen-Gatling | 252 | 342 |
-| Split: Tau-Beschleuniger (Streuschuss) | 560 | 720 |
-| Split: Thermaldisruptor | 124 | 368 |
-| Split: Bosonenlanze | 750 je Schuss | 1 150 je Schuss |
-| M-Impulsturm (generisch) | – | 68 |
-| Rattlesnake-Hauptbatterie | – | 3 220 (L) |
+Aus `weapons.json` (Schaden, Schüsse/s, Geschosse je Schuss, Salve bzw. Magazin und Pause danach, Tempo, Flugzeit,
+Streuung) und `wares.json`. „Dauer“ = Schaden pro Sekunde mit Salven- bzw. Nachladepausen. Die Spielbeschreibungen
+bestätigen die Salven: Der Pulslaser Mk2 hat laut Beschreibung „einen etwas längeren Burst“ (4 statt 3 Schuss).
+
+**Split-Waffen** (Neutronen-Gatling, Tau-Beschleuniger und Thermal-Desintegrator verkaufen Zyarth und Freie Familien;
+die Bosonenlanze nur Zyarth):
+
+| Waffe | S | M | Besonderheit (Spielbeschreibung) |
+|---|---|---|---|
+| Neutronen-Gatling | 14 × 18/s, Dauerfeuer – Dauer 252 | 19 × 18/s – 342 | ununterbrochener Strom langsamer Geschosse, etwas ungenau |
+| Tau-Beschleuniger | 56 × 4 Geschosse, 2,5/s, 6er-Salve, 4 s – Dauer 224 | 90 × 4, 2/s, 6er, 5 s – 288 | Schrot-artig, hohe Feuerrate, kurze Reichweite |
+| Thermal-Desintegrator | 31, 4/s, 8er-Salve, 2,2 s – Dauer 63 | 92, 4/s, 8er, 4,5 s – 117 | haftet am Ziel, brennt nach, dringt teilweise durch Schilde |
+| Bosonenlanze | 750, Einzelschuss, 12,2 s Aufladen – Dauer 61 | 1 150, 2 Schuss, 17 s – 128 | sehr schnell, große Reichweite, lange Aufladeintervalle, kleiner Schwenkbereich |
+
+**Allgemeine Waffen** (laut 9.0-Daten von Argonen, Teladi, Paraniden, Antigone, Hatikvah u. a. gebaut;
+Pulslaser und Plasmakanone verkaufen laut älteren Daten mit Split-DLC auch die Split):
+
+| Waffe | S | M | Besonderheit |
+|---|---|---|---|
+| Pulslaser | 36, 6/s, 3er-Salve, 0,7 s – Dauer 105 | 55, 8/s, 3er, 0,7 s – 154 | schnell, genau, große Reichweite |
+| Bolzenrepetierer | 18, 14/s, 66er-Magazin, 3,4 s – Dauer 148 | 32, 11,5/s, 65er, 3,8 s – 220 | lange Feuerstöße, langsamere Geschosse |
+| Schrotbatterie | 48 × 6, 0,9/s, 8er-Magazin, 5 s – Dauer 180 | 85 × 6, 0,8/s, 6er, 5,5 s – 243 | Streuung, stark auf kurze Entfernung |
+| Strahlenemitter | 82/s Dauerstrahl | 135/s | trifft sofort, auf Schilde ausgelegt |
+| Plasmakanone | 720 je Schuss (Takt s. u.) – Dauer 277 | 1 200 – 480 | langsam, große Reichweite, viel Hitze |
+
+**Split-Türme (M):** Pulsturm 18, 3,8/s, 8er-Salve, 2,4 s (180°/s) · Neutronen-Gatling-Turm 18, 18/s, 80er-Magazin,
+8 s (140°/s) · Tau-Turm 42 × 4, 3/s, 8er, 5 s (160°/s) · Plasmaturm 750, 2 Schuss, 7 s (40°/s) ·
+Bosonenlanzen-Turm 800, 2 Schuss, 15 s (40°/s). Der Split-Flakturm fehlt (keine Schadenswerte in den Daten).
+
+**Hitze:** Mit den Kühlwerten aus 9.0 überhitzt keine dieser Waffen bei Dauerfeuer (Hitze je Sekunde liegt unter
+der Kühlung) – das Minispiel zeigt deshalb keine Hitze an.
 
 ## Beschreibungen aus dem Spiel (gekürzt, übersetzt)
 
@@ -61,15 +81,25 @@ Bezug ist die Mamba (= 1). Aus den Daten übernommen:
 
 - **Hülle, Schildstärke, Schildladung und Ladepause:** wie im Original.
 - **Tempo und Wendigkeit:** Wendigkeit = Mamba-Drehwiderstand ÷ eigener.
-- **Bewaffnung:**
-  - Zahl der Waffenplätze, Raketenwerfer und Türme wie im Original; das Raketenlager ebenso.
-  - Bordkanonen: M-Waffe = 440 ÷ 216 ≈ 2,04-mal so stark wie eine S-Waffe.
-  - Türme: M-Impulsturm = 68 ÷ 216 ≈ 0,31 einer S-Waffe.
+- **Bewaffnung:** Zahl der Waffenplätze, Raketenwerfer und Türme wie im Original; das Raketenlager ebenso.
+- **Waffen:** Schaden je Geschoss, Takt, Geschosse je Schuss, Salven/Magazine mit Pause, Reichweite und Streuung je
+  Waffe und Platzgröße (S/M) aus den Daten. Ein Magazin füllt sich auch, wenn man so lange nicht feuert.
+- **Türme:** Split-M-Türme mit ihren Werten und ihrem Schwenktempo.
 
-Annahme, weil die Daten nichts dazu enthalten: M-Steuerdüsen drehen doppelt so stark wie S-Steuerdüsen.
+Umrechnung: Das Minispiel läuft 1,56-mal gemächlicher (Pulslaser 0,26 s statt 1/6 s je Schuss); die Dauerleistung
+des Pulslasers entspricht dem bisherigen Spielwert, alle anderen Waffen im Verhältnis dazu. Reichweiten maßstäblich
+(3,5 km = 416 Bildpunkte), Geschosstempo verdichtet (Wurzel), Streuung verdreifacht.
 
-Ausgleich: Die Stärke des Schiffs (Haltbarkeit × Feuerkraft) bestimmt die Gegner. Bis zum 2,5-Fachen kommen
-entsprechend mehr Gegner, darüber werden sie zusätzlich zäher und gefährlicher.
+Annahmen, weil die Daten nichts dazu enthalten:
 
-Die vier Waffentypen im Minispiel (Impuls, Strahler, Splitter, Plasma) sind noch allgemein gehalten. Die
-Split-eigenen Waffen (Neutronen-Gatling, Tau-Beschleuniger, Thermaldisruptor, Bosonenlanze) könnten sie ersetzen.
+- M-Steuerdüsen drehen doppelt so stark wie S-Steuerdüsen.
+- Plasmakanone: Takt fehlt in den Daten – sie feuert so schnell, wie ihre Kühlung es erlaubt (Hitze ÷ Kühlung: S alle
+  2,6 s, M alle 2,5 s). Das passt zur Beschreibung (hoher Schaden ähnlich der Schrotbatterie, wenig Schüsse).
+- Strahlenemitter: Schadenswert gilt pro Sekunde; Reichweite wie der Pulslaser. Er durchdringt die Schutzschilde der
+  Schildträger („auf Schilde ausgelegt“).
+- Thermal-Desintegrator: der Schaden wirkt über 2 Sekunden; durch Schutzschilde dringen 65 % statt 30 %.
+- Bosonenlanze: halbe Zielhilfe (kleiner Schwenkbereich); M und Zweier-Magazine der Türme: 1 s zwischen den Schüssen.
+
+Ausgleich: Die Stärke des Schiffs (Haltbarkeit × Feuerkraft mit der gewählten Waffe) bestimmt die Gegner. Bis zum
+2,5-Fachen kommen entsprechend mehr Gegner, darüber werden sie zusätzlich zäher und gefährlicher. Schaden über
+400 Punkte je Geschoss zählt dabei nicht (er verpufft an kleinen Gegnern).

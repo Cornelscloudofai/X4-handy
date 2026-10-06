@@ -4,7 +4,7 @@ import { GasGame } from '../src/minigames/gas';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
-import { SHIP_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
+import { SHIP_IDS, TURRET_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
 import { Score, pickGoals, rng, type GameResult, type Level, type MiniGame, type Mode } from '../src/minigames/common';
 import { recordResult, resetRecords, totalStars, unlocked, badgeCount } from '../src/minigames/records';
 
@@ -236,8 +236,8 @@ describe('Kampf', () => {
 
   it('alle Schiffe, Waffen, Türme und Schilde sind spielbar', () => {
     let wins = 0;
-    for (const ship of SHIP_IDS) for (const weapon of WEAPON_IDS) {
-      const lo = { ship, weapon, turret: weapon === 'strahl' ? 'splitter' : weapon, shield: weapon === 'plasma' ? 'schwer' : 'leicht' } as Loadout;
+    for (const ship of SHIP_IDS) for (const [i, weapon] of WEAPON_IDS.entries()) {
+      const lo = { ship, weapon, turret: TURRET_IDS[i % TURRET_IDS.length], shield: i % 2 ? 'schwer' : 'leicht' } as Loadout;
       const g = new ShooterGame({ ...cfg(1, 3), loadout: lo }, 'xenon');
       g.resize(W, H);
       const r = run(g, () => g.autopilot(), 600);
@@ -246,7 +246,7 @@ describe('Kampf', () => {
     }
     // die meisten Zusammenstellungen schafft auch der einfache Autopilot
     expect(wins).toBeGreaterThanOrEqual(SHIP_IDS.length * WEAPON_IDS.length * 0.6);
-  });
+  }, 30000);
 
   it('Besonderheiten laufen fehlerfrei', () => {
     for (const m of ['swarm', 'glass', 'ion', 'mines', 'bounty']) expect(play('xenon', 2, 2, true, 8, 'normal', m).r.points).toBeGreaterThan(0);

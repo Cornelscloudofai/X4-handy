@@ -5,7 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
-import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, type ShipId } from '../minigames/loadout';
+import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1137,8 +1137,15 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const ship = SHIPS[lo.ship];
       const pic = (id: ShipId) => spriteUrl(SHIPS[id].sprite + '-ki') ?? spriteUrl(SHIPS[id].fallback + '-ki');
       const bar = (label: string, v: number) => `<div class="lo-bar"><span>${label}</span><i><b style="width:${Math.round(Math.max(0.08, Math.min(1, v)) * 100)}%"></b></i></div>`;
-      const fire = (id: ShipId) => { const d = SHIPS[id]; return d.x4.weapons * d.gunDmg + d.turrets.length * 0.16; };
-      const num = (n: number) => n.toLocaleString('de-DE');
+      // Feuerkraft mit der gewählten Waffe und dem gewählten Turm (Dauerleistung aus den X4-Werten)
+      const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret];
+      const fire = (id: ShipId) => { const d = SHIPS[id]; return d.x4.weapons * sustainedDps(wd[d.gunSize], wd.beam) + d.turrets.length * sustainedDps(td.gun); };
+      const fireMax = Math.max(...SHIP_IDS.map(fire));
+      const num = (n: number, digits = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: digits });
+      // Datenzeile einer Waffe: Schaden, Takt, Salve/Magazin, Dauerleistung, Reichweite
+      const gunData = (g: X4Gun, beam = false) => beam
+        ? `${num(g.dmg)} Schaden/s · Dauerstrahl`
+        : `${num(g.dmg)}${g.amt > 1 ? ` × ${g.amt}` : ''} Schaden · ${g.mag === 1 ? 'Einzelschuss' : `${num(g.rate, 1)} Schuss/s`}${g.mag > 1 ? ` · ${g.mag}er-Salve, ${num(g.reload, 1)} s Pause` : g.mag === 1 ? `, ${num(g.reload, 1)} s Aufladen` : ''} · ≈ ${num(sustainedDps(g))}/s · ${num((g.v * g.life) / 1000, 1)} km`;
       const shipRow = (id: ShipId) => {
         const d = SHIPS[id], on = lo.ship === id, url = pic(id), real = spriteUrl(d.sprite + '-ki');
         return `<div class="lo-ship ${on ? 'on' : ''}" ${act('loadout-set', { key: 'ship', value: id })}>
@@ -1146,16 +1153,19 @@ export function modalHtml(state: GameState, ui: UIState): string {
           <div class="grow"><div class="title">${esc(d.name)} <span class="muted small">${d.cls} · ${esc(d.role)}</span></div>
           <div class="sub wrap">${esc(d.desc)}</div>
           <div class="sub wrap lo-data">Hülle ${num(d.x4.hull)} · ${d.x4.engines} Triebwerk${d.x4.engines > 1 ? 'e' : ''} · ${d.x4.shields} Schild${d.x4.shields > 1 ? 'e' : ''} ${d.cls} · ${d.x4.weapons} Waffenplätze${d.x4.launchers ? ` · ${d.x4.launchers} Raketenwerfer (${d.x4.missiles} Raketen)` : ' · keine Raketen'}${d.x4.turrets ? ` · ${d.x4.turrets} Türme` : ''} · ${d.x4.v} m/s</div>
-          <div class="lo-bars">${bar('Tempo', d.speed / 1.5)}${bar('Wendigkeit', d.turn / 1.2)}${bar('Hülle', d.hull / 9.2)}${bar('Schild', d.shield / 5.2)}${bar('Feuerkraft', fire(id) / 6.5)}</div></div>
+          <div class="lo-bars">${bar('Tempo', d.speed / 1.5)}${bar('Wendigkeit', d.turn / 1.2)}${bar('Hülle', d.hull / 9.2)}${bar('Schild', d.shield / 5.2)}${bar('Feuerkraft', fire(id) / fireMax)}</div></div>
           ${on ? icon('check', 22, 'pos') : ''}</div>`;
       };
-      const choice = (key: string, cur: string, ids: string[], defs: Record<string, { name: string; desc: string }>) =>
-        `<div class="box rows">${ids.map((id) => `<div class="row tap" ${act('loadout-set', { key, value: id })}><div class="grow"><div class="title" style="font-weight:500">${esc(defs[id].name)}</div><div class="sub wrap">${esc(defs[id].desc)}</div></div>${cur === id ? icon('check', 20, 'pos') : '<span class="lo-radio"></span>'}</div>`).join('')}</div>`;
+      const choice = (key: string, cur: string, ids: string[], defs: Record<string, { name: string; desc: string }>, data?: (id: string) => string) =>
+        `<div class="box rows">${ids.map((id) => `<div class="row tap" ${act('loadout-set', { key, value: id })}><div class="grow"><div class="title" style="font-weight:500">${esc(defs[id].name)}</div><div class="sub wrap">${esc(defs[id].desc)}</div>${data ? `<div class="sub wrap lo-data">${esc(data(id))}</div>` : ''}</div>${cur === id ? icon('check', 20, 'pos') : '<span class="lo-radio"></span>'}</div>`).join('')}</div>`;
       const body = `<p class="lead">Wähle Schiff und Ausrüstung für den Kampf. Mk-Stufe (Standard bis Spitze) stellst du im Minispiel-Menü ein. Später baust du Schiffe und Teile in deiner Werft.</p>
         <div class="section"><h3>Schiff</h3><div class="lo-ships">${SHIP_IDS.map(shipRow).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Spezialfähigkeit der ${esc(ship.name)}: ${esc(SPECIALS[ship.special].name)} (Taste ${SPECIALS[ship.special].key}).</p></div>
-        <div class="section"><h3>Bordkanonen (${ship.x4.weapons})</h3>${choice('weapon', lo.weapon, WEAPON_IDS, WEAPONS)}</div>
-        ${ship.turrets.length ? `<div class="section"><h3>Türme (${ship.turrets.length})</h3>${choice('turret', lo.turret, WEAPON_IDS.filter((w) => w !== 'strahl'), WEAPONS)}</div>` : ''}
+        <div class="section"><h3>Bordkanonen (${ship.x4.weapons} × ${ship.gunSize.toUpperCase()})</h3>
+          <p class="small muted" style="margin:0 0 8px">Werte aus X4 9.0 (Mk1, ${ship.gunSize.toUpperCase()}-Waffenplatz). Feuerkraft-Balken: mit dieser Waffe.</p>
+          <h3 class="lo-sub">Split-Waffen</h3>${choice('weapon', lo.weapon, WEAPON_IDS.filter((id) => WEAPONS[id].group === 'split'), WEAPONS, (id) => gunData(WEAPONS[id as keyof typeof WEAPONS][ship.gunSize]))}
+          <h3 class="lo-sub">Allgemeine Waffen</h3>${choice('weapon', lo.weapon, WEAPON_IDS.filter((id) => WEAPONS[id].group === 'allgemein'), WEAPONS, (id) => { const d = WEAPONS[id as keyof typeof WEAPONS]; return gunData(d[ship.gunSize], d.beam); })}</div>
+        ${ship.turrets.length ? `<div class="section"><h3>Türme (${ship.turrets.length} × M, Split)</h3>${choice('turret', lo.turret, TURRET_IDS, TURRETS, (id) => { const t = TURRETS[id as keyof typeof TURRETS]; return `${gunData(t.gun)} · schwenkt ${t.turn}°/s`; })}</div>` : ''}
         <div class="section"><h3>Schild</h3>${choice('shield', lo.shield, SHIELD_IDS, SHIELDS)}</div>
         <div class="section"><h3>Darstellung</h3><div class="segment">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
         <div class="box rows" style="margin-top:10px"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Grafikvergleich der Jäger</div><div class="sub">KI-Bild, gerendert und gezeichnet nebeneinander</div></div>${icon('chev', 20, 'chev')}</div></div></div>`;
