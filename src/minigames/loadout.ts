@@ -1,11 +1,11 @@
 // Ausrüstung für das Kampf-Minispiel: welches Schiff du fliegst, welche Waffen und Türme es trägt, welcher Schild.
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
-export type ShipId = 'mamba' | 'argon' | 'chimera' | 'asp';
+export type ShipId = 'mamba' | 'asp' | 'chimera' | 'balaur' | 'dragon' | 'cobra' | 'argon';
 export type WeaponId = 'impuls' | 'strahl' | 'splitter' | 'plasma';
 export type ShieldId = 'leicht' | 'schwer';
 /** Spezialfähigkeit auf der Taste über der Feuertaste */
-export type SpecialId = 'dash' | 'overdrive' | 'overcharge';
+export type SpecialId = 'dash' | 'sprint' | 'overdrive' | 'torpedo' | 'escort';
 
 export interface ShipDef {
   name: string;
@@ -37,26 +37,42 @@ export interface ShipDef {
   fallback: string;
 }
 
+// Split-Schiffe nach X4 (Split Vendetta): Split setzen auf Tempo und Feuerkraft, weniger auf Panzerung.
 export const SHIPS: Record<ShipId, ShipDef> = {
   mamba: {
-    name: 'Mamba', cls: 'S', role: 'Jäger', desc: 'Wendig und schnell, zwei Bordkanonen. Ausweichmanöver.',
+    name: 'Mamba', cls: 'S', role: 'Jäger', desc: 'Der Allrounder: wendig und schnell, zwei Bordkanonen. Ausweichmanöver.',
     speed: 1, turn: 1, hull: 1, shield: 1, guns: [-5, 5], salvo: 1, dmg: 1, rate: 1, turrets: [], r: 12, size: 40,
     special: 'dash', missiles: 4, sprite: 'split-jaeger-s', fallback: 'split-jaeger-s',
+  },
+  asp: {
+    name: 'Asp', cls: 'S', role: 'Abfangjäger', desc: 'Das schnellste und wendigste Schiff, schnell feuernd, aber kaum gepanzert. Nachbrenner: kurz noch schneller.',
+    speed: 1.2, turn: 1.15, hull: 0.85, shield: 0.9, guns: [-4, 4], salvo: 1, dmg: 1, rate: 0.9, turrets: [], r: 11, size: 38,
+    special: 'sprint', missiles: 4, sprite: 'split-asp', fallback: 'split-jaeger-s',
+  },
+  chimera: {
+    name: 'Chimera', cls: 'S', role: 'Schwerer Jäger', desc: 'Schwerer Jäger des Zyarth-Patriarchats: vier Bordkanonen, viel Hülle und Schild, etwas träger. Waffenüberladung: kurz doppelte Feuerrate.',
+    speed: 0.86, turn: 0.8, hull: 1.7, shield: 1.3, guns: [-10, -4, 4, 10], salvo: 2, dmg: 0.7, rate: 1, turrets: [], r: 14, size: 50,
+    special: 'overdrive', missiles: 6, sprite: 'split-chimera', fallback: 'split-jaeger-s',
+  },
+  balaur: {
+    name: 'Balaur', cls: 'S', role: 'Schwerer Jäger', desc: 'Schwerer Jäger der Freien Familien: vier Bordkanonen, schneller als die Chimera, dafür weniger gepanzert. Ausweichmanöver.',
+    speed: 0.96, turn: 0.9, hull: 1.35, shield: 1.1, guns: [-9, -3, 3, 9], salvo: 2, dmg: 0.7, rate: 1, turrets: [], r: 13, size: 48,
+    special: 'dash', missiles: 6, sprite: 'split-balaur', fallback: 'split-jaeger-s',
+  },
+  dragon: {
+    name: 'Dragon', cls: 'M', role: 'Korvette', desc: 'Sechs Bordkanonen nach vorn, zwei Türme, nur ein Schild – schnell für ein M-Schiff, gebaut für Angriff und Rückzug. Torpedo: langsamer, schwerer Schuss mit großem Flächenschaden.',
+    speed: 0.8, turn: 0.55, hull: 2.6, shield: 1.3, guns: [-14, -9, -4, 4, 9, 14], salvo: 3, dmg: 0.52, rate: 1.05, turrets: [[-12, 14], [12, 14]], r: 20, size: 80,
+    special: 'torpedo', missiles: 8, sprite: 'split-dragon', fallback: 'split-jaeger-s',
+  },
+  cobra: {
+    name: 'Cobra', cls: 'M', role: 'Fregatte', desc: 'Drei Bordkanonen, vier Türme, zwei Schilde: robust und trotzdem flott. Begleitjäger: startet für eine Weile einen Jäger aus dem Andockplatz.',
+    speed: 0.7, turn: 0.45, hull: 3.4, shield: 2.4, guns: [-8, 0, 8], salvo: 3, dmg: 0.42, rate: 1.2, turrets: [[-16, -10], [16, -10], [-16, 18], [16, 18]], r: 24, size: 92,
+    special: 'escort', missiles: 8, sprite: 'split-cobra', fallback: 'split-jaeger-s',
   },
   argon: {
     name: 'Argon-Jäger', cls: 'S', role: 'Jäger', desc: 'Der Argon-Jäger aus dem Grafikvergleich – fliegt sich wie die Mamba.',
     speed: 1, turn: 1, hull: 1, shield: 1, guns: [-6, 6], salvo: 1, dmg: 1, rate: 1, turrets: [], r: 12, size: 40,
     special: 'dash', missiles: 4, sprite: 'argon-jaeger-s', fallback: 'argon-jaeger-s',
-  },
-  chimera: {
-    name: 'Chimera', cls: 'S', role: 'Schwerer Jäger', desc: 'Vier Bordkanonen, mehr Hülle und Schild, etwas träger. Waffenüberladung: kurz doppelte Feuerrate.',
-    speed: 0.86, turn: 0.8, hull: 1.7, shield: 1.3, guns: [-10, -4, 4, 10], salvo: 2, dmg: 0.7, rate: 1, turrets: [], r: 14, size: 50,
-    special: 'overdrive', missiles: 6, sprite: 'split-chimera', fallback: 'split-jaeger-s',
-  },
-  asp: {
-    name: 'Asp', cls: 'M', role: 'Korvette', desc: 'Schwere Hauptkanone nach vorn, zwei Türme, die selbst zielen, viel Hülle und Schild – aber träge. Schildüberladung: kurz unverwundbar.',
-    speed: 0.62, turn: 0.42, hull: 3.2, shield: 2, guns: [0], salvo: 1, dmg: 2.4, rate: 1.4, turrets: [[-15, 6], [15, 6]], r: 22, size: 86,
-    special: 'overcharge', missiles: 8, sprite: 'split-asp', fallback: 'split-jaeger-s',
   },
 };
 export const SHIP_IDS = Object.keys(SHIPS) as ShipId[];
@@ -99,8 +115,10 @@ export const SHIELD_IDS = Object.keys(SHIELDS) as ShieldId[];
 
 export const SPECIALS: Record<SpecialId, { name: string; key: string; cd: number }> = {
   dash: { name: 'Ausweichen', key: 'A', cd: 3 },
+  sprint: { name: 'Nachbrenner', key: 'N', cd: 7 },
   overdrive: { name: 'Waffenüberladung', key: 'Ü', cd: 12 },
-  overcharge: { name: 'Schildüberladung', key: 'S', cd: 16 },
+  torpedo: { name: 'Torpedo', key: 'T', cd: 9 },
+  escort: { name: 'Begleitjäger', key: 'J', cd: 24 },
 };
 
 export interface Loadout { ship: ShipId; weapon: WeaponId; turret: WeaponId; shield: ShieldId }

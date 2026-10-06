@@ -20,11 +20,11 @@ if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 5) fail('Min
 // Ausrüstung: Schiff und Waffe wählen, Auswahl erscheint im Menü; danach zurück zur Grundausstattung
 await page.click('#modal [data-act="loadout-open"]');
 await page.waitForTimeout(300);
-await page.click('#modal [data-act="loadout-set"][data-value="asp"]');
+await page.click('#modal [data-act="loadout-set"][data-value="cobra"]');
 await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="plasma"]');
 await page.waitForTimeout(200);
 await page.screenshot({ path: `${out}/mg-0-loadout.png` });
-if (!(await page.locator('#modal [data-key="turret"]').count())) fail('Asp: keine Türme wählbar');
+if (!(await page.locator('#modal [data-key="turret"]').count())) fail('Cobra: keine Türme wählbar');
 await page.click('#modal [data-act="loadout-set"][data-value="mamba"]');
 await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="impuls"]');
 await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });

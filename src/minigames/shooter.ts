@@ -214,9 +214,10 @@ export class ShooterGame implements MiniGame {
   private readonly wpn: WeaponDef;
   private readonly tw: WeaponDef;
   private readonly sh: ShieldDef;
-  /** Waffenüberladung / Schildüberladung: Restzeit */
+  /** Waffenüberladung, Nachbrenner, Begleitjäger: Restzeit */
   private odT = 0;
-  private ocT = 0;
+  private sprintT = 0;
+  private escortT = 0;
   /** nächste Bordkanone (reihum) */
   private gunI = 0;
   /** Türme des eigenen Schiffs: Pause und Richtung */
@@ -310,8 +311,10 @@ export class ShooterGame implements MiniGame {
   // ---------- abgeleitete Werte ----------
 
   private c(id: string): number { return this.cards[id] ?? 0; }
-  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed; }
-  private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn; }
+  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (this.sprintT > 0 ? 1.7 : 1); }
+  private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn * (this.sprintT > 0 ? 1.3 : 1); }
+  /** Drohnen: aus Verbesserungen, dazu der Begleitjäger der Cobra (immer der letzte) */
+  private get droneN(): number { return this.c('drone') + (this.escortT > 0 ? 1 : 0); }
   private get fireRate(): number { return [0.26, 0.21, 0.17][this.gear.weapon - 1] / (1 + 0.25 * this.c('rapid')) * this.ship.rate * this.wpn.rate * (this.odT > 0 ? 0.5 : 1); }
   /** Grundschaden je Mk-Stufe mit Verbesserungen (ohne Schiff und Waffentyp) */
   private get baseDmg(): number { return [6, 8, 11][this.gear.weapon - 1] * (1 + 0.3 * this.c('heavy')) * (this.mutator?.id === 'glass' ? 2 : 1); }
@@ -473,12 +476,25 @@ export class ShooterGame implements MiniGame {
       sfx.tap();
       return;
     }
-    if (this.ship.special === 'overcharge') {
-      this.ocT = 2.5;
-      this.shield = this.shieldMax;
+    if (this.ship.special === 'sprint') {
+      this.sprintT = 2.5;
       this.dashCd = this.dashCdMax;
-      this.floats.add(this.px, this.py - 40, 'Schildüberladung', '#7fd8ff', 13);
       sfx.tap();
+      return;
+    }
+    if (this.ship.special === 'torpedo') {
+      // schwerer, langsamer Torpedo geradeaus aus dem Bug, großer Flächenschaden
+      const a = this.aimA, d0 = this.ship.size * 0.45;
+      this.bullets.push({ x: this.px + Math.cos(a) * d0, y: this.py + Math.sin(a) * d0, vx: Math.cos(a) * 300 + this.pvx * 0.5, vy: Math.sin(a) * 300 + this.pvy * 0.5, dmg: this.baseDmg * 14, from: 'p', life: 2.4, color: '#ffd27a', w: 7, pierce: 0, splash: 70 });
+      this.dashCd = this.dashCdMax;
+      sfx.open();
+      return;
+    }
+    if (this.ship.special === 'escort') {
+      this.escortT = 15;
+      this.dashCd = this.dashCdMax;
+      this.floats.add(this.px, this.py - 40, 'Begleitjäger gestartet', '#ffb070', 13);
+      sfx.open();
       return;
     }
     const j = this.joy;
@@ -544,7 +560,9 @@ export class ShooterGame implements MiniGame {
 
   private waveKinds(i: number): EKind[] {
     const swarm = this.mutator?.id === 'swarm' ? 1.45 : 1;
-    let budget = (5 + i * 3 + this.level * 1.6) * swarm * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
+    // mit einem M-Schiff schicken die Gegner mehr Schiffe
+    const threat = this.ship.cls === 'M' ? 1.6 : 1;
+    let budget = (5 + i * 3 + this.level * 1.6) * swarm * threat * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
     const pool: EKind[] = this.side === 'pirate'
       ? (i === 0 ? ['jaeger'] : i === 1 ? ['jaeger', 'jaeger', 'rakete', 'schild'] : ['jaeger', 'jaeger', 'rakete', 'kanone', 'schild'])
       : (i === 0 ? ['n'] : i === 1 ? ['n', 'n', 'm', 'xs'] : ['n', 'n', 'm', 'xs']);
@@ -841,7 +859,9 @@ export class ShooterGame implements MiniGame {
     this.shieldWait = Math.max(0, this.shieldWait - dt);
     if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.shield * this.sh.regen * (1 + 0.5 * this.c('regen')) * dt);
     this.odT = Math.max(0, this.odT - dt);
-    this.ocT = Math.max(0, this.ocT - dt);
+    this.sprintT = Math.max(0, this.sprintT - dt);
+    this.escortT = Math.max(0, this.escortT - dt);
+    if (this.sprintT > 0 && Math.random() < 0.8) this.fx.add({ x: this.px - Math.cos(this.aimA) * this.ship.size * 0.4, y: this.py - Math.sin(this.aimA) * this.ship.size * 0.4, color: '#ffb070', size: 1.8, max: 0.3 });
     // Vorhaltekreuz: Gegner vor der Nase bevorzugt, sonst der nächste in Reichweite
     let best: Enemy | null = null, bs = 1e9;
     for (const e of this.enemies) {
@@ -884,7 +904,7 @@ export class ShooterGame implements MiniGame {
     }
     this.updateTurrets(dt);
     // Drohnen kreisen und feuern selbst
-    const drones = this.c('drone');
+    const drones = this.droneN;
     if (drones) {
       this.droneA += dt * 2.4;
       this.droneCd -= dt;
@@ -898,7 +918,8 @@ export class ShooterGame implements MiniGame {
         if (tgt) {
           const a = Math.atan2(tgt.y - dy, tgt.x - dx);
           this.droneAim[k2] = a;
-          this.bullets.push({ x: dx + Math.cos(a) * 10, y: dy + Math.sin(a) * 10, vx: Math.cos(a) * 560, vy: Math.sin(a) * 560, dmg: 5, from: 'p', life: 0.5, color: '#ffb547', w: 1.6, pierce: 0 });
+          const escort = this.escortT > 0 && k2 === drones - 1;
+          this.bullets.push({ x: dx + Math.cos(a) * 10, y: dy + Math.sin(a) * 10, vx: Math.cos(a) * 560, vy: Math.sin(a) * 560, dmg: escort ? 10 : 5, from: 'p', life: 0.5, color: escort ? '#7ffff0' : '#ffb547', w: 1.6, pierce: 0 });
         }
       }
     }
@@ -960,15 +981,16 @@ export class ShooterGame implements MiniGame {
         t.cd = [0.4, 0.34, 0.28][this.gear.weapon - 1] * w.rate;
         for (let p = 0; p < w.pellets; p++) {
           const a = t.a + (w.pellets > 1 ? (p / (w.pellets - 1) - 0.5) * 2 * w.spread : 0);
-          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * 0.4 * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0, splash: w.splash ? w.splash * 0.7 : undefined });
+          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * 0.3 * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0, splash: w.splash ? w.splash * 0.7 : undefined });
         }
       }
     }
   }
 
   private dronePos(k: number): [number, number] {
-    const a = this.droneA + (k * Math.PI * 2) / Math.max(1, this.c('drone'));
-    return [this.px + Math.cos(a) * 38, this.py + Math.sin(a) * 38];
+    const a = this.droneA + (k * Math.PI * 2) / Math.max(1, this.droneN);
+    const r = this.ship.size * 0.5 + 18;
+    return [this.px + Math.cos(a) * r, this.py + Math.sin(a) * r];
   }
 
   private updateEnemies(dt: number): void {
@@ -1332,7 +1354,7 @@ export class ShooterGame implements MiniGame {
   }
 
   private damagePlayer(dmg: number): void {
-    if (this.dashT > 0 || this.ocT > 0) return;
+    if (this.dashT > 0) return;
     this.shieldWait = (2.5 * this.sh.delay) / (1 + 0.5 * this.c('regen'));
     if (this.shield > 0) {
       const s = Math.min(this.shield, dmg);
@@ -1944,11 +1966,15 @@ export class ShooterGame implements MiniGame {
   private drawPlayer(ctx: CanvasRenderingContext2D, t: number): void {
     // Drohnen
     const dImg = projectileSprite('split-drohne-ki');
-    for (let k = 0; k < this.c('drone'); k++) {
+    for (let k = 0; k < this.droneN; k++) {
       const [dx, dy] = this.dronePos(k);
-      if (dImg) {
+      // Begleitjäger der Cobra: eine kleine Mamba
+      const escort = this.escortT > 0 && k === this.droneN - 1;
+      const eImg = escort ? shipSprite('split-jaeger-s', 'split-jaeger-s')?.img : null;
+      const img = eImg ?? dImg;
+      if (img) {
         // Bild-Grafik: Split-Drohne, Bug zum Ziel, flackernde Düse
-        const size = 24;
+        const size = escort ? 32 : 24;
         ctx.save();
         ctx.translate(dx, dy);
         ctx.rotate((this.droneAim[k] ?? this.aimA) + Math.PI / 2);
@@ -1957,7 +1983,7 @@ export class ShooterGame implements MiniGame {
         ctx.moveTo(-1.2, 0.4 * size); ctx.lineTo(1.2, 0.4 * size); ctx.lineTo(0, 0.4 * size + 3 + Math.random() * 3);
         ctx.closePath();
         ctx.fill();
-        ctx.drawImage(dImg, -size / 2, -size / 2, size, size);
+        ctx.drawImage(img, -size / 2, -size / 2, size, size);
         ctx.restore();
         continue;
       }
@@ -1991,16 +2017,7 @@ export class ShooterGame implements MiniGame {
     ctx.save();
     ctx.translate(this.px, this.py);
     if (this.dashT > 0) ctx.globalAlpha = 0.55;
-    if (this.ocT > 0) {
-      // Schildüberladung: leuchtende Blase
-      ctx.fillStyle = rgba('#7fd8ff', 0.12 + 0.06 * Math.sin(t * 20));
-      ctx.strokeStyle = rgba('#bff0ff', 0.8);
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(0, 0, R + 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    } else if (this.shieldHit > 0 || this.shield < this.shieldMax) {
+    if (this.shieldHit > 0 || this.shield < this.shieldMax) {
       const sa = this.shieldHit > 0 ? 0.6 : 0.12 * (this.shield / Math.max(1, this.shieldMax));
       ctx.strokeStyle = rgba('#7fd8ff', sa);
       ctx.lineWidth = 2;
