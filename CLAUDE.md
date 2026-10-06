@@ -11,3 +11,4 @@
     Dateigröße ist daher kein Grund, Bilder zu verkleinern.
 - Gezeichnet wird in voller Bildschirmauflösung (bis 3 Bildpunkte je CSS-Pixel) mit hochwertiger Bildglättung.
 - Vor jedem Commit: `npx vitest run` und `npm run e2e` – Ergebnis wirklich prüfen (Exit-Code), nicht nur die Ausgabe überfliegen.
+- Bild-Prompts immer als Codeblock (```text … ```) ausgeben, damit sie per Kopieren-Knopf übernommen werden können – nicht als Zitat.
