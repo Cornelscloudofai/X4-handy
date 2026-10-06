@@ -8,7 +8,7 @@
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite } from '../render/shipArt';
-import { BEAM_LEN, SHIELDS, SHIPS, SPECIALS, WEAPONS, loadout, maxLaunchers, type Loadout, type ShieldDef, type ShipDef, type WeaponDef } from './loadout';
+import { BEAM_LEN, SHIELDS, SHIPS, SPECIALS, TURRET_DMG, WEAPONS, loadout, type Loadout, type ShieldDef, type ShipDef, type WeaponDef } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -298,16 +298,14 @@ export class ShooterGame implements MiniGame {
     this.tw = WEAPONS[lo.turret];
     this.sh = SHIELDS[lo.shield];
     this.pTur = this.ship.turrets.map(() => ({ cd: 0, a: -Math.PI / 2 }));
-    // Raketenwerfer kommen auf die äußeren Waffenplätze, Bordkanonen auf die übrigen
-    const nl = Math.min(lo.launchers ?? 0, maxLaunchers(lo.ship));
-    const byOut = [...this.ship.guns].sort((a, b) => Math.abs(b) - Math.abs(a));
-    this.launchers = byOut.slice(0, nl);
-    this.guns = byOut.slice(nl).sort((a, b) => a - b);
+    // Bordkanonen auf allen Waffenplätzen; Raketenwerfer haben (seit X4 9.0) eigene Plätze – nur bei manchen Schiffen
+    this.guns = [...this.ship.guns];
+    this.launchers = this.ship.x4.launchers ? [0] : [];
     this.ammo = this.ship.x4.missiles;
     // Stärke des Schiffs gegenüber der Mamba (Haltbarkeit × Feuerkraft): die Gegner werden zahlreicher, ab dem
     // 2,5-Fachen zusätzlich zäher und gefährlicher – so bleibt der Kampf mit den Originalwerten fordernd
     const durability = (this.ship.hull + this.ship.shield) / 2;
-    const firepower = (this.guns.length * this.ship.gunDmg) / (2 * 0.5) + this.ship.turrets.length * 0.8;
+    const firepower = (this.guns.length * this.ship.gunDmg) / (2 * 0.5) + this.ship.turrets.length * TURRET_DMG * 0.5;
     const power = Math.sqrt(durability * firepower);
     this.foeCount = clamp(power, 0.7, 2.5);
     this.foeMul = Math.max(1, power / this.foeCount);
@@ -881,7 +879,7 @@ export class ShooterGame implements MiniGame {
     this.missileCd = Math.max(0, this.missileCd - dt);
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.shieldWait = Math.max(0, this.shieldWait - dt);
-    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.shield * this.sh.regen * (1 + 0.5 * this.c('regen')) * dt);
+    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.regen * this.sh.regen * (1 + 0.5 * this.c('regen')) * dt);
     this.odT = Math.max(0, this.odT - dt);
     this.sprintT = Math.max(0, this.sprintT - dt);
     this.escortT = Math.max(0, this.escortT - dt);
@@ -1002,7 +1000,7 @@ export class ShooterGame implements MiniGame {
         t.cd = [0.4, 0.34, 0.28][this.gear.weapon - 1] * w.rate;
         for (let p = 0; p < w.pellets; p++) {
           const a = t.a + (w.pellets > 1 ? (p / (w.pellets - 1) - 0.5) * 2 * w.spread : 0);
-          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * 1.25 * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0, splash: w.splash ? w.splash * 0.7 : undefined });
+          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * 0.5 * TURRET_DMG * (0.4 / 0.26) * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0, splash: w.splash ? w.splash * 0.7 : undefined });
         }
       }
     }
@@ -1376,7 +1374,7 @@ export class ShooterGame implements MiniGame {
 
   private damagePlayer(dmg: number): void {
     if (this.dashT > 0) return;
-    this.shieldWait = (2.5 * this.sh.delay) / (1 + 0.5 * this.c('regen'));
+    this.shieldWait = (2.5 * this.sh.delay * this.ship.delay) / (1 + 0.5 * this.c('regen'));
     if (this.shield > 0) {
       const s = Math.min(this.shield, dmg);
       this.shield -= s;

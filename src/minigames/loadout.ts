@@ -7,15 +7,16 @@ export type ShieldId = 'leicht' | 'schwer';
 /** Spezialfähigkeit auf der Taste über der Feuertaste */
 export type SpecialId = 'dash' | 'sprint' | 'overdrive' | 'torpedo' | 'escort';
 
-/** Werte aus den X4-Spieldaten (siehe docs/design/split-militaerschiffe.md) */
+/** Werte aus den X4-Spieldaten, Version 9.0 (siehe docs/design/split-militaerschiffe.md) */
 export interface X4Data {
   /** Hülle */
   hull: number;
-  /** Triebwerke und Schilde (Anzahl × Größe) */
+  /** Triebwerke und Schilde (Anzahl, Größe wie die Schiffsklasse) */
   engines: number;
   shields: number;
-  /** Waffenplätze vorn (je Platz eine Waffe oder ein Raketenwerfer) und Türme */
+  /** Waffenplätze vorn (Bordkanonen), eigene Raketenwerfer-Plätze (seit 9.0) und Türme */
   weapons: number;
+  launchers: number;
   turrets: number;
   /** Raketenlager */
   missiles: number;
@@ -31,14 +32,17 @@ export interface ShipDef {
   role: string;
   desc: string;
   x4: X4Data;
-  /** abgeleitet aus x4 (Mamba = 1): Tempo, Drehrate, Hülle (Treffer zählen entsprechend weniger), Schild */
+  /** abgeleitet aus x4 (Mamba = 1): Tempo, Drehrate, Hülle (Treffer zählen entsprechend weniger), Schild, Schildladung */
   speed: number;
   turn: number;
   hull: number;
   shield: number;
-  /** Bordkanonen (Waffenplätze): seitliche Lage in Bildpunkten, Bug oben */
+  regen: number;
+  /** Schildladepause im Verhältnis zur Mamba */
+  delay: number;
+  /** Bordkanonen: seitliche Lage in Bildpunkten, Bug oben */
   guns: number[];
-  /** Schaden je Bordkanone (S-Waffe 0,5 – zwei S-Waffen der Mamba ergeben 1; M-Waffe 1,25) */
+  /** Schaden je Bordkanone (zwei S-Waffen der Mamba ergeben 1) */
   gunDmg: number;
   /** Türme (Lage relativ zur Schiffsmitte, Bug oben) – zielen frei */
   turrets: [number, number][];
@@ -51,14 +55,17 @@ export interface ShipDef {
   fallback: string;
 }
 
-/** Bezugsgrößen: Mamba (Hülle 3500, zwei S-Schilde à 703, 341 m/s, Drehwiderstand 2,893), M-Schild 4375 */
-const MAMBA = { hull: 3500, shield: 2 * 703, v: 341, dragYaw: 2.893 };
-const SHIELD_CAP = { S: 703, M: 4375 };
 /**
- * Annahmen, wo die Spieldaten nichts hergeben: M-Waffen richten 2,5-mal so viel Schaden an wie S-Waffen,
- * M-Steuerdüsen haben doppeltes Drehmoment wie S-Steuerdüsen.
+ * Bezugsgrößen aus den Spieldaten 9.0: Mamba (Hülle 3600, 2 S-Schilde à 740, 330 m/s, Drehwiderstand 3,3);
+ * Split-Schilde Mk1: S 740 (lädt 35/s nach 3,5 s), M 3848 (74/s nach 2 s);
+ * Impulslaser Mk1: S 216, M 440 Schaden pro Sekunde; M-Impulsturm 68 pro Sekunde.
  */
-const GUN_DMG = { S: 0.5, M: 1.25 };
+const MAMBA = { hull: 3600, shield: 2 * 740, regen: 2 * 35, v: 330, dragYaw: 3.3 };
+const SHIELD = { S: { cap: 740, rate: 35, delay: 3.5 }, M: { cap: 3848, rate: 74, delay: 2 } };
+const GUN_DMG = { S: 0.5, M: 0.5 * (440 / 216) };
+/** Schaden eines M-Turms im Verhältnis zu einer S-Bordkanone (68 ÷ 216) */
+export const TURRET_DMG = 68 / 216;
+/** Annahme (Drehmoment der Steuerdüsen steht nicht in den Daten): M-Steuerdüsen drehen doppelt so stark wie S */
 const THRUSTER = { S: 1, M: 2 };
 
 /** Waffenplätze gleichmäßig über die Breite verteilen */
@@ -67,7 +74,9 @@ function spreadGuns(n: number, width: number): number[] {
   return Array.from({ length: n }, (_, i) => Math.round((i / (n - 1) - 0.5) * width));
 }
 
-function ship(cls: 'S' | 'M', base: Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hull' | 'shield' | 'gunDmg' | 'guns'> & { gunWidth: number }): ShipDef {
+type ShipBase = Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hull' | 'shield' | 'regen' | 'delay' | 'gunDmg' | 'guns'> & { gunWidth: number };
+
+function ship(cls: 'S' | 'M', base: ShipBase): ShipDef {
   const d = base.x4;
   const { gunWidth, ...rest } = base;
   return {
@@ -76,53 +85,55 @@ function ship(cls: 'S' | 'M', base: Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hu
     speed: d.v / MAMBA.v,
     turn: (MAMBA.dragYaw / d.dragYaw) * THRUSTER[cls],
     hull: d.hull / MAMBA.hull,
-    shield: (d.shields * SHIELD_CAP[cls]) / MAMBA.shield,
+    shield: (d.shields * SHIELD[cls].cap) / MAMBA.shield,
+    regen: (d.shields * SHIELD[cls].rate) / MAMBA.regen,
+    delay: SHIELD[cls].delay / SHIELD.S.delay,
     guns: spreadGuns(d.weapons, gunWidth),
     gunDmg: GUN_DMG[cls],
   };
 }
 
-// Split-Militärschiffe nach den X4-Spieldaten (Split Vendetta). Verhältnisse von Hülle, Schild, Tempo und
-// Waffenzahl exakt wie im Original; die Gegner werden bei stärkeren Schiffen entsprechend zahlreicher und zäher.
+// Split-Militärschiffe nach den X4-Spieldaten 9.0. Verhältnisse von Hülle, Schild, Tempo, Wendigkeit und Bewaffnung
+// wie im Original; die Gegner werden bei stärkeren Schiffen entsprechend zahlreicher und zäher.
 export const SHIPS: Record<ShipId, ShipDef> = {
   jaguar: ship('S', {
-    name: 'Jaguar', role: 'Aufklärer', desc: 'Aufklärer mit phänomenalem Tempo: das schnellste Schiff, aber nur ein Waffenplatz und wenig Hülle. Nachbrenner: kurz noch schneller.',
-    x4: { hull: 2000, engines: 1, shields: 1, weapons: 1, turrets: 0, missiles: 20, v: 377, dragYaw: 3.015 },
+    name: 'Jaguar', role: 'Aufklärer', desc: 'Aufklärer mit phänomenalem Tempo: ein Waffenplatz, wenig Hülle, keine Raketen. Nachbrenner: kurz noch schneller.',
+    x4: { hull: 2000, engines: 1, shields: 1, weapons: 1, launchers: 0, turrets: 0, missiles: 0, v: 390, dragYaw: 3.015 },
     gunWidth: 0, turrets: [], r: 10, size: 36, special: 'sprint', sprite: 'split-jaguar', fallback: 'split-jaeger-s',
   }),
   mamba: ship('S', {
-    name: 'Mamba', role: 'Jäger', desc: 'Vielseitiges Arbeitstier mit ordentlichem Tempo und ordentlicher Bewaffnung – als einziger Jäger mit zwei Schilden. Ausweichmanöver.',
-    x4: { hull: 3500, engines: 2, shields: 2, weapons: 2, turrets: 0, missiles: 20, v: 341, dragYaw: 2.893 },
+    name: 'Mamba', role: 'Jäger', desc: 'Vielseitiges Arbeitstier: zwei Waffenplätze, ein Raketenwerfer, als einziger Jäger zwei Schilde. Ausweichmanöver.',
+    x4: { hull: 3600, engines: 2, shields: 2, weapons: 2, launchers: 1, turrets: 0, missiles: 8, v: 330, dragYaw: 3.3 },
     gunWidth: 10, turrets: [], r: 12, size: 40, special: 'dash', sprite: 'split-jaeger-s', fallback: 'split-jaeger-s',
   }),
   asp: ship('S', {
-    name: 'Asp', role: 'Jäger', desc: 'Mittelgroßer Jäger, bei Split-Söldnern beliebt: drei Waffenplätze und mehr Hülle als die Mamba, aber nur ein Schild. Ausweichmanöver.',
-    x4: { hull: 4600, engines: 2, shields: 1, weapons: 3, turrets: 0, missiles: 20, v: 319, dragYaw: 3.404 },
+    name: 'Asp', role: 'Jäger', desc: 'Wendiger, mittelgroßer Jäger, bei Split-Söldnern beliebt: drei Waffenplätze, ein Raketenwerfer, mehr Hülle als die Mamba, aber nur ein Schild. Ausweichmanöver.',
+    x4: { hull: 4600, engines: 2, shields: 1, weapons: 3, launchers: 1, turrets: 0, missiles: 3, v: 347, dragYaw: 2.9 },
     gunWidth: 14, turrets: [], r: 12, size: 44, special: 'dash', sprite: 'split-asp', fallback: 'split-jaeger-s',
   }),
   balaur: ship('S', {
-    name: 'Balaur', role: 'Schwerer Jäger', desc: 'Meisterstück der Freien Familien: vier Waffenplätze, drei Triebwerke – „hart zuschlagen, schnell zuschlagen, dann weg“. Ausweichmanöver.',
-    x4: { hull: 5500, engines: 3, shields: 1, weapons: 4, turrets: 0, missiles: 20, v: 352, dragYaw: 3.288 },
+    name: 'Balaur', role: 'Schwerer Jäger', desc: 'Meisterstück der Freien Familien: vier Waffenplätze, drei Triebwerke, keine Raketen – „hart zuschlagen, schnell zuschlagen, dann weg“. Ausweichmanöver.',
+    x4: { hull: 5500, engines: 3, shields: 1, weapons: 4, launchers: 0, turrets: 0, missiles: 0, v: 363, dragYaw: 3.62 },
     gunWidth: 18, turrets: [], r: 13, size: 48, special: 'dash', sprite: 'split-balaur', fallback: 'split-jaeger-s',
   }),
   chimera: ship('S', {
-    name: 'Chimera', role: 'Schwerer Jäger', desc: 'Schwerer Jäger des Zyarth-Patriarchats: fünf Waffenplätze, vier Triebwerke, die meiste Hülle der Jäger – aber ein großes, leicht zu treffendes Profil. Waffenüberladung: kurz doppelte Feuerrate.',
-    x4: { hull: 6100, engines: 4, shields: 1, weapons: 5, turrets: 0, missiles: 20, v: 354, dragYaw: 4.096 },
+    name: 'Chimera', role: 'Schwerer Jäger', desc: 'Schwerer Jäger des Zyarth-Patriarchats: fünf Waffenplätze, vier Triebwerke, die meiste Hülle der Jäger, keine Raketen – aber ein großes Profil. Waffenüberladung: kurz doppelte Feuerrate.',
+    x4: { hull: 6100, engines: 4, shields: 1, weapons: 5, launchers: 0, turrets: 0, missiles: 0, v: 394, dragYaw: 4.3 },
     gunWidth: 22, turrets: [], r: 15, size: 52, special: 'overdrive', sprite: 'split-chimera', fallback: 'split-jaeger-s',
   }),
   dragon: ship('M', {
-    name: 'Dragon', role: 'Korvette', desc: 'Furchteinflößende Korvette: sechs M-Waffenplätze nach vorn, zwei Türme, nur ein Schild, schnell. Torpedo: langsamer, schwerer Schuss mit großem Flächenschaden.',
-    x4: { hull: 17000, engines: 1, shields: 1, weapons: 6, turrets: 2, missiles: 40, v: 475, dragYaw: 11.298 },
+    name: 'Dragon', role: 'Korvette', desc: 'Furchteinflößende Korvette: sechs M-Waffenplätze, ein M-Raketenwerfer, zwei Türme, nur ein Schild. Torpedo: langsamer, schwerer Schuss mit großem Flächenschaden.',
+    x4: { hull: 21000, engines: 1, shields: 1, weapons: 6, launchers: 1, turrets: 2, missiles: 2, v: 478, dragYaw: 11.298 },
     gunWidth: 28, turrets: [[-12, 14], [12, 14]], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
   }),
   cobra: ship('M', {
-    name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, großes Raketenlager und ein Andockplatz für ein S-Schiff. Begleitjäger: startet für eine Weile eine Mamba.',
-    x4: { hull: 32000, engines: 3, shields: 2, weapons: 3, turrets: 4, missiles: 100, v: 496, dragYaw: 11.351 },
+    name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
+    x4: { hull: 33000, engines: 3, shields: 2, weapons: 3, launchers: 0, turrets: 4, missiles: 0, v: 518, dragYaw: 11 },
     gunWidth: 16, turrets: [[-16, -10], [16, -10], [-16, 18], [16, 18]], r: 24, size: 92, special: 'escort', sprite: 'split-cobra', fallback: 'split-jaeger-s',
   }),
   argon: ship('S', {
     name: 'Argon-Jäger', role: 'Jäger', desc: 'Der Argon-Jäger aus dem Grafikvergleich – mit den Werten der Mamba.',
-    x4: { hull: 3500, engines: 2, shields: 2, weapons: 2, turrets: 0, missiles: 20, v: 341, dragYaw: 2.893 },
+    x4: { hull: 3600, engines: 2, shields: 2, weapons: 2, launchers: 1, turrets: 0, missiles: 8, v: 330, dragYaw: 3.3 },
     gunWidth: 12, turrets: [], r: 12, size: 40, special: 'dash', sprite: 'argon-jaeger-s', fallback: 'argon-jaeger-s',
   }),
 };
@@ -172,31 +183,18 @@ export const SPECIALS: Record<SpecialId, { name: string; key: string; cd: number
   escort: { name: 'Begleitjäger', key: 'J', cd: 24 },
 };
 
-/** launchers: wie viele Waffenplätze einen Raketenwerfer statt einer Bordkanone tragen (wie in X4) */
-export interface Loadout { ship: ShipId; weapon: WeaponId; turret: WeaponId; shield: ShieldId; launchers: number }
-export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'impuls', turret: 'impuls', shield: 'leicht', launchers: 0 };
-
-/** Höchstens so viele Raketenwerfer, dass mindestens eine Bordkanone bleibt (Jaguar: keiner) */
-export function maxLaunchers(id: ShipId): number {
-  return Math.min(3, SHIPS[id].x4.weapons - 1);
-}
+export interface Loadout { ship: ShipId; weapon: WeaponId; turret: WeaponId; shield: ShieldId }
+export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'impuls', turret: 'impuls', shield: 'leicht' };
 
 const KEY = 'x4-sektorbau-ausruestung';
 
 function valid(l: Partial<Loadout> | null | undefined): Loadout {
-  const out = clean(l);
-  out.launchers = Math.max(0, Math.min(maxLaunchers(out.ship), Math.round(Number(l?.launchers) || 0)));
-  return out;
-}
-
-function clean(l: Partial<Loadout> | null | undefined): Loadout {
   return {
     ship: l?.ship && l.ship in SHIPS ? l.ship : DEFAULT_LOADOUT.ship,
     weapon: l?.weapon && l.weapon in WEAPONS ? l.weapon : DEFAULT_LOADOUT.weapon,
     // Türme feuern Geschosse – ein Strahl-Turm ist nicht vorgesehen
     turret: l?.turret && l.turret in WEAPONS && l.turret !== 'strahl' ? l.turret : DEFAULT_LOADOUT.turret,
     shield: l?.shield && l.shield in SHIELDS ? l.shield : DEFAULT_LOADOUT.shield,
-    launchers: 0,
   };
 }
 
@@ -227,6 +225,5 @@ export function setLoadout(patch: Partial<Loadout>): Loadout {
 /** Kurzbeschreibung für das Menü */
 export function loadoutLabel(l: Loadout = loadout()): string {
   const s = SHIPS[l.ship];
-  const guns = s.x4.weapons - l.launchers;
-  return `${s.name} · ${guns}× ${WEAPONS[l.weapon].name}${l.launchers ? ` · ${l.launchers}× Raketenwerfer` : ''}${s.turrets.length ? ` · ${s.turrets.length} Türme: ${WEAPONS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
+  return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer` : ''}${s.turrets.length ? ` · ${s.turrets.length} Türme: ${WEAPONS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
 }
