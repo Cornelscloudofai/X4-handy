@@ -43,7 +43,7 @@ die Bosonenlanze nur Zyarth):
 | Neutronen-Gatling | 14 × 18/s, Dauerfeuer – Dauer 252 | 19 × 18/s – 342 | ununterbrochener Strom langsamer Geschosse, etwas ungenau |
 | Tau-Beschleuniger | 56 × 4 Geschosse, 2,5/s, 6er-Salve, 4 s – Dauer 224 | 90 × 4, 2/s, 6er, 5 s – 288 | Schrot-artig, hohe Feuerrate, kurze Reichweite |
 | Thermal-Desintegrator | 31, 4/s, 8er-Salve, 2,2 s – Dauer 63 | 92, 4/s, 8er, 4,5 s – 117 | haftet am Ziel, brennt nach, dringt teilweise durch Schilde |
-| Bosonenlanze | 750, Einzelschuss, 12,2 s Aufladen – Dauer 61 | 1 150, 2 Schuss, 17 s – 128 | sehr schnell, große Reichweite, lange Aufladeintervalle, kleiner Schwenkbereich |
+| Bosonenlanze | 750 je Schuss, etwa 1/s – Dauer 750 | 1 150 je Schuss – 1 150 | blitzschneller Strahl, große Reichweite, kleiner Schwenkbereich |
 
 **Allgemeine Waffen** (laut 9.0-Daten von Argonen, Teladi, Paraniden, Antigone, Hatikvah u. a. gebaut;
 Pulslaser und Plasmakanone verkaufen laut älteren Daten mit Split-DLC auch die Split):
@@ -58,7 +58,7 @@ Pulslaser und Plasmakanone verkaufen laut älteren Daten mit Split-DLC auch die 
 
 **Split-Türme (M):** Pulsturm 18, 3,8/s, 8er-Salve, 2,4 s (180°/s) · Neutronen-Gatling-Turm 18, 18/s, 80er-Magazin,
 8 s (140°/s) · Tau-Turm 42 × 4, 3/s, 8er, 5 s (160°/s) · Plasmaturm 750, 2 Schuss, 7 s (40°/s) ·
-Bosonenlanzen-Turm 800, 2 Schuss, 15 s (40°/s). Der Split-Flakturm fehlt (keine Schadenswerte in den Daten).
+Bosonenlanzen-Turm 800, etwa 1/s (40°/s). Der Split-Flakturm fehlt (keine Schadenswerte in den Daten).
 
 **Hitze:** Mit den Kühlwerten aus 9.0 überhitzt keine dieser Waffen bei Dauerfeuer (Hitze je Sekunde liegt unter
 der Kühlung) – das Minispiel zeigt deshalb keine Hitze an.
@@ -98,7 +98,10 @@ Annahmen, weil die Daten nichts dazu enthalten:
 - Strahlenemitter: Schadenswert gilt pro Sekunde; Reichweite wie der Pulslaser. Er durchdringt die Schutzschilde der
   Schildträger („auf Schilde ausgelegt“).
 - Thermal-Desintegrator: der Schaden wirkt über 2 Sekunden; durch Schutzschilde dringen 65 % statt 30 %.
-- Bosonenlanze: halbe Zielhilfe (kleiner Schwenkbereich); M und Zweier-Magazine der Türme: 1 s zwischen den Schüssen.
+- Bosonenlanze: etwa ein Schuss pro Sekunde, wie im Spiel erlebt – der Datenwert „Munition 1, Nachladen 12,2 s“
+  ist offenbar nicht der Schusstakt (die Schussrate selbst fehlt in den Daten). Sie trifft als blitzschneller Strahl
+  sofort; halbe Zielhilfe (kleiner Schwenkbereich).
+- Plasmaturm (Zweier-Magazin): 1 s zwischen den beiden Schüssen.
 
 Ausgleich: Die Stärke des Schiffs (Haltbarkeit × Feuerkraft mit der gewählten Waffe) bestimmt die Gegner. Bis zum
 2,5-Fachen kommen entsprechend mehr Gegner, darüber werden sie zusätzlich zäher und gefährlicher. Schaden über

@@ -1,4 +1,4 @@
-import type { Loadout } from './loadout';
+import type { ControlMode, Loadout } from './loadout';
 // Gemeinsame Bausteine der Minispiele: Zufall mit Startwert, Partikel, Sternenhimmel, Neon-Striche.
 // Ohne DOM-Zugriff beim Laden, damit die Spiellogik in Tests (Node) läuft.
 
@@ -29,6 +29,8 @@ export interface GameCfg {
   mode?: Mode;
   /** Kampf: Schiff und Ausrüstung (sonst die gespeicherte Wahl) */
   loadout?: Loadout;
+  /** Kampf: Steuerung (sonst die gespeicherte Wahl) */
+  controls?: ControlMode;
 }
 
 export interface GameResult {

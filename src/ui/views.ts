@@ -5,7 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
-import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
+import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1127,6 +1127,8 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
         <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>
         <div class="section"><h3>Kampf: dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SHIPS[loadout().ship].name)} – ${esc(SHIPS[loadout().ship].role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
+        <div class="section"><h3>Kampf-Steuerung</h3><div class="segment">${(['eins', 'zwei'] as const).map((c) => `<button class="${controlMode() === c ? 'on' : ''}" ${act('mg-controls', { mode: c })}>${c === 'eins' ? 'Ein Stick + Feuertaste' : 'Zwei Sticks'}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : 'Links fliegen – Schub in jede Richtung, auch rückwärts. Rechts zielen; weit ausgelenkt wird gefeuert.'}</p></div>
         <div class="section"><h3>Kampf-Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
       return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');

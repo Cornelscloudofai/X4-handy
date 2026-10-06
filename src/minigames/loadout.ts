@@ -151,9 +151,10 @@ export interface WeaponDef {
   /** Werte für S- und M-Waffenplätze */
   s: X4Gun;
   m: X4Gun;
-  /** Strahl statt Geschossen; haftende Geschosse mit Nachbrand (Thermal-Desintegrator) */
+  /** Strahl statt Geschossen; haftende Geschosse mit Nachbrand (Thermal-Desintegrator); Lanze: trifft sofort als Blitzstrahl */
   beam?: boolean;
   sticky?: boolean;
+  rail?: boolean;
   /** Zielhilfe im Verhältnis zu sonst (Bosonenlanze: kleiner Schwenkbereich) */
   gimbal?: number;
   color: string;
@@ -163,7 +164,8 @@ export interface WeaponDef {
 // Annahmen, wo die Daten nichts hergeben (siehe docs/design/split-militaerschiffe.md):
 // – Plasmakanone: die Nachladezeit fehlt; sie feuert so schnell, wie ihre Kühlung es erlaubt (Hitze ÷ Kühlung).
 // – Strahlenemitter: Schaden pro Sekunde; Reichweite wie der Pulslaser.
-// – Bosonenlanze M und Türme mit Zweier-Magazin: 1 s zwischen den beiden Schüssen.
+// – Bosonenlanze: etwa ein Schuss pro Sekunde (so im Spiel; der Datenwert 12,2 s ist offenbar nicht der Schusstakt),
+//   trifft als blitzschneller Strahl sofort. Plasmaturm (Zweier-Magazin): 1 s zwischen den beiden Schüssen.
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   puls: {
     name: 'Pulslaser', group: 'allgemein', color: '#7ffff0', w: 2,
@@ -214,16 +216,16 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     m: { dmg: 92, rate: 4, amt: 1, mag: 8, reload: 4.5, v: 2200, life: 1.682, angle: 0.3 },
   },
   boson: {
-    name: 'Bosonenlanze', group: 'split', color: '#e0c3ff', w: 3, gimbal: 0.5,
-    desc: 'Split: ein einzelner, extrem schneller Schuss mit riesigem Schaden und größter Reichweite – dann lange aufladen.',
-    s: { dmg: 750, rate: 1, amt: 1, mag: 1, reload: 12.2, v: 14000, life: 0.55, angle: 0.23 },
-    m: { dmg: 1150, rate: 1, amt: 1, mag: 2, reload: 17, v: 14000, life: 0.59, angle: 0.23 },
+    name: 'Bosonenlanze', group: 'split', color: '#e0c3ff', w: 3, gimbal: 0.5, rail: true,
+    desc: 'Split: blitzschneller Lanzenstrahl, der sofort trifft – riesiger Schaden und größte Reichweite, etwa ein Schuss pro Sekunde.',
+    s: { dmg: 750, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.55, angle: 0.23 },
+    m: { dmg: 1150, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.59, angle: 0.23 },
   },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
 /** Split-Türme (M) für Korvette und Fregatte – Werte aus den Spieldaten 9.0 (Drehtempo in Grad pro Sekunde) */
-export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number }
+export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean }
 export const TURRETS: Record<TurretId, TurretDef> = {
   puls: { name: 'Pulsturm', desc: 'Schnell schwenkend und genau, wenig Schaden – gut gegen Raketen und Jäger.', turn: 180, color: '#7ffff0', w: 2,
     gun: { dmg: 18, rate: 3.8, amt: 1, mag: 8, reload: 2.4, v: 5000, life: 0.7, angle: 0.17 } },
@@ -233,8 +235,8 @@ export const TURRETS: Record<TurretId, TurretDef> = {
     gun: { dmg: 42, rate: 3, amt: 4, mag: 8, reload: 5, v: 2000, life: 1.235, angle: 1.15 } },
   plasma: { name: 'Plasmaturm', desc: 'Zwei schwere Plasmageschosse, dann sieben Sekunden Pause; schwenkt langsam.', turn: 40, color: '#a6ff6b', w: 4,
     gun: { dmg: 750, rate: 1, amt: 1, mag: 2, reload: 7, v: 1000, life: 5.5, angle: 0.8 } },
-  boson: { name: 'Bosonenlanzen-Turm', desc: 'Zwei sehr schnelle, schwere Schüsse, dann 15 Sekunden aufladen; schwenkt langsam.', turn: 40, color: '#e0c3ff', w: 3,
-    gun: { dmg: 800, rate: 1, amt: 1, mag: 2, reload: 15, v: 14000, life: 0.57, angle: 0.18 } },
+  boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, etwa ein Schuss pro Sekunde; schwenkt langsam.', turn: 40, color: '#e0c3ff', w: 3, rail: true,
+    gun: { dmg: 800, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.57, angle: 0.18 } },
 };
 export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
 
@@ -324,4 +326,22 @@ export function setLoadout(patch: Partial<Loadout>): Loadout {
 export function loadoutLabel(l: Loadout = loadout()): string {
   const s = SHIPS[l.ship];
   return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer` : ''}${s.turrets.length ? ` · ${s.turrets.length} Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
+}
+
+// ---- Steuerung im Kampf: ein Stick (Drehen + Schub, Feuertaste) oder zwei Sticks (links fliegen, rechts zielen und feuern) ----
+export type ControlMode = 'eins' | 'zwei';
+const CONTROL_KEY = 'x4-sektorbau-steuerung';
+export function controlMode(): ControlMode {
+  try {
+    return globalThis.localStorage?.getItem(CONTROL_KEY) === 'zwei' ? 'zwei' : 'eins';
+  } catch {
+    return 'eins';
+  }
+}
+export function setControlMode(m: ControlMode): void {
+  try {
+    globalThis.localStorage?.setItem(CONTROL_KEY, m);
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
 }

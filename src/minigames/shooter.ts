@@ -8,7 +8,7 @@
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite } from '../render/shipArt';
-import { DMG_SCALE, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, effectiveDps, sustainedDps, type Loadout, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, type ControlMode, type Loadout, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
@@ -54,6 +54,8 @@ interface GameGun {
   jitter: number;
   beam: boolean;
   sticky: boolean;
+  /** Lanze: trifft sofort als Blitzstrahl */
+  rail: boolean;
   gimbal: number;
   color: string;
   w: number;
@@ -62,12 +64,12 @@ interface GameGun {
 /** Streuung aus den Daten (Grad) wird verdreifacht, damit sie auf dem kleinen Bildschirm sichtbar bleibt */
 const JITTER = 3 * (Math.PI / 180);
 
-function gameGun(g: X4Gun, o: { beam?: boolean; sticky?: boolean; gimbal?: number; color: string; w: number }): GameGun {
+function gameGun(g: X4Gun, o: { beam?: boolean; sticky?: boolean; rail?: boolean; gimbal?: number; color: string; w: number }): GameGun {
   const beam = !!o.beam, range = gameRange(g, beam), speed = beam ? 0 : gameSpeed(g.v);
   return {
     dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME,
     speed, life: beam ? 0 : range / speed, range, pellets: g.amt, jitter: g.angle * JITTER,
-    beam, sticky: !!o.sticky, gimbal: o.gimbal ?? 1, color: o.color, w: o.w,
+    beam, sticky: !!o.sticky, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w,
   };
 }
 
@@ -97,7 +99,11 @@ const F_SPEED = 24;
 /** Trägheit: Beschleunigung (× Höchsttempo pro Sekunde), Abbremsen der Drift pro Sekunde, Joystick-Bereich nur zum Drehen */
 const ACCEL = 2.4;
 const DRIFT_DAMP = 0.35;
-const TURN_ONLY = 0.32;
+const TURN_ONLY = 0.35;
+/** Radius der Steuerkreise (Bildpunkte) */
+const JOY_R = 78;
+/** Zwei Sticks: rechts ab diesem Ausschlag wird gefeuert; Schub seitlich/rückwärts schwächer (Annahme) */
+const AIM_FIRE = 0.55;
 const AIM_ASSIST = 0.15;
 
 /** Winkel auf (−π, π] */
@@ -201,7 +207,7 @@ export class ShooterGame implements MiniGame {
   readonly eyebrow: string;
   readonly title: string;
   readonly intro: string;
-  readonly controls = [
+  readonly controls: string[] = [
     'Links hinhalten und ziehen: Joystick – der Jäger dreht sich in die Richtung und gibt Schub; im inneren Ring dreht er nur und driftet weiter (Trägheit) – so kannst du wenden und rückwärts fliegend schießen',
     'Bordkanonen schießen nur geradeaus: Feuertaste (F) halten; der Kreis vor dem Ziel zeigt, wohin du zielen musst',
     'Raketen (R) suchen ihr Ziel selbst, Ausweichen (A); ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
@@ -330,6 +336,11 @@ export class ShooterGame implements MiniGame {
   private h = 1;
   // Eingabe
   private joy: { id: number; ox: number; oy: number; kx: number; ky: number } | null = null;
+  /** Zwei Sticks: rechter Stick zum Zielen und Feuern */
+  private aim: { id: number; ox: number; oy: number; kx: number; ky: number } | null = null;
+  private readonly ctrl: ControlMode;
+  /** Lanzenblitze: von – bis, Restzeit, Farbe */
+  private rails: { x1: number; y1: number; x2: number; y2: number; t: number; color: string }[] = [];
   private done: GameResult | null = null;
 
   constructor(cfg: GameCfg, private side: Side) {
@@ -339,6 +350,13 @@ export class ShooterGame implements MiniGame {
     this.gear = cfg.gear ?? { weapon: 1, shield: 1, engine: 1 };
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
     const lo: Loadout = cfg.loadout ?? loadout();
+    this.ctrl = cfg.controls ?? (cfg.loadout ? 'eins' : controlMode());
+    if (this.ctrl === 'zwei') this.controls = [
+      'Zwei Sticks: links hinhalten und ziehen zum Fliegen – Schub in jede Richtung, auch seitwärts und rückwärts (dort schwächer); der Jäger driftet mit Trägheit',
+      'Rechts hinhalten und ziehen zum Zielen: der Jäger dreht sich dorthin; weit ausgelenkt feuern die Bordkanonen (nur geradeaus)',
+      'Raketen (R) suchen ihr Ziel selbst, Spezialtaste darüber; ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
+      'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
+    ];
     this.ship = SHIPS[lo.ship];
     const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret];
     this.wpn = gameGun(wd[this.ship.gunSize], wd);
@@ -448,7 +466,7 @@ export class ShooterGame implements MiniGame {
   pointerDown(id: number, x: number, y: number): void {
     if (this.choosing) { this.pickCardAt(x, y); return; }
     const [fbx, fby, fbr] = this.btnFire;
-    if (Math.hypot(x - fbx, y - fby) < fbr + 12) { this.fireId = id; return; }
+    if (this.ctrl === 'eins' && Math.hypot(x - fbx, y - fby) < fbr + 12) { this.fireId = id; return; }
     for (const [btn, step] of [[this.btnZoomOut, 1], [this.btnZoomIn, -1]] as const) {
       if (Math.hypot(x - btn[0], y - btn[1]) < btn[2] + 8) { this.setZoom(step); return; }
     }
@@ -456,14 +474,16 @@ export class ShooterGame implements MiniGame {
     if (Math.hypot(x - bx, y - by) < br + 10) { this.fireMissiles(); return; }
     const [dx, dy, dr] = this.btnDash;
     if (Math.hypot(x - dx, y - dy) < dr + 10) { this.doSpecial(); return; }
+    // zwei Sticks: rechte Hälfte zielt und feuert, linke fliegt
+    if (this.ctrl === 'zwei' && x > this.w / 2) { if (!this.aim) this.aim = { id, ox: x, oy: y, kx: 0, ky: 0 }; return; }
     if (!this.joy) this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 };
   }
 
   pointerMove(id: number, x: number, y: number): void {
-    const j = this.joy;
-    if (!j || j.id !== id) return;
+    const j = this.joy?.id === id ? this.joy : this.aim?.id === id ? this.aim : null;
+    if (!j) return;
     let dx = x - j.ox, dy = y - j.oy;
-    const d = Math.hypot(dx, dy), max = 52;
+    const d = Math.hypot(dx, dy), max = JOY_R;
     if (d > max) {
       // Basis wandert mit, damit man nie „am Anschlag hängt“
       j.ox += (dx / d) * (d - max);
@@ -477,6 +497,7 @@ export class ShooterGame implements MiniGame {
 
   pointerUp(id: number): void {
     if (this.joy?.id === id) this.joy = null;
+    if (this.aim?.id === id) this.aim = null;
     if (this.fireId === id) this.fireId = null;
   }
 
@@ -922,8 +943,23 @@ export class ShooterGame implements MiniGame {
     // Leichter Ausschlag (innerer Ring) dreht nur – so kann man im Driften wenden und nach hinten schießen.
     const j = this.joy;
     const defl = j ? Math.min(1, Math.hypot(j.kx, j.ky)) : 0;
-    if (j && defl > 0.12) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(j.ky, j.kx), this.turnRate * dt));
-    const thr = clamp((defl - TURN_ONLY) / (1 - TURN_ONLY), 0, 1);
+    let thr: number, thrA = this.aimA;
+    if (this.ctrl === 'zwei' && j?.id !== 99) {
+      // zwei Sticks: rechts bestimmt die Blickrichtung (weit ausgelenkt: feuern), links der Schub in jede Richtung –
+      // auch seitwärts und rückwärts, dort schwächer
+      const a = this.aim, ad = a ? Math.min(1, Math.hypot(a.kx, a.ky)) : 0;
+      if (a && ad > 0.15) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * dt));
+      if (this.fireId !== 99) this.fireId = a && ad > AIM_FIRE ? a.id : null;
+      thr = clamp((defl - 0.12) / 0.88, 0, 1);
+      if (j && thr > 0) {
+        thrA = Math.atan2(j.ky, j.kx);
+        thr *= 0.75 + 0.25 * Math.cos(wrapA(thrA - this.aimA));
+      }
+    } else {
+      if (j && defl > 0.12) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(j.ky, j.kx), this.turnRate * dt));
+      thr = clamp((defl - TURN_ONLY) / (1 - TURN_ONLY), 0, 1);
+      thrA = this.aimA;
+    }
     this.thrust = thr;
     // Reiseantrieb: ohne Gegner in der Nähe und bei vollem Schub deutlich schneller
     const calm = this.fireId === null && !this.enemies.some((e) => Math.hypot(e.x - this.px, e.y - this.py) < 560) && !this.eMissiles.some((m) => Math.hypot(m.x - this.px, m.y - this.py) < 400);
@@ -931,8 +967,8 @@ export class ShooterGame implements MiniGame {
     const vmax = this.speed * (1 + 1.5 * this.cruise);
     // Schub in Blickrichtung; etwas Flugassistent bremst die Drift langsam ab
     const acc = this.speed * ACCEL * thr * (1 + this.cruise);
-    this.pvx += Math.cos(this.aimA) * acc * dt;
-    this.pvy += Math.sin(this.aimA) * acc * dt;
+    this.pvx += Math.cos(thrA) * acc * dt;
+    this.pvy += Math.sin(thrA) * acc * dt;
     const damp = Math.exp(-DRIFT_DAMP * dt);
     this.pvx *= damp;
     this.pvy *= damp;
@@ -971,6 +1007,8 @@ export class ShooterGame implements MiniGame {
     // Bordkanonen: nur geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4)
     this.fireCd -= dt;
     this.beams = [];
+    for (const r of this.rails) r.t -= dt;
+    this.rails = this.rails.filter((r) => r.t > 0);
     const w = this.wpn;
     // Magazin bzw. Salve: nach einer Pause ohne Feuern ist es wieder voll (wie in X4)
     if (this.fireId === null) {
@@ -992,6 +1030,7 @@ export class ShooterGame implements MiniGame {
         const ox = this.px - sn * gx + c * (this.ship.size * 0.3), oy = this.py + c * gx + sn * (this.ship.size * 0.3);
         for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < w.pellets; p++) {
           const a = a0 + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter;
+          if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7), w.range, w.color); continue; }
           this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), sticky: w.sticky || undefined });
         }
       }
@@ -1031,6 +1070,31 @@ export class ShooterGame implements MiniGame {
         }
       }
     }
+  }
+
+  /** Bosonenlanze: blitzschneller Strahl, trifft sofort das erste Ziel auf der Linie */
+  private fireRail(ox: number, oy: number, a: number, dmg: number, range: number, color: string): void {
+    const c = Math.cos(a), sn = Math.sin(a);
+    let hitT = range, hitE: Enemy | null = null, hitM: EMissile | null = null, hitMine: (typeof this.mines)[number] | null = null;
+    const along = (x: number, y: number, r: number): number | null => {
+      const t = (x - ox) * c + (y - oy) * sn;
+      if (t < 0 || t > hitT) return null;
+      return Math.abs(-(x - ox) * sn + (y - oy) * c) < r ? t : null;
+    };
+    for (const e of this.enemies) {
+      if (e.kind === 'boss' && e.shielded) continue;
+      const t = along(e.x, e.y, e.r + 3);
+      if (t != null) { hitT = t; hitE = e; hitM = null; hitMine = null; }
+    }
+    for (const m of this.eMissiles) { const t = along(m.x, m.y, 8); if (t != null) { hitT = t; hitM = m; hitE = null; hitMine = null; } }
+    for (const m of this.mines) { const t = along(m.x, m.y, 10); if (t != null) { hitT = t; hitMine = m; hitE = null; hitM = null; } }
+    for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitE = null; hitM = null; hitMine = null; } }
+    const x2 = ox + c * hitT, y2 = oy + sn * hitT;
+    if (hitE) this.damageEnemy(hitE, dmg);
+    if (hitM) { hitM.hp -= dmg; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y); } }
+    if (hitMine) { hitMine.hp -= dmg; if (hitMine.hp <= 0) this.detonate(hitMine); }
+    if (hitE || hitM || hitMine) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
+    this.rails.push({ x1: ox, y1: oy, x2, y2, t: 0.22, color });
   }
 
   /** Strahler: je feuernde Bordkanone ein Strahl geradeaus; trifft das erste Ziel im Strahl (Schaden pro Sekunde) */
@@ -1094,6 +1158,7 @@ export class ShooterGame implements MiniGame {
       if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < 0.15) {
         for (let p = 0; p < w.pellets; p++) {
           const a = t.a + (this.r() - 0.5) * 2 * w.jitter;
+          if (w.rail) { this.fireRail(x + Math.cos(a) * 8, y + Math.sin(a) * 8, a, this.baseDmg * w.dmg, w.range, w.color); continue; }
           this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0 });
         }
         t.cd = w.interval * this.tempo;
@@ -2137,6 +2202,25 @@ export class ShooterGame implements MiniGame {
       ctx.fill();
       ctx.stroke();
     }
+    // Bosonenlanze: kurz aufblitzender Strahl
+    if (this.rails.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (const r of this.rails) {
+        const k = r.t / 0.22;
+        ctx.beginPath();
+        ctx.moveTo(r.x1, r.y1);
+        ctx.lineTo(r.x2, r.y2);
+        ctx.strokeStyle = rgba(r.color, 0.45 * k);
+        ctx.lineWidth = 2 + 7 * k;
+        ctx.stroke();
+        ctx.strokeStyle = rgba('#ffffff', 0.95 * k);
+        ctx.lineWidth = 1.2 + 1.2 * k;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     // Strahler: Strahlen unter dem Schiff
     if (this.beams.length) {
       ctx.save();
@@ -2404,25 +2488,27 @@ export class ShooterGame implements MiniGame {
   }
 
   private drawControls(ctx: CanvasRenderingContext2D, t: number): void {
-    const j = this.joy;
-    if (j && j.id !== 99) {
-      ctx.strokeStyle = 'rgba(110,220,205,0.35)';
+    const stick = (j: { ox: number; oy: number; kx: number; ky: number }, inner: number, dashed: boolean, color: string) => {
+      ctx.strokeStyle = rgba(color, 0.35);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(j.ox, j.oy, 52, 0, Math.PI * 2);
+      ctx.arc(j.ox, j.oy, JOY_R, 0, Math.PI * 2);
       ctx.stroke();
-      // innerer Ring: nur drehen, ohne Schub (der Jäger driftet weiter)
-      ctx.setLineDash([4, 5]);
-      ctx.strokeStyle = 'rgba(110,220,205,0.3)';
+      // innerer Ring: ein Stick – nur drehen (ohne Schub); zwei Sticks rechts – bis hier nur zielen, darüber feuern
+      ctx.setLineDash(dashed ? [4, 5] : []);
+      ctx.strokeStyle = rgba(color, 0.3);
       ctx.beginPath();
-      ctx.arc(j.ox, j.oy, 52 * TURN_ONLY, 0, Math.PI * 2);
+      ctx.arc(j.ox, j.oy, JOY_R * inner, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(63,224,197,0.35)';
+      ctx.fillStyle = rgba(color, 0.35);
       ctx.beginPath();
-      ctx.arc(j.ox + j.kx * 52, j.oy + j.ky * 52, 20, 0, Math.PI * 2);
+      ctx.arc(j.ox + j.kx * JOY_R, j.oy + j.ky * JOY_R, 22, 0, Math.PI * 2);
       ctx.fill();
-    }
+    };
+    const j = this.joy;
+    if (j && j.id !== 99) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
+    if (this.aim) stick(this.aim, AIM_FIRE, true, this.fireId !== null ? '#ffb547' : '#3fe0c5');
     for (const [btn, label, can] of [[this.btnZoomOut, '−', this.zoomGoal > ZOOMS[ZOOMS.length - 1]], [this.btnZoomIn, '+', this.zoomGoal < ZOOMS[0]]] as const) {
       ctx.fillStyle = 'rgba(5,14,22,0.78)';
       ctx.strokeStyle = can ? 'rgba(110,220,205,0.55)' : 'rgba(110,220,205,0.18)';
@@ -2443,13 +2529,13 @@ export class ShooterGame implements MiniGame {
     ctx.textAlign = 'center';
     ctx.fillText('ZOOM', this.w - 60, TOP + 152);
     const [fbx, fby, fbr] = this.btnFire;
-    if (this.fireId !== null && this.fireId !== 99) {
+    if (this.ctrl === 'eins' && this.fireId !== null && this.fireId !== 99) {
       ctx.fillStyle = 'rgba(127,255,240,0.25)';
       ctx.beginPath();
       ctx.arc(fbx, fby, fbr, 0, Math.PI * 2);
       ctx.fill();
     }
-    drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', 'F', t);
+    if (this.ctrl === 'eins') drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', 'F', t);
     const [bx, by, br] = this.btnMissile;
     if (this.launchers.length) {
       drawButton(ctx, bx, by, br, this.ammo > 0 ? 1 - this.missileCd / this.missileCdMax : 0, '#ffb547', 'R', t);

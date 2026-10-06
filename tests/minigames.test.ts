@@ -248,6 +248,41 @@ describe('Kampf', () => {
     expect(wins).toBeGreaterThanOrEqual(SHIP_IDS.length * WEAPON_IDS.length * 0.6);
   }, 30000);
 
+  it('Zwei Sticks: rechts zielen und feuern, links Schub auch rückwärts', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), controls: 'zwei' }, 'xenon');
+    g.resize(W, H);
+    const a = g as unknown as { pvx: number; pvy: number; aimA: number; fireId: number | null; bullets: { from: string }[] };
+    // rechter Stick nach oben weit ausgelenkt: Blick nach oben, Bordkanonen feuern
+    g.pointerDown(1, W * 0.8, H * 0.6);
+    g.pointerMove(1, W * 0.8, H * 0.6 - 70);
+    // linker Stick nach unten: Schub rückwärts, der Jäger blickt weiter nach oben
+    g.pointerDown(2, W * 0.2, H * 0.6);
+    g.pointerMove(2, W * 0.2, H * 0.6 + 70);
+    for (let i = 0; i < 60; i++) g.update(DT);
+    expect(a.fireId).toBe(1);
+    expect(a.bullets.some((b) => b.from === 'p')).toBe(true);
+    expect(Math.abs(a.aimA + Math.PI / 2)).toBeLessThan(0.2);
+    expect(a.pvy).toBeGreaterThan(40);
+    // loslassen: der Jäger driftet weiter
+    g.pointerUp(2);
+    g.pointerUp(1);
+    const v0 = a.pvy;
+    for (let i = 0; i < 30; i++) g.update(DT);
+    expect(a.pvy).toBeGreaterThan(v0 * 0.6);
+    expect(a.fireId).toBeNull();
+  });
+
+  it('Bosonenlanze trifft sofort als Strahl', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'mamba', weapon: 'boson', turret: 'puls', shield: 'leicht' } }, 'xenon');
+    g.resize(W, H);
+    const a = g as unknown as { rails: unknown[]; bullets: { from: string }[] };
+    const [fx, fy] = (g as unknown as { btnFire: [number, number] }).btnFire;
+    g.pointerDown(1, fx, fy);
+    g.update(DT);
+    expect(a.rails.length).toBeGreaterThan(0);
+    expect(a.bullets.some((b) => b.from === 'p')).toBe(false);
+  });
+
   it('Besonderheiten laufen fehlerfrei', () => {
     for (const m of ['swarm', 'glass', 'ion', 'mines', 'bounty']) expect(play('xenon', 2, 2, true, 8, 'normal', m).r.points).toBeGreaterThan(0);
   });

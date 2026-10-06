@@ -26,7 +26,7 @@ import { initTween } from './tween';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
-import { loadout, setLoadout, type Loadout } from '../minigames/loadout';
+import { loadout, setControlMode, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
@@ -682,6 +682,11 @@ function onClick(e: MouseEvent): void {
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
       case 'ship-art-open': ui.modal = { type: 'shipArt' }; refresh(); break;
       case 'loadout-open': ui.modal = { type: 'loadout' }; refresh(); break;
+      case 'mg-controls': {
+        setControlMode(d.mode as ControlMode);
+        refresh();
+        break;
+      }
       case 'loadout-set': {
         setLoadout({ [String(d.key)]: d.value } as Partial<Loadout>);
         // Bauart der Raketen und Jäger-Bilder: Argon-Jäger argonisch, alle anderen Split
