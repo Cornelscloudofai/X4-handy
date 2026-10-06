@@ -71,11 +71,11 @@ function spreadGuns(n: number, width: number): number[] {
   return Array.from({ length: n }, (_, i) => Math.round((i / (n - 1) - 0.5) * width));
 }
 
-type ShipBase = Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hull' | 'shield' | 'regen' | 'delay' | 'gunSize' | 'guns'> & { gunWidth: number };
+type ShipBase = Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hull' | 'shield' | 'regen' | 'delay' | 'gunSize' | 'guns'> & { gunWidth: number; /** Lage der Rohre wie im Bild (sonst gleichmäßig verteilt) */ gunPos?: number[] };
 
 function ship(cls: 'S' | 'M', base: ShipBase): ShipDef {
   const d = base.x4;
-  const { gunWidth, ...rest } = base;
+  const { gunWidth, gunPos, ...rest } = base;
   return {
     ...rest,
     cls,
@@ -85,7 +85,7 @@ function ship(cls: 'S' | 'M', base: ShipBase): ShipDef {
     shield: (d.shields * SHIELD[cls].cap) / MAMBA.shield,
     regen: (d.shields * SHIELD[cls].rate) / MAMBA.regen,
     delay: SHIELD[cls].delay / SHIELD.S.delay,
-    guns: spreadGuns(d.weapons, gunWidth),
+    guns: gunPos ?? spreadGuns(d.weapons, gunWidth),
     gunSize: cls === 'M' ? 'm' : 's',
   };
 }
@@ -111,7 +111,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
   balaur: ship('S', {
     name: 'Balaur', role: 'Schwerer Jäger', desc: 'Meisterstück der Freien Familien: vier Waffenplätze, drei Triebwerke, keine Raketen – „hart zuschlagen, schnell zuschlagen, dann weg“. Ausweichmanöver.',
     x4: { hull: 5500, engines: 3, shields: 1, weapons: 4, launchers: 0, turrets: 0, missiles: 0, v: 363, dragYaw: 3.62 },
-    gunWidth: 18, turrets: [], r: 13, size: 48, special: 'dash', sprite: 'split-balaur', fallback: 'split-jaeger-s',
+    gunWidth: 18, gunPos: [-10.4, -7.6, 7.6, 10.4], turrets: [], r: 13, size: 48, special: 'dash', sprite: 'split-balaur', fallback: 'split-jaeger-s',
   }),
   chimera: ship('S', {
     name: 'Chimera', role: 'Schwerer Jäger', desc: 'Schwerer Jäger des Zyarth-Patriarchats: fünf Waffenplätze, vier Triebwerke, die meiste Hülle der Jäger, keine Raketen – aber ein großes Profil. Waffenüberladung: kurz doppelte Feuerrate.',
