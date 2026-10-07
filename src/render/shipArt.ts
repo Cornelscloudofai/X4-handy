@@ -206,6 +206,11 @@ const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; p
   { name: 'split-turm-boson-dunkel-ki', type: 'boson', rgb: [104, 55, 48], px: 0.5, py: 0.692, d: 0.52 },
   { name: 'split-turm-boson-hell-ki', type: 'boson', rgb: [194, 44, 26], px: 0.5, py: 0.694, d: 0.51 },
   { name: 'split-turm-boson-orange-ki', type: 'boson', rgb: [155, 64, 37], px: 0.5, py: 0.614, d: 0.54 },
+  // für später: FLAK, Lenkraketen und schwere Türme (L, z. B. Rattlesnake)
+  { name: 'split-turm-flak-mittel-ki', type: 'flak', rgb: [142, 66, 44], px: 0.5, py: 0.58, d: 0.6 },
+  { name: 'split-turm-lenkrakete-mittel-ki', type: 'lenkrakete', rgb: [142, 62, 40], px: 0.48, py: 0.72, d: 0.45 },
+  { name: 'split-turm-puls-l-mittel-ki', type: 'puls-l', rgb: [164, 66, 41], px: 0.5, py: 0.55, d: 0.7 },
+  { name: 'split-turm-energie-l-mittel-ki', type: 'energie-l', rgb: [150, 63, 30], px: 0.5, py: 0.6, d: 0.42 },
 ];
 
 /** Name des Turmbilds, dessen Farbe am besten zum Rumpf des Schiffs passt (ohne Laden – auch für Tests) */
