@@ -2318,15 +2318,17 @@ export class ShooterGame implements MiniGame {
       ctx.fillStyle = '#2a1408';
       ctx.strokeStyle = '#ffb070';
       ctx.lineWidth = 1.4;
+      // Größe passend zu den Sockeln im Schiffsbild
+      const tr = this.ship.size * 0.04;
       ctx.beginPath();
-      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.arc(0, 0, tr, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.strokeStyle = '#ffd0a0';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.moveTo(Math.cos(tur.a) * 3, Math.sin(tur.a) * 3);
-      ctx.lineTo(Math.cos(tur.a) * 11, Math.sin(tur.a) * 11);
+      ctx.moveTo(Math.cos(tur.a) * tr * 0.6, Math.sin(tur.a) * tr * 0.6);
+      ctx.lineTo(Math.cos(tur.a) * tr * 2.6, Math.sin(tur.a) * tr * 2.6);
       ctx.stroke();
       ctx.restore();
     }

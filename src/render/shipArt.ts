@@ -37,6 +37,12 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'xenon-turm-laser-ki': { xs: [], y: 0, color: '#ff3b4a' },
   'xenon-turm-plasma-ki': { xs: [], y: 0, color: '#ff6a3d' },
   'xenon-k-ki': { xs: [-0.217, -0.115, 0, 0.11, 0.218], y: 0.42, color: '#ff3b4a' },
+  // Split-Militärschiffe (Kampf: dein Schiff)
+  'split-jaguar-ki': { xs: [0], y: 0.35, color: '#ff9a4a' },
+  'split-asp-ki': { xs: [-0.078, 0.074], y: 0.35, color: '#ff9a4a' },
+  'split-balaur-ki': { xs: [-0.153, 0, 0.145], y: 0.38, color: '#ff9a4a' },
+  'split-chimera-ki': { xs: [-0.137, -0.082, 0.081, 0.137], y: 0.34, color: '#ff9a4a' },
+  'split-dragon-ki': { xs: [0], y: 0.385, color: '#ff9a4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {

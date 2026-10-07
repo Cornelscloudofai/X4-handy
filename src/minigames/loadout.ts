@@ -121,7 +121,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
   dragon: ship('M', {
     name: 'Dragon', role: 'Korvette', desc: 'Furchteinflößende Korvette: sechs M-Waffenplätze, ein M-Raketenwerfer, zwei Türme, nur ein Schild. Torpedo: langsamer, schwerer Schuss mit großem Flächenschaden.',
     x4: { hull: 21000, engines: 1, shields: 1, weapons: 6, launchers: 1, turrets: 2, missiles: 2, v: 478, dragYaw: 11.298 },
-    gunWidth: 28, turrets: [[-12, 14], [12, 14]], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
+    gunWidth: 28, gunPos: [-14.5, -12.3, -8.9, 8.9, 12.3, 14.5], turrets: [[-5.9, 4.4], [5.9, 4.4]], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
   }),
   cobra: ship('M', {
     name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
