@@ -18,6 +18,7 @@ import { layoutReach, layoutStation, stationStyle } from './stationLayout';
 import { sectorLayers } from './bgImages';
 import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
+import { mapShipSprite } from './shipArt';
 
 const C = {
   teal: '#3fe0c5',
@@ -71,6 +72,8 @@ export class SectorRenderer {
   private compKey = '';
   private floats: Float[] = [];
   private trails = new Map<string, Trail>();
+  /** Zoom im Verhältnis zur Gesamtansicht (für die Größe der Schiffsbilder) */
+  private lastRel = 1;
   private stars: { x: number; y: number; s: number; a: number }[] = [];
   private labels: QLabel[] = [];
   private obstacles: { x: number; y: number; w: number; h: number }[] = [];
@@ -210,6 +213,7 @@ export class SectorRenderer {
     this.fx.update(dt);
     const s = cam.iconScale();
     const rel = cam.zoom / (cam.fitZoom || 1);
+    this.lastRel = rel;
     this.drawBackdrop(ctx, cam, ui.sector, now, ui.bgMode);
     this.labels = [];
     this.obstacles = [];
@@ -1592,6 +1596,32 @@ export class SectorRenderer {
   /** Eigene Schiffe: Umriss je Klasse im Neon-Stil, flackerndes Triebwerk im Flug */
   private drawShip(ctx: CanvasRenderingContext2D, cls: string, x: number, y: number, heading: number, size: number, color: string, alpha: number, moving: boolean, now: number, seed: number): void {
     if (size < 3.2) { this.drawShipGlyph(ctx, x, y, heading, size, color, true, alpha); return; }
+    const sprite = mapShipSprite(cls);
+    if (sprite) {
+      // KI-Bild (Bug oben): wächst beim Heranzoomen etwas mit, damit man Einzelheiten erkennt
+      const rel = this.lastRel;
+      const L = Math.min(96, size * 2.5 * (1 + 0.5 * Math.log2(Math.max(1, rel / 2))));
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(x, y);
+      ctx.rotate(heading + Math.PI / 2);
+      if (moving) {
+        const fl = 0.75 + 0.25 * Math.sin(now / 45 + seed);
+        const { xs, y: ey, color: fc } = sprite.engines;
+        ctx.fillStyle = rgba(fc, 0.75);
+        for (const fx of xs) {
+          ctx.beginPath();
+          ctx.moveTo(fx * L - L * 0.035, ey * L);
+          ctx.lineTo(fx * L + L * 0.035, ey * L);
+          ctx.lineTo(fx * L, ey * L + L * (0.12 + 0.1 * fl));
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.drawImage(sprite.img, -L / 2, -L / 2, L, L);
+      ctx.restore();
+      return;
+    }
     const shape = SHIP_SHAPES[cls] ?? SHIP_SHAPES.boa;
     ctx.save();
     ctx.globalAlpha = alpha;

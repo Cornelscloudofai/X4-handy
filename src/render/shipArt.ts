@@ -44,6 +44,9 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'split-chimera-ki': { xs: [-0.137, -0.082, 0.081, 0.137], y: 0.34, color: '#ff9a4a' },
   'split-dragon-ki': { xs: [0], y: 0.385, color: '#ff9a4a' },
   'split-cobra-ki': { xs: [-0.08, 0, 0.083], y: 0.384, color: '#ff9a4a' },
+  // Miner und Frachter auf der Sektorkarte
+  'split-alligator-min-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
+  'split-alligator-gas-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -219,4 +222,20 @@ export function turretSprite(type: string, shipBase: string): { img: HTMLImageEl
   const def = TURRET_ART.find((t) => t.name === name);
   const img = name ? load(name) : null;
   return img && def ? { img, px: def.px, py: def.py, d: def.d } : null;
+}
+
+// ---- Eigene Schiffe auf der Sektorkarte (Miner, Frachter) ----
+
+/** Schiffsklasse → KI-Bild (Bug oben); fehlt eins, zeichnet die Karte den Umriss */
+const MAP_SHIPS: Record<string, string> = {
+  alligator_min: 'split-alligator-min-ki',
+  alligator_gas: 'split-alligator-gas-ki',
+};
+
+/** Bild einer Schiffsklasse für die Karte, sonst null */
+export function mapShipSprite(cls: string): FighterSprite | null {
+  const name = MAP_SHIPS[cls];
+  if (!name || art === 'vector') return null;
+  const img = load(name);
+  return img ? { img, engines: ENGINES[name] ?? { xs: [0], y: 0.42, color: '#ff9a4a' } } : null;
 }
