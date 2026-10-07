@@ -126,7 +126,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
   cobra: ship('M', {
     name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
     x4: { hull: 33000, engines: 3, shields: 2, weapons: 3, launchers: 0, turrets: 4, missiles: 0, v: 518, dragYaw: 11 },
-    gunWidth: 16, turrets: [[-16, -10], [16, -10], [-16, 18], [16, 18]], r: 24, size: 92, special: 'escort', sprite: 'split-cobra', fallback: 'split-jaeger-s',
+    gunWidth: 16, gunPos: [-3.7, 0, 3.7], turrets: [[-7.2, -0.4], [7.2, -0.4], [-7.2, 18.5], [7.2, 18.5]], r: 24, size: 92, special: 'escort', sprite: 'split-cobra', fallback: 'split-jaeger-s',
   }),
   argon: ship('S', {
     name: 'Argon-Jäger', role: 'Jäger', desc: 'Der Argon-Jäger aus dem Grafikvergleich – mit den Werten der Mamba.',

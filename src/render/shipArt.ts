@@ -43,6 +43,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'split-balaur-ki': { xs: [-0.153, 0, 0.145], y: 0.38, color: '#ff9a4a' },
   'split-chimera-ki': { xs: [-0.137, -0.082, 0.081, 0.137], y: 0.34, color: '#ff9a4a' },
   'split-dragon-ki': { xs: [0], y: 0.385, color: '#ff9a4a' },
+  'split-cobra-ki': { xs: [-0.08, 0, 0.083], y: 0.384, color: '#ff9a4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
