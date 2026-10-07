@@ -72,8 +72,8 @@ export class SectorRenderer {
   private compKey = '';
   private floats: Float[] = [];
   private trails = new Map<string, Trail>();
-  /** Zoom im Verhältnis zur Gesamtansicht (für die Größe der Schiffsbilder) */
-  private lastRel = 1;
+  /** Zoom der Karte (Bildpunkte je Kilometer) – Schiffsbilder wachsen damit im gleichen Maß */
+  private lastZoom = 1;
   private stars: { x: number; y: number; s: number; a: number }[] = [];
   private labels: QLabel[] = [];
   private obstacles: { x: number; y: number; w: number; h: number }[] = [];
@@ -213,7 +213,7 @@ export class SectorRenderer {
     this.fx.update(dt);
     const s = cam.iconScale();
     const rel = cam.zoom / (cam.fitZoom || 1);
-    this.lastRel = rel;
+    this.lastZoom = cam.zoom;
     this.drawBackdrop(ctx, cam, ui.sector, now, ui.bgMode);
     this.labels = [];
     this.obstacles = [];
@@ -1596,16 +1596,21 @@ export class SectorRenderer {
   /** Eigene Schiffe: Umriss je Klasse im Neon-Stil, flackerndes Triebwerk im Flug */
   /** Zeichnet ein eigenes Schiff; Rückgabe: Halbmesser des Gezeichneten (für Auswahlring und Ladungspunkt) */
   private drawShip(ctx: CanvasRenderingContext2D, cls: string, x: number, y: number, heading: number, size: number, color: string, alpha: number, moving: boolean, now: number, seed: number): number {
-    if (size < 3.2) { this.drawShipGlyph(ctx, x, y, heading, size, color, true, alpha); return size; }
     const sprite = mapShipSprite(cls);
-    if (sprite) {
-      // KI-Bild (Bug oben), Größen im Verhältnis wie in X4: ein L-Schiff ist rund 3,5-mal so lang wie ein M-Schiff –
-      // auf seiner Landeplattform fände ein S-Schiff Platz. Beim Heranzoomen wächst das Bild etwas mit.
-      const rel = this.lastRel;
-      const k = SHIP_LEN[SHIP_MAP[cls]?.size ?? 'M'];
-      const L = Math.min(110 * k, 5 * Math.max(0.6, Math.min(1.8, size / 5)) * 2.5 * k * (1 + 0.5 * Math.log2(Math.max(1, rel / 2))));
+    // KI-Bild in festem Kartenmaßstab: wächst beim Zoomen genau wie Karte, Felder und Asteroiden; Größen wie in X4
+    // (L rund 3,5-mal so lang wie M, ein S-Schiff passt auf die Landeplattform). Ist es dafür noch zu klein,
+    // zeigt die Karte das Symbol und blendet beim Heranzoomen weich zum Bild über.
+    const L = sprite ? SHIP_KM[SHIP_MAP[cls]?.size ?? 'M'] * this.lastZoom : 0;
+    const t = sprite ? Math.max(0, Math.min(1, (L - SPRITE_MIN) / SPRITE_FADE)) : 0;
+    if (sprite && t < 1) {
+      // noch zu klein fürs Bild: kleiner Marker (je Klasse etwas größer), damit nichts größer wirkt als es ist
+      const g = { S: 3, M: 3.6, L: 4.4 }[SHIP_MAP[cls]?.size ?? 'M'];
+      this.drawShipGlyph(ctx, x, y, heading, g, color, true, alpha * (1 - t));
+      if (t <= 0) return g;
+    } else if (size < 3.2) { this.drawShipGlyph(ctx, x, y, heading, size, color, true, alpha); return size; }
+    if (sprite && t > 0) {
       ctx.save();
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = alpha * t;
       ctx.translate(x, y);
       ctx.rotate(heading + Math.PI / 2);
       if (moving) {
@@ -1623,7 +1628,7 @@ export class SectorRenderer {
       }
       ctx.drawImage(sprite.img, -L / 2, -L / 2, L, L);
       ctx.restore();
-      return L * 0.4;
+      return Math.max(4.4, L * 0.4);
     }
     const shape = SHIP_SHAPES[cls] ?? SHIP_SHAPES.boa;
     ctx.save();
@@ -2044,8 +2049,14 @@ function stationReach(st: Station): number {
 
 /** Schiffsumrisse (Bug zeigt nach +x, Einheit = Schiffsgröße) */
 interface ShipShape { hull: [number, number][]; nose: number; tail: number; pods?: [number, number, number, number][]; tank?: [number, number] }
-/** Länge der Schiffsbilder auf der Karte je Klasse (M = 1), Verhältnisse wie in X4 */
-const SHIP_LEN: Record<'S' | 'M' | 'L', number> = { S: 0.4, M: 1, L: 3.5 };
+/**
+ * Länge der Schiffsbilder in Kartenkilometern (Kartenmaßstab, nicht echte Größe – sonst wären Schiffe unsichtbar klein);
+ * Verhältnisse wie in X4: L rund 3,5-mal so lang wie M, S etwa 0,4-mal.
+ */
+const SHIP_KM: Record<'S' | 'M' | 'L', number> = { S: 0.56, M: 1.4, L: 4.9 };
+/** Ab dieser Bildlänge (Bildpunkte) wird statt des Symbols das Bild gezeigt, mit weichem Übergang */
+const SPRITE_MIN = 12;
+const SPRITE_FADE = 10;
 
 const SHIP_SHAPES: Record<string, ShipShape> = {
   tuatara: { hull: [[1.5, 0], [0.2, 0.42], [-0.9, 0.5], [-0.7, 0], [-0.9, -0.5], [0.2, -0.42]], nose: 1.5, tail: -0.75 },
