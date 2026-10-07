@@ -18,7 +18,7 @@ import { layoutReach, layoutStation, stationStyle } from './stationLayout';
 import { sectorLayers } from './bgImages';
 import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
-import { mapShipSprite } from './shipArt';
+import { mapShipSprite, stationCoreSprite } from './shipArt';
 
 const C = {
   teal: '#3fe0c5',
@@ -1051,7 +1051,16 @@ export class SectorRenderer {
       }
     }
     ctx.restore();
-    this.hubIcon(ctx, sx, sy, Math.max(8, unit * 0.55), C.teal, now);
+    // Stationskern: Bild (sechs Anschlussarme, dreht mit der Station), sonst Neon-Sechseck
+    const core = stationCoreSprite(hashStr(st.id));
+    if (core) {
+      const cs = unit * 2.1;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(rot);
+      ctx.drawImage(core, -cs / 2, -cs / 2, cs, cs);
+      ctx.restore();
+    } else this.hubIcon(ctx, sx, sy, Math.max(8, unit * 0.55), C.teal, now);
   }
 
   /** Ein Modul in lokalen Koordinaten (x zeigt vom Kern weg) */

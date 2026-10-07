@@ -249,3 +249,14 @@ export function mapShipSprite(cls: string): FighterSprite | null {
   const img = load(name);
   return img ? { img, engines: ENGINES[name] ?? { xs: [0], y: 0.42, color: '#ff9a4a' } } : null;
 }
+
+// ---- Stationen: Modulbilder ----
+
+/** Stationskern (zwei Farbvarianten); Auswahl je Station fest über ihre Kennung */
+const STATION_CORES = ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki'];
+
+/** Bild des Stationskerns für eine Station (Zahl aus ihrer Kennung), sonst null */
+export function stationCoreSprite(seed: number): HTMLImageElement | null {
+  if (art === 'vector') return null;
+  return load(STATION_CORES[seed % STATION_CORES.length]);
+}
