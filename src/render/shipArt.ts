@@ -48,6 +48,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'split-alligator-min-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
   'split-alligator-gas-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
   'split-wyvern-min-ki': { xs: [-0.071, 0, 0.071], y: 0.415, color: '#ff9a4a' },
+  'split-wyvern-gas-ki': { xs: [-0.071, 0, 0.071], y: 0.415, color: '#ff9a4a' },
 };
 
 export function spriteUrl(id: string): string | undefined {
@@ -232,6 +233,7 @@ const MAP_SHIPS: Record<string, string> = {
   alligator_min: 'split-alligator-min-ki',
   alligator_gas: 'split-alligator-gas-ki',
   wyvern_min: 'split-wyvern-min-ki',
+  wyvern_gas: 'split-wyvern-gas-ki',
 };
 
 /** Bild einer Schiffsklasse für die Karte, sonst null */
