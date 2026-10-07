@@ -7,7 +7,7 @@
 // Schirmdrohnen; zum Schluss ein Boss mit Geschütztürmen. Abschnitte mit Asteroiden (Deckung) oder Minen.
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
-import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite } from '../render/shipArt';
+import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { DMG_SCALE, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, type ControlMode, type Loadout, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
@@ -289,8 +289,9 @@ export class ShooterGame implements MiniGame {
   private foeMul = 1;
   /** Türme des eigenen Schiffs: Pause und Richtung */
   private pTur: { cd: number; a: number; mag: number }[] = [];
-  /** Drehtempo der Türme (rad/s) */
+  /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
   private turTurn = 5;
+  private turType = 'puls';
   /** Strahler: Strahlen dieses Bilds (von – bis) für die Darstellung */
   private beams: [number, number, number, number][] = [];
   private dashVx = 0;
@@ -374,6 +375,7 @@ export class ShooterGame implements MiniGame {
     this.tw = gameGun(td.gun, td);
     // Drehtempo der Türme aus den Daten (Pulsturm 180°/s = bisheriges Tempo)
     this.turTurn = (5 * td.turn) / 180;
+    this.turType = lo.turret;
     this.mag = this.wpn.mag;
     this.sh = SHIELDS[lo.shield];
     this.pTur = this.ship.turrets.map(() => ({ cd: 0, a: -Math.PI / 2, mag: this.tw.mag }));
@@ -2315,6 +2317,15 @@ export class ShooterGame implements MiniGame {
       const [tx0, ty0] = this.ship.turrets[i];
       ctx.save();
       ctx.translate(this.px + tx0 * c - ty0 * sn, this.py + tx0 * sn + ty0 * c);
+      // Turmbild in der Farbe, die zum Rumpf passt; der runde Sockel deckt den Sockel im Schiffsbild
+      const ts = turretSprite(this.turType, this.ship.sprite);
+      if (ts) {
+        const W = (this.ship.size * 0.1) / ts.d;
+        ctx.rotate(tur.a + Math.PI / 2);
+        ctx.drawImage(ts.img, -ts.px * W, -ts.py * W, W, W);
+        ctx.restore();
+        continue;
+      }
       ctx.fillStyle = '#2a1408';
       ctx.strokeStyle = '#ffb070';
       ctx.lineWidth = 1.4;

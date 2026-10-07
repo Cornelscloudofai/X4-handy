@@ -4,6 +4,7 @@ import { GasGame } from '../src/minigames/gas';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
+import { turretArtName } from '../src/render/shipArt';
 import { SHIP_IDS, TURRET_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
 import { Score, pickGoals, rng, type GameResult, type Level, type MiniGame, type Mode } from '../src/minigames/common';
 import { recordResult, resetRecords, totalStars, unlocked, badgeCount } from '../src/minigames/records';
@@ -270,6 +271,13 @@ describe('Kampf', () => {
     for (let i = 0; i < 30; i++) g.update(DT);
     expect(a.pvy).toBeGreaterThan(v0 * 0.6);
     expect(a.fireId).toBeNull();
+  });
+
+  it('Turmbilder passen farblich zum Rumpf', () => {
+    for (const t of ['puls', 'neutron', 'tau', 'plasma', 'boson']) {
+      expect(turretArtName(t, 'split-dragon')).toContain('-hell-');
+      expect(turretArtName(t, 'split-cobra')).toContain('-mittel');
+    }
   });
 
   it('Bosonenlanze trifft sofort als Strahl', () => {

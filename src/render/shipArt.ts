@@ -170,3 +170,61 @@ export function enemySprite(kind: string, side: 'pirat' | 'xenon' = 'pirat'): (F
 export function projectileSprite(name: string): HTMLImageElement | null {
   return art === 'vector' ? null : load(name);
 }
+
+// ---- Split-Türme (KI-Bilder) mit Farbabgleich zum Schiffsrumpf ----
+
+/**
+ * Typischer Rumpfton der Schiffsbilder (Mittel der roten Panzerplatten, gemessen) – danach werden die Türme ausgesucht:
+ * die Dragon ist knallig rot, Cobra, Balaur und Mamba gedeckter.
+ */
+const HULL: Record<string, [number, number, number]> = {
+  'split-jaguar': [150, 64, 32], 'split-asp': [163, 58, 28], 'split-balaur': [127, 62, 43], 'split-chimera': [185, 64, 40],
+  'split-dragon': [193, 51, 39], 'split-cobra': [140, 63, 42], 'split-jaeger-s': [133, 65, 38],
+};
+
+/**
+ * Turmbilder: Turmart, gemessener Rotton, Drehpunkt (Mitte des runden Sockels, Anteile des Bilds) und Durchmesser
+ * des Sockels (Anteil der Bildbreite). Das Rohr zeigt im Bild nach oben.
+ */
+const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; px: number; py: number; d: number }[] = [
+  { name: 'split-turm-puls-mittel-ki', type: 'puls', rgb: [138, 55, 39], px: 0.5, py: 0.658, d: 0.5 },
+  { name: 'split-turm-puls-hell-ki', type: 'puls', rgb: [182, 59, 37], px: 0.5, py: 0.62, d: 0.54 },
+  { name: 'split-turm-puls-dunkel-ki', type: 'puls', rgb: [115, 31, 34], px: 0.5, py: 0.585, d: 0.64 },
+  { name: 'split-turm-neutron-mittel-ki', type: 'neutron', rgb: [162, 63, 46], px: 0.5, py: 0.605, d: 0.63 },
+  { name: 'split-turm-neutron-mittel2-ki', type: 'neutron', rgb: [141, 61, 44], px: 0.5, py: 0.576, d: 0.66 },
+  { name: 'split-turm-neutron-dunkel-ki', type: 'neutron', rgb: [112, 52, 42], px: 0.5, py: 0.615, d: 0.67 },
+  { name: 'split-turm-neutron-hell-ki', type: 'neutron', rgb: [185, 51, 28], px: 0.5, py: 0.615, d: 0.67 },
+  { name: 'split-turm-tau-mittel-ki', type: 'tau', rgb: [152, 56, 40], px: 0.5, py: 0.64, d: 0.54 },
+  { name: 'split-turm-tau-dunkel-ki', type: 'tau', rgb: [101, 46, 41], px: 0.5, py: 0.573, d: 0.72 },
+  { name: 'split-turm-tau-hell-ki', type: 'tau', rgb: [196, 52, 28], px: 0.5, py: 0.563, d: 0.72 },
+  { name: 'split-turm-plasma-mittel-ki', type: 'plasma', rgb: [145, 58, 41], px: 0.5, py: 0.657, d: 0.54 },
+  { name: 'split-turm-plasma-dunkel-ki', type: 'plasma', rgb: [110, 48, 41], px: 0.5, py: 0.6, d: 0.7 },
+  { name: 'split-turm-plasma-dunkel2-ki', type: 'plasma', rgb: [91, 42, 38], px: 0.395, py: 0.594, d: 0.46 },
+  { name: 'split-turm-plasma-dunkel3-ki', type: 'plasma', rgb: [84, 39, 32], px: 0.5, py: 0.72, d: 0.33 },
+  { name: 'split-turm-plasma-hell-ki', type: 'plasma', rgb: [190, 52, 30], px: 0.5, py: 0.6, d: 0.7 },
+  { name: 'split-turm-boson-mittel-ki', type: 'boson', rgb: [142, 63, 48], px: 0.5, py: 0.75, d: 0.35 },
+  { name: 'split-turm-boson-dunkel-ki', type: 'boson', rgb: [104, 55, 48], px: 0.5, py: 0.692, d: 0.52 },
+  { name: 'split-turm-boson-hell-ki', type: 'boson', rgb: [194, 44, 26], px: 0.5, py: 0.694, d: 0.51 },
+  { name: 'split-turm-boson-orange-ki', type: 'boson', rgb: [155, 64, 37], px: 0.5, py: 0.614, d: 0.54 },
+];
+
+/** Name des Turmbilds, dessen Farbe am besten zum Rumpf des Schiffs passt (ohne Laden – auch für Tests) */
+export function turretArtName(type: string, shipBase: string): string | null {
+  const hull = HULL[shipBase] ?? HULL['split-jaeger-s'];
+  let best: string | null = null, bd = Infinity;
+  for (const t of TURRET_ART) {
+    if (t.type !== type) continue;
+    const d = Math.hypot(t.rgb[0] - hull[0], t.rgb[1] - hull[1], t.rgb[2] - hull[2]);
+    if (d < bd) { bd = d; best = t.name; }
+  }
+  return best;
+}
+
+/** Turmbild passend zum Schiff (Drehpunkt und Sockeldurchmesser als Anteile), sonst null (dann per Code zeichnen) */
+export function turretSprite(type: string, shipBase: string): { img: HTMLImageElement; px: number; py: number; d: number } | null {
+  if (art === 'vector') return null;
+  const name = turretArtName(type, shipBase);
+  const def = TURRET_ART.find((t) => t.name === name);
+  const img = name ? load(name) : null;
+  return img && def ? { img, px: def.px, py: def.py, d: def.d } : null;
+}
