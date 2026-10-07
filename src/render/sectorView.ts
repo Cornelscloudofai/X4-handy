@@ -370,12 +370,12 @@ export class SectorRenderer {
       }
       if (sh.phase === 'mining') this.drawMining(ctx, sh, sx, sy, cam, motion ? now : 0, shipS, dt);
       const size = (cls.size === 'L' ? 6.5 : cls.size === 'M' ? 5 : 4) * shipS;
-      this.drawShip(ctx, sh.cls, sx, sy, sh.heading, size, color, docked ? 0.55 : 1, moving, motion ? now : 0, hashStr(sh.id));
-      if (sh.id === selShip) this.selectionRing(ctx, sx, sy, 10 + size, now, color);
+      const drawn = this.drawShip(ctx, sh.cls, sx, sy, sh.heading, size, color, docked ? 0.55 : 1, moving, motion ? now : 0, hashStr(sh.id));
+      if (sh.id === selShip) this.selectionRing(ctx, sx, sy, 10 + drawn, now, color);
       if (sh.cargo && !docked && rel > 1.3) {
         ctx.fillStyle = WARES[sh.cargo.ware].color;
         ctx.beginPath();
-        ctx.arc(sx + size * 1.2, sy - size * 1.2, 1.6 + shipS, 0, Math.PI * 2);
+        ctx.arc(sx + drawn * 1.2, sy - drawn * 1.2, 1.6 + shipS, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -1594,13 +1594,16 @@ export class SectorRenderer {
   }
 
   /** Eigene Schiffe: Umriss je Klasse im Neon-Stil, flackerndes Triebwerk im Flug */
-  private drawShip(ctx: CanvasRenderingContext2D, cls: string, x: number, y: number, heading: number, size: number, color: string, alpha: number, moving: boolean, now: number, seed: number): void {
-    if (size < 3.2) { this.drawShipGlyph(ctx, x, y, heading, size, color, true, alpha); return; }
+  /** Zeichnet ein eigenes Schiff; Rückgabe: Halbmesser des Gezeichneten (für Auswahlring und Ladungspunkt) */
+  private drawShip(ctx: CanvasRenderingContext2D, cls: string, x: number, y: number, heading: number, size: number, color: string, alpha: number, moving: boolean, now: number, seed: number): number {
+    if (size < 3.2) { this.drawShipGlyph(ctx, x, y, heading, size, color, true, alpha); return size; }
     const sprite = mapShipSprite(cls);
     if (sprite) {
-      // KI-Bild (Bug oben): wächst beim Heranzoomen etwas mit, damit man Einzelheiten erkennt
+      // KI-Bild (Bug oben), Größen im Verhältnis wie in X4: ein L-Schiff ist rund 3,5-mal so lang wie ein M-Schiff –
+      // auf seiner Landeplattform fände ein S-Schiff Platz. Beim Heranzoomen wächst das Bild etwas mit.
       const rel = this.lastRel;
-      const L = Math.min(96, size * 2.5 * (1 + 0.5 * Math.log2(Math.max(1, rel / 2))));
+      const k = SHIP_LEN[SHIP_MAP[cls]?.size ?? 'M'];
+      const L = Math.min(110 * k, 5 * Math.max(0.6, Math.min(1.8, size / 5)) * 2.5 * k * (1 + 0.5 * Math.log2(Math.max(1, rel / 2))));
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.translate(x, y);
@@ -1620,7 +1623,7 @@ export class SectorRenderer {
       }
       ctx.drawImage(sprite.img, -L / 2, -L / 2, L, L);
       ctx.restore();
-      return;
+      return L * 0.4;
     }
     const shape = SHIP_SHAPES[cls] ?? SHIP_SHAPES.boa;
     ctx.save();
@@ -1674,6 +1677,7 @@ export class SectorRenderer {
     ctx.arc(shape.nose * size * 0.72, 0, Math.max(0.8, size * 0.12), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+    return size;
   }
 
   private trail(id: string, sector: string, x: number, z: number, dt: number): void {
@@ -2040,6 +2044,9 @@ function stationReach(st: Station): number {
 
 /** Schiffsumrisse (Bug zeigt nach +x, Einheit = Schiffsgröße) */
 interface ShipShape { hull: [number, number][]; nose: number; tail: number; pods?: [number, number, number, number][]; tank?: [number, number] }
+/** Länge der Schiffsbilder auf der Karte je Klasse (M = 1), Verhältnisse wie in X4 */
+const SHIP_LEN: Record<'S' | 'M' | 'L', number> = { S: 0.4, M: 1, L: 3.5 };
+
 const SHIP_SHAPES: Record<string, ShipShape> = {
   tuatara: { hull: [[1.5, 0], [0.2, 0.42], [-0.9, 0.5], [-0.7, 0], [-0.9, -0.5], [0.2, -0.42]], nose: 1.5, tail: -0.75 },
   boa: { hull: [[1.4, 0], [1.0, 0.3], [-1.0, 0.34], [-1.1, 0], [-1.0, -0.34], [1.0, -0.3]], nose: 1.4, tail: -1.05, pods: [[-0.7, 0.36, 1.2, 0.22], [-0.7, -0.58, 1.2, 0.22]] },
