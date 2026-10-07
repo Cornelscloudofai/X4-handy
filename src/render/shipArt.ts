@@ -252,11 +252,21 @@ export function mapShipSprite(cls: string): FighterSprite | null {
 
 // ---- Stationen: Modulbilder ----
 
-/** Stationskern (zwei Farbvarianten); Auswahl je Station fest über ihre Kennung */
-const STATION_CORES = ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki'];
+/**
+ * Stationskerne je Bauform (passend zu den Trägern am Kern): Ring und Block – Stern mit sechs Armen;
+ * Dreistern – Y-Kern mit drei Armen; Rückgrat – länglicher Kern mit zwei Enden. Je Bauform mehrere Farbvarianten,
+ * Auswahl je Station fest über ihre Kennung. Im Bild zeigt ein Arm nach oben.
+ */
+const STATION_CORES: Record<string, string[]> = {
+  ring: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki'],
+  block: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki'],
+  tri: [],
+  spine: [],
+};
 
-/** Bild des Stationskerns für eine Station (Zahl aus ihrer Kennung), sonst null */
-export function stationCoreSprite(seed: number): HTMLImageElement | null {
-  if (art === 'vector') return null;
-  return load(STATION_CORES[seed % STATION_CORES.length]);
+/** Bild des Stationskerns für Bauform und Station (Zahl aus ihrer Kennung), sonst null (dann Symbol) */
+export function stationCoreSprite(style: string, seed: number): HTMLImageElement | null {
+  const list = STATION_CORES[style] ?? [];
+  if (art === 'vector' || !list.length) return null;
+  return load(list[seed % list.length]);
 }

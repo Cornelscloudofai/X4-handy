@@ -1051,13 +1051,15 @@ export class SectorRenderer {
       }
     }
     ctx.restore();
-    // Stationskern: Bild (sechs Anschlussarme, dreht mit der Station), sonst Neon-Sechseck
-    const core = stationCoreSprite(hashStr(st.id));
+    // Stationskern: Bild passend zur Bauform (Arme liegen auf den Trägern, dreht mit der Station), sonst Neon-Sechseck
+    const style = stationStyle(st.id);
+    const core = stationCoreSprite(style, hashStr(st.id));
     if (core) {
       const cs = unit * 2.1;
       ctx.save();
       ctx.translate(sx, sy);
-      ctx.rotate(rot);
+      // Bildarm oben (−90°) auf die Trägerrichtungen der Bauform legen: Ring/Block 0°, 60°, …
+      ctx.rotate(rot + CORE_TURN[style]);
       ctx.drawImage(core, -cs / 2, -cs / 2, cs, cs);
       ctx.restore();
     } else this.hubIcon(ctx, sx, sy, Math.max(8, unit * 0.55), C.teal, now);
@@ -2058,6 +2060,8 @@ function stationReach(st: Station): number {
 
 /** Schiffsumrisse (Bug zeigt nach +x, Einheit = Schiffsgröße) */
 interface ShipShape { hull: [number, number][]; nose: number; tail: number; pods?: [number, number, number, number][]; tank?: [number, number] }
+/** Drehung der Kernbilder (Arm oben) auf die Trägerrichtungen je Bauform */
+const CORE_TURN: Record<string, number> = { ring: Math.PI / 6, block: Math.PI / 6, tri: Math.PI, spine: Math.PI / 2 };
 /**
  * Länge der Schiffsbilder in Kartenkilometern (Kartenmaßstab, nicht echte Größe – sonst wären Schiffe unsichtbar klein);
  * Verhältnisse wie in X4: L rund 3,5-mal so lang wie M, S etwa 0,4-mal.
