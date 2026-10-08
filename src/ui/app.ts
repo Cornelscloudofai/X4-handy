@@ -189,6 +189,7 @@ function frame(now: number): void {
   // Während eines Minispiels ruht das Hauptspiel (keine Simulation, kein Zeichnen)
   if (minigameOpen()) { requestAnimationFrame(frame); return; }
   if (!ui.paused && !(ui.modal && (ui.modal.type === 'welcome' || ui.modal.type === 'offline'))) step(state, dt * state.speed);
+  followShip();
   const c = ui.view === 'galaxy' ? galaxyCam : cam;
   c.update(dt, ui.view === 'galaxy' ? GALAXY_HEX * 3 : SECTOR_RADIUS * 1.1);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -216,6 +217,20 @@ function frame(now: number): void {
   saveTimer += dt;
   if (saveTimer > 15) { saveTimer = 0; save(); }
   requestAnimationFrame(frame);
+}
+
+/** Kamera bleibt auf dem verfolgten Schiff – auch über Sprungtore; Verschieben der Karte beendet das Folgen */
+let pannedSeen = 0;
+function followShip(): void {
+  if (cam.panned !== pannedSeen) { pannedSeen = cam.panned; if (ui.follow) { ui.follow = undefined; dirtyUI = true; } }
+  const s = ui.follow ? state.ships.find((x) => x.id === ui.follow) : undefined;
+  if (!s || ui.view !== 'sector') {
+    if (ui.follow && !s) { ui.follow = undefined; dirtyUI = true; }
+    cam.followPos = null;
+    return;
+  }
+  if (s.sector !== ui.sector) { ui.sector = s.sector; dirtyUI = true; }
+  cam.followPos = { x: s.x, z: s.z + (bottomHeight() + 120) / 2 / cam.zoom };
 }
 
 /** Ab diesem Verkaufswert fliegen Credits zur Anzeige */
@@ -455,6 +470,8 @@ function focusOn(x: number, z: number, sectorId: string, zoom?: number): void {
 }
 
 function gotoSector(id: string): void {
+  ui.follow = undefined;
+  cam.followPos = null;
   ui.sector = id;
   ui.view = 'sector';
   ui.selection = null;
@@ -581,8 +598,11 @@ function onClick(e: MouseEvent): void {
       case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware!, back: ui.modal?.type === 'courier' ? ui.modal : undefined }; refresh(); break;
       case 'modal-back': ui.modal = ui.modal?.type === 'storage' ? ui.modal.back ?? null : null; refresh(); break;
       case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
-      case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); refresh(); break;
-      case 'buy-open': ui.modal = defaultBuyModal(state, d.st!, d.ware!); refresh(); break;
+      case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'sell') ui.modal.ship = d.ship; refresh(); break;
+      case 'buy-open': ui.modal = defaultBuyModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'buy') ui.modal.ship = d.ship; refresh(); break;
+      case 'order-del': result(A.removeOrder(state, d.id!, Number(d.i))); break;
+      case 'order-up': result(A.moveOrderUp(state, d.id!, Number(d.i))); break;
+      case 'order-cancel': result(A.cancelJob(state, d.id!)); break;
       case 'buy-ship': if (ui.modal?.type === 'buy') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
       case 'buy-pick': if (ui.modal?.type === 'buy') { ui.modal = { ...ui.modal, picked: ui.modal.picked === d.id ? '' : d.id! }; refresh(); } break;
       case 'buy-amount': if (ui.modal?.type === 'buy') { ui.modal = { ...ui.modal, amount: Math.floor(Number(d.v)) }; refresh(); } break;
@@ -654,11 +674,13 @@ function onClick(e: MouseEvent): void {
       case 'open-sector': openPanel('sector', d.id, undefined, !!ui.panel); break;
       case 'open-market': ui.marketSector = d.id!; openPanel('market'); break;
       case 'station-tab': if (ui.panel) { ui.panel = { ...ui.panel, tab: d.tab }; refresh(); } break;
-      case 'select-clear': ui.selection = null; ui.galaxySel = null; refresh(); break;
+      case 'select-clear': ui.selection = null; ui.galaxySel = null; ui.follow = undefined; refresh(); break;
+      case 'follow-stop': ui.follow = undefined; cam.followPos = null; refresh(); break;
+      case 'follow': ui.follow = d.id; if (ui.panel) ui.panel = null; refresh(); break;
       case 'focus': {
         const kind = d.kind, id = d.id!;
         if (kind === 'station') { const st = stationById(state, id); if (st) { focusOn(st.x, st.z, st.sector); ui.selection = { kind: 'station', id }; } }
-        if (kind === 'ship') { const s = state.ships.find((x) => x.id === id); if (s) { focusOn(s.x, s.z, s.sector); ui.selection = { kind: 'ship', id }; } }
+        if (kind === 'ship') { const s = state.ships.find((x) => x.id === id); if (s) { focusOn(s.x, s.z, s.sector); ui.selection = { kind: 'ship', id }; ui.follow = id; } }
         ui.panel = null;
         refresh();
         break;

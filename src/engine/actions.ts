@@ -390,6 +390,33 @@ export function courierOrder(state: GameState, shipId: string, contractId: numbe
   return ok(`${s.name} fliegt los: ${Math.round(job.amount).toLocaleString('de-DE')} ${WARES[c.ware].name} holen.`);
 }
 
+/** Warteschlange: Befehl an Stelle i streichen */
+export function removeOrder(state: GameState, shipId: string, i: number): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s?.orders?.[i]) return fail('Befehl nicht gefunden.');
+  s.orders.splice(i, 1);
+  return ok('Befehl gestrichen.');
+}
+
+/** Warteschlange: Befehl an Stelle i eins nach vorn */
+export function moveOrderUp(state: GameState, shipId: string, i: number): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s?.orders?.[i] || i < 1) return fail('Befehl nicht gefunden.');
+  [s.orders[i - 1], s.orders[i]] = [s.orders[i], s.orders[i - 1]];
+  return ok('Reihenfolge geändert.');
+}
+
+/** Laufende Fahrt abbrechen – nur solange noch nichts geladen ist */
+export function cancelJob(state: GameState, shipId: string): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s?.job) return fail('Keine laufende Fahrt.');
+  if (s.cargo || s.job.stage !== 'pickup') return fail('Das Schiff ist schon beladen – die Fahrt wird zu Ende geflogen.');
+  s.job = null;
+  s.phase = 'idle';
+  s.path = [];
+  return ok('Fahrt abgebrochen.');
+}
+
 /** Lageranteil einer Ware festlegen (0..1) oder mit null wieder automatisch verteilen */
 export function setStorageShare(state: GameState, stationId: string, ware: string, share: number | null): Result {
   const st = stationById(state, stationId);

@@ -35,7 +35,7 @@ import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
 import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { restMode, shipEta } from '../engine/fleet';
-import { endpointName, fieldById, incoming, knownSectors, reserveFor, stationById, wanted } from '../engine/logistics';
+import { endpointName, fieldById, incoming, knownSectors, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { currentMission, missionComplete, storyOf } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
@@ -169,7 +169,7 @@ export function cardHtml(state: GameState, ui: UIState): string {
   if (!sel) return '';
   switch (sel.kind) {
     case 'station': { const st = stationById(state, sel.id); return st ? stationCard(state, st) : ''; }
-    case 'ship': { const s = state.ships.find((x) => x.id === sel.id); return s ? shipCard(state, s) : ''; }
+    case 'ship': { const s = state.ships.find((x) => x.id === sel.id); return s ? shipCard(state, s, ui.follow === s.id) : ''; }
     case 'field': return fieldCard(state, sel.id);
     case 'trade': return tradeCard(state, sel.id);
     case 'npcst': return npcCard(state, sel.id);
@@ -210,7 +210,7 @@ function stationCard(state: GameState, st: Station): string {
     </div>`);
 }
 
-function shipCard(state: GameState, s: Ship): string {
+function shipCard(state: GameState, s: Ship, following: boolean): string {
   const c = SHIP_MAP[s.cls];
   const eta = shipEta(state, s);
   const cargo = s.cargo ? `${fmtAmount(s.cargo.amount)} ${WARES[s.cargo.ware].name}` : 'leer';
@@ -221,8 +221,8 @@ function shipCard(state: GameState, s: Ship): string {
       <div>${icon('clock', 22)}<span><b>${eta != null ? 'Zurück in' : 'Fahrten'}</b>${eta != null ? fmtDur(eta) : fmtInt(s.trips)}</span></div>
     </div>
     <div class="card-actions">
-      <button class="btn primary" ${act('open-ship', { id: s.id })}>${icon('fleet', 20)}Befehle</button>
-      <button class="btn" ${act('open-station', { id: s.home, tab: 'overview' })}>${icon('station', 20)}Heimat</button>
+      <button class="btn primary" ${act('open-ship', { id: s.id })}>${icon('fleet', 20)}Befehle${s.orders?.length ? ` · ${s.orders.length}` : ''}</button>
+      <button class="btn ${following ? 'on' : ''}" ${act(following ? 'follow-stop' : 'follow', { id: s.id })} aria-pressed="${following}">${icon('target', 20)}${following ? 'Folgt' : 'Folgen'}</button>
     </div>`, c.role === 'miner');
 }
 
@@ -736,6 +736,39 @@ function fleetPanel(state: GameState): string {
     <button class="btn primary block" ${act('buyship-modal', { st: home, role: 'all' })}>${icon('plus', 20)}Schiff kaufen</button>`);
 }
 
+/** Fahrt in Worten: „Kauf 1.350 Energiezellen · Zhin-Handelsposten → Station Alpha“ */
+function jobText(state: GameState, j: NonNullable<Ship['job']>): { title: string; sub: string } {
+  const c = j.contract != null ? state.contracts.find((x) => x.id === j.contract) : undefined;
+  const w = WARES[j.ware].name;
+  const verb = c ? 'Lieferauftrag' : j.from.kind === 'market' && j.to.kind === 'station' ? 'Einkauf' : j.from.kind === 'station' && j.to.kind === 'market' ? 'Verkauf' : j.from.kind === 'market' && j.to.kind === 'market' ? 'Handel' : 'Transport';
+  return { title: `${verb}: ${fmtAmount(j.amount)} ${w}`, sub: `${endpointName(state, j.from)} → ${endpointName(state, j.to)}` };
+}
+
+/** Warteschlange eines Transporters: laufende Fahrt, erteilte Befehle (umsortieren, streichen) und neue einreihen */
+function orderQueue(state: GameState, s: Ship): string {
+  const list = s.orders ?? [];
+  const cur = s.job ? jobText(state, s.job) : null;
+  const curRow = cur
+    ? `<div class="row">${icon('trader', 20)}<div class="grow"><div class="title two-lines">${esc(cur.title)}</div><div class="sub wrap">${esc(cur.sub)} · <b>läuft</b>${s.job!.stage === 'deliver' ? ' (beladen)' : ''}</div></div>${s.job!.stage === 'pickup' && !s.cargo ? `<button class="icon-btn" ${act('order-cancel', { id: s.id })} aria-label="Fahrt abbrechen">${icon('close', 18)}</button>` : ''}</div>`
+    : `<div class="row">${icon('info', 20)}<div class="grow"><div class="sub wrap">${esc(s.status)}</div></div></div>`;
+  const rows = list.map((o, i) => {
+    const t = jobText(state, o);
+    return `<div class="row" data-key="o${i}"><span class="num muted" style="width:18px;text-align:center">${i + 1}</span><div class="grow"><div class="title two-lines">${esc(t.title)}</div><div class="sub wrap">${esc(t.sub)}</div></div>
+      ${i > 0 ? `<button class="icon-btn" ${act('order-up', { id: s.id, i })} aria-label="Nach vorn">${icon('up', 18)}</button>` : ''}
+      <button class="icon-btn" ${act('order-del', { id: s.id, i })} aria-label="Streichen">${icon('close', 18)}</button></div>`;
+  }).join('');
+  const home = stationById(state, s.home);
+  const sellWare = home ? Object.keys(home.inventory).filter((id) => WARES[id]?.storage === SHIP_MAP[s.cls].storage && sellableStock(home, id) >= 1).sort((a, b) => (home.inventory[b] ?? 0) * WARES[b].price.avg - (home.inventory[a] ?? 0) * WARES[a].price.avg)[0] : undefined;
+  const deliveries = state.contracts.filter((c) => isDelivery(c) && (c.status === 'offer' || c.status === 'active'));
+  return `<div class="section"><h3>Warteschlange${list.length ? ` · ${list.length}` : ''}</h3><div class="box rows">${curRow}${rows}</div>
+    <p class="small muted" style="margin:8px 0">Befehle arbeitet das Schiff der Reihe nach ab, danach geht es im gewählten Modus weiter.</p>
+    <div class="pills">
+      ${home ? `<button class="pill" ${act('buy-open', { st: home.id, ware: '', ship: s.id })}>${icon('plus', 14)}Einkauf</button>` : ''}
+      ${home && sellWare ? `<button class="pill" ${act('sell-open', { st: home.id, ware: sellWare, ship: s.id })}>${icon('plus', 14)}Verkauf</button>` : ''}
+      ${deliveries.length ? `<button class="pill" ${act('nav', { tab: 'missions' })}>${icon('plus', 14)}Lieferauftrag (${deliveries.length})</button>` : ''}
+    </div></div>`;
+}
+
 function shipPanel(state: GameState, s: Ship, p: Panel): string {
   const c = SHIP_MAP[s.cls];
   const home = stationById(state, s.home);
@@ -758,7 +791,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     const wares = WARE_IDS.filter((id) => WARES[id].storage === c.storage).sort((a, b) => WARES[a].name.localeCompare(WARES[b].name));
     const sel = (field: string, value: string, opts: { v: string; label: string }[]) =>
       `<select data-change="${field}" data-id="${s.id}">${opts.map((o) => `<option value="${esc(o.v)}" ${o.v === value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
-    orders = `<div class="section"><h3>Befehl</h3>
+    orders = `${orderQueue(state, s)}<div class="section"><h3>Befehl</h3>
       <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Autohandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Versorgungslinie</button></div>
       ${s.mode === 'auto'
         ? `<p class="small muted">Verkauft Überschüsse der Heimatstation an eigene Stationen, aktive Aufträge oder den besten Markt in der Nähe und kauft fehlende Eingangswaren für sie ein. Die Heimatstation ist immer einer der beiden Handelspartner – für andere Stationen arbeitet er nur über Einzelaufträge oder eine Versorgungslinie.</p>`
@@ -782,7 +815,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     </div></div>
     ${orders}
     <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(home?.name ?? '—')}</div><div class="sub">${esc(home ? sector(home.sector).name : '')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
-    <div class="card-actions"><button class="btn" ${act('focus', { kind: 'ship', id: s.id })}>${icon('target', 20)}Auf Karte</button><button class="btn danger" ${act('ask-sell-ship', { id: s.id })}>Verkaufen</button></div>`,
+    <div class="card-actions"><button class="btn" ${act('focus', { kind: 'ship', id: s.id })}>${icon('target', 20)}Auf Karte folgen</button><button class="btn danger" ${act('ask-sell-ship', { id: s.id })}>Verkaufen</button></div>`,
   { back: !!p.back });
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
 import { COURIER_BONUS, contractDeliver, generateCourier, isDelivery, wareSellers } from '../src/engine/contracts';
-import { buyOrder, courierOrder } from '../src/engine/actions';
+import { buyOrder, cancelJob, courierOrder, moveOrderUp, removeOrder } from '../src/engine/actions';
 import { marketPrice } from '../src/engine/economy';
 import { SHIP_MAP } from '../src/data/ships';
 import { WARES } from '../src/data/wares';
@@ -86,4 +86,35 @@ describe('Lieferaufträge nach Bedarf', () => {
     expect(st.inventory.energycells ?? 0).toBeGreaterThan(400);
     expect(s.credits).toBeLessThan(before + 1);
   }, 60000);
+
+  it('Auftragslohn zählt als Verkaufserlös (Kapitelziel „Verkaufe Waren für …“)', () => {
+    const s = newGame(7, 'trading');
+    const c = generateCourier(s)!;
+    c.status = 'active';
+    s.contracts.push(c);
+    const sold = s.totals.sold;
+    contractDeliver(s, c.id, c.ware, c.amount);
+    expect(s.totals.sold - sold).toBeCloseTo(c.reward, 3);
+  });
+
+  it('Warteschlange: Befehle umsortieren, streichen, laufende Fahrt vor dem Beladen abbrechen', () => {
+    const s = newGame(7, 'trading');
+    const sh = s.ships[0];
+    const st = s.stations[0];
+    sh.job = { ware: 'energycells', amount: 100, from: { kind: 'market', sector: 'zhin' }, to: { kind: 'station', id: st.id }, stage: 'pickup' };
+    sh.phase = 'toTarget';
+    buyOrder(s, sh.id, st.id, 'energycells', 500, { kind: 'market', sector: 'zhin' });
+    buyOrder(s, sh.id, st.id, 'hullparts', 50, { kind: 'market', sector: 'zhin' });
+    expect(sh.orders!.map((o) => o.ware)).toEqual(['energycells', 'hullparts']);
+    expect(moveOrderUp(s, sh.id, 1).ok).toBe(true);
+    expect(sh.orders!.map((o) => o.ware)).toEqual(['hullparts', 'energycells']);
+    expect(removeOrder(s, sh.id, 0).ok).toBe(true);
+    expect(sh.orders!.map((o) => o.ware)).toEqual(['energycells']);
+    expect(cancelJob(s, sh.id).ok).toBe(true);
+    expect(sh.job).toBeNull();
+    // Beladen: nicht mehr abbrechbar
+    sh.job = { ware: 'energycells', amount: 100, from: { kind: 'market', sector: 'zhin' }, to: { kind: 'station', id: st.id }, stage: 'deliver' };
+    sh.cargo = { ware: 'energycells', amount: 100 };
+    expect(cancelJob(s, sh.id).ok).toBe(false);
+  });
 });

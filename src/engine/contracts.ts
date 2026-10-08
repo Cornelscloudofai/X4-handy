@@ -22,6 +22,8 @@ export function contractDeliver(state: GameState, id: number, wareId: string, am
   let pay = Math.max(0, Math.min(c.reward - (c.paid ?? 0), (c.reward * used) / c.amount));
   state.credits += pay;
   c.paid = (c.paid ?? 0) + pay;
+  // Auftragslohn ist Verkaufserlös (zählt z. B. für Kapitelziele „Verkaufe Waren für …“)
+  state.totals.sold += pay;
   if (c.delivered >= c.amount - 0.5) pay += completeContract(state, c);
   return { used, pay };
 }
@@ -31,6 +33,7 @@ function completeContract(state: GameState, c: Contract): number {
   c.status = 'done';
   const rest = Math.max(0, c.reward - (c.paid ?? 0));
   state.credits += rest;
+  state.totals.sold += rest;
   c.paid = c.reward;
   if (isDelivery(c)) state.totals.couriers = (state.totals.couriers ?? 0) + 1;
   const f = sector(c.sector).faction;

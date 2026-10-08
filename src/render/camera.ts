@@ -11,6 +11,10 @@ export class Camera {
   vz = 0;
   /** Zoom der Gesamtansicht (Sektor passt aufs Display) – Bezug für mitwachsende Symbole */
   fitZoom = 1;
+  /** Mitverfolgen: Punkt, auf dem die Kamera zentriert bleibt (jedes Bild neu gesetzt) */
+  followPos: { x: number; z: number } | null = null;
+  /** Zählt, wie oft der Spieler die Karte selbst verschoben hat (beendet das Mitverfolgen) */
+  panned = 0;
   /** Zielwerte für sanfte Kamerafahrten */
   private target: { x: number; z: number; zoom: number } | null = null;
 
@@ -59,6 +63,16 @@ export class Camera {
   }
 
   update(dt: number, limit: number): void {
+    if (this.followPos) {
+      // Zoomfahrt läuft weiter, die Position folgt dem Ziel
+      if (this.target) { this.target.x = this.followPos.x; this.target.z = this.followPos.z; }
+      else {
+        const k = 1 - Math.exp(-dt * 8);
+        this.x += (this.followPos.x - this.x) * k;
+        this.z += (this.followPos.z - this.z) * k;
+        this.vx = this.vz = 0;
+      }
+    }
     if (this.target) {
       const k = 1 - Math.exp(-dt * 6);
       this.x += (this.target.x - this.x) * k;
@@ -126,6 +140,7 @@ export function attachInput(el: HTMLElement, cam: () => Camera, handlers: InputH
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 8) moved = true;
       if (moved) {
+        if (c.followPos) { c.followPos = null; c.panned++; }
         c.x -= dx / c.zoom;
         c.z -= dy / c.zoom;
         const now = performance.now();

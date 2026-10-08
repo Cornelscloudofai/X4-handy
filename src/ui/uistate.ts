@@ -44,6 +44,8 @@ export interface UIState {
   view: 'sector' | 'galaxy';
   sector: string;
   selection: Selection | null;
+  /** Schiff, dem die Kamera folgt */
+  follow?: string;
   placing: { x: number; z: number; valid: boolean; msg: string; set: boolean } | null;
   /** Kartenebene Handelsrouten: Flugwege und feste Versorgungsrouten der eigenen Schiffe (Standard an) */
   routes: boolean;
