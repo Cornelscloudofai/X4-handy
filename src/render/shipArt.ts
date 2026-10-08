@@ -258,10 +258,10 @@ export function mapShipSprite(cls: string): FighterSprite | null {
  * Auswahl je Station fest über ihre Kennung. Im Bild zeigt ein Arm nach oben.
  */
 const STATION_CORES: Record<string, string[]> = {
-  ring: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki'],
-  block: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki'],
-  tri: [],
-  spine: [],
+  ring: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki', 'split-station-kern-kasten-ki'],
+  block: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki', 'split-station-kern-kasten-ki'],
+  tri: ['split-station-kern-tri-ki'],
+  spine: ['split-station-kern-rueckgrat-ki'],
 };
 
 /** Bild des Stationskerns für Bauform und Station (Zahl aus ihrer Kennung), sonst null (dann Symbol) */
