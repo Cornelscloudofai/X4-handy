@@ -40,7 +40,7 @@ import { netWorth } from '../engine/stats';
 import { currentMission, missionComplete, storyOf } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
 import { SHIP_BUILD_TIME, hasYard, materialValue, missingFor, yardSizes, yardStations } from '../engine/yard';
-import type { GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
+import type { Contract, GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
 import { helpBtn, helpList, helpModalParts } from './help';
 import { canUndo, undoLabel } from './undo';
@@ -736,6 +736,18 @@ function fleetPanel(state: GameState): string {
     <button class="btn primary block" ${act('buyship-modal', { st: home, role: 'all' })}>${icon('plus', 20)}Schiff kaufen</button>`);
 }
 
+/**
+ * Wie der Lohn zu verstehen ist: Er ersetzt den Verkauf (die Ware geht an den Auftrag, nicht zusätzlich an den Markt)
+ * und wird anteilig mit jeder Lieferung gezahlt – im Vergleich zum Marktwert am Ziel.
+ */
+function contractPayNote(state: GameState, c: Contract): string {
+  const key = c.market ?? c.sector;
+  const market = c.amount * marketPrice(state, key, c.ware);
+  const more = c.reward - market;
+  const paid = c.paid ?? 0;
+  return `Lohn = Gesamtpreis für alle ${fmtInt(c.amount)} Einheiten statt Marktverkauf (dort gerade ca. ${fmtCr(market)}${more > 0 ? `, also ${fmtCr(more)} mehr` : ''}). Gezahlt wird mit jeder Lieferung${paid > 0 ? ` – bisher ${fmtCr(paid)} erhalten` : ''}.`;
+}
+
 /** Fahrt in Worten: „Kauf 1.350 Energiezellen · Zhin-Handelsposten → Station Alpha“ */
 function jobText(state: GameState, j: NonNullable<Ship['job']>): { title: string; sub: string } {
   const c = j.contract != null ? state.contracts.find((x) => x.id === j.contract) : undefined;
@@ -956,6 +968,7 @@ function missionsPanel(state: GameState): string {
       ${courier ? `<div class="small muted">Zahlt <b class="pos">${fmtInt(c.reward / c.amount)} Cr</b> je Einheit (üblich ${fmtInt(w.price.avg)}) · Lohn ${fmtCr(c.reward)}${best ? ` · günstig bei ${esc(best.name)} für ${fmtInt(best.price)} Cr · Gewinn bis ${fmtCr(best.profit)}${best.units < c.amount - 0.5 ? ' je Fahrt' : ''}` : ''} · für ${c.size}-Frachter${offer ? ` · ${fmtDur(c.duration)} Frist` : ''}</div>` : ''}
       ${offer ? '' : `${bar(c.delivered / c.amount)}<div class="small muted" style="margin-top:4px">${fmtInt(c.delivered)} / ${fmtInt(c.amount)} geliefert · noch ${fmtDur(c.deadline - state.time)}</div>`}</div>
       ${courier ? '' : `<div class="right"><b class="pos">${fmtCr(c.reward)}</b><div class="small muted">${offer ? `${fmtDur(c.duration)} Frist` : `Ruf +${c.rep}`}</div></div>`}
+      <div class="small muted" style="width:100%;margin-top:4px">${contractPayNote(state, c)}</div>
       <div style="width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
         ${offer ? `<span class="small muted" style="margin-right:auto;align-self:center">läuft ab in ${fmtDur(c.deadline - state.time)}</span>` : ''}${btn}
       </div></div>`;

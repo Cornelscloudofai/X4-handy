@@ -24,11 +24,14 @@ export function contractDeliver(state: GameState, id: number, wareId: string, am
   c.paid = (c.paid ?? 0) + pay;
   // Auftragslohn ist Verkaufserlös (zählt z. B. für Kapitelziele „Verkaufe Waren für …“)
   state.totals.sold += pay;
-  if (c.delivered >= c.amount - 0.5) pay += completeContract(state, c);
+  const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
+  // Teillieferung sichtbar machen: Der Lohn kommt anteilig, nicht erst am Ende
+  if (c.delivered < c.amount - 0.5 && pay > 0) log(state, `Lieferung für „${c.title}“: ${fmt(used)} ${WARES[c.ware].name} → +${fmt(pay)} Cr (${fmt(c.delivered)} von ${fmt(c.amount)}, bisher ${fmt(c.paid ?? 0)} von ${fmt(c.reward)} Cr)`, 'good', true);
+  if (c.delivered >= c.amount - 0.5) pay += completeContract(state, c, pay);
   return { used, pay };
 }
 
-function completeContract(state: GameState, c: Contract): number {
+function completeContract(state: GameState, c: Contract, lastPay = 0): number {
   c.delivered = c.amount;
   c.status = 'done';
   const rest = Math.max(0, c.reward - (c.paid ?? 0));
@@ -38,7 +41,9 @@ function completeContract(state: GameState, c: Contract): number {
   if (isDelivery(c)) state.totals.couriers = (state.totals.couriers ?? 0) + 1;
   const f = sector(c.sector).faction;
   state.rep[f] = Math.min(30, state.rep[f] + c.rep);
-  log(state, `Auftrag erfüllt: ${c.title} (+${Math.round(c.reward).toLocaleString('de-DE')} Cr, Ruf +${c.rep} bei ${FACTIONS[f].short})`, 'good', true);
+  const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
+  const earlier = c.reward - rest - lastPay;
+  log(state, `Auftrag erfüllt: ${c.title} – insgesamt ${fmt(c.reward)} Cr${earlier > 1 ? ` (davon ${fmt(earlier)} Cr schon mit früheren Lieferungen, jetzt +${fmt(rest + lastPay)} Cr)` : ''}, Ruf +${c.rep} bei ${FACTIONS[f].short}`, 'good', true);
   emit({ type: 'contractDone', id: c.id });
   return rest;
 }
