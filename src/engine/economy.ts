@@ -439,8 +439,13 @@ export function initMarkets(state: GameState): void {
       let eq = 0.5 + (rand(state) - 0.5) * 0.16;
       if (s.surplus.includes(id)) eq = 0.75 + rand(state) * 0.08;
       if (s.demand.includes(id)) eq = 0.18 + rand(state) * 0.08;
-      const cap = baseDemand(id) * 12 * (s.demand.includes(id) ? 1.5 : 1);
-      m[id] = { stock: cap * eq, cap, eq };
+      // Neue Spiele: Rohstoffe nimmt der Handelsposten nur in kleinerer Menge ab (Hauptkunden sind die NPC-Fabriken)
+      const rawFactor = state.start && WARES[id].mined ? RAW_POST_CAP * (LUXURY.includes(id) ? 0.15 : 1) : 1;
+      const cap = baseDemand(id) * 12 * (s.demand.includes(id) ? 1.5 : 1) * rawFactor;
+      // Gefertigte Waren: nur ein kleiner Startbestand im Umlauf (Grundwaren fest: zusammen 300–500 Claytronik)
+      const scarce = !!state.start;
+      const start = !scarce ? cap * eq : START_STOCK[id] ? START_STOCK[id][0] + rand(state) * (START_STOCK[id][1] - START_STOCK[id][0]) : manufactured(id) ? cap * eq * 0.35 : cap * eq;
+      m[id] = { stock: Math.min(cap, start), cap, eq };
     }
     state.markets[s.id] = m;
   }
@@ -533,9 +538,38 @@ export function npcMade(state: GameState): Set<string> {
   return made;
 }
 
+/**
+ * Wie viel Geld Einkäufe ausgeben dürfen: Es bleibt eine Rücklage (höchstens `reserve`, bei wenig Geld ein Fünftel des
+ * Kontostands) – so können auch kleine Starts mit 20.000–50.000 Cr einkaufen.
+ */
+export function spendable(state: GameState, reserve: number): number {
+  return Math.max(0, state.credits - Math.min(reserve, state.credits * 0.2));
+}
+
+/** Gefertigte Ware (alles außer Rohstoffen und Energiezellen) */
+export function manufactured(id: string): boolean {
+  const w = WARES[id];
+  return !!w && !w.mined && id !== 'energycells';
+}
+
+/** Startbestand je Handelsposten [min, max] für die Grundwaren – im Umlauf für die ersten paar Module */
+export const START_STOCK: Record<string, [number, number]> = { claytronics: [60, 100], hullparts: [250, 400] };
+/** Notreserve: Grundwaren tröpfeln je Handelsposten langsam nach (Einheiten je Spieltag, bis höchstens) – nie ganz gesperrt */
+export const TRICKLE: Record<string, { perDay: number; upTo: number }> = { claytronics: { perDay: 8, upTo: 40 }, hullparts: { perDay: 30, upTo: 150 } };
+/** Neue Spiele: Rohstofflager der Handelsposten kleiner, Überschuss wird langsamer abgebaut (begrenzte Abnahme) */
+export const RAW_POST_CAP = 0.4;
+/** Rohstoffe ohne Abnehmer in der Produktion (Luxusware): nur sehr kleine Nachfrage am Handelsposten */
+const LUXURY = ['nividium'];
+const RAW_ABSORB_SECONDS = 16 * 3600;
+/** Hintergrundverbrauch: gefertigte Waren am Handelsposten sinken langsam auf diesen Anteil der Lagergröße */
+const POST_FLOOR = 0.03;
+const CONSUME_SECONDS = 8 * 3600;
+
 export function stepMarkets(state: GameState, dt: number): void {
   const k = 1 - Math.exp(-dt / REVERT_SECONDS);
+  const kc = 1 - Math.exp(-dt / CONSUME_SECONDS);
   const made = npcMade(state);
+  const scarce = !!state.start;
   for (const key in state.markets) {
     // NPC-Fabriken: Bestand ändert sich nur durch Produktion, Verbrauch und Lieferungen
     if (state.npcEco?.[key]) continue;
@@ -543,8 +577,20 @@ export function stepMarkets(state: GameState, dt: number): void {
     const post = !!SECTOR_MAP[key];
     for (const id in market) {
       const m = market[id];
+      // Neue Spiele (mit Startwahl): knapper Handelsposten; alte Spielstände behalten den großzügigen
+      if (post && scarce && manufactured(id)) {
+        // Handelsposten: Fabrikwaren wachsen nicht nach – Nachschub nur von NPC-Fabriken und Spielern; der Sektor
+        // verbraucht sie langsam (so bleibt Nachfrage). Grundwaren tröpfeln als Notreserve nach.
+        const floor = Math.max(POST_FLOOR * m.cap, START_STOCK[id]?.[1] ?? 0);
+        if (m.stock > floor) m.stock += (floor - m.stock) * kc;
+        const t = TRICKLE[id];
+        if (t && m.stock < t.upTo) m.stock = Math.min(t.upTo, m.stock + (t.perDay * dt) / 86400);
+        continue;
+      }
       const target = m.eq * (post ? postShare(id, made) : 1);
-      m.stock += (target * m.cap - m.stock) * k;
+      // Neue Spiele: verkaufte Rohstoffe baut der Handelsposten nur langsam ab
+      const slow = post && scarce && WARES[id]?.mined && m.stock > target * m.cap;
+      m.stock += (target * m.cap - m.stock) * (slow ? 1 - Math.exp(-dt / RAW_ABSORB_SECONDS) : k);
     }
   }
 }
@@ -556,7 +602,8 @@ export function marketEvent(state: GameState): string | null {
   const candidates = WARE_IDS.filter((id) => WARES[id].tier >= 1);
   const id = candidates[Math.floor(rand(state) * candidates.length)];
   const m = state.markets[s.id][id];
-  const up = rand(state) < 0.5;
+  // Fabrikwaren entstehen nicht aus dem Nichts: bei ihnen gibt es nur steigende Nachfrage
+  const up = (!!state.start && manufactured(id)) || rand(state) < 0.5;
   m.eq = clamp(m.eq + (up ? -0.25 : 0.25), 0.1, 0.9);
   m.stock = clamp(m.stock + (up ? -0.25 : 0.2) * m.cap, 0, m.cap);
   return up

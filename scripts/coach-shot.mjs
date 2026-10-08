@@ -7,6 +7,7 @@ import { distUrl } from './serve.mjs';
 
 const out = process.argv[2] ?? '.';
 const width = Number(process.argv[3] ?? 390);
+const kind = process.argv[4] ?? 'mining';
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage({ viewport: { width, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 const errors = [];
@@ -15,7 +16,7 @@ page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_
 await page.goto(await distUrl());
 await page.waitForTimeout(700);
 await page.screenshot({ path: `${out}/coach-${width}-00-welcome.png` });
-await page.click('text=Loslegen');
+await page.click(`.start-card[data-kind="${kind}"]`);
 await page.waitForTimeout(500);
 
 const seen = [];
@@ -39,7 +40,7 @@ for (let i = 0; i < 60; i++) {
     // Kein Hinweis: Spielzeit vorspulen (Bau, Produktion, Kapitel)
     const done = await page.evaluate(() => { const g = window.__game; g.state.credits = Math.max(g.state.credits, 20e6); g.step(900); g.refresh(); return g.state.story.index; });
     await page.waitForTimeout(150);
-    if (done >= 5 || ++idle > 25) break;
+    if (done >= (kind === 'mining' ? 8 : 7) || ++idle > 25) break;
     continue;
   }
   idle = 0;
@@ -54,7 +55,7 @@ for (let i = 0; i < 60; i++) {
   else problems.push('Hinweis ohne Ziel und ohne Weiter: ' + info.text.slice(0, 40));
   await page.waitForTimeout(400);
 }
-const state = await page.evaluate(() => { const s = window.__game.state; return { chapter: s.story.index, miners: s.ships.filter((x) => x.cls.startsWith('alligator')).length, boas: s.ships.filter((x) => x.cls === 'boa').length, refinery: s.stations[0].modules.some((m) => m.def === 'prod_refinedmetals'), help: s.help }; });
+const state = await page.evaluate(() => { const s = window.__game.state; return { chapter: s.story.index, miners: s.ships.filter((x) => x.cls.startsWith('alligator')).length, traders: s.ships.filter((x) => !x.cls.startsWith('alligator')).length, refinery: s.stations[0].modules.some((m) => m.def === 'prod_refinedmetals'), help: s.help }; });
 
 // Hilfe: „?“-Knopf öffnet das passende Thema, Menü zeigt alle Themen
 await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.openPanel('station', g.state.stations[0].id, 'modules'); g.refresh(); });
@@ -71,5 +72,6 @@ await page.screenshot({ path: `${out}/coach-${width}-help-list.png` });
 const report = { steps: seen, state, helpTitle, topics, problems, errors };
 console.log(JSON.stringify(report, null, 1));
 await browser.close();
-const ok = !errors.length && !problems.length && state.refinery && state.miners >= 3 && state.boas >= 1 && state.chapter >= 4 && helpTitle.includes('Baulager') && topics >= 8;
+// Bergbau: 3 Einstiegskapitel + Raffinerie, Metalle, Miner, Transporter; Handel: bis zu den Minern
+const ok = !errors.length && !problems.length && state.refinery && (kind === 'mining' ? state.miners >= 3 && state.traders >= 1 && state.chapter >= 7 : state.chapter >= 6) && helpTitle.includes('Baulager') && topics >= 8;
 if (!ok) { console.error('Fehlgeschlagen'); process.exit(1); }

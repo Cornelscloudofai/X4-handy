@@ -2,7 +2,7 @@
 // Hintergrundverkehr belebt die Sektoren.
 import { SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { BUILD_TOLERANCE, addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, marketStock, receiveWare, roomAt, stationWares } from './economy';
+import { BUILD_TOLERANCE, spendable, addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, marketStock, receiveWare, roomAt, stationWares } from './economy';
 import { contractDeliver } from './contracts';
 import { endOf, recordFlow } from './flows';
 import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
@@ -65,7 +65,8 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
       const bRoom = buildRoom(st, id, undefined, true);
       const need = dock ? want : Math.min(want, bRoom);
       const stock = marketStock(state, sectorId, id);
-      const buy = Math.min(need, units, stock * 0.5, Math.max(0, state.credits - 100_000) / marketPrice(state, sectorId, id));
+      // Kleine Mengen fürs Baulager dürfen den Bestand ganz leeren, sonst höchstens die Hälfte
+      const buy = Math.min(need, units, Math.max(stock * 0.5, Math.min(stock, bRoom)), spendable(state, 100_000) / marketPrice(state, sectorId, id));
       // Kleine Restmengen fürs Baulager werden auch geliefert
       const minBuy = bRoom > BUILD_TOLERANCE ? Math.min(units * 0.25, 200, bRoom) : Math.min(units * 0.25, 200);
       if (buy >= minBuy) offers.push({ item: { st: st.id, ware: id, kind: 'seller', amount: buy }, w: buy * w.price.avg * 0.8 });
@@ -144,7 +145,7 @@ function npcTrade(state: GameState, n: NpcShip): void {
   } else if (n.kind === 'seller') {
     const price = marketPrice(state, n.sector, n.ware);
     const room = hasDockFor(st, 'M') ? roomAt(st, n.ware, 'market') : buildRoom(st, n.ware, undefined, true);
-    const qty = Math.min(n.amount, room, marketStock(state, n.sector, n.ware), Math.max(0, state.credits - 20_000) / price);
+    const qty = Math.min(n.amount, room, marketStock(state, n.sector, n.ware), spendable(state, 20_000) / price);
     if (qty < 1) return;
     const cost = applyMarketTrade(state, n.sector, n.ware, -qty);
     receiveWare(state, st, n.ware, qty, 'market');

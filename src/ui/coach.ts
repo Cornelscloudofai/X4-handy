@@ -51,11 +51,38 @@ export function coachStep(state: GameState, ui: UIState): CoachStep | null {
   const m = currentMission(state);
   if (!m) return null;
   // Belohnung abholen hat Vorrang – in den ersten Kapiteln mit Hinweis
-  if (state.story.index <= 4 && missionComplete(state)) {
+  if (state.story.index <= (state.start ? 7 : 4) && missionComplete(state)) {
     if (ui.panel?.type === 'missions') return { id: 'claim', sel: '#panel [data-act="claim"]', text: 'Ziel erreicht! Hol dir die Belohnung ab – danach beginnt das nächste Kapitel.' };
     if (ui.modal) return { id: 'claim-close', sel: '#modal .modal-foot [data-act="modal-close"]', text: 'Ziel erreicht! Schließe den Dialog – dann holst du die Belohnung ab.' };
     if (!ui.panel) return { id: 'claim-open', sel: '#objective .objective', text: 'Kapitel geschafft. Tippe hier, um die Belohnung abzuholen.' };
     return { id: 'claim-nav', sel: '#nav [data-tab="missions"]', text: 'Kapitel geschafft! Unter „Aufträge“ holst du die Belohnung ab.' };
+  }
+  if (m.id === 'm-first') {
+    if (!coachSeen(state, 'mine-intro') && !ui.modal && !ui.panel) {
+      return { id: 'mine-intro', sel: null, text: 'Dein Alligator fliegt schon los: Er fördert selbst und verkauft an die NPC-Fabrik, die gerade am besten zahlt. Unten steht dein Ziel.', next: true };
+    }
+    if (!coachSeen(state, 'speed') && !ui.modal) {
+      return { id: 'speed', sel: '#hud [data-act="speed"]', text: 'Abbau und Flüge brauchen Zeit. Hier beschleunigst du das Spiel (bis ×60).', next: true, doneOn: 'speed' };
+    }
+    return null;
+  }
+  if (m.id === 't-courier') {
+    if (ui.modal?.type === 'courierShip') return { id: 'tc-ship', sel: '#modal [data-act="courier-ship"]', text: 'Wähle deinen Transporter. Er kauft die Ware beim Verkäufer und liefert sie ab.' };
+    if (ui.modal) return null;
+    if (state.contracts.some((c) => c.source && c.status === 'active')) {
+      if (!coachSeen(state, 'speed')) return { id: 'speed', sel: '#hud [data-act="speed"]', text: 'Der Transporter ist unterwegs. Hier beschleunigst du das Spiel (bis ×60).', next: true, doneOn: 'speed' };
+      return null;
+    }
+    if (!state.contracts.some((c) => c.source && c.status === 'offer')) return null;
+    if (ui.panel?.type === 'missions') return { id: 'tc-accept', sel: '#panel [data-act="courier-ship-modal"]', text: 'Ein Kurierauftrag: Ware abholen, hinbringen, 30–50 % mehr kassieren. Tippe auf „Annehmen und Schiff schicken“.' };
+    if (ui.panel) return null;
+    return { id: 'tc-nav', sel: '#nav [data-tab="missions"]', text: 'Willkommen, Kommandant! Unter „Aufträge“ warten Kurieraufträge – der schnellste Weg zu Geld. Tippe hier.' };
+  }
+  if (m.id === 'm-fleet') {
+    return buyShipStep(ui, 'fleet2', 'tuatara', 'Zeit für ein zweites Schiff. Öffne die Flotte.', 'Der Tuatara ist ein kleiner Transporter – günstig und genau richtig für Kurieraufträge. Kaufen.');
+  }
+  if (m.id === 't-fleet') {
+    return buyShipStep(ui, 'fleet2', 'alligator_min', 'Zeit für ein zweites Schiff. Öffne die Flotte.', 'Der Alligator fördert Erz und Silizium und verkauft es selbst an die NPC-Fabriken. Kaufen.');
   }
   if (m.id === 'refinery') {
     const queued = st0.queue.some((q) => q.def === 'prod_refinedmetals') || st0.build?.def === 'prod_refinedmetals';
@@ -100,6 +127,7 @@ export function coachStep(state: GameState, ui: UIState): CoachStep | null {
 }
 
 let lastStep = '';
+let scrollTries = 0;
 
 /** Rahmen und Sprechblase zeichnen (nach jedem Neuaufbau der Oberfläche) */
 export function renderCoach(state: GameState, ui: UIState): void {
@@ -118,8 +146,12 @@ export function renderCoach(state: GameState, ui: UIState): void {
     lastStep = step?.id ?? '';
     return;
   }
-  // Neues Ziel außerhalb des sichtbaren Bereichs: einmal hinscrollen
-  if (target && step.id !== lastStep && (rect!.top < 60 || rect!.bottom > window.innerHeight - 80)) {
+  // Ziel außerhalb des sichtbaren Bereichs (auch unter dem Kopf eines Panels): hinscrollen, höchstens dreimal je Hinweis
+  if (step.id !== lastStep) scrollTries = 0;
+  const box = target?.closest('.sheet-body')?.getBoundingClientRect();
+  const top = Math.max(60, box?.top ?? 0), bottom = Math.min(window.innerHeight - 80, box?.bottom ?? window.innerHeight);
+  if (target && scrollTries < 3 && (rect!.top < top || rect!.bottom > bottom)) {
+    scrollTries++;
     target.scrollIntoView({ block: 'center' });
   }
   lastStep = step.id;

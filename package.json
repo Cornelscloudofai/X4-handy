@@ -15,7 +15,7 @@
     "balance": "tsx scripts/balance.ts",
     "shots": "vite build && node scripts/tour.mjs",
     "fps": "vite build && node scripts/fps.mjs",
-    "e2e": "vite build && node scripts/yard-shot.mjs /tmp 390 && node scripts/yard-shot.mjs /tmp 360 && node scripts/oldsave-shot.mjs /tmp 360 && node scripts/coach-shot.mjs /tmp 390 && node scripts/coach-shot.mjs /tmp 360 && node scripts/map-shot.mjs /tmp && node scripts/flow-shot.mjs /tmp && node scripts/minigame-shot.mjs /tmp 390 && node scripts/minigame-shot.mjs /tmp 360",
+    "e2e": "vite build && node scripts/yard-shot.mjs /tmp 390 && node scripts/yard-shot.mjs /tmp 360 && node scripts/oldsave-shot.mjs /tmp 360 && node scripts/coach-shot.mjs /tmp 390 && node scripts/coach-shot.mjs /tmp 360 && node scripts/coach-shot.mjs /tmp 390 trading && node scripts/map-shot.mjs /tmp && node scripts/flow-shot.mjs /tmp && node scripts/minigame-shot.mjs /tmp 390 && node scripts/minigame-shot.mjs /tmp 360",
     "perf": "tsx scripts/perf.ts",
     "kampagne": "tsx scripts/campaign.ts"
   },

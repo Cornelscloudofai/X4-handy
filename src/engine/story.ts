@@ -2,7 +2,7 @@
 import { SHIP_MAP } from '../data/ships';
 import { sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import type { Contract, FactionId, GameState } from './types';
+import type { Contract, FactionId, GameState, StartKind } from './types';
 import { emit, log } from './util';
 import { netWorth } from './stats';
 import { MODULES } from '../data/modules';
@@ -327,11 +327,90 @@ export const STORY: StoryMission[] = [
   },
 ];
 
+const soldSince = (s: GameState) => s.totals.sold - (s.story.base.sold ?? 0);
+
+/** Einstiegskapitel je Spielstart – danach geht es mit der gemeinsamen Kampagne weiter */
+export const INTRO: Record<StartKind, StoryMission[]> = {
+  mining: [
+    {
+      id: 'm-first',
+      title: 'Erste Ladung',
+      about: 'Rohstoffe sind der Anfang jeder Kette. NPC-Fabriken kaufen Erz und Silizium als Vorprodukt; der Handelsposten nimmt nur begrenzt ab.',
+      story: 'Mehr als einen alten Alligator und ein paar Lagermodule hat die Familie dir nicht geben können. Fördere, verkaufe – jeder Credit zählt.',
+      goal: 'Verdiene 60.000 Cr mit Rohstoffen',
+      hint: 'Dein Miner arbeitet von selbst: Er sucht das Feld, das sich gerade am besten verkauft. Beschleunige das Spiel oben rechts.',
+      progress: (s) => ({ cur: Math.floor(soldSince(s)), target: 60_000 }),
+      reward: { credits: 15_000, rep: { frf: 1 } },
+    },
+    {
+      id: 'm-buyers',
+      title: 'Abnehmer finden',
+      about: 'Jede NPC-Fabrik hat ein Lager für ihre Vorprodukte. Ist es voll, sinkt der Preis – volle Lager wechseln sich ab, darum lohnt es sich, mehrere Rohstoffe zu fördern.',
+      story: 'Die Zhin-Hütte schmilzt Erz und Silizium für den Wiederaufbau. Sie zahlt gut, solange ihr Lager nicht voll ist.',
+      goal: 'Verdiene insgesamt 250.000 Cr mit Rohstoffen',
+      hint: 'Tippe eine NPC-Fabrik an: Dort siehst du, was sie braucht und was sie herstellt. Unter Flotte → Miner kannst du die Rohstoffart auch fest einstellen.',
+      progress: (s) => ({ cur: Math.floor(soldSince(s)), target: 250_000 }),
+      reward: { credits: 25_000, rep: { frf: 1 } },
+    },
+    {
+      id: 'm-fleet',
+      title: 'Zweites Schiff',
+      about: 'Ein Transporter verdient mit Kurieraufträgen und Handel zwischen den Stationen – und bringt später Baumaterial für deine eigenen Module.',
+      story: 'Ein Schiff allein ist ein Risiko. Kauf ein zweites: noch einen Miner oder einen kleinen Transporter für Kurieraufträge.',
+      goal: 'Besitze 2 Schiffe',
+      hint: 'Flotte → „Schiff kaufen“. Der Tuatara (S) ist günstig und passt zu den Kurieraufträgen unter „Aufträge“.',
+      progress: (s) => ({ cur: s.ships.length, target: 2 }),
+      reward: { credits: 30_000, rep: { frf: 1 } },
+    },
+  ],
+  trading: [
+    {
+      id: 't-courier',
+      title: 'Kurierdienst',
+      about: 'Kurieraufträge: Eine Station braucht dringend Ware. Du kaufst sie beim Verkäufer und bringst sie hin – der Lohn liegt 30–50 % über dem üblichen Verkaufswert.',
+      story: 'Ein Tuatara, etwas Geld und ein offenes Ohr am Funk: Die Familien suchen zuverlässige Kuriere.',
+      goal: 'Erfülle einen Kurierauftrag',
+      hint: 'Unter „Aufträge“ stehen die Angebote. „Annehmen und Schiff schicken“ – dein Transporter kauft die Ware und liefert sie ab.',
+      progress: (s) => ({ cur: (s.totals.couriers ?? 0) - (s.story.base.couriers ?? 0), target: 1 }),
+      reward: { credits: 15_000, rep: { frf: 1 } },
+    },
+    {
+      id: 't-trade',
+      title: 'Händlerblut',
+      about: 'Im Autohandel sucht der Transporter selbst das beste Geschäft. Mit einer festen Route fliegt er immer dieselbe Strecke – wenig Arbeit, verlässlicher Gewinn.',
+      story: 'Wer günstig kauft und dort verkauft, wo es gebraucht wird, verdient. Zeig der Familie, dass du es kannst.',
+      goal: 'Verkaufe Waren für 400.000 Cr',
+      hint: 'Lass den Transporter im Autohandel laufen oder lege unter Flotte eine feste Route an. Kurieraufträge zahlen meist am besten.',
+      progress: (s) => ({ cur: Math.floor(soldSince(s)), target: 400_000 }),
+      reward: { credits: 25_000, rep: { frf: 1 } },
+    },
+    {
+      id: 't-fleet',
+      title: 'Zweites Schiff',
+      about: 'Ein Miner liefert Rohstoffe, die du nicht kaufen musst – die Grundlage für die erste eigene Fabrik.',
+      story: 'Ein zweites Schiff verdoppelt die Einnahmen. Ein weiterer Transporter oder ein Miner – du entscheidest.',
+      goal: 'Besitze 2 Schiffe',
+      hint: 'Flotte → „Schiff kaufen“.',
+      progress: (s) => ({ cur: s.ships.length, target: 2 }),
+      reward: { credits: 30_000, rep: { frf: 1 } },
+    },
+  ],
+};
+
+/** Kampagne dieses Spiels: Einstiegskapitel des Starts, dann die gemeinsamen Kapitel */
+const storyCache = new Map<string, StoryMission[]>();
+export function storyOf(state: GameState): StoryMission[] {
+  const k = state.start ?? '';
+  let list = storyCache.get(k);
+  if (!list) storyCache.set(k, (list = [...(state.start ? INTRO[state.start] : []), ...STORY]));
+  return list;
+}
+
 /** Kapitelreihenfolge vor der Erweiterung auf 28 Kapitel – zum Umstellen alter Spielstände */
 export const OLD_STORY_IDS = ['refinery', 'metals', 'miners', 'trader', 'graphene', 'second', 'hull', 'license', 'chips', 'engines', 'claytronics', 'yard', 'firstship', 'shiporder', 'empire'];
 
 export function currentMission(state: GameState): StoryMission | null {
-  return STORY[state.story.index] ?? null;
+  return storyOf(state)[state.story.index] ?? null;
 }
 
 export function startMission(state: GameState): void {
@@ -339,7 +418,7 @@ export function startMission(state: GameState): void {
   if (!m) return;
   state.story.claimed = false;
   state.story.startedAt = state.time;
-  state.story.base = { ...state.totals.produced, 'buildOwn:claytronics': state.totals.buildOwn?.claytronics ?? 0, 'shipsSold': state.totals.shipsSold ?? 0 };
+  state.story.base = { ...state.totals.produced, 'buildOwn:claytronics': state.totals.buildOwn?.claytronics ?? 0, 'shipsSold': state.totals.shipsSold ?? 0, sold: state.totals.sold, couriers: state.totals.couriers ?? 0 };
   state.story.id = m.id;
   state.story.contractFloor = state.nextId;
   if (m.delivery) {

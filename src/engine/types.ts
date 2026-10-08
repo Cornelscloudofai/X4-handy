@@ -339,12 +339,21 @@ export interface Contract {
   status: 'offer' | 'active' | 'done' | 'failed';
   title: string;
   story?: boolean;
+  /** Kurierauftrag: Ware hier abholen (Marktschlüssel) … */
+  source?: string;
+  /** … und an diesen Markt liefern (Handelsposten oder NPC-Station; ohne Angabe der Handelsposten des Sektors) */
+  market?: string;
+  /** Kurierauftrag: ausgelegt für Schiffe dieser Klasse */
+  size?: 'S' | 'M' | 'L';
 }
 
 export interface LogEntry { t: number; text: string; kind: 'info' | 'good' | 'warn' | 'bad' }
 
 /** Verlaufsdaten (Diagramme): Messzeitpunkte und Reihen mit gleich vielen Werten (null = keine Messung) */
 export interface HistoryData { times: number[]; s: Record<string, (number | null)[]>; last: Record<string, number> }
+
+/** Spielstart: Bergbau mit Alligator oder Handel mit Tuatara */
+export type StartKind = 'mining' | 'trading';
 
 export interface GameState {
   version: number;
@@ -362,9 +371,11 @@ export interface GameState {
   shipOrders?: ShipOrder[];
   shipOrderTimer?: number;
   story: { id?: string; index: number; claimed: boolean; startedAt: number; base: Record<string, number>; contractFloor: number };
+  /** Gewählter Spielstart (fehlt bei alten Spielständen und beim klassischen Start mit fertiger Station) */
+  start?: StartKind;
   /** Einstieg: geführte erste Schritte (gesehene Hinweise, ausgeblendet) */
   help?: { coachOff?: boolean; seen?: string[] };
-  totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number; shipsBuiltL?: number; buildOwn?: Record<string, number> };
+  totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number; shipsBuiltL?: number; buildOwn?: Record<string, number>; couriers?: number };
   log: LogEntry[];
   /** Verlaufsdaten der letzten 24 Spielstunden */
   history?: HistoryData;

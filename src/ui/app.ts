@@ -35,6 +35,7 @@ import { icon } from './icons';
 import { setSound, sfx, soundEnabled } from './sound';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
+import { buyOffers, defaultBuyModal } from './buyView';
 import { saleOffers } from '../engine/sales';
 import { SPEEDS, saveBgMode, saveIconStyle, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
@@ -77,7 +78,7 @@ export function start(): void {
       ui.modal = { type: 'offline', ...report };
     }
   } else {
-    state = newGame();
+    state = newGame(undefined, 'mining');
     ui.modal = { type: 'welcome' };
   }
   ui.sector = state.stations[0]?.sector ?? 'zhin';
@@ -98,7 +99,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -493,6 +494,7 @@ function onClick(e: MouseEvent): void {
     }
     case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
       case 'help': ui.modal = { type: 'help', topic: d.topic || undefined }; refresh(); break;
+      case 'start-game': runConfirmed('start-game', { kind: d.kind ?? 'mining' }); break;
       case 'coach-next': markCoachSeen(state, d.id!); if (d.id === 'finish') { state.help = { ...state.help, coachOff: true }; } refresh(); break;
       case 'coach-off': state.help = { ...state.help, coachOff: true }; toast('Hinweise ausgeblendet – im Menü unter „Erste Schritte zeigen“ wieder einschalten.', 'info'); refresh(); break;
       case 'coach-restart': state.help = { seen: [] }; ui.panel = null; ui.modal = null; toast('Hinweise sind wieder an.', 'good'); refresh(); break;
@@ -579,6 +581,20 @@ function onClick(e: MouseEvent): void {
       case 'modal-back': ui.modal = ui.modal?.type === 'storage' ? ui.modal.back ?? null : null; refresh(); break;
       case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
       case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); refresh(); break;
+      case 'buy-open': ui.modal = defaultBuyModal(state, d.st!, d.ware!); refresh(); break;
+      case 'buy-ship': if (ui.modal?.type === 'buy') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
+      case 'buy-pick': if (ui.modal?.type === 'buy') { ui.modal = { ...ui.modal, picked: ui.modal.picked === d.id ? '' : d.id! }; refresh(); } break;
+      case 'buy-amount': if (ui.modal?.type === 'buy') { ui.modal = { ...ui.modal, amount: Math.floor(Number(d.v)) }; refresh(); } break;
+      case 'buy-go': {
+        const m = ui.modal;
+        if (m?.type !== 'buy') break;
+        const offer = buyOffers(state, m.station, m.ware, shipClass(state, m.ship).speed).find((o) => o.key === m.picked);
+        if (!offer) { toast('Dieser Verkäufer ist nicht mehr verfügbar.', 'warn'); refresh(); break; }
+        const r = A.buyOrder(state, m.ship, m.station, m.ware, Math.min(m.amount, offer.stock), offer.endpoint, m.repeat);
+        if (r.ok) ui.modal = null;
+        result(r);
+        break;
+      }
       case 'sell-ship': if (ui.modal?.type === 'sell') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, picked: '', amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
       case 'sell-pick': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, picked: ui.modal.picked === d.id ? '' : d.id! }; refresh(); } break;
       case 'sell-prio': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, prio: d.p as 'price' }; refresh(); } break;
@@ -823,6 +839,8 @@ function onClick(e: MouseEvent): void {
       case 'yard-build': result(queueShipBuild(state, d.st!, d.cls!)); break;
       case 'yard-cancel': result(cancelShipBuild(state, d.st!, Number(d.uid))); break;
       case 'courier-modal': ui.modal = { type: 'courier', contract: Number(d.id) }; refresh(); break;
+      case 'courier-ship-modal': ui.modal = { type: 'courierShip', contract: Number(d.id) }; refresh(); break;
+      case 'courier-ship': ui.modal = null; result(A.courierOrder(state, d.sh!, Number(d.c))); break;
       case 'courier': ui.modal = null; result(A.courierDeliver(state, Number(d.c), d.st!)); break;
       case 'courier-station': if (ui.modal?.type === 'courier') { ui.modal = { ...ui.modal, station: d.st ?? '' }; refresh(); } break;
       case 'deliver-ship': { const r = deliverWithShip(state, Number(d.c), d.st!, d.ship!); if (r.ok) ui.modal = null; result(r); break; }
@@ -893,9 +911,22 @@ function onClick(e: MouseEvent): void {
         result(r);
         break;
       }
+      case 'start-game': {
+        clearLocal();
+        state = newGame(undefined, d.kind === 'trading' ? 'trading' : 'mining');
+        ui.panel = null;
+        ui.selection = null;
+        ui.sector = 'zhin';
+        ui.view = 'sector';
+        ui.modal = null;
+        fitSector();
+        save();
+        refresh();
+        break;
+      }
       case 'newgame': {
         clearLocal();
-        state = newGame();
+        state = newGame(undefined, 'mining');
         ui.panel = null;
         ui.selection = null;
         ui.sector = 'zhin';
@@ -1058,6 +1089,21 @@ function onChange(e: Event): void {
   }
   if (field === 'sell-amount' && ui.modal?.type === 'sell') {
     ui.modal = { ...ui.modal, amount: Math.floor(Number(el.value)) };
+    refresh();
+    return;
+  }
+  if (field === 'buy-amount' && ui.modal?.type === 'buy') {
+    ui.modal = { ...ui.modal, amount: Math.floor(Number(el.value)) };
+    refresh();
+    return;
+  }
+  if (field === 'buy-ware' && ui.modal?.type === 'buy') {
+    ui.modal = defaultBuyModal(state, ui.modal.station, el.value);
+    refresh();
+    return;
+  }
+  if (field === 'buy-repeat' && ui.modal?.type === 'buy') {
+    ui.modal = { ...ui.modal, repeat: (el as unknown as HTMLInputElement).checked };
     refresh();
     return;
   }

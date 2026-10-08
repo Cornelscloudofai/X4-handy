@@ -4,15 +4,23 @@ import { NPC_MAP, marketInfo, sector } from '../data/sectors';
 import { MODULE_MAP } from '../data/modules';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { BUILD_TOLERANCE, addWare, applyMarketTrade, buildDemand, buildRoom, receiveWare, roomAt, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
+import { BUILD_TOLERANCE, spendable, addWare, applyMarketTrade, buildDemand, buildRoom, receiveWare, roomAt, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, stationWares, wareLimit } from './economy';
 import {
   dockPoint, sellableStock, endpointName, endpointPlace, fieldById, fieldWare, incoming, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
   type Place,
 } from './logistics';
 import { contractDeliver } from './contracts';
 import { endOf, fieldEnd, recordFlow, stationEnd } from './flows';
-import type { GameState, RestAction, RestCase, Ship, Station, TradeEndpoint, TradeJob } from './types';
+import type { Contract, GameState, RestAction, RestCase, Ship, ShipClassDef, Station, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
+
+/** Neue Spiele (mit Startwahl): langsamerer Abbau, damit Bergbau und Handel am Anfang ähnlich viel einbringen */
+export const NEW_GAME_MINING = 0.25;
+
+/** Abbaurate eines Miners (m³/s) – ein Spielwert, kein X4-Wert */
+export function mineRate(state: GameState, cls: ShipClassDef): number {
+  return cls.miningRate * (state.start ? NEW_GAME_MINING : 1);
+}
 
 export function shipPlace(s: Ship): Place {
   return { sector: s.sector, x: s.x, z: s.z };
@@ -57,7 +65,7 @@ export function chooseMining(state: GameState, s: Ship): MiningChoice {
     const w = WARES[f.ware];
     const load = cls.capacity / w.volume;
     const dist = Math.hypot(f.x - home.x, f.z - home.z);
-    const trip = (2 * dist) / cls.speed + cls.capacity / (cls.miningRate * f.richness) + DOCK_TIME[cls.size];
+    const trip = (2 * dist) / cls.speed + cls.capacity / (mineRate(state, cls) * f.richness) + DOCK_TIME[cls.size];
     const use = Math.max(0, (rates[f.ware]?.use ?? 0) - (rates[f.ware]?.prod ?? 0));
     // Ware, die andere Miner schon bringen (ohne dieses Schiff)
     const others = incoming(state, home.id, f.ware) - (s.miningField && fieldWare(s.miningField) === f.ware && !s.cargo ? load : 0);
@@ -70,6 +78,10 @@ export function chooseMining(state: GameState, s: Ship): MiningChoice {
       const fill = limit > 0 ? Math.min(1, ((home.inventory[f.ware] ?? 0) + others) / limit) : 1;
       const score = (1 - fill) * 10 + (starving.has(f.ware) ? 5 : 0) - dist / 1000;
       production.push({ ware: f.ware, field: f.id, score });
+    } else if (state.start) {
+      // Neue Spiele: nur fördern, wofür es einen Käufer mit Platz gibt – bewertet nach Erlös pro Flugzeit
+      const m = bestMarketFor(state, { sector: home.sector, x: f.x, z: f.z }, f.ware, Math.min(room, load));
+      if (m) sale.push({ ware: f.ware, field: f.id, score: m.score / (1 + dist / 100) });
     } else sale.push({ ware: f.ware, field: f.id, score: (Math.min(room, load) / (1 + dist / 100)) * w.price.avg });
   }
   const best = (production.length ? production : sale).sort((a, b) => b.score - a.score)[0];
@@ -105,8 +117,9 @@ export function bestMarketFor(state: GameState, from: Place, ware: string, amoun
     for (const key of keys) {
       if (!state.markets[key]?.[ware]) continue;
       const info = marketInfo(key);
-      // NPC-Käufer nehmen nur, was in ihr Lager passt; der Handelsposten nimmt alles (Preis fällt)
-      const n = info.npc ? Math.min(amount, marketRoom(state, key, ware)) : amount;
+      // NPC-Käufer nehmen nur, was in ihr Lager passt; der Handelsposten nimmt alles (Preis fällt) – in neuen Spielen
+      // auch er nur, was in sein Lager passt
+      const n = info.npc || state.start ? Math.min(amount, marketRoom(state, key, ware)) : amount;
       if (n < amount * 0.5) continue;
       const value = marketTradeValue(state, key, ware, n);
       const time = travelDistance(from, { sector: info.sector, x: info.x, z: info.z }) / 2 + 60;
@@ -196,7 +209,7 @@ export function decideRest(state: GameState, s: Ship, home: Station): RestCase {
   const m = bestMarketFor(state, home, cargo.ware, cargo.amount);
   const field = fieldsOf(home, cargo.ware)[0];
   const topupOk = !!field && (!s.mineWare || s.mineWare === cargo.ware);
-  const topupSaves = field ? (cargo.amount * w.volume) / (cls.miningRate * field.richness) : 0;
+  const topupSaves = field ? (cargo.amount * w.volume) / (mineRate(state, cls) * field.richness) : 0;
   // Verkaufen kostet den Umweg – und braucht die Station die Ware, muss die verkaufte Menge später erneut gefördert werden
   const sell = m ? (2 * travelDistance(home, marketInfo(m.key))) / cls.speed + DOCK_TIME[cls.size] + (use > 0 ? topupSaves : 0) : null;
   const base = { t: state.time, ware: cargo.ware, amount: cargo.amount, wait, sell, sellValue: m?.value ?? 0, topup: topupOk ? 0 : null, topupSaves };
@@ -263,7 +276,7 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
         s.phase = 'mining';
         // Beim Nachfüllen nur den freien Laderaum abbauen
         const used = s.cargo && s.cargo.ware === info.field.ware ? s.cargo.amount * WARES[s.cargo.ware].volume : 0;
-        s.timer = Math.max(0, cls.capacity - used) / (cls.miningRate * info.field.richness);
+        s.timer = Math.max(0, cls.capacity - used) / (mineRate(state, cls) * info.field.richness);
         s.status = used ? `Füllt auf: ${WARES[info.field.ware].name}` : `Baut ${WARES[info.field.ware].name} ab`;
       }
       return;
@@ -463,7 +476,7 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
         const n = Math.min(qty, rest);
         // Restmengen eines Auftrags dürfen auch klein sein
         if (n < Math.min(minLoad(id), rest)) continue;
-        const to: TradeEndpoint = { kind: 'market', sector: c.sector };
+        const to = contractEndpoint(c);
         const perUnit = c.story ? avg * 2 : c.reward / c.amount;
         const finishes = n >= rest - 0.5 ? 500_000 : 0; // Abschluss hat Vorrang
         cands.push({ job: { ware: id, amount: n, from: baseEp, to, stage: 'pickup', contract: c.id }, score: (weight * (n * perUnit * 1.2 + finishes)) / travelTime(state, s, baseEp, to) });
@@ -506,7 +519,7 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
       for (const [sec, key] of nearbyMarkets.flatMap((sec) => [[sec, sec], ...sector(sec).npcStations.filter((n) => n.makes?.includes(id)).map((n) => [sec, n.id])])) {
         const stock = marketStock(state, key, id);
         const price = marketPrice(state, key, id);
-        const afford = Math.max(0, state.credits - 50_000) / price;
+        const afford = spendable(state, 50_000) / price;
         const n = Math.min(qtyMarket, stock * 0.8, afford);
         if (n < minMarket) continue;
         const from: TradeEndpoint = key === sec ? { kind: 'market', sector: sec } : { kind: 'market', sector: sec, market: key };
@@ -516,7 +529,84 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
       }
     }
   }
-  return pickByPriority(home, cands)?.job ?? null;
+  // Angenommene Kurieraufträge haben Vorrang: Der Spieler hat sie bewusst zugesagt
+  const courier = courierJob(state, s);
+  if (courier) return courier;
+  const own = pickByPriority(home, cands)?.job ?? null;
+  // Neue Spiele: Gibt es für die Heimat nichts zu tun, handelt der Transporter frei zwischen den Märkten
+  return own ?? (state.start ? freeTradeJob(state, s, known) : null);
+}
+
+/** Lieferziel eines Auftrags: der genannte Markt oder der Handelsposten des Sektors */
+export function contractEndpoint(c: Contract): TradeEndpoint {
+  return c.market && c.market !== c.sector ? { kind: 'market', sector: c.sector, market: c.market } : { kind: 'market', sector: c.sector };
+}
+
+/** Kurierauftrag als Fahrt: Ware beim Verkäufer kaufen, zum Ziel bringen */
+export function courierTrip(state: GameState, s: Ship, c: Contract): TradeJob | null {
+  if (c.status !== 'active' || !c.source) return null;
+  const w = WARES[c.ware];
+  if (w.storage !== SHIP_MAP[s.cls].storage || SHIP_MAP[s.cls].role !== 'trader') return null;
+  const rest = c.amount - c.delivered - inTransitForContract(state, c.id);
+  const n = Math.min(rest, unitsFor(s, c.ware));
+  if (n < 1) return null;
+  const src = marketInfo(c.source);
+  const from: TradeEndpoint = c.source === src.sector ? { kind: 'market', sector: src.sector } : { kind: 'market', sector: src.sector, market: c.source };
+  return { ware: c.ware, amount: n, from, to: contractEndpoint(c), stage: 'pickup', contract: c.id };
+}
+
+function courierJob(state: GameState, s: Ship): TradeJob | null {
+  let best: { job: TradeJob; t: number } | null = null;
+  for (const c of state.contracts) {
+    const job = courierTrip(state, s, c);
+    if (!job || marketStock(state, marketKey(job.from), c.ware) < 1) continue;
+    const t = travelTime(state, s, job.from, job.to);
+    if (!best || t < best.t) best = { job, t };
+  }
+  return best?.job ?? null;
+}
+
+/**
+ * Freier Handel: kaufen bei einem Handelsposten oder einer NPC-Fabrik (deren Produkte), verkaufen dort, wo die Ware
+ * gebraucht wird (Handelsposten, NPC-Käufer, Vorprodukte von NPC-Fabriken). Bewertet nach Gewinn pro Flugzeit.
+ */
+export function freeTradeJob(state: GameState, s: Ship, known: string[]): TradeJob | null {
+  const cls = SHIP_MAP[s.cls];
+  const sellers: { key: string; sector: string }[] = [];
+  const buyers: { key: string; sector: string; buys: string[] | null }[] = [];
+  for (const sec of known) {
+    sellers.push({ key: sec, sector: sec });
+    buyers.push({ key: sec, sector: sec, buys: null });
+    for (const n of sector(sec).npcStations) {
+      if (n.makes?.length) sellers.push({ key: n.id, sector: sec });
+      buyers.push({ key: n.id, sector: sec, buys: n.buys });
+    }
+  }
+  const ep = (key: string, sec: string): TradeEndpoint => (key === sec ? { kind: 'market', sector: sec } : { kind: 'market', sector: sec, market: key });
+  let best: { job: TradeJob; score: number } | null = null;
+  for (const a of sellers) {
+    const m = state.markets[a.key];
+    if (!m) continue;
+    for (const id of Object.keys(m)) {
+      const w = WARES[id];
+      if (!w || w.storage !== cls.storage) continue;
+      if (a.key !== a.sector && !NPC_MAP[a.key]?.makes?.includes(id)) continue;
+      const stock = m[id].stock * (a.key === a.sector ? 0.8 : 0.9);
+      const units = Math.min(unitsFor(s, id), stock, spendable(state, 10_000) / marketPrice(state, a.key, id));
+      if (units < unitsFor(s, id) * 0.25) continue;
+      for (const b of buyers) {
+        if (b.key === a.key || (b.buys && !b.buys.includes(id)) || !state.markets[b.key]?.[id]) continue;
+        const n = Math.min(units, marketRoom(state, b.key, id));
+        if (n < unitsFor(s, id) * 0.25) continue;
+        const profit = marketTradeValue(state, b.key, id, n) - marketTradeValue(state, a.key, id, -n);
+        if (profit < Math.max(3_000, n * w.price.avg * 0.05)) continue;
+        const from = ep(a.key, a.sector), to = ep(b.key, b.sector);
+        const score = profit / travelTime(state, s, from, to);
+        if (!best || score > best.score) best = { job: { ware: id, amount: n, from, to, stage: 'pickup' }, score };
+      }
+    }
+  }
+  return best?.job ?? null;
 }
 
 /** Vorrang fürs Baulager: Ein stehender Bau wiegt mehr als der reine Warenwert */
@@ -566,7 +656,7 @@ function routeJob(state: GameState, s: Ship): TradeJob | null {
   } else if (r.from.kind === 'market' && r.from.market && !NPC_MAP[r.from.market]?.makes?.includes(r.ware)) {
     have = 0; // NPC-Käuferstationen verkaufen nichts, NPC-Fabriken nur ihre Produkte
   } else {
-    have = Math.min(marketStock(state, marketKey(r.from), r.ware) * 0.8, Math.max(0, state.credits - 50_000) / marketPrice(state, marketKey(r.from), r.ware));
+    have = Math.min(marketStock(state, marketKey(r.from), r.ware) * 0.8, spendable(state, 50_000) / marketPrice(state, marketKey(r.from), r.ware));
   }
   let room: number;
   if (r.to.kind === 'station') {
@@ -657,7 +747,7 @@ function doTrade(state: GameState, s: Ship): void {
       const price = marketPrice(state, key, job.ware);
       // NPC-Käufer verkaufen nichts, NPC-Fabriken nur ihre eigenen Produkte
       const sells = !job.from.market || !!NPC_MAP[job.from.market]?.makes?.includes(job.ware);
-      n = !sells ? 0 : Math.min(job.amount, units, marketStock(state, key, job.ware), Math.max(0, state.credits - 10_000) / price);
+      n = !sells ? 0 : Math.min(job.amount, units, marketStock(state, key, job.ware), spendable(state, 10_000) / price);
       if (n > 0) {
         const cost = applyMarketTrade(state, key, job.ware, -n);
         const home = stationById(state, s.home);
@@ -731,7 +821,7 @@ export function shipEta(state: GameState, s: Ship): number | null {
       const info = fieldById(s.miningField);
       if (!info) return null;
       const a = { sector: info.sector.id, x: info.field.x, z: info.field.z };
-      return travelDistance(shipPlace(s), a) / cls.speed + cls.capacity / (cls.miningRate * info.field.richness) + travelDistance(a, home) / cls.speed;
+      return travelDistance(shipPlace(s), a) / cls.speed + cls.capacity / (mineRate(state, cls) * info.field.richness) + travelDistance(a, home) / cls.speed;
     }
     if (s.phase === 'mining') return s.timer + toHome;
     if (s.phase === 'toHome') return toHome;

@@ -4,12 +4,18 @@ import { SECTOR_MAP } from '../data/sectors';
 import { SHIP_MAP, shipName } from '../data/ships';
 import { addBuildStore, initMarkets } from './economy';
 import { initNpcEconomy } from './npcEconomy';
-import { OLD_STORY_IDS, STORY, startMission } from './story';
-import type { GameState, ModuleInst, Ship, Station } from './types';
+import { generateCourier } from './contracts';
+import { OLD_STORY_IDS, STORY, startMission, storyOf } from './story';
+import type { GameState, ModuleInst, Ship, StartKind, Station } from './types';
 
 export const SAVE_VERSION = 2;
 export const SAVE_KEY = 'x4-sektorbau-save-v1';
 export const START_CREDITS = 2_500_000;
+/** Neuer Spielstart: kleine Station ohne Produktion, wenig Geld – Handel bekommt mehr Credits, Bergbau das teurere Schiff */
+export const START_KIT: Record<StartKind, { credits: number; ship: string }> = {
+  trading: { credits: 50_000, ship: 'tuatara' },
+  mining: { credits: 20_000, ship: 'alligator_min' },
+};
 
 export function newModule(state: GameState, def: string): ModuleInst {
   return { uid: state.nextId++, def, t: 0, running: false, stall: '', util: 0 };
@@ -33,7 +39,11 @@ export function newShip(state: GameState, cls: string, home: Station, at?: { sec
   };
 }
 
-export function newGame(seed = Date.now() % 2147483647): GameState {
+/**
+ * Neues Spiel. Ohne Startart: klassischer Start mit fertiger Solarstation und 2,5 Mio Cr (Tests, alte Spielstände).
+ * Mit Startart: Stationskern, S/M-Dock, Container- und Erzlager, ein Schiff und wenig Geld.
+ */
+export function newGame(seed = Date.now() % 2147483647, start?: StartKind): GameState {
   const state: GameState = {
     version: SAVE_VERSION, seed, time: 0, credits: START_CREDITS, stations: [], ships: [], npcs: [], markets: {},
     sectors: ['zhin'], blueprints: MODULES.filter((m) => m.starter).map((m) => m.id), rep: { frf: 0, zya: 0 },
@@ -41,15 +51,28 @@ export function newGame(seed = Date.now() % 2147483647): GameState {
     totals: { produced: {}, sold: 0, bought: 0, mined: {}, delivered: 0 }, log: [], nextId: 1, npcTimer: {},
     contractTimer: 20 * 60, savedAt: Date.now(), speed: 5,
   };
+  // Startart vor den Märkten setzen: neue Spiele bekommen knappe Handelsposten
+  if (start) state.start = start;
   initMarkets(state);
   initNpcEconomy(state);
   const st = newStation(state, 'Station Alpha', 'zhin', -45, -55);
-  for (const def of ['core', 'prod_energycells', 'storage_container', 'storage_solid', 'dock_m']) st.modules.push({ ...newModule(state, def), util: 1 });
-  st.inventory = { energycells: 3000, ore: 2000 };
-  state.stations.push(st);
-  state.ships.push(newShip(state, 'alligator_min', st));
+  if (start) {
+    state.credits = START_KIT[start].credits;
+    for (const def of ['core', 'dock_m', 'storage_container', 'storage_solid']) st.modules.push({ ...newModule(state, def), util: 1 });
+    state.stations.push(st);
+    state.ships.push(newShip(state, START_KIT[start].ship, st));
+    // Gleich zu Beginn ein passender Kurierauftrag, die nächsten folgen bald
+    const c = generateCourier(state);
+    if (c) state.contracts.push(c);
+    state.contractTimer = 8 * 60;
+  } else {
+    for (const def of ['core', 'prod_energycells', 'storage_container', 'storage_solid', 'dock_m']) st.modules.push({ ...newModule(state, def), util: 1 });
+    st.inventory = { energycells: 3000, ore: 2000 };
+    state.stations.push(st);
+    state.ships.push(newShip(state, 'alligator_min', st));
+  }
   startMission(state);
-  state.log.push({ t: 0, text: 'Willkommen in Familie Zhin. Deine erste Station steht.', kind: 'info' });
+  state.log.push({ t: 0, text: start ? 'Willkommen in Familie Zhin. Deine kleine Station steht – jetzt heißt es Geld verdienen.' : 'Willkommen in Familie Zhin. Deine erste Station steht.', kind: 'info' });
   return state;
 }
 
@@ -125,7 +148,7 @@ export function deserialize(text: string): GameState {
   // Alte Spielstände kannten nur 15 Kapitel: über die Kapitel-Kennung auf die neue Reihenfolge umstellen
   if (raw.story?.id) {
     // Die Kapitel-Kennung ist maßgeblich – so übersteht der Spielstand auch eine geänderte Kapitelreihenfolge
-    const i = STORY.findIndex((m) => m.id === raw.story.id);
+    const i = storyOf(state).findIndex((m) => m.id === raw.story.id);
     if (i >= 0) state.story.index = i;
   } else if (raw.story) {
     const id = OLD_STORY_IDS[state.story.index];
