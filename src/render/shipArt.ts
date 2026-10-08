@@ -285,6 +285,7 @@ const MODULE_ART: Record<string, string[]> = {
   pier: ['split-pier-ki'],
   yard_M: ['split-werft-m-ki'],
   yard_L: ['split-werft-l-ki'],
+  yard_XL: ['split-werft-xl-ki'],
   Container: ['split-lager-container-ki'],
   Solid: ['split-lager-erz-ki'],
   Liquid: ['split-lager-gas-ki'],

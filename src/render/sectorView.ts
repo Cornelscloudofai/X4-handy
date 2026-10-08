@@ -2235,7 +2235,7 @@ const CORE_SIZE: Record<string, number> = { ring: 2.1, block: 2.1, tri: 2.1, spi
 /** Kantenlänge der Modulbilder in Moduleinheiten (Anschluss zu Anschluss rund 1,05) */
 const MODULE_IMG = 1.1;
 /** Kantenlänge der Werftbilder in Moduleinheiten (Anschluss bis Spitze 95 %) */
-const YARD_IMG: Record<string, number> = { M: 1.25, L: 1.79 };
+const YARD_IMG: Record<string, number> = { M: 1.25, L: 1.79, XL: 2.42 };
 /** Pierbild: Kantenlänge (Moduleinheiten) und Abstand des Anschlusses von der Bildmitte (Anteil der Kante) */
 const PIER_IMG = 2.0;
 const PIER_PORT = 469 / 1254;

@@ -58,6 +58,8 @@ export function moduleShape(d: ModuleDef | undefined): ModuleShape {
     if (d.yardSize === 'M') return { half: 0.594, hw: 0.32, base: true, c: 0.3, a: 0.894, b: 0.32 };
     // L-Werft (Brustkorb): 1,79 Einheiten Kante, Rippen bis ±0,64
     if (d.yardSize === 'L') return { half: 0.85, hw: 0.64, base: true, c: 0.3, a: 1.15, b: 0.64 };
+    // XL-Werft (großer Brustkorb): 2,42 Einheiten Kante, Rippen bis ±0,96
+    if (d.yardSize === 'XL') return { half: 1.15, hw: 0.96, base: true, c: 0.3, a: 1.45, b: 0.96 };
     const half = d.yardSize === 'XL' ? 0.75 : 0.65;
     const hw = 0.55;
     return { half, hw, base: true, c: 0.3, a: half + 0.3, b: hw };
