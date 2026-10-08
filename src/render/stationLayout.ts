@@ -1,214 +1,344 @@
-// Anordnung der Module einer Station: vier Bauformen mit fester Logik.
-// Lager sitzen nah am Kern (kurze Wege), Produktion in der Mitte, Docks, Piers und Werften außen (Schiffe müssen anlegen).
-// Jedes Modul behält seinen Platz, wenn neue dazukommen – es nimmt in Bauzreihenfolge den nächsten freien Platz seiner Zone.
+// Anordnung der Module einer Station: Module docken an Anschlüssen an – am Kern, aneinander oder über ein
+// Verbindungsrohr. Gleiche Module bilden Cluster (direkt aneinander, ohne Lücke); ein neuer Cluster beginnt an einem
+// freien Anschluss und merkt sich Platz für weitere Module seiner Art vor. Jedes Modul behält seinen Platz für immer
+// (gespeichert am Modul), auch wenn andere dazukommen oder abgerissen werden.
 import { MODULE_MAP } from '../data/modules';
+import { WARES } from '../data/wares';
 import { hashStr } from '../engine/util';
+import type { ModuleDef, ModuleInst, ModulePlace, Station } from '../engine/types';
 
 export type LayoutStyle = 'spine' | 'ring' | 'tri' | 'block';
 export const LAYOUT_STYLES: LayoutStyle[] = ['spine', 'ring', 'tri', 'block'];
-
-/** Zone: 0 = innen, 1 = Mitte, 2 = außen */
-export type Band = 0 | 1 | 2;
-
-export interface Slot {
-  x: number;
-  y: number;
-  /** Ausrichtung des Moduls (x zeigt nach außen) */
-  ang: number;
-  band: Band;
-  /** Trägerverlauf vom Kern zum Platz */
-  path: [number, number][];
-  /** Reserveplatz: erst belegt, wenn die Bauform voll ist */
-  reserve?: boolean;
-}
-
-/** Größte Entfernung eines Platzes der Bauformen vom Kern (in Moduleinheiten) */
-export const MAX_REACH = 4.7;
-/** Reservering und Erweiterungsringe (Radius, Plätze) für sehr volle Stationen */
-const EXTRA_RINGS: [number, number][] = [[MAX_REACH, 28], [5.7, 34], [6.7, 40]];
-/** Mindestabstand zweier Plätze (ein Modul ist 1,0 × 0,72 Einheiten groß) */
-const MIN_GAP = 0.95;
-
-const cache = new Map<LayoutStyle, Slot[]>();
-
-function band(d: number, inner: number, mid: number): Band {
-  return d <= inner ? 0 : d <= mid ? 1 : 2;
-}
-
-/**
- * Rückgrat: langer Träger, Module hängen paarweise an Seitenästen, an den Enden Andockplätze.
- * Die Seitenäste sitzen um einen halben Schritt versetzt – so treffen die beiden innersten genau die
- * Seitenanschlüsse des länglichen Kerns, statt mitten in ihn hinein zu laufen.
- */
-function spine(): Slot[] {
-  const out: Slot[] = [];
-  const step = 1.15;
-  // Seitenäste: Ebene 1 bis ±3,5 Schritte, Ebene 2 bis ±2,5, Ebene 3 nur nahe der Mitte (±1,5)
-  for (let level = 1; level <= 3; level++) {
-    for (const k of [0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.5, -3.5]) {
-      if (Math.abs(k) > 4.5 - level) continue;
-      const x = k * step;
-      for (const side of [1, -1]) {
-        const y = side * level * 1.05;
-        const path: [number, number][] = [[0, 0], [x, 0]];
-        for (let l = 1; l <= level; l++) path.push([x, side * l * 1.05]);
-        out.push({ x, y, ang: side > 0 ? Math.PI / 2 : -Math.PI / 2, band: band(Math.hypot(x, y), 1.3, 3), path });
-      }
-    }
-  }
-  // Enden des Rückgrats: außen, ideal für Docks
-  for (const side of [1, -1]) out.push({ x: side * 4.45, y: 0, ang: side > 0 ? 0 : Math.PI, band: 2, path: [[0, 0], [side * 4.45, 0]] });
-  return out;
-}
-
-/** Ringe: konzentrische Ringträger, Module zeigen nach außen */
-function ring(): Slot[] {
-  const out: Slot[] = [];
-  const rings: [number, number, Band][] = [[1.3, 6, 0], [2.45, 12, 1], [3.55, 16, 1], [4.5, 20, 2]];
-  let prev = 0;
-  rings.forEach(([r, n, b], ri) => {
-    const off = ri % 2 ? Math.PI / n : 0;
-    for (let i = 0; i < n; i++) {
-      const a = off + (i / n) * Math.PI * 2;
-      out.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, ang: a, band: b, path: [[0, 0], [Math.cos(a) * prev, Math.sin(a) * prev], [Math.cos(a) * r, Math.sin(a) * r]] });
-    }
-    prev = r;
-  });
-  return out;
-}
-
-/** Dreistern: drei Arme mit Seitenästen, Andockplätze an den Spitzen */
-function tri(): Slot[] {
-  const out: Slot[] = [];
-  const arms = [Math.PI / 2, Math.PI / 2 + (Math.PI * 2) / 3, Math.PI / 2 + (Math.PI * 4) / 3];
-  const step = 1.2;
-  for (let t = 1; t <= 3; t++) {
-    for (const a of arms) {
-      const ax = Math.cos(a) * step * t, ay = Math.sin(a) * step * t;
-      for (let level = 1; level <= (t === 1 ? 1 : 2); level++) {
-        for (const side of [1, -1]) {
-          const na = a + (side * Math.PI) / 2;
-          const x = ax + Math.cos(na) * 1.05 * level, y = ay + Math.sin(na) * 1.05 * level;
-          out.push({ x, y, ang: na, band: band(Math.hypot(x, y), 1.6, 3.2), path: [[0, 0], [ax, ay], [x, y]] });
-        }
-      }
-    }
-  }
-  for (const a of arms) {
-    const r = step * 3 + 1.05;
-    out.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, ang: a, band: 2, path: [[0, 0], [Math.cos(a) * r, Math.sin(a) * r]] });
-  }
-  // Zwischen den Armen nah am Kern
-  for (const a of arms) {
-    const m = a + Math.PI / 3, r = 1.3;
-    out.push({ x: Math.cos(m) * r, y: Math.sin(m) * r, ang: m, band: 0, path: [[0, 0], [Math.cos(m) * r, Math.sin(m) * r]] });
-  }
-  return out;
-}
-
-/** Block: dicht gepackt auf einem Sechseckraster, wächst ringförmig */
-function block(): Slot[] {
-  const out: Slot[] = [];
-  const s = 1.18;
-  const dirs = Array.from({ length: 6 }, (_, i) => [Math.cos((i * Math.PI) / 3), Math.sin((i * Math.PI) / 3)]);
-  for (let k = 1; k <= 4; k++) {
-    // Sechseckring k: von Ecke zu Ecke laufen
-    let x = dirs[4][0] * k * s, y = dirs[4][1] * k * s;
-    for (let side = 0; side < 6; side++) {
-      for (let j = 0; j < k; j++) {
-        const d = Math.hypot(x, y);
-        if (d <= MAX_REACH) {
-          const a = Math.atan2(y, x);
-          const snapped = Math.round(a / (Math.PI / 3)) * (Math.PI / 3);
-          const pr = (k - 1) * s;
-          out.push({ x, y, ang: snapped, band: k === 1 ? 0 : k === 4 ? 2 : 1, path: [[0, 0], [Math.cos(snapped) * pr, Math.sin(snapped) * pr], [x, y]] });
-        }
-        x += dirs[side][0] * s;
-        y += dirs[side][1] * s;
-      }
-    }
-  }
-  return out;
-}
-
-function slotsOf(style: LayoutStyle): Slot[] {
-  const hit = cache.get(style);
-  if (hit) return hit;
-  const raw = (style === 'spine' ? spine() : style === 'ring' ? ring() : style === 'tri' ? tri() : block()).filter((p) => Math.hypot(p.x, p.y) <= MAX_REACH + 0.01);
-  // Plätze, die einem früheren zu nahe kommen, fallen weg – Module überlappen nie
-  const list: Slot[] = [];
-  for (const p of raw) if (list.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= MIN_GAP)) list.push(p);
-  // Reserve: freie Lücken auf einem äußeren Ring, danach Erweiterungsringe – nur für sehr volle Stationen
-  // (bis 100 Module); kleinere Stationen bleiben kompakt
-  for (const [r, n] of EXTRA_RINGS) {
-    const off = (r * 7.3) % 1;
-    for (let i = 0; i < n; i++) {
-      const a = ((i + off) / n) * Math.PI * 2;
-      const p: Slot = { x: Math.cos(a) * r, y: Math.sin(a) * r, ang: a, band: 2, path: [[0, 0], [Math.cos(a) * r, Math.sin(a) * r]] };
-      if (list.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= MIN_GAP)) list.push({ ...p, reserve: true });
-    }
-  }
-  cache.set(style, list);
-  return list;
-}
 
 export function stationStyle(id: string): LayoutStyle {
   return LAYOUT_STYLES[hashStr(id + ':form') % LAYOUT_STYLES.length];
 }
 
-/** Bevorzugte Zonen je Modulart */
-function prefs(def: string): Band[] {
-  const k = MODULE_MAP[def]?.kind;
-  if (k === 'storage') return [0, 1, 2];
-  if (k === 'dock' || k === 'pier' || k === 'shipyard') return [2, 1, 0];
-  return [1, 0, 2];
+// ---- Bauart der Produktionsmodule (bestimmt Bild und Cluster) ----
+
+export type ProdKind = 'solar' | 'smelter' | 'chem' | 'fab' | 'arms' | 'bio';
+const SMELTER = new Set(['refinedmetals', 'teladianium', 'scrapmetal', 'siliconwafers', 'siliconcarbide', 'metallicmicrolattice', 'computronicsubstrate']);
+const CHEM = new Set(['graphene', 'superfluidcoolant', 'antimattercells', 'water', 'bogas', 'spacefuel']);
+const ARMS = new Set(['shieldcomponents', 'turretcomponents', 'weaponscomponents', 'missilecomponents', 'fieldcoils', 'claytronics']);
+
+/** Bauart eines Produktionsmoduls nach seiner Ware */
+export function productionKind(ware: string | undefined): ProdKind {
+  if (!ware) return 'fab';
+  if (ware === 'energycells') return 'solar';
+  if (SMELTER.has(ware)) return 'smelter';
+  if (CHEM.has(ware)) return 'chem';
+  if (ARMS.has(ware)) return 'arms';
+  const g = WARES[ware]?.group;
+  if (g === 'food' || g === 'agri' || g === 'pharma') return 'bio';
+  return 'fab';
 }
 
-/** Halbmesser des Freiraums vor einem Pier (Moduleinheiten): dort liegen seine Arme, angelegt wird von außen */
-const PIER_ZONE = 1.25;
+// ---- Form der Module ----
 
 /**
- * Ein Pier hat nur den Anschluss zum Kern: Hinter und neben seinen Armen darf kein Modul sitzen, und kein Träger
- * darf durch ihn hindurch weiter nach außen laufen.
+ * Form eines Moduls in Moduleinheiten (Achse u zeigt vom Kern weg): half = Mitte bis unterer/oberer Anschluss,
+ * hw = Mitte bis Seitenanschluss. Belegte Fläche ist ein Rechteck (Mitte um c entlang u verschoben, Halbmaße a × b).
+ * Piers und Werften haben nur den unteren Anschluss; vor dem Pier bleibt Raum für seine Arme und anlegende Schiffe.
  */
-function blocks(pier: Slot, q: Slot): boolean {
-  const cx = pier.x + Math.cos(pier.ang) * 0.3, cy = pier.y + Math.sin(pier.ang) * 0.3;
-  if (Math.hypot(q.x - cx, q.y - cy) < PIER_ZONE) return true;
-  return q.path.slice(0, -1).some(([x, y]) => Math.hypot(x - pier.x, y - pier.y) < 0.05);
+export interface ModuleShape { half: number; hw: number; base: boolean; c: number; a: number; b: number }
+
+/** Halbe Breite bis zur Spitze der Seitenanschlüsse – aus den Modulbildern gemessen */
+const SIDE: Record<string, number> = {
+  Container: 0.354, Solid: 0.343, Liquid: 0.365,
+  smelter: 0.333, chem: 0.403, fab: 0.394, arms: 0.4, solar: 0.521, bio: 0.36, dock: 0.379,
+};
+/** Anschluss zu Anschluss: 95 % von 1,1 Moduleinheiten */
+const HALF = 0.5225;
+
+export function moduleShape(d: ModuleDef | undefined): ModuleShape {
+  if (d?.kind === 'pier') return { half: 0.52, hw: 1, base: true, c: 0.69, a: 1.21, b: 1.05 };
+  if (d?.kind === 'shipyard') {
+    const half = d.yardSize === 'XL' ? 0.75 : d.yardSize === 'L' ? 0.65 : 0.55;
+    const hw = d.yardSize === 'M' ? 0.42 : 0.55;
+    return { half, hw, base: true, c: 0, a: half, b: hw };
+  }
+  const hw = d?.kind === 'storage' ? SIDE[d.storage ?? 'Container'] : d?.kind === 'dock' ? SIDE.dock : SIDE[productionKind(d?.ware)];
+  return { half: HALF, hw, base: false, c: 0, a: HALF, b: hw };
 }
 
-/**
- * Plätze für die Module in Reihenfolge (gebaut, im Bau, geplant). Ist eine Bauform voll, kommen weitere Plätze
- * auf einem äußeren Ring dazu – die Ausdehnung bleibt trotzdem begrenzt. Piers halten den Raum vor sich frei.
- */
-export function layoutStation(id: string, defs: string[]): Slot[] {
-  const slots = slotsOf(stationStyle(id));
-  const used = new Set<number>();
-  const taken: Slot[] = [];
-  const piers: Slot[] = [];
-  return defs.map((def) => {
-    const pier = MODULE_MAP[def]?.kind === 'pier';
-    const free = (p: Slot) => (pier ? taken.every((q) => !blocks(p, q)) : piers.every((q) => !blocks(q, p)));
-    // erst mit Freiraum für Piers; nur wenn das nirgends mehr geht, ohne
-    for (const strict of [true, false]) {
-      for (const reserve of [false, true]) {
-        for (const b of prefs(def)) {
-          const idx = slots.findIndex((p, j) => p.band === b && !!p.reserve === reserve && !used.has(j) && (!strict || free(p)));
-          if (idx >= 0) {
-            used.add(idx);
-            taken.push(slots[idx]);
-            if (pier) piers.push(slots[idx]);
-            return slots[idx];
+/** Cluster-Zugehörigkeit: gleiche Ware, gleicher Lagertyp, Docks zusammen; Piers und Werften stehen einzeln */
+export function moduleGroup(d: ModuleDef | undefined): string {
+  if (!d) return '?';
+  if (d.kind === 'storage') return 'lager:' + (d.storage ?? 'Container');
+  if (d.kind === 'production') return 'prod:' + (d.ware ?? '');
+  return d.kind;
+}
+
+const outer = (d: ModuleDef | undefined) => d?.kind === 'dock' || d?.kind === 'pier' || d?.kind === 'shipyard';
+
+// ---- Geometrie ----
+
+interface Box { x: number; y: number; ux: number; uy: number; a: number; b: number; r: number }
+interface Port { x: number; y: number; ang: number; owner: number }
+interface Body { x: number; y: number; ang: number; shape: ModuleShape; group: string; seed: boolean; boxes: Box[]; ports: Port[] }
+
+function box(x: number, y: number, ang: number, c: number, a: number, b: number): Box {
+  const ux = Math.cos(ang), uy = Math.sin(ang);
+  return { x: x + ux * c, y: y + uy * c, ux, uy, a, b, r: Math.hypot(a, b) };
+}
+
+/** Überlappen sich zwei Rechtecke (Trennachsen)? Berühren ist erlaubt. */
+function overlap(p: Box, q: Box): boolean {
+  const dx = q.x - p.x, dy = q.y - p.y;
+  if (Math.hypot(dx, dy) >= p.r + q.r) return false;
+  const E = 0.03;
+  for (const [ax, ay] of [[p.ux, p.uy], [-p.uy, p.ux], [q.ux, q.uy], [-q.uy, q.ux]]) {
+    const proj = (o: Box) => Math.abs(o.ux * ax + o.uy * ay) * o.a + Math.abs(-o.uy * ax + o.ux * ay) * o.b;
+    if (Math.abs(dx * ax + dy * ay) >= proj(p) + proj(q) - E) return false;
+  }
+  return true;
+}
+
+function inside(px: number, py: number, q: Box): boolean {
+  const dx = px - q.x, dy = py - q.y;
+  return Math.abs(dx * q.ux + dy * q.uy) < q.a - 0.02 && Math.abs(-dx * q.uy + dy * q.ux) < q.b - 0.02;
+}
+
+function body(x: number, y: number, ang: number, d: ModuleDef | undefined, seed = false): Body {
+  const s = moduleShape(d);
+  const ux = Math.cos(ang), uy = Math.sin(ang);
+  const ports: Port[] = [{ x: x - ux * s.half, y: y - uy * s.half, ang: ang + Math.PI, owner: -1 }];
+  if (!s.base) {
+    ports.push({ x: x + ux * s.half, y: y + uy * s.half, ang, owner: -1 });
+    ports.push({ x: x - uy * s.hw, y: y + ux * s.hw, ang: ang + Math.PI / 2, owner: -1 });
+    ports.push({ x: x + uy * s.hw, y: y - ux * s.hw, ang: ang - Math.PI / 2, owner: -1 });
+  }
+  return { x, y, ang, shape: s, group: moduleGroup(d), seed, boxes: [box(x, y, ang, s.c, s.a, s.b)], ports };
+}
+
+/** Kern je Bauform: belegte Fläche (Nabe und Arme) und Anschlüsse an den Armenden – passend zu den Kernbildern */
+function coreBody(style: LayoutStyle): Body {
+  const boxes: Box[] = [];
+  const ports: Port[] = [];
+  const arm = (ang: number, len: number, w: number) => {
+    boxes.push(box(0, 0, ang, len / 2, len / 2, w));
+    ports.push({ x: Math.cos(ang) * len, y: Math.sin(ang) * len, ang, owner: -1 });
+  };
+  if (style === 'spine') {
+    boxes.push(box(0, 0, 0, 0, 1.21, 0.3));
+    ports.push({ x: 1.21, y: 0, ang: 0, owner: -1 }, { x: -1.21, y: 0, ang: Math.PI, owner: -1 });
+    for (const sx of [0.575, -0.575]) for (const sy of [1, -1]) {
+      boxes.push(box(sx, 0, (sy * Math.PI) / 2, 0.47, 0.17, 0.1));
+      ports.push({ x: sx, y: sy * 0.64, ang: (sy * Math.PI) / 2, owner: -1 });
+    }
+  } else if (style === 'tri') {
+    boxes.push(box(0, 0, 0, 0, 0.42, 0.42));
+    for (let k = 0; k < 3; k++) {
+      const a = Math.PI / 2 + (k * Math.PI * 2) / 3;
+      arm(a, 1.0, 0.14);
+      arm(a + Math.PI / 3, 0.42, 0.1);
+    }
+  } else {
+    boxes.push(box(0, 0, 0, 0, 0.55, 0.55));
+    for (let k = 0; k < 6; k++) arm((k * Math.PI) / 3, 1.0, 0.17);
+  }
+  return { x: 0, y: 0, ang: 0, shape: { half: 0, hw: 0, base: false, c: 0, a: 0, b: 0 }, group: 'core', seed: false, boxes, ports };
+}
+
+/** Kontrollpunkte des Verbindungsrohrs von link bis zum unteren Anschluss des Moduls (kubische Bézierkurve) */
+export function tubeCurve(p: ModulePlace, d: ModuleDef | undefined): [number, number][] | null {
+  if (!p.link) return null;
+  const [sx, sy, sa] = p.link;
+  const s = moduleShape(d);
+  const ex = p.x - Math.cos(p.ang) * s.half, ey = p.y - Math.sin(p.ang) * s.half;
+  const len = Math.hypot(ex - sx, ey - sy);
+  if (len < 0.02) return null;
+  const k = len * 0.45;
+  return [[sx, sy], [sx + Math.cos(sa) * k, sy + Math.sin(sa) * k], [ex - Math.cos(p.ang) * k, ey - Math.sin(p.ang) * k], [ex, ey]];
+}
+
+function bez(c: [number, number][], t: number): [number, number] {
+  const m = 1 - t;
+  const w = [m * m * m, 3 * m * m * t, 3 * m * t * t, t * t * t];
+  return [w.reduce((s, v, i) => s + v * c[i][0], 0), w.reduce((s, v, i) => s + v * c[i][1], 0)];
+}
+
+// ---- Platzsuche ----
+
+/** Vorgemerkter Raum eines Clusters vor seinem ersten Modul */
+const RESERVE_R = 1.35;
+/** Rohrlängen für neue Cluster (Kernanschlüsse zuerst ohne Rohr) */
+const GAPS = [0, 0.5, 1.0, 1.6, 2.4];
+
+interface World { style: LayoutStyle; bodies: Body[]; links: [number, number][] }
+
+function world(style: LayoutStyle): World {
+  return { style, bodies: [coreBody(style)], links: [] };
+}
+
+function add(w: World, p: ModulePlace, d: ModuleDef | undefined): void {
+  w.bodies.push(body(p.x, p.y, p.ang, d, !!p.seed));
+  if (p.link) w.links.push([p.link[0], p.link[1]]);
+}
+
+function portFree(w: World, port: Port, owner: Body): boolean {
+  if (w.links.some(([x, y]) => Math.hypot(x - port.x, y - port.y) < 0.05)) return false;
+  const tx = port.x + Math.cos(port.ang) * 0.12, ty = port.y + Math.sin(port.ang) * 0.12;
+  return w.bodies.every((b) => b === owner || b.boxes.every((q) => !inside(tx, ty, q)));
+}
+
+/** Darf ein Modul (Gruppe g) hier stehen? strict: auch fremde vorgemerkte Clusterräume und Pier-Vorfelder meiden */
+function fits(w: World, nb: Body, strict: boolean, tube: [number, number][] | null, owner: Body | null): boolean {
+  for (const b of w.bodies) {
+    for (const q of b.boxes) for (const p of nb.boxes) if (overlap(p, q)) return false;
+    if (strict && b.seed && b.group !== nb.group) {
+      const cx = b.x + Math.cos(b.ang) * 1.0, cy = b.y + Math.sin(b.ang) * 1.0;
+      if (Math.hypot(nb.x - cx, nb.y - cy) < RESERVE_R) return false;
+    }
+  }
+  if (tube) {
+    for (const t of [0.2, 0.4, 0.6, 0.8]) {
+      const [x, y] = bez(tube, t);
+      for (const b of w.bodies) if (b !== owner && b.boxes.some((q) => inside(x, y, q))) return false;
+      if (nb.boxes.some((q) => inside(x, y, q))) return false;
+    }
+  }
+  return true;
+}
+
+/** Platz für ein neues Modul neben den schon platzierten */
+function placeNext(w: World, d: ModuleDef | undefined): ModulePlace {
+  const s = moduleShape(d);
+  const g = moduleGroup(d);
+  const joinable = !s.base;
+  for (const strict of [true, false]) {
+    // 1. Direkt an ein Modul derselben Art: oben, seitlich (parallel) oder unten
+    if (joinable) {
+      let best: ModulePlace | null = null, bestScore = Infinity;
+      for (const b of w.bodies) {
+        if (b.group !== g) continue;
+        const ux = Math.cos(b.ang), uy = Math.sin(b.ang);
+        for (const port of b.ports) {
+          if (!portFree(w, port, b)) continue;
+          const side = Math.abs(Math.sin(port.ang - b.ang)) > 0.5;
+          const dist = side ? b.shape.hw + s.hw : b.shape.half + s.half;
+          const px = port.x - b.x, py = port.y - b.y, pl = Math.hypot(px, py);
+          const x = b.x + (px / pl) * dist, y = b.y + (py / pl) * dist;
+          const nb = body(x, y, b.ang, d);
+          if (!fits(w, nb, strict, null, null)) continue;
+          // kompakt und eher nach außen: Ketten nach innen nur, wenn es nicht anders geht
+          const inward = !side && ux * px + uy * py < 0;
+          const score = Math.hypot(x, y) + (inward ? 1.5 : 0);
+          if (score < bestScore) { bestScore = score; best = { x, y, ang: b.ang }; }
+        }
+      }
+      if (best) return best;
+    }
+    // 2. Neuer Cluster an einem freien Anschluss (am Kern direkt, sonst über ein Rohr)
+    const reach = Math.max(2, ...w.bodies.slice(1).map((b) => Math.hypot(b.x, b.y)));
+    let best: ModulePlace | null = null, bestScore = Infinity;
+    for (const b of w.bodies) {
+      for (const port of b.ports) {
+        if (!portFree(w, port, b)) continue;
+        const atCore = b.group === 'core';
+        const radial = Math.atan2(port.y, port.x);
+        const angs = [port.ang];
+        if (Math.cos(radial - port.ang) < 0.9 && Math.hypot(port.x, port.y) > 0.5) angs.push(radial);
+        for (const gap of GAPS) {
+          if (gap === 0 && !atCore) continue;
+          for (const ang of angs) {
+            if (ang !== port.ang && gap < 0.9) continue;
+            const ex = port.x + Math.cos(port.ang) * gap, ey = port.y + Math.sin(port.ang) * gap;
+            const x = ex + Math.cos(ang) * s.half, y = ey + Math.sin(ang) * s.half;
+            const link: [number, number, number] | undefined = gap > 0 ? [port.x, port.y, port.ang] : undefined;
+            const place: ModulePlace = { x, y, ang, link, seed: joinable || undefined };
+            const nb = body(x, y, ang, d, joinable);
+            if (!fits(w, nb, strict, link ? tubeCurve(place, d) : null, b)) continue;
+            const r = Math.hypot(x, y);
+            // Docks, Piers und Werften an den aktuellen Rand der Station (nicht immer weiter hinaus), sonst nah am Kern
+            let score = (outer(d) ? Math.max(0, reach - r) + Math.max(0, r - reach) * 0.6 : r) + gap * 0.9 + (ang !== port.ang ? 0.25 : 0);
+            // Bauform: Ring breitet sich über Seitenanschlüsse aus, Block und Rückgrat wachsen gerade nach außen
+            if (w.style === 'ring' && !atCore && Math.abs(Math.sin(port.ang - b.ang)) > 0.5) score -= 0.3;
+            if (w.style !== 'ring' && !atCore && Math.abs(Math.sin(port.ang - b.ang)) < 0.5) score -= 0.2;
+            if (score < bestScore) { bestScore = score; best = place; }
           }
         }
       }
     }
-    // Mehr Module als Plätze (nur theoretisch, Stationen haben höchstens 100): am Kern stapeln
-    return { x: 0, y: 0, ang: 0, band: 0, path: [[0, 0]] };
-  });
+    if (best) return best;
+  }
+  // 3. Notlösung (sehr volle Station): auf einem äußeren Kreis frei stehend, mit Rohr vom nächsten Anschluss
+  for (let r = 5; r < 40; r += 1.2) {
+    for (let i = 0; i < 36; i++) {
+      const ang = (i / 36) * Math.PI * 2 + r;
+      const x = Math.cos(ang) * r, y = Math.sin(ang) * r;
+      const nb = body(x, y, ang, d);
+      if (!fits(w, nb, false, null, null)) continue;
+      let link: [number, number, number] | undefined, bd = Infinity;
+      for (const b of w.bodies) for (const port of b.ports) {
+        const dd = Math.hypot(port.x - x, port.y - y);
+        if (dd < bd && portFree(w, port, b)) { bd = dd; link = [port.x, port.y, port.ang]; }
+      }
+      return { x, y, ang, link };
+    }
+  }
+  return { x: 0, y: 0, ang: 0 };
 }
 
-/** Ausdehnung der belegten Plätze (für Leuchten, Auswahlring, Beschriftung) */
-export function layoutReach(slots: Slot[]): number {
-  return Math.max(1.2, ...slots.map((p) => Math.hypot(p.x, p.y))) + 0.65;
+// ---- Stationen ----
+
+const isCore = (def: string) => MODULE_MAP[def]?.kind === 'core';
+
+/**
+ * Vergibt allen Modulen ohne festen Platz einen (in Bauzreihenfolge) und speichert ihn am Modul.
+ * Alte Spielstände werden so beim ersten Zeichnen einmal neu angeordnet.
+ */
+export function ensurePlaced(st: Station): void {
+  const mods = st.modules.filter((m) => !isCore(m.def));
+  if (mods.every((m) => m.at)) return;
+  const style = stationStyle(st.id);
+  const w = world(style);
+  for (const m of mods) if (m.at) add(w, m.at, MODULE_MAP[m.def]);
+  for (const m of mods) {
+    if (m.at) continue;
+    m.at = placeNext(w, MODULE_MAP[m.def]);
+    add(w, m.at, MODULE_MAP[m.def]);
+  }
+  plannedCache.delete(st.id);
+}
+
+const plannedCache = new Map<string, { key: string; places: ModulePlace[] }>();
+
+/** Voraussichtliche Plätze für Module im Bau und in der Bauliste (nicht gespeichert, nur zum Zeichnen) */
+export function plannedPlaces(st: Station, defs: string[]): ModulePlace[] {
+  const mods = st.modules.filter((m) => !isCore(m.def));
+  const key = mods.map((m) => m.uid).join(',') + '|' + defs.join(',');
+  const hit = plannedCache.get(st.id);
+  if (hit && hit.key === key) return hit.places;
+  const w = world(stationStyle(st.id));
+  for (const m of mods) if (m.at) add(w, m.at, MODULE_MAP[m.def]);
+  const places = defs.map((def) => {
+    const p = placeNext(w, MODULE_MAP[def]);
+    add(w, p, MODULE_MAP[def]);
+    return p;
+  });
+  plannedCache.set(st.id, { key, places });
+  return places;
+}
+
+/** Ausdehnung der Station (Moduleinheiten) für Leuchten, Auswahlring und Beschriftung */
+export function layoutReach(places: { p: ModulePlace; def: string }[]): number {
+  let r = 1.3;
+  for (const { p, def } of places) {
+    const s = moduleShape(MODULE_MAP[def]);
+    r = Math.max(r, Math.hypot(p.x, p.y) + Math.max(s.a + Math.abs(s.c), s.b));
+  }
+  return r + 0.3;
+}
+
+/** Fertige Module mit Platz (für Tests und Auswertungen) */
+export function placedModules(st: Station): { m: ModuleInst; p: ModulePlace }[] {
+  ensurePlaced(st);
+  return st.modules.filter((m) => !isCore(m.def) && m.at).map((m) => ({ m, p: m.at! }));
+}
+
+/** Für Tests: Überlappen sich zwei platzierte Module? */
+export function placesOverlap(a: ModulePlace, da: string, b: ModulePlace, db: string): boolean {
+  const ba = body(a.x, a.y, a.ang, MODULE_MAP[da]), bb = body(b.x, b.y, b.ang, MODULE_MAP[db]);
+  return ba.boxes.some((p) => bb.boxes.some((q) => overlap(p, q)));
 }

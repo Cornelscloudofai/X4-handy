@@ -119,6 +119,19 @@ export interface ModuleInst {
   stall: '' | 'input' | 'storage';
   /** Gleitender Auslastungswert 0..1 */
   util: number;
+  /** Fester Platz in der Station (wird beim ersten Zeichnen vergeben und bleibt dann) */
+  at?: ModulePlace;
+}
+
+/** Platz eines Moduls in Moduleinheiten relativ zum Kern (vor der Drehung der Station); ang = Richtung vom Kern weg */
+export interface ModulePlace {
+  x: number;
+  y: number;
+  ang: number;
+  /** Verbindungsrohr: beginnt am Anschluss (x, y) mit Richtung ang und endet am unteren Anschluss des Moduls */
+  link?: [number, number, number];
+  /** Erstes Modul eines Clusters: davor ist Platz für weitere Module derselben Art vorgemerkt */
+  seed?: boolean;
 }
 
 export interface QueueItem { uid: number; def: string; paid: number }

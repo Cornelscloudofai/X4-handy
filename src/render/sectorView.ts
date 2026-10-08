@@ -14,7 +14,7 @@ import { fmtCr } from '../ui/format';
 import { Effects } from './effects';
 import { drawRockField } from './fields';
 import { drawWareGlyph } from './glyphs';
-import { layoutReach, layoutStation, stationStyle } from './stationLayout';
+import { ensurePlaced, layoutReach, plannedPlaces, productionKind, stationStyle, tubeCurve } from './stationLayout';
 import { sectorLayers } from './bgImages';
 import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
@@ -913,63 +913,27 @@ export class SectorRenderer {
     const building = st.build && MODULE_MAP[st.build.def] && MODULE_MAP[st.build.def].kind !== 'core' ? st.build : null;
     const ghosts = st.queue.slice(0, 3);
     const solid = mods.length + (building ? 1 : 0);
-    // Plätze nach Bauform und Modulart (Lager innen, Produktion Mitte, Docks/Werft außen)
-    const defs = [...mods.map((m) => m.def), ...(building ? [building.def] : []), ...ghosts.map((q) => q.def)];
-    const slots = layoutStation(st.id, defs);
+    // Feste Plätze der gebauten Module, voraussichtliche für Bau und Bauliste
+    ensurePlaced(st);
+    const planned = plannedPlaces(st, [...(building ? [building.def] : []), ...ghosts.map((q) => q.def)]);
+    const places = [...mods.map((m) => m.at!), ...planned];
     const pos = (i: number) => {
-      const p = slots[i];
-      return { ang: p.ang, px: p.x * unit, py: p.y * unit };
+      const p = places[i];
+      return { ang: p.ang, px: p.x * unit, py: p.y * unit, seed: Math.abs(Math.round(p.x * 7 + p.y * 13)) };
     };
+    const defAt = (i: number) => (i < mods.length ? mods[i].def : i === mods.length && building ? building.def : ghosts[i - solid]?.def);
     const cap = storageCap(st), used = usedVolume(st);
     const fill = (k: 'Container' | 'Solid' | 'Liquid') => (cap[k] > 0 ? Math.min(1, used[k] / cap[k]) : 0);
     ctx.save();
     ctx.translate(sx, sy);
     ctx.rotate(rot);
-    // Träger: fest zu gebauten Modulen, gestrichelt zu geplanten
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    const truss = (from: number, to: number, solidLine: boolean) => {
-      ctx.beginPath();
-      for (let i = from; i < to; i++) {
-        slots[i].path.forEach(([x, y], k) => (k ? ctx.lineTo(x * unit, y * unit) : ctx.moveTo(x * unit, y * unit)));
-      }
-      if (solidLine) {
-        ctx.strokeStyle = 'rgba(120,210,220,0.42)';
-        ctx.lineWidth = Math.max(1.2, unit * 0.13);
-      } else {
-        ctx.strokeStyle = 'rgba(120,210,220,0.18)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 4]);
-      }
-      ctx.stroke();
-      ctx.setLineDash([]);
-    };
-    if (stationStyle(st.id) === 'ring') {
-      // Ringträger nur zwischen benachbarten belegten Plätzen desselben Rings
-      const byRing = new Map<number, number[]>();
-      for (const [i, p] of slots.slice(0, solid).entries()) {
-        // Piers haben keine Seitenanschlüsse: der Ringträger endet vor ihnen
-        if (MODULE_MAP[defs[i]]?.kind === 'pier') continue;
-        const r = Math.round(Math.hypot(p.x, p.y) * 100) / 100;
-        byRing.set(r, [...(byRing.get(r) ?? []), Math.atan2(p.y, p.x)]);
-      }
-      ctx.strokeStyle = 'rgba(120,210,220,0.3)';
-      ctx.lineWidth = Math.max(1, unit * 0.09);
-      for (const [r, angs] of byRing) {
-        if (angs.length < 2) continue;
-        const step = (Math.PI * 2) / Math.round((Math.PI * 2 * r) / 1.4);
-        angs.sort((a, b) => a - b);
-        for (let i = 0; i < angs.length; i++) {
-          const a = angs[i], b = i + 1 < angs.length ? angs[i + 1] : angs[0] + Math.PI * 2;
-          if (b - a > step * 2.2) continue;
-          ctx.beginPath();
-          ctx.arc(0, 0, r * unit, a, b);
-          ctx.stroke();
-        }
-      }
-    }
-    truss(0, solid, true);
-    if (ghosts.length) truss(solid, slots.length, false);
+    // Verbindungsrohre zwischen Anschlüssen: fest zu gebauten Modulen, als Umriss zu geplanten
+    places.forEach((p, i) => {
+      const c = tubeCurve(p, MODULE_MAP[defAt(i) ?? '']);
+      if (c) this.drawTube(ctx, c, unit, i >= solid ? 'plan' : i >= mods.length ? 'build' : 'solid', now);
+    });
     // Stationskern: Bild passend zur Bauform (Arme liegen auf den Trägern, dreht mit der Station) – vor den Modulen,
     // damit deren Anschlüsse über den Armenden liegen; ohne Bild das Neon-Sechseck (nach den Modulen, s. u.)
     const style = stationStyle(st.id);
@@ -987,7 +951,7 @@ export class SectorRenderer {
       ctx.save();
       ctx.translate(p.px, p.py);
       ctx.rotate(p.ang);
-      this.drawModule(ctx, MODULE_MAP[m.def], unit, now, i, { running: m.running, stall: m.stall, fill, yardBusy: !!st.yard?.build });
+      this.drawModule(ctx, MODULE_MAP[m.def], unit, now, p.seed, { running: m.running, stall: m.stall, fill, yardBusy: !!st.yard?.build });
       ctx.restore();
     });
     // Modul im Bau: Drahtgitter, füllt sich mit dem Fortschritt
@@ -1006,7 +970,7 @@ export class SectorRenderer {
       ctx.rect(-w / 2 - 2, -h * 1.4, (w + 4) * prog, h * 2.8);
       ctx.clip();
       ctx.globalAlpha = 0.9;
-      this.drawModule(ctx, d, unit, now, mods.length, { running: false, stall: '', fill, yardBusy: false });
+      this.drawModule(ctx, d, unit, now, p.seed, { running: false, stall: '', fill, yardBusy: false });
       ctx.restore();
       // Gitter darüber
       ctx.strokeStyle = rgba(C.amber, waiting ? 0.45 + 0.3 * Math.sin(now / 250) : 0.85);
@@ -1051,7 +1015,7 @@ export class SectorRenderer {
       ctx.translate(p.px, p.py);
       ctx.rotate(p.ang);
       ctx.globalAlpha = 0.22;
-      this.drawModule(ctx, d, unit, now, solid + k, { running: false, stall: '', fill, yardBusy: false });
+      this.drawModule(ctx, d, unit, now, p.seed, { running: false, stall: '', fill, yardBusy: false });
       ctx.restore();
     });
     // Werft baut ein Schiff: Schweißfunken an der Werft
@@ -1656,6 +1620,108 @@ export class SectorRenderer {
     }
   }
 
+  /**
+   * Verbindungsrohr im Split-Stil entlang einer Bézierkurve von Anschluss zu Anschluss: dunkler Mantel, rote
+   * Panzerringe, Messingleitung und Lauflicht; im Bau blasser, geplant nur als gestrichelter Umriss.
+   */
+  private drawTube(ctx: CanvasRenderingContext2D, c: [number, number][], unit: number, mode: 'solid' | 'build' | 'plan', now: number): void {
+    const P = c.map(([x, y]) => [x * unit, y * unit]);
+    const path = () => {
+      ctx.beginPath();
+      ctx.moveTo(P[0][0], P[0][1]);
+      ctx.bezierCurveTo(P[1][0], P[1][1], P[2][0], P[2][1], P[3][0], P[3][1]);
+    };
+    const wTube = Math.max(1.5, unit * 0.2);
+    ctx.save();
+    ctx.lineCap = 'butt';
+    if (mode === 'plan') {
+      path();
+      ctx.setLineDash([Math.max(2, unit * 0.12), Math.max(2, unit * 0.1)]);
+      ctx.strokeStyle = 'rgba(255,170,120,0.35)';
+      ctx.lineWidth = Math.max(1, unit * 0.04);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (mode === 'build') ctx.globalAlpha *= 0.7;
+    // Mantel mit dunklem Rand und hellerer Mitte
+    path();
+    ctx.strokeStyle = '#141619';
+    ctx.lineWidth = wTube * 1.25;
+    ctx.stroke();
+    path();
+    ctx.strokeStyle = '#4a4d52';
+    ctx.lineWidth = wTube;
+    ctx.stroke();
+    path();
+    ctx.strokeStyle = '#6d7076';
+    ctx.lineWidth = wTube * 0.45;
+    ctx.stroke();
+    // Punkte entlang der Kurve (gleichmäßig nach Länge) für Ringe und Lichter
+    const pt = (t: number) => {
+      const m = 1 - t, w = [m * m * m, 3 * m * m * t, 3 * m * t * t, t * t * t];
+      return [w.reduce((s, v, i) => s + v * P[i][0], 0), w.reduce((s, v, i) => s + v * P[i][1], 0)];
+    };
+    const samples: number[][] = [];
+    let len = 0;
+    for (let i = 0; i <= 40; i++) {
+      const q = pt(i / 40);
+      if (i) len += Math.hypot(q[0] - samples[i - 1][0], q[1] - samples[i - 1][1]);
+      samples.push([q[0], q[1], len]);
+    }
+    const at = (dist: number) => {
+      for (let i = 1; i < samples.length; i++) {
+        if (samples[i][2] >= dist) {
+          const a = samples[i - 1], b = samples[i];
+          const f = (dist - a[2]) / Math.max(1e-6, b[2] - a[2]);
+          return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f, ang: Math.atan2(b[1] - a[1], b[0] - a[0]) };
+        }
+      }
+      const a = samples[samples.length - 2], b = samples[samples.length - 1];
+      return { x: b[0], y: b[1], ang: Math.atan2(b[1] - a[1], b[0] - a[0]) };
+    };
+    // Messingleitung seitlich am Rohr
+    if (unit >= 14) {
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const a = at(samples[i][2]);
+        const ox = -Math.sin(a.ang) * wTube * 0.3, oy = Math.cos(a.ang) * wTube * 0.3;
+        i ? ctx.lineTo(a.x + ox, a.y + oy) : ctx.moveTo(a.x + ox, a.y + oy);
+      }
+      ctx.strokeStyle = '#b8873a';
+      ctx.lineWidth = Math.max(0.6, unit * 0.025);
+      ctx.stroke();
+    }
+    // Rote Panzerringe in festen Abständen, Kragen an beiden Enden
+    const step = unit * 0.32;
+    const rings = Math.max(1, Math.round(len / step));
+    for (let k = 0; k <= rings; k++) {
+      const a = at((len * k) / rings);
+      const end = k === 0 || k === rings;
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.ang);
+      const rw = end ? unit * 0.09 : unit * 0.06, rh = wTube * (end ? 0.78 : 0.66);
+      ctx.fillStyle = end ? '#2a2c30' : '#c8382c';
+      ctx.fillRect(-rw / 2, -rh, rw, rh * 2);
+      if (end && unit >= 14) {
+        ctx.fillStyle = '#ffb547';
+        ctx.fillRect(-rw * 0.2, -rh * 0.85, rw * 0.4, rh * 0.25);
+        ctx.fillRect(-rw * 0.2, rh * 0.6, rw * 0.4, rh * 0.25);
+      }
+      ctx.restore();
+    }
+    // Lauflicht: Waren fließen durchs Rohr
+    if (mode === 'solid' && unit >= 10) {
+      const a = at(((now / 1600) % 1) * len);
+      ctx.fillStyle = 'rgba(255,190,90,0.9)';
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, Math.max(0.8, unit * 0.035), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   /** Modulbild (Anschlüsse oben/unten im Bild) entlang der Modulachse zeichnen; false, wenn es keins gibt */
   private drawModuleImage(ctx: CanvasRenderingContext2D, kind: string, unit: number, seed: number): boolean {
     const img = moduleSprite(kind, seed);
@@ -2104,23 +2170,6 @@ function bendPoint(x1: number, y1: number, x2: number, y2: number, lane: number)
   return [(x1 + x2) / 2 + nx * bend, (y1 + y2) / 2 + ny * bend];
 }
 
-type ProdKind = 'solar' | 'smelter' | 'chem' | 'fab' | 'arms' | 'bio';
-const SMELTER = new Set(['refinedmetals', 'teladianium', 'scrapmetal', 'siliconwafers', 'siliconcarbide', 'metallicmicrolattice', 'computronicsubstrate']);
-const CHEM = new Set(['graphene', 'superfluidcoolant', 'antimattercells', 'water', 'bogas', 'spacefuel']);
-const ARMS = new Set(['shieldcomponents', 'turretcomponents', 'weaponscomponents', 'missilecomponents', 'fieldcoils', 'claytronics']);
-
-/** Bauart eines Produktionsmoduls nach seiner Ware */
-function productionKind(ware: string | undefined): ProdKind {
-  if (!ware) return 'fab';
-  if (ware === 'energycells') return 'solar';
-  if (SMELTER.has(ware)) return 'smelter';
-  if (CHEM.has(ware)) return 'chem';
-  if (ARMS.has(ware)) return 'arms';
-  const g = WARES[ware]?.group;
-  if (g === 'food' || g === 'agri' || g === 'pharma') return 'bio';
-  return 'fab';
-}
-
 /** Stationen werden überhöht gezeichnet, damit ihre Module schon bei mittlerem Zoom erkennbar sind */
 function stationScale(zoom: number): number {
   // Nah herangezoomt dürfen Module groß werden – dann sind ihre Details erkennbar
@@ -2139,10 +2188,11 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 
 /** Ausdehnung der Station in Moduleinheiten (belegte Plätze inkl. Bau und geplanter Module) */
 function stationReach(st: Station): number {
-  const mods = st.modules.filter((m) => MODULE_MAP[m.def]?.kind !== 'core').map((m) => m.def);
-  if (st.build && MODULE_MAP[st.build.def]?.kind !== 'core') mods.push(st.build.def);
-  mods.push(...st.queue.slice(0, 3).map((q) => q.def));
-  return layoutReach(layoutStation(st.id, mods));
+  ensurePlaced(st);
+  const mods = st.modules.filter((m) => MODULE_MAP[m.def]?.kind !== 'core' && m.at).map((m) => ({ p: m.at!, def: m.def }));
+  const pend = [...(st.build && MODULE_MAP[st.build.def]?.kind !== 'core' ? [st.build.def] : []), ...st.queue.slice(0, 3).map((q) => q.def)];
+  const planned = plannedPlaces(st, pend);
+  return layoutReach([...mods, ...pend.map((def, i) => ({ p: planned[i], def }))]);
 }
 
 /** Schiffsumrisse (Bug zeigt nach +x, Einheit = Schiffsgröße) */
