@@ -35,15 +35,18 @@ function band(d: number, inner: number, mid: number): Band {
   return d <= inner ? 0 : d <= mid ? 1 : 2;
 }
 
-/** Rückgrat: langer Träger, Module hängen paarweise an Seitenästen, an den Enden Andockplätze */
+/**
+ * Rückgrat: langer Träger, Module hängen paarweise an Seitenästen, an den Enden Andockplätze.
+ * Die Seitenäste sitzen um einen halben Schritt versetzt – so treffen die beiden innersten genau die
+ * Seitenanschlüsse des länglichen Kerns, statt mitten in ihn hinein zu laufen.
+ */
 function spine(): Slot[] {
   const out: Slot[] = [];
   const step = 1.15;
-  // Seitenäste: Ebene 1 (±1), Ebene 2 (±2) und 3 (±3) nur nahe der Mitte
+  // Seitenäste: Ebene 1 bis ±3,5 Schritte, Ebene 2 bis ±2,5, Ebene 3 nur nahe der Mitte (±1,5)
   for (let level = 1; level <= 3; level++) {
-    for (const k of [0, 1, -1, 2, -2, 3, -3]) {
-      if (level === 3 && Math.abs(k) > 1) continue;
-      if (level === 2 && Math.abs(k) > 2) continue;
+    for (const k of [0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.5, -3.5]) {
+      if (Math.abs(k) > 4.5 - level) continue;
       const x = k * step;
       for (const side of [1, -1]) {
         const y = side * level * 1.05;
@@ -54,10 +57,7 @@ function spine(): Slot[] {
     }
   }
   // Enden des Rückgrats: außen, ideal für Docks
-  for (const side of [1, -1]) {
-    out.push({ x: side * 4.45, y: 0, ang: side > 0 ? 0 : Math.PI, band: 2, path: [[0, 0], [side * 4.45, 0]] });
-    for (const off of [1, -1]) out.push({ x: side * 3.45, y: off * 0.95, ang: off > 0 ? Math.PI / 2 : -Math.PI / 2, band: 2, path: [[0, 0], [side * 3.45, 0], [side * 3.45, off * 0.95]] });
-  }
+  for (const side of [1, -1]) out.push({ x: side * 4.45, y: 0, ang: side > 0 ? 0 : Math.PI, band: 2, path: [[0, 0], [side * 4.45, 0]] });
   return out;
 }
 

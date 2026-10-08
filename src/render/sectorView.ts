@@ -18,7 +18,7 @@ import { layoutReach, layoutStation, stationStyle } from './stationLayout';
 import { sectorLayers } from './bgImages';
 import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
-import { mapShipSprite, stationCoreSprite } from './shipArt';
+import { mapShipSprite, moduleSprite, stationCoreSprite } from './shipArt';
 
 const C = {
   teal: '#3fe0c5',
@@ -968,6 +968,18 @@ export class SectorRenderer {
     }
     truss(0, solid, true);
     if (ghosts.length) truss(solid, slots.length, false);
+    // Stationskern: Bild passend zur Bauform (Arme liegen auf den Trägern, dreht mit der Station) – vor den Modulen,
+    // damit deren Anschlüsse über den Armenden liegen; ohne Bild das Neon-Sechseck (nach den Modulen, s. u.)
+    const style = stationStyle(st.id);
+    const core = stationCoreSprite(style, hashStr(st.id));
+    if (core) {
+      const cs = unit * CORE_SIZE[style];
+      ctx.save();
+      // Bildarm oben (−90°) auf die Trägerrichtungen der Bauform legen: Ring/Block 0°, 60°, …
+      ctx.rotate(CORE_TURN[style]);
+      ctx.drawImage(core, -cs / 2, -cs / 2, cs, cs);
+      ctx.restore();
+    }
     mods.forEach((m, i) => {
       const p = pos(i);
       ctx.save();
@@ -1051,18 +1063,7 @@ export class SectorRenderer {
       }
     }
     ctx.restore();
-    // Stationskern: Bild passend zur Bauform (Arme liegen auf den Trägern, dreht mit der Station), sonst Neon-Sechseck
-    const style = stationStyle(st.id);
-    const core = stationCoreSprite(style, hashStr(st.id));
-    if (core) {
-      const cs = unit * 2.1;
-      ctx.save();
-      ctx.translate(sx, sy);
-      // Bildarm oben (−90°) auf die Trägerrichtungen der Bauform legen: Ring/Block 0°, 60°, …
-      ctx.rotate(rot + CORE_TURN[style]);
-      ctx.drawImage(core, -cs / 2, -cs / 2, cs, cs);
-      ctx.restore();
-    } else this.hubIcon(ctx, sx, sy, Math.max(8, unit * 0.55), C.teal, now);
+    if (!core) this.hubIcon(ctx, sx, sy, Math.max(8, unit * 0.55), C.teal, now);
   }
 
   /** Ein Modul in lokalen Koordinaten (x zeigt vom Kern weg) */
@@ -1099,6 +1100,17 @@ export class SectorRenderer {
       const col = d.storage === 'Liquid' ? '#5fb4ff' : d.storage === 'Solid' ? '#ffae5c' : '#8fd3ff';
       const n = d.id.endsWith('_l') ? 3 : d.id.endsWith('_m') ? 2 : 1;
       const level = o.fill(d.storage ?? 'Container');
+      if (this.drawModuleImage(ctx, d.storage ?? 'Container', unit, seed)) {
+        // Füllstand als schmale Leiste entlang der Modulachse
+        if (det) {
+          const bw = w * 0.7, bh = Math.max(1.4, unit * 0.06);
+          ctx.fillStyle = 'rgba(5,11,20,0.8)';
+          ctx.fillRect(-bw / 2 - 1, -bh / 2 - 1, bw + 2, bh + 2);
+          ctx.fillStyle = rgba(level > 0.92 ? C.amber : col, 0.95);
+          ctx.fillRect(-bw / 2, -bh / 2, bw * level, bh);
+        }
+        return;
+      }
       if (d.storage === 'Container') {
         // gestapelte Container: Füllstand leuchtet; nah mit Rippen, Kran und Ladelicht
         const b = unit * 0.3, cols = 2, rows = n;
@@ -1423,6 +1435,28 @@ export class SectorRenderer {
     const col = d.ware ? WARES[d.ware].color : C.teal;
     const kind = productionKind(d.ware);
     const stalled = o.stall === 'input' ? C.red : o.stall === 'storage' ? C.amber : '';
+    if (this.drawModuleImage(ctx, kind, unit, seed)) {
+      // Stillstand: Modul abgedunkelt; rot (fehlende Eingänge) oder gelb (Lager voll) blinkender Rahmen
+      if (!o.running) {
+        ctx.fillStyle = 'rgba(5,11,20,0.35)';
+        roundRect(ctx, -w * 0.5, -h * 0.4, w, h * 0.8, unit * 0.1);
+        ctx.fill();
+      }
+      if (stalled) {
+        roundRect(ctx, -w * 0.53, -h * 0.45, w * 1.06, h * 0.9, unit * 0.12);
+        ctx.strokeStyle = rgba(stalled, 0.2 + 0.5 * (Math.sin(now / 220 + seed) > 0 ? 1 : 0));
+        ctx.lineWidth = Math.max(1, unit * 0.03);
+        ctx.stroke();
+      }
+      if (fine && d.ware) {
+        const t = ctx.getTransform();
+        ctx.save();
+        ctx.rotate(-Math.atan2(t.b, t.a));
+        drawWareGlyph(ctx, d.ware, Math.min(h * 0.5, 26), col, o.running ? 1 : 0.6);
+        ctx.restore();
+      }
+      return;
+    }
     if (kind === 'solar') {
       // Solarflügel mit wanderndem Glanz und Zellenraster
       for (const sgn of [-1, 1]) {
@@ -1580,6 +1614,19 @@ export class SectorRenderer {
       drawWareGlyph(ctx, d.ware, Math.min(h * 0.62, 30), col, o.running ? 1 : 0.6);
       ctx.restore();
     }
+  }
+
+  /** Modulbild (Anschlüsse oben/unten im Bild) entlang der Modulachse zeichnen; false, wenn es keins gibt */
+  private drawModuleImage(ctx: CanvasRenderingContext2D, kind: string, unit: number, seed: number): boolean {
+    const img = moduleSprite(kind, seed);
+    if (!img) return false;
+    const s = unit * MODULE_IMG;
+    ctx.save();
+    // Bild oben = vom Kern weg (+x)
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(img, -s / 2, -s / 2, s, s);
+    ctx.restore();
+    return true;
   }
 
   private drawShipGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, size: number, color: string, own: boolean, alpha = 1): void {
@@ -2062,6 +2109,10 @@ function stationReach(st: Station): number {
 interface ShipShape { hull: [number, number][]; nose: number; tail: number; pods?: [number, number, number, number][]; tank?: [number, number] }
 /** Drehung der Kernbilder (Arm oben) auf die Trägerrichtungen je Bauform */
 const CORE_TURN: Record<string, number> = { ring: Math.PI / 6, block: Math.PI / 6, tri: Math.PI, spine: Math.PI / 2 };
+/** Kantenlänge der Kernbilder in Moduleinheiten; beim Rückgrat treffen die Seitenanschlüsse die Äste bei ±0,575 */
+const CORE_SIZE: Record<string, number> = { ring: 2.1, block: 2.1, tri: 2.1, spine: 2.65 };
+/** Kantenlänge der Modulbilder in Moduleinheiten (Anschluss zu Anschluss rund 1,05) */
+const MODULE_IMG = 1.1;
 /**
  * Länge der Schiffsbilder in Kartenkilometern (Kartenmaßstab, nicht echte Größe – sonst wären Schiffe unsichtbar klein);
  * Verhältnisse wie in X4: L rund 3,5-mal so lang wie M, S etwa 0,4-mal.

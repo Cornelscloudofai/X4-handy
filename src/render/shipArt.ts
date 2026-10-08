@@ -258,9 +258,9 @@ export function mapShipSprite(cls: string): FighterSprite | null {
  * Auswahl je Station fest über ihre Kennung. Im Bild zeigt ein Arm nach oben.
  */
 const STATION_CORES: Record<string, string[]> = {
-  ring: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki', 'split-station-kern-kasten-ki'],
-  block: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki', 'split-station-kern-kasten-ki'],
-  tri: ['split-station-kern-tri-ki'],
+  ring: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki', 'split-station-kern-kasten-ki', 'split-station-kern-kasten-hell-ki'],
+  block: ['split-station-kern-hell-ki', 'split-station-kern-mittel-ki', 'split-station-kern-kasten-ki', 'split-station-kern-kasten-hell-ki'],
+  tri: ['split-station-kern-tri-ki', 'split-station-kern-tri-hell-ki'],
   spine: ['split-station-kern-rueckgrat-ki'],
 };
 
@@ -268,5 +268,26 @@ const STATION_CORES: Record<string, string[]> = {
 export function stationCoreSprite(style: string, seed: number): HTMLImageElement | null {
   const list = STATION_CORES[style] ?? [];
   if (art === 'vector' || !list.length) return null;
+  return load(list[seed % list.length]);
+}
+
+/**
+ * Modulbilder: länglich, Anschlüsse oben und unten (zum Kern / nach außen) sowie mittig an beiden Längsseiten
+ * (Ringträger zu den Nachbarn). Inhalt mittig, von Anschluss zu Anschluss 95 % der Bildhöhe.
+ */
+const MODULE_ART: Record<string, string[]> = {
+  smelter: ['split-modul-raffinerie-ki'],
+  chem: ['split-modul-gas-ki'],
+  fab: ['split-modul-bauteile-ki'],
+  arms: ['split-modul-produktion-ki', 'split-modul-produktion-hell-ki'],
+  Container: ['split-lager-container-ki'],
+  Solid: ['split-lager-erz-ki'],
+  Liquid: ['split-lager-gas-ki'],
+};
+
+/** Bild eines Moduls nach Bauart (Produktionsart oder Lagertyp), sonst null (dann Neon-Zeichnung) */
+export function moduleSprite(kind: string, seed: number): HTMLImageElement | null {
+  const list = MODULE_ART[kind];
+  if (art === 'vector' || !list) return null;
   return load(list[seed % list.length]);
 }
