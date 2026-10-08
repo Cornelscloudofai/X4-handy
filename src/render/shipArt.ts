@@ -281,6 +281,7 @@ const MODULE_ART: Record<string, string[]> = {
   fab: ['split-modul-bauteile-ki'],
   arms: ['split-modul-produktion-ki', 'split-modul-produktion-hell-ki'],
   solar: ['split-modul-solar-ki'],
+  bio: ['split-modul-bio-ki'],
   dock: ['split-dock-ki'],
   pier: ['split-pier-ki'],
   yard_M: ['split-werft-m-ki'],

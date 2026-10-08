@@ -45,7 +45,7 @@ export interface ModuleShape { half: number; hw: number; base: boolean; c: numbe
 /** Halbe Breite bis zur Spitze der Seitenanschlüsse – aus den Modulbildern gemessen */
 const SIDE: Record<string, number> = {
   Container: 0.354, Solid: 0.343, Liquid: 0.365,
-  smelter: 0.333, chem: 0.403, fab: 0.394, arms: 0.4, solar: 0.521, bio: 0.36, dock: 0.379,
+  smelter: 0.333, chem: 0.403, fab: 0.394, arms: 0.4, solar: 0.521, bio: 0.394, dock: 0.379,
 };
 /** Anschluss zu Anschluss: 95 % von 1,1 Moduleinheiten */
 const HALF = 0.5225;
