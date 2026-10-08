@@ -1249,6 +1249,30 @@ export class SectorRenderer {
     }
     if (d.kind === 'dock' || d.kind === 'pier') {
       const col = '#a0e6f0';
+      if (d.kind === 'dock' && this.drawModuleImage(ctx, 'dock', unit, seed)) {
+        // Ganz nah: ab und zu steht ein kleines Schiff auf einem der Landefelder (drei M-Felder in der Mitte)
+        if (fine) {
+          const cycle = (now / 7000 + seed * 0.37) % 1;
+          if (cycle < 0.55) {
+            const al = cycle < 0.08 ? cycle / 0.08 : cycle > 0.47 ? (0.55 - cycle) / 0.08 : 1;
+            const r = unit * 0.13;
+            ctx.save();
+            ctx.translate((Math.floor(now / 7000 + seed) % 3 - 1) * unit * 0.34, 0);
+            ctx.rotate(seed * 1.3);
+            ctx.globalAlpha = al;
+            ctx.fillStyle = '#0a1721';
+            ctx.beginPath();
+            ctx.moveTo(r, 0); ctx.lineTo(-r * 0.7, r * 0.6); ctx.lineTo(-r * 0.4, 0); ctx.lineTo(-r * 0.7, -r * 0.6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = rgba(C.trader, 0.9);
+            ctx.lineWidth = thin;
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+        return;
+      }
       if (d.kind === 'dock') {
         const r = unit * 0.36;
         ctx.beginPath();

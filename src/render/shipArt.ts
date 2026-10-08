@@ -280,6 +280,8 @@ const MODULE_ART: Record<string, string[]> = {
   chem: ['split-modul-gas-ki'],
   fab: ['split-modul-bauteile-ki'],
   arms: ['split-modul-produktion-ki', 'split-modul-produktion-hell-ki'],
+  solar: ['split-modul-solar-ki'],
+  dock: ['split-dock-ki'],
   Container: ['split-lager-container-ki'],
   Solid: ['split-lager-erz-ki'],
   Liquid: ['split-lager-gas-ki'],
