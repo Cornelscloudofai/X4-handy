@@ -25,7 +25,7 @@ export const SECTORS: SectorDef[] = [
     npcStations: [
       { id: 'zhin-werft', name: 'Zhin-Werft', kind: 'wharf', x: 95, z: 50, buys: ['hullparts', 'claytronics', 'engineparts', 'advancedcomposites', 'scanningarrays', 'smartchips', 'dronecomponents', 'antimatterconverters', 'energycells'] },
       { id: 'zhin-wacht', name: 'Grenzposten Zhin', kind: 'defence', x: -80, z: 40, buys: ['weaponscomponents', 'turretcomponents', 'missilecomponents', 'shieldcomponents', 'medicalsupplies', 'cheltmeat', 'energycells'] },
-      { id: 'zhin-huette', name: 'Zhin-Metallhütte', kind: 'factory', x: 80, z: -60, buys: ['ore', 'silicon', 'ice', 'refinedmetals', 'graphene', 'energycells'] },
+      { id: 'zhin-huette', name: 'Zhin-Metallhütte', kind: 'factory', x: 80, z: -60, buys: ['ore', 'silicon', 'refinedmetals', 'graphene', 'energycells'], makes: ['refinedmetals', 'hullparts', 'siliconwafers'] },
     ],
     links: ['tkr', 'rhy', 'hoa', 'cascade'], licenseCost: 0, repRequired: 0,
     description: 'Heimat der Familie Zhin. Nach dem Xenon-Angriff wird jede Fabrik gebraucht.',
@@ -41,7 +41,7 @@ export const SECTORS: SectorDef[] = [
     ],
     tradeStation: { name: 'Tkr-Werft', x: 10, z: 20 },
     npcStations: [
-      { id: 'tkr-schmiede', name: 'Tkr-Schmiede', kind: 'factory', x: -20, z: -10, buys: ['refinedmetals', 'graphene', 'siliconwafers', 'teladianium', 'ore', 'energycells'] },
+      { id: 'tkr-schmiede', name: 'Tkr-Schmiede', kind: 'factory', x: -20, z: -10, buys: ['ore', 'refinedmetals', 'graphene', 'siliconwafers', 'energycells'], makes: ['hullparts', 'refinedmetals', 'scanningarrays'] },
       { id: 'tkr-wacht', name: 'Tkr-Wachstation', kind: 'defence', x: 100, z: 20, buys: ['weaponscomponents', 'turretcomponents', 'missilecomponents', 'cheltmeat', 'scruffinfruit', 'energycells'] },
     ],
     links: ['zhin', 'cascade', 'ravine'], licenseCost: 4_000_000, repRequired: 4,
@@ -59,7 +59,7 @@ export const SECTORS: SectorDef[] = [
     tradeStation: { name: 'Kaskaden-Raffinerie', x: 20, z: -10 },
     npcStations: [
       { id: 'cascade-werft', name: 'Kaskaden-Werft', kind: 'wharf', x: -90, z: 20, buys: ['hullparts', 'engineparts', 'claytronics', 'plasmaconductors', 'fieldcoils', 'energycells'] },
-      { id: 'cascade-elektronik', name: 'Tharka-Elektronikwerk', kind: 'factory', x: 60, z: 60, buys: ['microchips', 'quantumtubes', 'graphene', 'superfluidcoolant', 'siliconwafers', 'energycells'] },
+      { id: 'cascade-elektronik', name: 'Tharka-Elektronikwerk', kind: 'factory', x: 60, z: 60, buys: ['siliconwafers', 'graphene', 'superfluidcoolant', 'microchips', 'quantumtubes', 'energycells'], makes: ['microchips', 'quantumtubes', 'advancedelectronics'] },
     ],
     links: ['zhin', 'tkr'], licenseCost: 6_000_000, repRequired: 8,
     description: 'Gasnebel und 140 % Sonnenlicht – ideal für Solarkraftwerke.',
@@ -90,7 +90,7 @@ export const SECTORS: SectorDef[] = [
     tradeStation: { name: 'Patriarchenhafen', x: 10, z: 10 },
     npcStations: [
       { id: 'rhy-werft', name: 'Patriarchenwerft', kind: 'wharf', x: -60, z: 70, buys: ['hullparts', 'engineparts', 'claytronics', 'shieldcomponents', 'weaponscomponents', 'advancedelectronics'] },
-      { id: 'rhy-raffinerie', name: 'Rhy-Raffinerie', kind: 'factory', x: 80, z: 20, buys: ['ore', 'hydrogen', 'refinedmetals', 'antimattercells', 'energycells'] },
+      { id: 'rhy-raffinerie', name: 'Rhy-Raffinerie', kind: 'factory', x: 80, z: 20, buys: ['ore', 'hydrogen', 'refinedmetals', 'antimattercells', 'energycells'], makes: ['refinedmetals', 'antimattercells', 'engineparts'] },
     ],
     links: ['zhin', 'zyarth', 'ravine'], licenseCost: 5_000_000, repRequired: 3,
     description: 'Grenzsektor des Zyarth-Patriarchats. Die Flotte braucht Nachschub.',
@@ -106,7 +106,7 @@ export const SECTORS: SectorDef[] = [
     tradeStation: { name: 'Acrimony-Markt', x: 20, z: -20 },
     npcStations: [
       { id: 'hoa-habitat', name: 'Acrimony-Habitat', kind: 'habitat', x: 80, z: -70, buys: ['foodrations', 'medicalsupplies', 'spacefuel', 'water', 'cheltmeat', 'scruffinfruit', 'energycells'] },
-      { id: 'hoa-chemie', name: 'Acrimony-Chemiewerk', kind: 'factory', x: 60, z: 80, buys: ['graphene', 'superfluidcoolant', 'antimattercells', 'water', 'methane'] },
+      { id: 'hoa-chemie', name: 'Acrimony-Chemiewerk', kind: 'factory', x: 60, z: 80, buys: ['methane', 'graphene', 'superfluidcoolant', 'energycells'], makes: ['graphene', 'plasmaconductors', 'quantumtubes'] },
     ],
     links: ['zhin', 'zyarth'], licenseCost: 7_000_000, repRequired: 6,
     description: 'Eis und Methan im Überfluss. Die Bevölkerung verlangt nach Nahrung.',

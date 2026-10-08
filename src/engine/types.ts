@@ -84,6 +84,8 @@ export interface NpcStationDef {
   z: number;
   /** Waren, die diese Station ankauft (begrenzte Menge, meist über Durchschnittspreis) */
   buys: string[];
+  /** Fabrik: Waren, die sie selbst herstellt (X4-Rezepte) und verkauft */
+  makes?: string[];
 }
 
 export interface SectorDef {
@@ -289,7 +291,7 @@ export interface NpcShip {
   heading: number;
   tx: number;
   tz: number;
-  kind: 'buyer' | 'seller' | 'courier' | 'traffic';
+  kind: 'buyer' | 'seller' | 'courier' | 'traffic' | 'haul';
   station: string;
   ware: string;
   amount: number;
@@ -300,6 +302,23 @@ export interface NpcShip {
   speed: number;
   contract?: number;
   hue: number;
+  /** NPC-Frachter einer Fraktionsfabrik: deren Kennung (station = Ziel-Markt) */
+  home?: string;
+}
+
+/** Wirtschaft einer NPC-Fabrik */
+export interface NpcEco {
+  /** Produktionsmodule je Ware */
+  prod: Record<string, number>;
+  /** angefangene Modulzyklen je Ware */
+  t: Record<string, number>;
+  /** gleitende Auslastung je Ware (0..1) */
+  util: Record<string, number>;
+  /** letzte Ausbauprüfung (Spielzeit) */
+  grown: number;
+  /** angesparte Mengen für eigene Frachter: Vorprodukte herbei, Produkte zum Handelsposten */
+  supply: Record<string, number>;
+  export: Record<string, number>;
 }
 
 export interface MarketWare { stock: number; cap: number; eq: number }
@@ -349,6 +368,10 @@ export interface GameState {
   history?: HistoryData;
   nextId: number;
   npcTimer: Record<string, number>;
+  /** NPC-Fabriken: Produktion, Auslastung, Ausbau (fehlt in alten Spielständen) */
+  npcEco?: Record<string, NpcEco>;
+  /** Letzter Ausbau je Fraktion (Spielzeit) */
+  npcGrow?: Record<string, number>;
   contractTimer: number;
   savedAt: number;
   speed: number;

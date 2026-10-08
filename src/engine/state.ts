@@ -3,6 +3,7 @@ import { MODULES, MODULE_MAP } from '../data/modules';
 import { SECTOR_MAP } from '../data/sectors';
 import { SHIP_MAP, shipName } from '../data/ships';
 import { addBuildStore, initMarkets } from './economy';
+import { initNpcEconomy } from './npcEconomy';
 import { OLD_STORY_IDS, STORY, startMission } from './story';
 import type { GameState, ModuleInst, Ship, Station } from './types';
 
@@ -41,6 +42,7 @@ export function newGame(seed = Date.now() % 2147483647): GameState {
     contractTimer: 20 * 60, savedAt: Date.now(), speed: 5,
   };
   initMarkets(state);
+  initNpcEconomy(state);
   const st = newStation(state, 'Station Alpha', 'zhin', -45, -55);
   for (const def of ['core', 'prod_energycells', 'storage_container', 'storage_solid', 'dock_m']) st.modules.push({ ...newModule(state, def), util: 1 });
   st.inventory = { energycells: 3000, ore: 2000 };
@@ -113,6 +115,7 @@ export function deserialize(text: string): GameState {
   state.npcs = (raw.npcs ?? []).filter((n) => SECTOR_MAP[n.sector]);
   state.markets = { ...base.markets, ...(raw.markets ?? {}) };
   initMarkets(state);
+  initNpcEconomy(state);
   state.rep = { ...base.rep, ...(raw.rep ?? {}) };
   // Neu hinzugekommene Grundbaupläne auch in alten Spielständen; wer ein Lager M/L besitzt, behält dessen Bauplan
   const built = state.stations.flatMap((s) => [...s.modules.map((m) => m.def), ...s.queue.map((q) => q.def), s.build?.def ?? '']).filter((d) => MODULE_MAP[d]?.kind === 'storage');

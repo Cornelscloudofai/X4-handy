@@ -23,7 +23,7 @@ function spawnPoint(state: GameState, sectorId: string): { x: number; z: number 
   return { x: ts.x + randRange(state, -3, 3), z: ts.z + randRange(state, -3, 3) };
 }
 
-function makeNpc(state: GameState, partial: Partial<NpcShip> & Pick<NpcShip, 'sector' | 'kind' | 'tx' | 'tz'>): NpcShip {
+export function makeNpc(state: GameState, partial: Partial<NpcShip> & Pick<NpcShip, 'sector' | 'kind' | 'tx' | 'tz'>): NpcShip {
   const start = spawnPoint(state, partial.sector);
   const exit = spawnPoint(state, partial.sector);
   return {
@@ -182,6 +182,8 @@ export function stepNpcs(state: GameState, dt: number): void {
       n.timer -= dt;
       if (n.timer <= 0) {
         if (n.kind === 'buyer' || n.kind === 'seller') npcTrade(state, n);
+        // Frachter einer NPC-Fabrik: Ladung am Ziel (Fabrik oder Handelsposten) abgeben
+        if (n.kind === 'haul') { const m = state.markets[n.station]?.[n.ware]; if (m) m.stock = Math.min(m.cap, m.stock + n.amount); }
         n.phase = 'out';
       }
     } else if (moveNpc(n, n.exitX, n.exitZ, dt)) gone.add(n.id);

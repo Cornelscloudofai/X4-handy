@@ -264,9 +264,13 @@ function npcCard(state: GameState, id: string): string {
     const room = marketRoom(state, id, w);
     return `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub">nimmt noch ${fmtAmount(room)}</div></div><div class="right"><b>${fmtInt(marketPrice(state, id, w))} Cr</b></div></div>`;
   }).join('');
-  return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)} · kauft an`, `
+  const eco = state.npcEco?.[id];
+  // NPC-Fabrik: echte Produktion – Produkte mit Bestand und Preis, Module und Auslastung
+  const made = eco ? Object.entries(eco.prod).map(([w, k]) => `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub wrap">${k} Module · ${pct(eco.util[w] ?? 0)} ausgelastet · ${fmtAmount(marketStock(state, id, w))} auf Lager</div></div><div class="right"><b>${fmtInt(marketPrice(state, id, w))} Cr</b></div></div>`).join('') : '';
+  return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)}${eco ? '' : ' · kauft an'}`, `
+    ${eco ? `<div class="small muted" style="margin:0 0 6px">Stellt her und verkauft</div><div class="box rows npc-buys" style="margin-bottom:10px">${made}</div><div class="small muted" style="margin:0 0 6px">Kauft an (Vorprodukte)</div>` : ''}
     <div class="box rows npc-buys">${rows}</div>
-    <p class="small muted" style="margin:8px 0 0">Kleine Lager, meist gute Preise. Wer viel liefert, drückt den Preis – nach einigen Stunden ist wieder Bedarf da.</p>
+    <p class="small muted" style="margin:8px 0 0">${eco ? 'Produziert nach X4-Rezepten. Eigene Frachter bringen nur gut ein Drittel der Vorprodukte – der Rest muss geliefert werden. Gut ausgelastete Fabriken bauen langsam aus.' : 'Kleine Lager, meist gute Preise. Wer viel liefert, drückt den Preis – nach einigen Stunden ist wieder Bedarf da.'}</p>
     ${vendorsAt(n.sector, n.id).length ? `<div class="card-actions one" style="margin-top:10px">${vendorButton(state, n.sector, n.id)}</div>` : ''}`, true);
 }
 
@@ -986,6 +990,7 @@ function warePanel(state: GameState, id: string, p: Panel): string {
   }
   const users = WARE_IDS.filter((x) => WARES[x].inputs.some((i) => i.ware === id));
   const prices = known.map((sec) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(SECTOR_MAP[sec].tradeStation.name)}</div><div class="sub">${esc(SECTOR_MAP[sec].name)} · Bestand ${fmtAmount(marketStock(state, sec, id))}</div></div><div class="right"><b>${fmtInt(marketPrice(state, sec, id))} Cr</b></div></div>`
+    + SECTOR_MAP[sec].npcStations.filter((n) => n.makes?.includes(id)).map((n) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(n.name)}</div><div class="sub">${esc(SECTOR_MAP[sec].name)} · verkauft · Bestand ${fmtAmount(marketStock(state, n.id, id))}</div></div><div class="right"><b>${fmtInt(marketPrice(state, n.id, id))} Cr</b></div></div>`).join('')
     + SECTOR_MAP[sec].npcStations.filter((n) => n.buys.includes(id)).map((n) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(n.name)}</div><div class="sub">${esc(SECTOR_MAP[sec].name)} · kauft noch ${fmtAmount(marketRoom(state, n.id, id))}</div></div><div class="right"><b>${fmtInt(marketPrice(state, n.id, id))} Cr</b></div></div>`).join('')).join('');
   return sheet(w.name, `${GROUP_LABEL[w.group]} · Stufe ${w.tier}`, `
     <div class="section"><div class="kv">

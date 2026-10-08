@@ -491,6 +491,8 @@ export function applyMarketTrade(state: GameState, key: string, id: string, amou
 export function stepMarkets(state: GameState, dt: number): void {
   const k = 1 - Math.exp(-dt / REVERT_SECONDS);
   for (const key in state.markets) {
+    // NPC-Fabriken: Bestand ändert sich nur durch Produktion, Verbrauch und Lieferungen
+    if (state.npcEco?.[key]) continue;
     const market = state.markets[key];
     for (const id in market) {
       const m = market[id];

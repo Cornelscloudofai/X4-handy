@@ -3,6 +3,7 @@ import { stepConstruction, stepMarkets, stepProduction, marketEvent } from './ec
 import { stepContracts, setNetWorthCache } from './contracts';
 import { stepShip } from './fleet';
 import { stepNpcs } from './npc';
+import { stepNpcEconomy } from './npcEconomy';
 import { netWorth } from './stats';
 import { stepStory } from './story';
 import { stepHistory } from './history';
@@ -24,6 +25,7 @@ function substep(state: GameState, dt: number): void {
   }
   for (const s of state.ships) stepShip(state, s, dt);
   stepNpcs(state, dt);
+  stepNpcEconomy(state, dt);
   stepMarkets(state, dt);
   stepContracts(state, dt);
   stepShipOrders(state, dt);

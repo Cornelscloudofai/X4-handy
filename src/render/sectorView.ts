@@ -299,7 +299,7 @@ export class SectorRenderer {
       // Nah herangezoomt: aus Modulbildern zusammengesetzt wie die eigenen Stationen
       const unit = stationScale(cam.zoom);
       if (cam.zoom / (cam.fitZoom || 1) >= 2.4 && unit >= 5) {
-        const st = npcStation(n);
+        const st = npcStation(n, state);
         const reach = stationReach(st) * unit;
         const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, reach * 1.2 + 12);
         g.addColorStop(0, rgba(col, 0.14));
@@ -2245,35 +2245,38 @@ const NPC_STATIONS = new Map<string, Station>();
  * Verteidigungsstation mit Geschützringen, Werft mit Werftmodulen, Fabrik mit Produktion der Waren, die sie
  * selbst herstellt (geschätzt aus ihren Ankäufen).
  */
-function npcStation(n: NpcStationDef): Station {
-  const hit = NPC_STATIONS.get(n.id);
-  if (hit) return hit;
-  const h = hashStr(n.id);
-  const pick = <T,>(a: T[]) => a[h % a.length];
-  const base: Record<NpcStationDef['kind'], string[]> = {
-    habitat: ['habitat_m', 'habitat_m', 'habitat_m', 'storage_container', 'prod_cheltmeat', 'habitat_m', 'dock_m', 'prod_medicalsupplies', 'habitat_m', 'npc_defence', 'storage_liquid'],
-    defence: ['npc_defence', 'npc_defence', 'storage_container', 'dock_m', 'npc_defence', 'prod_energycells', 'habitat_m', 'npc_defence', pick(['pier_l', 'dock_m'])],
-    wharf: ['storage_container_m', 'yard_m', 'storage_solid', 'prod_hullparts', 'prod_hullparts', 'yard_l', 'dock_m', 'prod_claytronics', 'habitat_m', pick(['yard_xl', 'pier_l'])],
-    factory: ['storage_container', 'storage_solid', 'dock_m', 'prod_energycells'],
-  };
-  const defs = [...base[n.kind]];
-  if (n.kind === 'factory') {
-    // Produkte, deren Vorprodukte die Fabrik ankauft
-    const buys = n.buys.filter((w) => w !== 'energycells');
-    const made = Object.values(MODULE_MAP)
-      .filter((d) => d.kind === 'production' && d.ware && d.ware !== 'energycells' && WARES[d.ware]?.inputs.some((i) => buys.includes(i.ware)))
-      .sort((a, b) => WARES[b.ware!].inputs.filter((i) => buys.includes(i.ware)).length - WARES[a.ware!].inputs.filter((i) => buys.includes(i.ware)).length || a.id.localeCompare(b.id))
-      .slice(0, 3);
-    for (const d of made) defs.push(d.id, d.id);
-    if (!made.length) defs.push('prod_hullparts', 'prod_hullparts', 'prod_engineparts');
-    defs.push('habitat_m');
+function npcStation(n: NpcStationDef, state: GameState): Station {
+  const eco = state.npcEco?.[n.id];
+  let st = NPC_STATIONS.get(n.id);
+  if (!st) {
+    const h = hashStr(n.id);
+    const pick = <T,>(a: T[]) => a[h % a.length];
+    const base: Record<NpcStationDef['kind'], string[]> = {
+      habitat: ['habitat_m', 'habitat_m', 'habitat_m', 'storage_container', 'prod_cheltmeat', 'habitat_m', 'dock_m', 'prod_medicalsupplies', 'habitat_m', 'npc_defence', 'storage_liquid'],
+      defence: ['npc_defence', 'npc_defence', 'storage_container', 'dock_m', 'npc_defence', 'prod_energycells', 'habitat_m', 'npc_defence', pick(['pier_l', 'dock_m'])],
+      wharf: ['storage_container_m', 'yard_m', 'storage_solid', 'prod_hullparts', 'prod_hullparts', 'yard_l', 'dock_m', 'prod_claytronics', 'habitat_m', pick(['yard_xl', 'pier_l'])],
+      factory: ['storage_container', 'storage_solid', 'dock_m', 'prod_energycells', 'habitat_m'],
+    };
+    st = {
+      id: n.id, name: n.name, sector: '', x: n.x, z: n.z,
+      modules: ['core', ...base[n.kind]].filter((d) => MODULE_MAP[d]).map((def, i) => ({ uid: i, def, t: 0, running: true, stall: '' as const, util: 1 })),
+      queue: [], build: null, inventory: {}, trade: {},
+    } as unknown as Station;
+    NPC_STATIONS.set(n.id, st);
   }
-  const st = {
-    id: n.id, name: n.name, sector: '', x: n.x, z: n.z,
-    modules: ['core', ...defs].filter((d) => MODULE_MAP[d]).map((def, i) => ({ uid: i, def, t: 0, running: true, stall: '' as const, util: 1 })),
-    queue: [], build: null, inventory: {}, trade: {},
-  } as unknown as Station;
-  NPC_STATIONS.set(n.id, st);
+  // NPC-Fabrik: so viele Produktionsmodule wie sie wirklich hat – neue Module beim Ausbau hinten anhängen
+  if (eco) {
+    for (const [w, k] of Object.entries(eco.prod)) {
+      const def = 'prod_' + w;
+      if (!MODULE_MAP[def]) continue;
+      let have = st.modules.filter((m) => m.def === def).length;
+      while (have++ < k) st.modules.push({ uid: st.modules.length, def, t: 0, running: true, stall: '', util: 1 });
+    }
+    for (const m of st.modules) {
+      const w = MODULE_MAP[m.def]?.ware;
+      if (w && eco.util[w] !== undefined) m.running = eco.util[w] > 0.2;
+    }
+  }
   return st;
 }
 

@@ -1,6 +1,6 @@
 // Verhalten der eigenen Schiffe: Miner fördern für ihre Heimatstation,
 // Transporter handeln automatisch oder fliegen feste Versorgungslinien.
-import { marketInfo, sector } from '../data/sectors';
+import { NPC_MAP, marketInfo, sector } from '../data/sectors';
 import { MODULE_MAP } from '../data/modules';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
@@ -502,13 +502,14 @@ export function findTradeJob(state: GameState, s: Ship): TradeJob | null {
       // Vom Markt nur, was die Station dort kaufen darf (Baulager ggf. nur aus eigenen Stationen)
       const qtyMarket = Math.min(qty, cap(wanted(state, base, id, false, true), true));
       const minMarket = minFor(base, id, true);
-      for (const sec of nearbyMarkets) {
-        const stock = marketStock(state, sec, id);
-        const price = marketPrice(state, sec, id);
+      // Handelsposten und NPC-Fabriken, die die Ware herstellen
+      for (const [sec, key] of nearbyMarkets.flatMap((sec) => [[sec, sec], ...sector(sec).npcStations.filter((n) => n.makes?.includes(id)).map((n) => [sec, n.id])])) {
+        const stock = marketStock(state, key, id);
+        const price = marketPrice(state, key, id);
         const afford = Math.max(0, state.credits - 50_000) / price;
         const n = Math.min(qtyMarket, stock * 0.8, afford);
         if (n < minMarket) continue;
-        const from: TradeEndpoint = { kind: 'market', sector: sec };
+        const from: TradeEndpoint = key === sec ? { kind: 'market', sector: sec } : { kind: 'market', sector: sec, market: key };
         // Einkauf lohnt sich, wenn der Preis nicht über dem Durchschnitt liegt
         const bonus = price <= avg ? 1 : 0.5;
         cands.push({ job: { ware: id, amount: n, from, to: baseEp, stage: 'pickup' }, score: (weight * (n * avg * 0.9 * bonus + buildBonus(Math.min(n, roomOf(base, id, true)), avg))) / travelTime(state, s, from, baseEp) });
@@ -562,8 +563,8 @@ function routeJob(state: GameState, s: Ship): TradeJob | null {
     // Eine Station, die die Ware selbst verbraucht, behält eine Reserve
     const limit = wareLimit(st, r.ware);
     have = Math.max(0, (st.inventory[r.ware] ?? 0) - reserveFor(st, r.ware, limit) - outgoing(state, st.id, r.ware));
-  } else if (r.from.kind === 'market' && r.from.market) {
-    have = 0; // NPC-Käuferstationen verkaufen nichts
+  } else if (r.from.kind === 'market' && r.from.market && !NPC_MAP[r.from.market]?.makes?.includes(r.ware)) {
+    have = 0; // NPC-Käuferstationen verkaufen nichts, NPC-Fabriken nur ihre Produkte
   } else {
     have = Math.min(marketStock(state, marketKey(r.from), r.ware) * 0.8, Math.max(0, state.credits - 50_000) / marketPrice(state, marketKey(r.from), r.ware));
   }
@@ -654,7 +655,9 @@ function doTrade(state: GameState, s: Ship): void {
     } else {
       const key = marketKey(job.from);
       const price = marketPrice(state, key, job.ware);
-      n = job.from.market ? 0 : Math.min(job.amount, units, marketStock(state, key, job.ware), Math.max(0, state.credits - 10_000) / price);
+      // NPC-Käufer verkaufen nichts, NPC-Fabriken nur ihre eigenen Produkte
+      const sells = !job.from.market || !!NPC_MAP[job.from.market]?.makes?.includes(job.ware);
+      n = !sells ? 0 : Math.min(job.amount, units, marketStock(state, key, job.ware), Math.max(0, state.credits - 10_000) / price);
       if (n > 0) {
         const cost = applyMarketTrade(state, key, job.ware, -n);
         const home = stationById(state, s.home);
