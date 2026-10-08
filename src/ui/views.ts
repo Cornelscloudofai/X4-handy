@@ -64,7 +64,7 @@ function canDownload(): boolean {
 
 /** Symbol für Module ohne Produkt */
 function moduleIcon(kind: string): string {
-  return kind === 'storage' ? 'storage' : kind === 'core' ? 'station' : kind === 'shipyard' ? 'yard' : 'dock';
+  return kind === 'storage' ? 'storage' : kind === 'core' || kind === 'habitat' ? 'station' : kind === 'shipyard' ? 'yard' : 'dock';
 }
 
 function wareTile(id: string): string {
@@ -593,7 +593,7 @@ function stationModules(state: GameState, st: Station): string {
   const built = [...groups].map(([def, g]) => {
     const d = MODULE_MAP[def];
     const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
-    const sub = d.kind === 'production' ? `${pct(g.util / g.n)} Auslastung` : d.kind === 'storage' ? `${fmtInt((d.capacity ?? 0) * g.n)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'M- und S-Schiffe' : d.kind === 'pier' ? 'L-Schiffe' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe (kommen mit Kampfschiffen)' : d.yardSize === 'L' ? 'Baut L-Schiffe' : 'Baut S- und M-Schiffe · Dock für S/M') : 'Verbindet alle Module';
+    const sub = d.kind === 'production' ? `${pct(g.util / g.n)} Auslastung` : d.kind === 'storage' ? `${fmtInt((d.capacity ?? 0) * g.n)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'habitat' ? `${fmtInt((d.housing ?? 0) * g.n)} Bewohner` : d.kind === 'dock' ? 'M- und S-Schiffe' : d.kind === 'pier' ? 'L-Schiffe' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe (kommen mit Kampfschiffen)' : d.yardSize === 'L' ? 'Baut L-Schiffe' : 'Baut S- und M-Schiffe · Dock für S/M') : 'Verbindet alle Module';
     return `<div class="row">${lead}<div class="grow"><div class="title">${esc(d.name)} <span class="muted small">× ${g.n}</span></div><div class="sub wrap">${esc(sub)}</div></div>
       ${d.kind !== 'core' ? `<button class="icon-btn" ${act('ask-demolish', { st: st.id, uid: g.uids[g.uids.length - 1] })} aria-label="Modul abreißen">${icon('trash', 18)}</button>` : ''}</div>`;
   }).join('');
@@ -796,6 +796,7 @@ function blueprintEntry(state: GameState, compact = false): string {
 /** Kurzbeschreibung eines Moduls für Listen */
 function moduleDesc(d: ModuleDef): string {
   if (d.kind === 'shipyard') return d.yardSize === 'XL' ? 'Werft · für XL-Schiffe (Träger, Schlachtschiffe)' : d.yardSize === 'L' ? 'Werft · baut L-Schiffe' : 'Werft · baut S- und M-Schiffe';
+  if (d.kind === 'habitat') return `Wohnen · ${d.housing} Bewohner`;
   if (!d.ware) return '';
   const w = WARES[d.ware];
   const race = raceOf(d);
@@ -1315,10 +1316,10 @@ function modalShell(title: string, body: string, foot: string, eyebrow = ''): st
 function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: 'modules' }>): string {
   const st = stationById(state, m.station);
   if (!st) return '';
-  const cats: [string, string][] = [['production', 'Produktion'], ['storage', 'Lager'], ['dock', 'Andocken'], ['shipyard', 'Werft']];
+  const cats: [string, string][] = [['production', 'Produktion'], ['storage', 'Lager'], ['habitat', 'Wohnen'], ['dock', 'Andocken'], ['shipyard', 'Werft']];
   const sun = sector(st.sector).sunlight;
   const q = ui.search.modules ?? '';
-  const inCat = (d: ModuleDef) => (m.cat === 'production' || m.cat === 'storage' || m.cat === 'shipyard' ? d.kind === m.cat : d.kind === 'dock' || d.kind === 'pier');
+  const inCat = (d: ModuleDef) => (m.cat === 'production' || m.cat === 'storage' || m.cat === 'shipyard' || m.cat === 'habitat' ? d.kind === m.cat : d.kind === 'dock' || d.kind === 'pier');
   // Mit Suchtext wird über alle Kategorien gesucht; immer alphabetisch
   const list = MODULES.filter((d) => d.kind !== 'core' && (q ? true : inCat(d)) && (!ui.ownedOnly || state.blueprints.includes(d.id)) && matches(q, d.name, d.ware && WARES[d.ware].name, d.ware && GROUP_LABEL[WARES[d.ware].group]))
     .sort(byName);
@@ -1331,7 +1332,7 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
       io = `<div class="flow" style="grid-column:1/-1">${ins.map((i) => `<span class="io">${wareMark(i.ware, 7)}<b>${fmtAmount(i.amount)}</b>${esc(WARES[i.ware].name)}</span>`).join('')}${ins.length ? `<span class="arrow">${icon('arrowRight', 16)}</span>` : ''}<span class="io" style="border-color:${WARES[d.ware].color}">${wareMark(d.ware, 7)}<b>${fmtAmount(outputPerHour(d.ware, sun))}</b>${esc(WARES[d.ware].name)} / h</span></div>`;
     }
     const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
-    const desc = d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe – die kommen mit den Kampfschiffen. Größte und teuerste Werft.' : d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
+    const desc = d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'habitat' ? `Wohnraum für ${fmtInt(d.housing ?? 0)} Bewohner. Arbeitskräfte siedeln sich später an, wenn Nahrung und Medizin da sind.` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe – die kommen mit den Kampfschiffen. Größte und teuerste Werft.' : d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
     const action = bp === 'owned'
       ? `${afford ? '' : '<span class="small muted" style="margin-right:auto">startet, sobald Credits reichen</span>'}<button class="btn small primary" ${act('queue', m.at === undefined ? { st: st.id, def: d.id } : { st: st.id, def: d.id, at: m.at })}>${icon('plus', 16)}${m.at === undefined ? 'Einplanen' : `An Position ${m.at + 1}`}</button>`
       : (() => {

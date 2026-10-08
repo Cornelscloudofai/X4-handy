@@ -66,6 +66,12 @@ function buildModules(): ModuleDef[] {
   if (pier) list.push({ id: 'pier_l', x4Id: pier.id, kind: 'pier', name: 'Split 4-Dock-T-Pier', buildTime: pier.time, materials: pier.materials, cost: materialCost(pier.materials), method: 'Split', repRequired: 0, blueprintCost: 0, starter: true });
   const core = infra.find((x) => x.id === 'module_arg_conn_base_01');
   if (core) list.push({ id: 'core', x4Id: core.id, kind: 'core', name: 'Stationskern', buildTime: core.time, materials: core.materials, cost: materialCost(core.materials), method: 'Argon', repRequired: 0, blueprintCost: 0, starter: true });
+  // Wohnmodule der Split (Split Parlour S/M/L, crissian/x4): Bewohner, Bauzeit, Baumaterial echt; Bauplanpreise Spielwerte
+  for (const h of HABITATS) {
+    const materials = { claytronics: h.mat[0], energycells: h.mat[1], hullparts: h.mat[2] };
+    list.push({ id: 'habitat_' + h.size.toLowerCase(), x4Id: `module_spl_hab_${h.size.toLowerCase()}_01`, kind: 'habitat', name: `Wohnmodul ${h.size}`, housing: h.housing,
+      buildTime: h.time, materials, cost: materialCost(materials), method: 'Split', repRequired: h.rep, blueprintCost: h.price, starter: false });
+  }
   // Werftmodule (echte Baumaterialien und Bauzeiten, Universal-Methode)
   for (const y of YARDS) list.push({ ...y, kind: 'shipyard', cost: materialCost(y.materials), method: 'Universal', starter: false });
   return list;
@@ -89,6 +95,12 @@ const STORAGE_BP: Record<'S' | 'M' | 'L', { price: number; rep: number }> = {
 };
 const STORAGE = (['Container', 'Solid', 'Liquid'] as StorageType[]).flatMap((type) => (['S', 'M', 'L'] as const).map((size) => ({ type, size, cap: CAPACITY[type][size], ...SIZE_MAT[size] })));
 
+const HABITATS = [
+  { size: 'S', housing: 250, time: 367, mat: [94, 188, 343], price: 1_500_000, rep: 2 },
+  { size: 'M', housing: 500, time: 530, mat: [135, 271, 495], price: 4_000_000, rep: 5 },
+  { size: 'L', housing: 1000, time: 750, mat: [191, 383, 700], price: 9_000_000, rep: 8 },
+];
+
 const YARDS: Omit<ModuleDef, 'kind' | 'cost' | 'method' | 'starter'>[] = [
   // Baupläne: Spielwerte im dreistelligen Millionenbereich, aufsteigend S/M < L < XL (wie die Modulpreise im Original:
   // 101 / 212 / 216 Mio Cr). Baumaterial und Bauzeit sind die echten Werte aus crissian/x4.
@@ -98,9 +110,8 @@ const YARDS: Omit<ModuleDef, 'kind' | 'cost' | 'method' | 'starter'>[] = [
 ];
 
 export const MODULES: ModuleDef[] = buildModules();
-/** Module nur für NPC-Stationen (Wohnstation, Verteidigungsring): nicht in der Bauliste, nur zum Zeichnen */
+/** Module nur für NPC-Stationen (Verteidigungsring): nicht in der Bauliste, nur zum Zeichnen */
 const NPC_ONLY: ModuleDef[] = [
-  { id: 'npc_habitat', x4Id: 'module_spl_hab_m_01', kind: 'habitat', name: 'Wohnmodul', buildTime: 0, materials: {}, cost: 0, method: 'Split', repRequired: 0, blueprintCost: 0, starter: false },
   { id: 'npc_defence', x4Id: 'module_spl_def_disc_01', kind: 'defence', name: 'Verteidigungsplattform', buildTime: 0, materials: {}, cost: 0, method: 'Split', repRequired: 0, blueprintCost: 0, starter: false },
 ];
 export const MODULE_MAP: Record<string, ModuleDef> = Object.fromEntries([...MODULES, ...NPC_ONLY].map((m) => [m.id, m]));

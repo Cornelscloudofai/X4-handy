@@ -2251,9 +2251,9 @@ function npcStation(n: NpcStationDef): Station {
   const h = hashStr(n.id);
   const pick = <T,>(a: T[]) => a[h % a.length];
   const base: Record<NpcStationDef['kind'], string[]> = {
-    habitat: ['npc_habitat', 'npc_habitat', 'npc_habitat', 'storage_container', 'prod_cheltmeat', 'npc_habitat', 'dock_m', 'prod_medicalsupplies', 'npc_habitat', 'npc_defence', 'storage_liquid'],
-    defence: ['npc_defence', 'npc_defence', 'storage_container', 'dock_m', 'npc_defence', 'prod_energycells', 'npc_habitat', 'npc_defence', pick(['pier_l', 'dock_m'])],
-    wharf: ['storage_container_m', 'yard_m', 'storage_solid', 'prod_hullparts', 'prod_hullparts', 'yard_l', 'dock_m', 'prod_claytronics', 'npc_habitat', pick(['yard_xl', 'pier_l'])],
+    habitat: ['habitat_m', 'habitat_m', 'habitat_m', 'storage_container', 'prod_cheltmeat', 'habitat_m', 'dock_m', 'prod_medicalsupplies', 'habitat_m', 'npc_defence', 'storage_liquid'],
+    defence: ['npc_defence', 'npc_defence', 'storage_container', 'dock_m', 'npc_defence', 'prod_energycells', 'habitat_m', 'npc_defence', pick(['pier_l', 'dock_m'])],
+    wharf: ['storage_container_m', 'yard_m', 'storage_solid', 'prod_hullparts', 'prod_hullparts', 'yard_l', 'dock_m', 'prod_claytronics', 'habitat_m', pick(['yard_xl', 'pier_l'])],
     factory: ['storage_container', 'storage_solid', 'dock_m', 'prod_energycells'],
   };
   const defs = [...base[n.kind]];
@@ -2266,7 +2266,7 @@ function npcStation(n: NpcStationDef): Station {
       .slice(0, 3);
     for (const d of made) defs.push(d.id, d.id);
     if (!made.length) defs.push('prod_hullparts', 'prod_hullparts', 'prod_engineparts');
-    defs.push('npc_habitat');
+    defs.push('habitat_m');
   }
   const st = {
     id: n.id, name: n.name, sector: '', x: n.x, z: n.z,

@@ -35,6 +35,8 @@ export interface ModuleDef {
   ware?: string;
   storage?: StorageType;
   capacity?: number;
+  /** Wohnmodul: Plätze für Bewohner (Arbeitskräfte, kommen später) */
+  housing?: number;
   buildTime: number;
   materials: Record<string, number>;
   cost: number;
