@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { newGame, serialize, deserialize } from '../src/engine/state';
 import { step } from '../src/engine/sim';
 import { stepNpcs } from '../src/engine/npc';
-import { MAX_MODULES, NPC_FACTORIES, SELF_SHARE, factoryInputs, inputRate, stepNpcEconomy } from '../src/engine/npcEconomy';
+import { FOUND_MAX, MAX_MODULES, NPC_FACTORIES, SELF_SHARE, factoryInputs, inputRate, npcFactories, stepNpcEconomy } from '../src/engine/npcEconomy';
+import { ESSENTIAL_WARES, npcMade, postShare } from '../src/engine/economy';
+import { NPC_MAP, SECTOR_MAP } from '../src/data/sectors';
 import { WARES } from '../src/data/wares';
 import type { GameState } from '../src/engine/types';
 
@@ -100,4 +102,49 @@ describe('NPC-Wirtschaft', () => {
     expect(Object.values(t.markets[huette.id]).every((w) => Number.isFinite(w.stock))).toBe(true);
     expect(WARES.hullparts).toBeTruthy();
   });
+
+  it('Grundwaren (Energie, Hüllenteile, Claytronik) gibt es ab Spielbeginn in Reichweite des Starts', () => {
+    const s = newGame();
+    const near = new Set([s.sectors[0], ...SECTOR_MAP[s.sectors[0]].links]);
+    for (const w of ESSENTIAL_WARES) {
+      const byNpc = npcFactories().some((n) => near.has(n.sector) && n.makes!.includes(w));
+      const surplus = [...near].some((sec) => SECTOR_MAP[sec].surplus.includes(w));
+      expect(byNpc || surplus, w).toBe(true);
+      // Handelsposten halten Grundwaren fast voll vorrätig
+      expect(postShare(w, npcMade(s))).toBeGreaterThanOrEqual(0.8);
+    }
+  });
+
+  it('Handelsposten werden knapper, sperren aber nichts', () => {
+    const s = newGame();
+    step(s, 16 * 3600);
+    const post = s.markets.zhin;
+    // Fabrikware ohne NPC-Herstellung: knapp, aber vorhanden
+    expect(post.fieldcoils.stock).toBeGreaterThan(0);
+    expect(post.fieldcoils.stock / post.fieldcoils.cap).toBeLessThan(post.fieldcoils.eq * 0.6);
+    // Grundwaren reichlich
+    expect(post.hullparts.stock / post.hullparts.cap).toBeGreaterThan(post.hullparts.eq * 0.6);
+  }, 30000);
+
+  it('Fraktionen gründen langsam neue Fabriken – mit Abstand zueinander und höchstens drei je Fraktion', () => {
+    const s = newGame();
+    const start = npcFactories().length;
+    run(s, 23 * 3600, undefined, 30);
+    expect(npcFactories().length).toBe(start);
+    run(s, 12 * 24 * 3600, undefined, 30);
+    const founded = s.npcFounded ?? [];
+    expect(founded.length).toBeGreaterThanOrEqual(2);
+    for (const f of ['frf', 'zya']) expect(founded.filter((n) => SECTOR_MAP[n.sector].faction === f).length).toBeLessThanOrEqual(FOUND_MAX);
+    for (const n of founded) {
+      expect(s.npcEco![n.id]).toBeTruthy();
+      expect(s.markets[n.id][n.makes![0]]).toBeTruthy();
+      for (const o of SECTOR_MAP[n.sector].npcStations) if (o !== n) expect(Math.hypot(o.x - n.x, o.z - n.z), `${n.id} zu nah an ${o.id}`).toBeGreaterThan(45);
+    }
+    // Spielstand speichern und laden: gegründete Fabriken sind wieder da, ein neues Spiel hat keine
+    const t = deserialize(serialize(s));
+    expect(NPC_MAP[founded[0].id]).toBeTruthy();
+    expect(t.npcFounded?.length).toBe(founded.length);
+    newGame();
+    expect(NPC_MAP[founded[0].id]).toBeUndefined();
+  }, 60000);
 });

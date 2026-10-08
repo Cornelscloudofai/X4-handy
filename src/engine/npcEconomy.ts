@@ -2,12 +2,12 @@
 // und wachsen langsam. Sie versorgen sich nur zu einem kleinen Teil selbst (wenige eigene Frachter) – den Rest
 // müssen andere liefern, vor allem der Spieler. Ihre Produkte verkaufen sie an der Station und bringen einen Teil
 // zum Handelsposten.
-import { NPC_STATIONS, sector } from '../data/sectors';
+import { FACTIONS, NPC_MAP, NPC_STATIONS, SECTORS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
 import { baseDemand } from './economy';
 import { makeNpc } from './npc';
 import type { GameState, NpcEco, NpcStationDef } from './types';
-import { log } from './util';
+import { log, rand } from './util';
 
 /** Anteil des Vorproduktbedarfs (bei voller Produktion), den die Fraktion mit eigenen Frachtern heranschafft */
 export const SELF_SHARE = 0.35;
@@ -24,7 +24,23 @@ const HAUL_M3 = 6000;
 
 type Factory = NpcStationDef & { sector: string };
 
+/** Fabriken aus den Sektordaten (Spielbeginn) */
 export const NPC_FACTORIES: Factory[] = NPC_STATIONS.filter((n) => n.makes?.length);
+
+/** Alle NPC-Fabriken, auch die im Spiel gegründeten */
+export function npcFactories(): Factory[] {
+  return NPC_STATIONS.filter((n) => n.makes?.length);
+}
+
+
+/** Neue Fabriken: je Fraktion frühestens nach einem Spieltag, dann alle zweieinhalb Tage eine, höchstens drei */
+const FOUND_FIRST = 24 * 3600;
+const FOUND_GAP = 60 * 3600;
+export const FOUND_MAX = 3;
+/** Kurzname des Ortes für neue Fabriken (wie bei den bestehenden NPC-Stationen) */
+const PLACE: Record<string, string> = { zhin: 'Zhin', tkr: 'Tkr', cascade: 'Kaskaden', ravine: 'Schlucht', rhy: 'Rhy', hoa: 'Acrimony', zyarth: 'Zyarth' };
+/** Höchstens so viele NPC-Stationen je Sektor */
+const SECTOR_MAX = 5;
 
 /** Verbrauch je Sekunde einer Ware bei voller Produktion */
 export function inputRate(eco: NpcEco, id: string): number {
@@ -58,11 +74,28 @@ function ensureMarket(state: GameState, n: Factory): void {
   }
 }
 
+/**
+ * Gegründete Fabriken in die Sektordaten eintragen (Karte, Märkte, Händler sehen sie dann wie alle anderen).
+ * Vorher eingetragene eines anderen Spielstands werden entfernt.
+ */
+export function syncFounded(state: GameState): void {
+  for (let i = NPC_STATIONS.length - 1; i >= 0; i--) if (NPC_STATIONS[i].founded) NPC_STATIONS.splice(i, 1);
+  for (const id of Object.keys(NPC_MAP)) if (NPC_MAP[id].founded) delete NPC_MAP[id];
+  for (const sec of SECTORS) sec.npcStations = sec.npcStations.filter((n) => !n.founded);
+  for (const n of state.npcFounded ?? []) {
+    NPC_STATIONS.push(n);
+    NPC_MAP[n.id] = n;
+    SECTOR_MAP[n.sector].npcStations.push(n);
+  }
+}
+
 /** Legt die Fabrikdaten an (neue Spiele und alte Spielstände) */
 export function initNpcEconomy(state: GameState): void {
   state.npcEco ??= {};
   state.npcGrow ??= {};
-  for (const n of NPC_FACTORIES) {
+  state.npcFound ??= {};
+  syncFounded(state);
+  for (const n of npcFactories()) {
     if (!state.npcEco[n.id]) {
       // Start: die ersten beiden Produkte mit je zwei Modulen, das dritte mit einem
       const prod = Object.fromEntries(n.makes!.map((w, i) => [w, i < 2 ? 2 : 1]));
@@ -183,13 +216,77 @@ function grow(state: GameState, n: Factory, eco: NpcEco): void {
   log(state, `${n.name} baut ein weiteres Modul für ${WARES[w].name} aus.`, 'info', true);
 }
 
+/** Waren, die eine neue Fabrik herstellen könnte: gefertigt (keine Rohstoffe, keine Energie), Vorprodukte erhältlich */
+function foundable(): string[] {
+  return Object.values(WARES).filter((w) => w.cycle > 0 && w.inputs.length && !w.mined && w.id !== 'energycells' && w.tier >= 1 && w.tier <= 3).map((w) => w.id);
+}
+
+/** Freier Platz im Sektor: Abstand zu Stationen, Handelsposten und Toren */
+function freeSpot(state: GameState, sec: string): { x: number; z: number } | null {
+  const s = sector(sec);
+  const taken = [
+    { x: s.tradeStation.x, z: s.tradeStation.z },
+    ...s.npcStations.map((n) => ({ x: n.x, z: n.z })),
+    ...gatesOf(sec).map((g) => ({ x: g.x, z: g.z })),
+    ...state.stations.filter((st) => st.sector === sec).map((st) => ({ x: st.x, z: st.z })),
+    ...s.fields.map((f) => ({ x: f.x, z: f.z, r: f.r })),
+  ];
+  for (let i = 0; i < 60; i++) {
+    const a = rand(state) * Math.PI * 2, r = SECTOR_RADIUS * (0.2 + rand(state) * 0.5);
+    const p = { x: Math.round(Math.cos(a) * r), z: Math.round(Math.sin(a) * r) };
+    if (taken.every((t) => Math.hypot(t.x - p.x, t.z - p.z) > 45 + ('r' in t ? (t.r as number) : 0))) return p;
+  }
+  return null;
+}
+
+/**
+ * Gründung: Eine Fraktion baut langsam neue Fabriken für Waren, die in ihren Sektoren fehlen und noch keine ihrer
+ * Fabriken herstellt – bevorzugt, was ihre Sektoren als Bedarf melden oder an ihren Handelsposten teuer ist.
+ */
+function found(state: GameState): void {
+  if (state.time < FOUND_FIRST) return;
+  for (const f of Object.keys(FACTIONS) as (keyof typeof FACTIONS)[]) {
+    const mine = (state.npcFounded ?? []).filter((n) => sector(n.sector).faction === f);
+    if (mine.length >= FOUND_MAX) continue;
+    if (state.time - (state.npcFound![f] ?? FOUND_FIRST - FOUND_GAP) < FOUND_GAP) continue;
+    const secs = SECTORS.filter((s) => s.faction === f && s.npcStations.length < SECTOR_MAX);
+    if (!secs.length) continue;
+    state.npcFound![f] = state.time;
+    const made = new Set(npcFactories().filter((n) => sector(n.sector).faction === f).flatMap((n) => n.makes!));
+    const score = (w: string) => {
+      let v = 0;
+      for (const s of SECTORS.filter((x) => x.faction === f)) {
+        if (s.demand.includes(w)) v += 2;
+        const m = state.markets[s.id]?.[w];
+        if (m) v += 1 - m.stock / m.cap;
+      }
+      return v;
+    };
+    const w = foundable().filter((x) => !made.has(x)).sort((a, b) => score(b) - score(a) || a.localeCompare(b))[0];
+    if (!w) continue;
+    // Sektor: der mit dem größten Bedarf an der Ware, sonst der mit den wenigsten NPC-Stationen
+    const sec = [...secs].sort((a, b) => Number(b.demand.includes(w)) - Number(a.demand.includes(w)) || a.npcStations.length - b.npcStations.length || a.id.localeCompare(b.id))[0];
+    const spot = freeSpot(state, sec.id);
+    if (!spot) continue;
+    const buys = [...new Set([...WARES[w].inputs.map((i) => i.ware), 'energycells'])];
+    const n: Factory = { id: `npc-${sec.id}-${w}`, name: `${PLACE[sec.id] ?? sec.name}-Werk für ${WARES[w].name}`, kind: 'factory', x: spot.x, z: spot.z, buys, makes: [w], founded: true, sector: sec.id };
+    if (NPC_MAP[n.id]) continue;
+    (state.npcFounded ??= []).push(n);
+    syncFounded(state);
+    state.npcEco![n.id] = { prod: { [w]: 2 }, t: {}, util: {}, grown: state.time, supply: {}, export: {} };
+    ensureMarket(state, n);
+    log(state, `${FACTIONS[f].name}: neue Fabrik „${n.name}“ in ${sec.name} – stellt ${WARES[w].name} her und kauft ${buys.filter((b) => b !== 'energycells').map((b) => WARES[b].name).join(', ')}.`, 'info', true);
+  }
+}
+
 export function stepNpcEconomy(state: GameState, dt: number): void {
   if (!state.npcEco) initNpcEconomy(state);
-  for (const n of NPC_FACTORIES) {
+  for (const n of npcFactories()) {
     const eco = state.npcEco![n.id];
     if (!eco) continue;
     produce(state, n, eco, dt);
     haul(state, n, eco, dt);
     grow(state, n, eco);
   }
+  found(state);
 }

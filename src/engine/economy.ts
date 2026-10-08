@@ -1,7 +1,7 @@
 // Stationswirtschaft: Lager, Produktion, Bau und Sektormärkte.
 import { MODULE_MAP, moduleDef } from '../data/modules';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
-import { NPC_STATIONS, SECTORS, marketInfo, sector } from '../data/sectors';
+import { NPC_STATIONS, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
 import type { GameState, Market, Station, StorageType } from './types';
 import { clamp, emit, log, rand } from './util';
@@ -189,12 +189,32 @@ export function wareLimit(st: Station, id: string, cap = storageCap(st), wares =
   return need > byShare ? Math.min(need, cap[w.storage] / w.volume) : byShare;
 }
 
+/**
+ * Platz, den laufende Produktionszyklen für ihr Ergebnis brauchen: Die Ware kommt erst am Zyklusende ins Lager, der Platz
+ * ist aber schon belegt – sonst könnten Lieferungen das Lager in der Zwischenzeit füllen und es liefe über.
+ */
+function pendingOutput(st: Station): { volume: Record<StorageType, number>; units: Record<string, number> } {
+  const volume: Record<StorageType, number> = { Container: 0, Solid: 0, Liquid: 0 };
+  const units: Record<string, number> = {};
+  for (const m of st.modules) {
+    if (!m.running) continue;
+    const d = MODULE_MAP[m.def];
+    if (d?.kind !== 'production' || !d.ware) continue;
+    const w = WARES[d.ware];
+    const n = d.ware === 'energycells' ? (w.batch * sector(st.sector).sunlight) / 100 : w.batch;
+    volume[w.storage] += n * w.volume;
+    units[d.ware] = (units[d.ware] ?? 0) + n;
+  }
+  return { volume, units };
+}
+
 export function freeUnits(st: Station, id: string): number {
   const w = WARES[id];
   const cap = storageCap(st);
   const used = usedVolume(st);
-  const byLimit = wareLimit(st, id, cap) - (st.inventory[id] ?? 0);
-  const byVolume = (cap[w.storage] - used[w.storage]) / w.volume;
+  const pend = pendingOutput(st);
+  const byLimit = wareLimit(st, id, cap) - (st.inventory[id] ?? 0) - (pend.units[id] ?? 0);
+  const byVolume = (cap[w.storage] - used[w.storage] - pend.volume[w.storage]) / w.volume;
   return Math.max(0, Math.min(byLimit, byVolume));
 }
 
@@ -488,15 +508,43 @@ export function applyMarketTrade(state: GameState, key: string, id: string, amou
   return value;
 }
 
+/**
+ * Grundwaren: Baumaterial für Stationen und Module. NPC-Fabriken stellen sie von Anfang an her, und die Handelsposten
+ * halten trotz knapper Bestände immer einen guten Vorrat – so ist Bauen nie blockiert.
+ */
+export const ESSENTIAL_WARES = ['energycells', 'hullparts', 'claytronics'];
+
+/**
+ * Anteil des üblichen Vorrats, den ein Handelsposten von sich aus hält: Rohstoffe und Energie reichlich, Grundwaren
+ * fast voll, Waren aus NPC-Fabriken knapp (der Rest kommt von deren Frachtern), alle übrigen Fabrikwaren sehr knapp –
+ * aber nie null, damit nichts ganz gesperrt ist.
+ */
+export function postShare(id: string, made: Set<string>): number {
+  const w = WARES[id];
+  if (!w || w.mined || id === 'energycells') return 1;
+  if (ESSENTIAL_WARES.includes(id)) return 0.8;
+  return made.has(id) ? 0.5 : 0.35;
+}
+
+/** Waren, die NPC-Fabriken herstellen */
+export function npcMade(state: GameState): Set<string> {
+  const made = new Set<string>();
+  for (const key in state.npcEco ?? {}) for (const w of Object.keys(state.npcEco![key].prod)) made.add(w);
+  return made;
+}
+
 export function stepMarkets(state: GameState, dt: number): void {
   const k = 1 - Math.exp(-dt / REVERT_SECONDS);
+  const made = npcMade(state);
   for (const key in state.markets) {
     // NPC-Fabriken: Bestand ändert sich nur durch Produktion, Verbrauch und Lieferungen
     if (state.npcEco?.[key]) continue;
     const market = state.markets[key];
+    const post = !!SECTOR_MAP[key];
     for (const id in market) {
       const m = market[id];
-      m.stock += (m.eq * m.cap - m.stock) * k;
+      const target = m.eq * (post ? postShare(id, made) : 1);
+      m.stock += (target * m.cap - m.stock) * k;
     }
   }
 }

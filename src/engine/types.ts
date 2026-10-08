@@ -86,6 +86,8 @@ export interface NpcStationDef {
   buys: string[];
   /** Fabrik: Waren, die sie selbst herstellt (X4-Rezepte) und verkauft */
   makes?: string[];
+  /** im Spiel von einer Fraktion gegründet (steht im Spielstand, nicht in den Sektordaten) */
+  founded?: boolean;
 }
 
 export interface SectorDef {
@@ -372,6 +374,9 @@ export interface GameState {
   npcEco?: Record<string, NpcEco>;
   /** Letzter Ausbau je Fraktion (Spielzeit) */
   npcGrow?: Record<string, number>;
+  /** Von Fraktionen gegründete Fabriken (mit Sektor) und letzte Gründung je Fraktion */
+  npcFounded?: (NpcStationDef & { sector: string })[];
+  npcFound?: Record<string, number>;
   contractTimer: number;
   savedAt: number;
   speed: number;

@@ -59,7 +59,7 @@ export const SECTORS: SectorDef[] = [
     tradeStation: { name: 'Kaskaden-Raffinerie', x: 20, z: -10 },
     npcStations: [
       { id: 'cascade-werft', name: 'Kaskaden-Werft', kind: 'wharf', x: -90, z: 20, buys: ['hullparts', 'engineparts', 'claytronics', 'plasmaconductors', 'fieldcoils', 'energycells'] },
-      { id: 'cascade-elektronik', name: 'Tharka-Elektronikwerk', kind: 'factory', x: 60, z: 60, buys: ['siliconwafers', 'graphene', 'superfluidcoolant', 'microchips', 'quantumtubes', 'energycells'], makes: ['microchips', 'quantumtubes', 'advancedelectronics'] },
+      { id: 'cascade-elektronik', name: 'Tharka-Elektronikwerk', kind: 'factory', x: 60, z: 60, buys: ['siliconwafers', 'graphene', 'superfluidcoolant', 'antimattercells', 'microchips', 'quantumtubes', 'energycells'], makes: ['claytronics', 'microchips', 'quantumtubes', 'advancedelectronics'] },
     ],
     links: ['zhin', 'tkr'], licenseCost: 6_000_000, repRequired: 8,
     description: 'Gasnebel und 140 % Sonnenlicht – ideal für Solarkraftwerke.',
