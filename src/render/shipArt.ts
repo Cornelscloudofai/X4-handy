@@ -283,6 +283,7 @@ const MODULE_ART: Record<string, string[]> = {
   solar: ['split-modul-solar-ki'],
   dock: ['split-dock-ki'],
   pier: ['split-pier-ki'],
+  yard_M: ['split-werft-m-ki'],
   Container: ['split-lager-container-ki'],
   Solid: ['split-lager-erz-ki'],
   Liquid: ['split-lager-gas-ki'],

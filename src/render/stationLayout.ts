@@ -53,9 +53,12 @@ const HALF = 0.5225;
 export function moduleShape(d: ModuleDef | undefined): ModuleShape {
   if (d?.kind === 'pier') return { half: 0.52, hw: 1, base: true, c: 0.69, a: 1.21, b: 1.05 };
   if (d?.kind === 'shipyard') {
-    const half = d.yardSize === 'XL' ? 0.75 : d.yardSize === 'L' ? 0.65 : 0.55;
-    const hw = d.yardSize === 'M' ? 0.42 : 0.55;
-    return { half, hw, base: true, c: 0, a: half, b: hw };
+    // S/M-Werft als Bild: 1,25 Einheiten Kante, Anschluss bis Spitze 95 %, schlanke Baubucht
+    // Vor der offenen Bucht bleibt ein Stück frei, damit fertige Schiffe hinausfliegen können
+    if (d.yardSize === 'M') return { half: 0.594, hw: 0.32, base: true, c: 0.3, a: 0.894, b: 0.32 };
+    const half = d.yardSize === 'XL' ? 0.75 : 0.65;
+    const hw = 0.55;
+    return { half, hw, base: true, c: 0.3, a: half + 0.3, b: hw };
   }
   const hw = d?.kind === 'storage' ? SIDE[d.storage ?? 'Container'] : d?.kind === 'dock' ? SIDE.dock : SIDE[productionKind(d?.ware)];
   return { half: HALF, hw, base: false, c: 0, a: HALF, b: hw };

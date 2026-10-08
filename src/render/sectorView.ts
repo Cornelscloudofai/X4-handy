@@ -1361,6 +1361,37 @@ export class SectorRenderer {
       return;
     }
     if (d.kind === 'shipyard') {
+      const yardImg = moduleSprite('yard_' + d.yardSize, seed);
+      if (yardImg) {
+        // Werft als Bild (Anschluss unten, Bucht nach außen offen); baut sie, liegt das Schiff in der Bucht und es sprühen Funken
+        const s = unit * YARD_IMG;
+        ctx.save();
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(yardImg, -s / 2, -s / 2, s, s);
+        ctx.restore();
+        if (o.yardBusy) {
+          const L = unit * 0.7, H2 = unit * 0.16;
+          ctx.strokeStyle = rgba(C.trader, 0.55 + 0.25 * Math.sin(now / 300));
+          ctx.lineWidth = Math.max(1, lw);
+          ctx.beginPath();
+          ctx.moveTo(L * 0.45, 0); ctx.lineTo(-L * 0.25, H2); ctx.lineTo(-L * 0.4, 0); ctx.lineTo(-L * 0.25, -H2);
+          ctx.closePath();
+          ctx.stroke();
+          if (fine) {
+            for (let k = 0; k < 3; k++) {
+              const ph = Math.floor(now / 160 + k * 7 + seed);
+              const rnd = Math.sin(ph * 12.9898 + k * 78.233) * 43758.5453;
+              const f = rnd - Math.floor(rnd);
+              if (f > 0.55) continue;
+              ctx.fillStyle = k % 2 ? '#fff4c2' : '#8fe8ff';
+              ctx.beginPath();
+              ctx.arc(L * 0.4 - (f / 0.55) * L * 0.7, (k - 1) * H2 * 0.7, Math.max(0.8, unit * 0.03), 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+        return;
+      }
       // Bauportal: zwei Schienen mit Querträgern; nah mit Fachwerk, Laufkran und Schweißfunken
       const col = C.amber;
       const L = unit * (d.yardSize === 'XL' ? 1.5 : d.yardSize === 'L' ? 1.3 : 1.1), H2 = unit * (d.yardSize === 'M' ? 0.42 : 0.55);
@@ -2203,6 +2234,8 @@ const CORE_TURN: Record<string, number> = { ring: Math.PI / 6, block: Math.PI / 
 const CORE_SIZE: Record<string, number> = { ring: 2.1, block: 2.1, tri: 2.1, spine: 2.65 };
 /** Kantenlänge der Modulbilder in Moduleinheiten (Anschluss zu Anschluss rund 1,05) */
 const MODULE_IMG = 1.1;
+/** Kantenlänge des S/M-Werftbilds in Moduleinheiten */
+const YARD_IMG = 1.25;
 /** Pierbild: Kantenlänge (Moduleinheiten) und Abstand des Anschlusses von der Bildmitte (Anteil der Kante) */
 const PIER_IMG = 2.0;
 const PIER_PORT = 469 / 1254;
