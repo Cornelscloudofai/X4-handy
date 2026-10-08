@@ -52,6 +52,9 @@ const HALF = 0.5225;
 
 export function moduleShape(d: ModuleDef | undefined): ModuleShape {
   if (d?.kind === 'pier') return { half: 0.52, hw: 1, base: true, c: 0.69, a: 1.21, b: 1.05 };
+  // Verteidigungsring (NPC): ein Anschluss unten, 1,4 Einheiten Bildkante
+  if (d?.kind === 'defence') return { half: 0.65, hw: 0.665, base: true, c: 0, a: 0.65, b: 0.665 };
+  if (d?.kind === 'habitat') return { half: HALF, hw: 0.403, base: false, c: 0, a: HALF, b: 0.403 };
   if (d?.kind === 'shipyard') {
     // S/M-Werft als Bild: 1,25 Einheiten Kante, Anschluss bis Spitze 95 %, schlanke Baubucht
     // Vor der offenen Bucht bleibt ein Stück frei, damit fertige Schiffe hinausfliegen können

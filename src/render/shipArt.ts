@@ -283,6 +283,8 @@ const MODULE_ART: Record<string, string[]> = {
   solar: ['split-modul-solar-ki'],
   bio: ['split-modul-bio-ki'],
   dock: ['split-dock-ki'],
+  habitat: ['split-habitat-ki'],
+  defence: ['split-verteidigung-ki'],
   pier: ['split-pier-ki'],
   yard_M: ['split-werft-m-ki'],
   yard_L: ['split-werft-l-ki'],

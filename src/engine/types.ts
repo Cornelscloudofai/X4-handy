@@ -23,7 +23,8 @@ export interface WareDef {
   estimated?: boolean;
 }
 
-export type ModuleKind = 'production' | 'storage' | 'dock' | 'pier' | 'core' | 'shipyard';
+/** habitat und defence gibt es nur an NPC-Stationen (Wohn- und Verteidigungsmodule, nicht baubar) */
+export type ModuleKind = 'production' | 'storage' | 'dock' | 'pier' | 'core' | 'shipyard' | 'habitat' | 'defence';
 
 export interface ModuleDef {
   id: string;

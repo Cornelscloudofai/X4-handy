@@ -6,7 +6,7 @@ import { WARES } from '../data/wares';
 import { endOf, sectorFlows, segIn, type FlowSeg } from '../engine/flows';
 import { fieldById } from '../engine/logistics';
 import { buildProgress, storageCap, usedVolume } from '../engine/economy';
-import type { GameState, ModuleDef, Ship, Station } from '../engine/types';
+import type { GameState, ModuleDef, NpcStationDef, Ship, Station } from '../engine/types';
 import { hashStr } from '../engine/util';
 import type { Selection, UIState } from '../ui/uistate';
 import type { Camera } from './camera';
@@ -296,6 +296,24 @@ export class SectorRenderer {
       if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) continue;
       const col = NPC_COLOR[n.kind];
       const sel = ui.selection?.kind === 'npcst' && ui.selection.id === n.id;
+      // Nah herangezoomt: aus Modulbildern zusammengesetzt wie die eigenen Stationen
+      const unit = stationScale(cam.zoom);
+      if (cam.zoom / (cam.fitZoom || 1) >= 2.4 && unit >= 5) {
+        const st = npcStation(n);
+        const reach = stationReach(st) * unit;
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, reach * 1.2 + 12);
+        g.addColorStop(0, rgba(col, 0.14));
+        g.addColorStop(1, rgba(col, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(sx, sy, reach * 1.2 + 12, 0, Math.PI * 2);
+        ctx.fill();
+        this.drawStationStructure(ctx, st, sx, sy, unit, now, cam, 0);
+        if (sel) this.selectionRing(ctx, sx, sy, reach + 8, now, col);
+        this.labels.push({ text: n.name, x: sx, ys: [sy + reach + 16, sy - reach - 16], size: 12, color: rgba(col, 0.95), weight: 600, prio: 2, minRel: LABEL_AT.npc, force: sel });
+        this.obstacles.push({ x: sx - Math.min(reach, 60), y: sy - Math.min(reach, 60), w: Math.min(reach, 60) * 2, h: Math.min(reach, 60) * 2 });
+        continue;
+      }
       const r = Math.max(8 * s, Math.min(26, cam.zoom * 1.8));
       ctx.save();
       ctx.translate(sx, sy);
@@ -1062,6 +1080,9 @@ export class SectorRenderer {
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     };
+    // Wohn- und Verteidigungsmodule (nur an NPC-Stationen)
+    if (d.kind === 'habitat' && this.drawModuleImage(ctx, 'habitat', unit, seed)) return;
+    if (d.kind === 'defence' && this.drawModuleImage(ctx, 'defence', unit, seed, DEFENCE_IMG)) return;
     if (d.kind === 'storage') {
       const col = d.storage === 'Liquid' ? '#5fb4ff' : d.storage === 'Solid' ? '#ffae5c' : '#8fd3ff';
       const n = d.id.endsWith('_l') ? 3 : d.id.endsWith('_m') ? 2 : 1;
@@ -1754,10 +1775,10 @@ export class SectorRenderer {
   }
 
   /** Modulbild (Anschlüsse oben/unten im Bild) entlang der Modulachse zeichnen; false, wenn es keins gibt */
-  private drawModuleImage(ctx: CanvasRenderingContext2D, kind: string, unit: number, seed: number): boolean {
+  private drawModuleImage(ctx: CanvasRenderingContext2D, kind: string, unit: number, seed: number, size = MODULE_IMG): boolean {
     const img = moduleSprite(kind, seed);
     if (!img) return false;
-    const s = unit * MODULE_IMG;
+    const s = unit * size;
     ctx.save();
     // Bild oben = vom Kern weg (+x)
     ctx.rotate(Math.PI / 2);
@@ -2217,6 +2238,45 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+const NPC_STATIONS = new Map<string, Station>();
+
+/**
+ * NPC-Station als Modulstation zum Zeichnen (fest je Kennung): Wohnstation mit Wohnmodulen und Versorgung,
+ * Verteidigungsstation mit Geschützringen, Werft mit Werftmodulen, Fabrik mit Produktion der Waren, die sie
+ * selbst herstellt (geschätzt aus ihren Ankäufen).
+ */
+function npcStation(n: NpcStationDef): Station {
+  const hit = NPC_STATIONS.get(n.id);
+  if (hit) return hit;
+  const h = hashStr(n.id);
+  const pick = <T,>(a: T[]) => a[h % a.length];
+  const base: Record<NpcStationDef['kind'], string[]> = {
+    habitat: ['npc_habitat', 'npc_habitat', 'npc_habitat', 'storage_container', 'prod_cheltmeat', 'npc_habitat', 'dock_m', 'prod_medicalsupplies', 'npc_habitat', 'npc_defence', 'storage_liquid'],
+    defence: ['npc_defence', 'npc_defence', 'storage_container', 'dock_m', 'npc_defence', 'prod_energycells', 'npc_habitat', 'npc_defence', pick(['pier_l', 'dock_m'])],
+    wharf: ['storage_container_m', 'yard_m', 'storage_solid', 'prod_hullparts', 'prod_hullparts', 'yard_l', 'dock_m', 'prod_claytronics', 'npc_habitat', pick(['yard_xl', 'pier_l'])],
+    factory: ['storage_container', 'storage_solid', 'dock_m', 'prod_energycells'],
+  };
+  const defs = [...base[n.kind]];
+  if (n.kind === 'factory') {
+    // Produkte, deren Vorprodukte die Fabrik ankauft
+    const buys = n.buys.filter((w) => w !== 'energycells');
+    const made = Object.values(MODULE_MAP)
+      .filter((d) => d.kind === 'production' && d.ware && d.ware !== 'energycells' && WARES[d.ware]?.inputs.some((i) => buys.includes(i.ware)))
+      .sort((a, b) => WARES[b.ware!].inputs.filter((i) => buys.includes(i.ware)).length - WARES[a.ware!].inputs.filter((i) => buys.includes(i.ware)).length || a.id.localeCompare(b.id))
+      .slice(0, 3);
+    for (const d of made) defs.push(d.id, d.id);
+    if (!made.length) defs.push('prod_hullparts', 'prod_hullparts', 'prod_engineparts');
+    defs.push('npc_habitat');
+  }
+  const st = {
+    id: n.id, name: n.name, sector: '', x: n.x, z: n.z,
+    modules: ['core', ...defs].filter((d) => MODULE_MAP[d]).map((def, i) => ({ uid: i, def, t: 0, running: true, stall: '' as const, util: 1 })),
+    queue: [], build: null, inventory: {}, trade: {},
+  } as unknown as Station;
+  NPC_STATIONS.set(n.id, st);
+  return st;
+}
+
 /** Ausdehnung der Station in Moduleinheiten (belegte Plätze inkl. Bau und geplanter Module) */
 function stationReach(st: Station): number {
   ensurePlaced(st);
@@ -2234,6 +2294,8 @@ const CORE_TURN: Record<string, number> = { ring: Math.PI / 6, block: Math.PI / 
 const CORE_SIZE: Record<string, number> = { ring: 2.1, block: 2.1, tri: 2.1, spine: 2.65 };
 /** Kantenlänge der Modulbilder in Moduleinheiten (Anschluss zu Anschluss rund 1,05) */
 const MODULE_IMG = 1.1;
+/** Kantenlänge des Verteidigungsrings (NPC) in Moduleinheiten */
+const DEFENCE_IMG = 1.4;
 /** Kantenlänge der Werftbilder in Moduleinheiten (Anschluss bis Spitze 95 %) */
 const YARD_IMG: Record<string, number> = { M: 1.25, L: 1.79, XL: 2.42 };
 /** Pierbild: Kantenlänge (Moduleinheiten) und Abstand des Anschlusses von der Bildmitte (Anteil der Kante) */

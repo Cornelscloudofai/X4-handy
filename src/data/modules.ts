@@ -98,7 +98,12 @@ const YARDS: Omit<ModuleDef, 'kind' | 'cost' | 'method' | 'starter'>[] = [
 ];
 
 export const MODULES: ModuleDef[] = buildModules();
-export const MODULE_MAP: Record<string, ModuleDef> = Object.fromEntries(MODULES.map((m) => [m.id, m]));
+/** Module nur für NPC-Stationen (Wohnstation, Verteidigungsring): nicht in der Bauliste, nur zum Zeichnen */
+const NPC_ONLY: ModuleDef[] = [
+  { id: 'npc_habitat', x4Id: 'module_spl_hab_m_01', kind: 'habitat', name: 'Wohnmodul', buildTime: 0, materials: {}, cost: 0, method: 'Split', repRequired: 0, blueprintCost: 0, starter: false },
+  { id: 'npc_defence', x4Id: 'module_spl_def_disc_01', kind: 'defence', name: 'Verteidigungsplattform', buildTime: 0, materials: {}, cost: 0, method: 'Split', repRequired: 0, blueprintCost: 0, starter: false },
+];
+export const MODULE_MAP: Record<string, ModuleDef> = Object.fromEntries([...MODULES, ...NPC_ONLY].map((m) => [m.id, m]));
 
 export function moduleDef(id: string): ModuleDef {
   const m = MODULE_MAP[id];
