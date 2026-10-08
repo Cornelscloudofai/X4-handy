@@ -164,20 +164,42 @@ function prefs(def: string): Band[] {
   return [1, 0, 2];
 }
 
+/** Halbmesser des Freiraums vor einem Pier (Moduleinheiten): dort liegen seine Arme, angelegt wird von außen */
+const PIER_ZONE = 1.25;
+
+/**
+ * Ein Pier hat nur den Anschluss zum Kern: Hinter und neben seinen Armen darf kein Modul sitzen, und kein Träger
+ * darf durch ihn hindurch weiter nach außen laufen.
+ */
+function blocks(pier: Slot, q: Slot): boolean {
+  const cx = pier.x + Math.cos(pier.ang) * 0.3, cy = pier.y + Math.sin(pier.ang) * 0.3;
+  if (Math.hypot(q.x - cx, q.y - cy) < PIER_ZONE) return true;
+  return q.path.slice(0, -1).some(([x, y]) => Math.hypot(x - pier.x, y - pier.y) < 0.05);
+}
+
 /**
  * Plätze für die Module in Reihenfolge (gebaut, im Bau, geplant). Ist eine Bauform voll, kommen weitere Plätze
- * auf einem äußeren Ring dazu – die Ausdehnung bleibt trotzdem begrenzt.
+ * auf einem äußeren Ring dazu – die Ausdehnung bleibt trotzdem begrenzt. Piers halten den Raum vor sich frei.
  */
 export function layoutStation(id: string, defs: string[]): Slot[] {
   const slots = slotsOf(stationStyle(id));
   const used = new Set<number>();
+  const taken: Slot[] = [];
+  const piers: Slot[] = [];
   return defs.map((def) => {
-    for (const reserve of [false, true]) {
-      for (const b of prefs(def)) {
-        const idx = slots.findIndex((p, j) => p.band === b && !!p.reserve === reserve && !used.has(j));
-        if (idx >= 0) {
-          used.add(idx);
-          return slots[idx];
+    const pier = MODULE_MAP[def]?.kind === 'pier';
+    const free = (p: Slot) => (pier ? taken.every((q) => !blocks(p, q)) : piers.every((q) => !blocks(q, p)));
+    // erst mit Freiraum für Piers; nur wenn das nirgends mehr geht, ohne
+    for (const strict of [true, false]) {
+      for (const reserve of [false, true]) {
+        for (const b of prefs(def)) {
+          const idx = slots.findIndex((p, j) => p.band === b && !!p.reserve === reserve && !used.has(j) && (!strict || free(p)));
+          if (idx >= 0) {
+            used.add(idx);
+            taken.push(slots[idx]);
+            if (pier) piers.push(slots[idx]);
+            return slots[idx];
+          }
         }
       }
     }

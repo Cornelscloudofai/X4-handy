@@ -947,7 +947,9 @@ export class SectorRenderer {
     if (stationStyle(st.id) === 'ring') {
       // Ringträger nur zwischen benachbarten belegten Plätzen desselben Rings
       const byRing = new Map<number, number[]>();
-      for (const p of slots.slice(0, solid)) {
+      for (const [i, p] of slots.slice(0, solid).entries()) {
+        // Piers haben keine Seitenanschlüsse: der Ringträger endet vor ihnen
+        if (MODULE_MAP[defs[i]]?.kind === 'pier') continue;
         const r = Math.round(Math.hypot(p.x, p.y) * 100) / 100;
         byRing.set(r, [...(byRing.get(r) ?? []), Math.atan2(p.y, p.x)]);
       }
@@ -1272,6 +1274,20 @@ export class SectorRenderer {
           }
         }
         return;
+      }
+      if (d.kind === 'pier') {
+        // Pier: nur unten ein Anschluss (zum Kern), Arme nach außen; Bild so verschoben, dass der Anschluss an
+        // derselben Stelle sitzt wie bei den anderen Modulen
+        const img = moduleSprite('pier', seed);
+        if (img) {
+          const s = unit * PIER_IMG;
+          ctx.save();
+          ctx.translate(unit * (PIER_PORT * PIER_IMG - MODULE_IMG * 0.475), 0);
+          ctx.rotate(Math.PI / 2);
+          ctx.drawImage(img, -s / 2, -s / 2, s, s);
+          ctx.restore();
+          return;
+        }
       }
       if (d.kind === 'dock') {
         const r = unit * 0.36;
@@ -2137,6 +2153,9 @@ const CORE_TURN: Record<string, number> = { ring: Math.PI / 6, block: Math.PI / 
 const CORE_SIZE: Record<string, number> = { ring: 2.1, block: 2.1, tri: 2.1, spine: 2.65 };
 /** Kantenlänge der Modulbilder in Moduleinheiten (Anschluss zu Anschluss rund 1,05) */
 const MODULE_IMG = 1.1;
+/** Pierbild: Kantenlänge (Moduleinheiten) und Abstand des Anschlusses von der Bildmitte (Anteil der Kante) */
+const PIER_IMG = 2.0;
+const PIER_PORT = 469 / 1254;
 /**
  * Länge der Schiffsbilder in Kartenkilometern (Kartenmaßstab, nicht echte Größe – sonst wären Schiffe unsichtbar klein);
  * Verhältnisse wie in X4: L rund 3,5-mal so lang wie M, S etwa 0,4-mal.
