@@ -1347,7 +1347,7 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
   }).join('');
   const nBuy = list.filter((d) => blueprintState(state, d.id) === 'buyable').length;
   const body = `${searchBox('modules', q, 'Modul oder Ware suchen …')}
-    ${q ? `<p class="small muted" style="margin:-4px 0 10px">Suche in allen Kategorien · ${list.length} Treffer</p>` : `<div class="tabs" style="padding:0 0 12px">${cats.map(([c, l]) => `<button class="${m.cat === c ? 'active' : ''}" ${act('modules-cat', { cat: c })}>${l}</button>`).join('')}</div>`}
+    ${q ? `<p class="small muted" style="margin:-4px 0 10px">Suche in allen Kategorien · ${list.length} Treffer</p>` : `<div class="tabs wrap" style="padding:0 0 12px">${cats.map(([c, l]) => `<button class="${m.cat === c ? 'active' : ''}" ${act('modules-cat', { cat: c })}>${l}</button>`).join('')}</div>`}
     <div class="pills" style="margin-bottom:12px"><button class="pill ${ui.ownedOnly ? 'amber' : ''}" ${act('owned-only')}>${icon('check', 13)} Nur mit Bauplan</button></div>
     ${nBuy ? `<button class="bp-hint" ${act('open-blueprints')}>${icon('lock', 16)}<span>${nBuy === 1 ? '1 Bauplan' : `${nBuy} Baupläne`} hier kaufbar – bei den Vertretern vor Ort</span>${icon('chev', 16)}</button>` : ''}
     ${cards ? `<div style="display:grid;gap:10px">${cards}</div>` : `<div class="box empty-search">Nichts gefunden${q ? ` für „${esc(q)}“` : ''}.</div>`}`;
