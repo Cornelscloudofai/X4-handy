@@ -173,7 +173,7 @@ export function stepNpcs(state: GameState, dt: number): void {
         if (n.kind === 'traffic') { n.phase = 'docked'; n.timer = randRange(state, 20, 90); }
         else if (n.kind === 'courier') {
           if (n.contract != null) {
-            const used = contractDeliver(state, n.contract, n.ware, n.amount);
+            const { used } = contractDeliver(state, n.contract, n.ware, n.amount);
             state.totals.delivered += used;
           }
           gone.add(n.id);

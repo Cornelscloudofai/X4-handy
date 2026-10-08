@@ -339,11 +339,13 @@ export interface Contract {
   status: 'offer' | 'active' | 'done' | 'failed';
   title: string;
   story?: boolean;
-  /** Kurierauftrag: Ware hier abholen (Marktschlüssel) … */
+  /** Alte Kurieraufträge: fester Verkäufer (Marktschlüssel); neue Aufträge lassen den Einkauf offen */
   source?: string;
-  /** … und an diesen Markt liefern (Handelsposten oder NPC-Station; ohne Angabe der Handelsposten des Sektors) */
+  /** Bereits gezahlter Lohn (anteilig je Lieferung) */
+  paid?: number;
+  /** An diesen Markt liefern (Handelsposten oder NPC-Station; ohne Angabe der Handelsposten des Sektors) */
   market?: string;
-  /** Kurierauftrag: ausgelegt für Schiffe dieser Klasse */
+  /** Bedarfsauftrag: ausgelegt für Schiffe dieser Klasse */
   size?: 'S' | 'M' | 'L';
 }
 

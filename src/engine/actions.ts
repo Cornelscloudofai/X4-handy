@@ -11,7 +11,7 @@ import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendor
 import { newModule, newShip, newStation } from './state';
 import type { FactionId, GameState, RouteOrder, TradeEndpoint, TradeRule } from './types';
 import { log } from './util';
-import { acceptContract } from './contracts';
+import { acceptContract, isDelivery } from './contracts';
 
 export interface Result { ok: boolean; msg: string }
 const ok = (msg: string): Result => ({ ok: true, msg });
@@ -358,29 +358,36 @@ export function buyOrder(state: GameState, shipId: string, stationId: string, wa
   return ok(`${s.name} fliegt los: ${Math.round(n).toLocaleString('de-DE')} ${WARES[ware].name} einkaufen.`);
 }
 
-/** Kurierauftrag einem bestimmten Transporter geben (nimmt ein Angebot dabei gleich an) */
-export function courierOrder(state: GameState, shipId: string, contractId: number): Result {
+/**
+ * Bedarfsauftrag einem bestimmten Transporter geben (nimmt ein Angebot dabei gleich an). `from` ist der gewählte
+ * Verkäufer oder eine eigene Station; ohne Angabe sucht das Schiff selbst den günstigsten.
+ */
+export function courierOrder(state: GameState, shipId: string, contractId: number, from?: TradeEndpoint): Result {
   const s = state.ships.find((x) => x.id === shipId);
   const c = state.contracts.find((x) => x.id === contractId);
-  if (!s || !c || !c.source) return fail('Schiff oder Auftrag nicht gefunden.');
+  if (!s || !c || !isDelivery(c)) return fail('Schiff oder Auftrag nicht gefunden.');
   const cls = SHIP_MAP[s.cls];
-  if (cls.role !== 'trader') return fail('Nur Transporter fliegen Kurieraufträge.');
+  if (cls.role !== 'trader') return fail('Nur Transporter fliegen Lieferaufträge.');
   if (WARES[c.ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
+  if (from?.kind === 'station') {
+    const st = stationById(state, from.id);
+    if (!st || !hasDockFor(st, cls.size)) return fail('Die Station hat kein passendes Dock.');
+  }
   if (c.status === 'offer') {
     const r = acceptContract(state, c.id);
     if (!r.ok) return r;
   }
-  const job = courierTrip(state, s, c);
-  if (!job) return fail('Für diesen Auftrag ist schon alles unterwegs.');
+  const job = courierTrip(state, s, c, from);
+  if (!job) return fail('Für diesen Auftrag ist schon alles unterwegs oder nirgends Ware zu haben.');
   const busy = !!s.job || !!s.cargo || s.phase === 'toTarget' || s.phase === 'docking';
   if (busy) {
     s.orders = [...(s.orders ?? []), job];
-    return ok(`${s.name} übernimmt den Kurierauftrag nach der laufenden Fahrt.`);
+    return ok(`${s.name} übernimmt die Lieferung nach der laufenden Fahrt.`);
   }
   s.orders = [job, ...(s.orders ?? [])];
   s.phase = 'idle';
   s.path = [];
-  return ok(`${s.name} fliegt los: ${Math.round(job.amount).toLocaleString('de-DE')} ${WARES[c.ware].name} abholen.`);
+  return ok(`${s.name} fliegt los: ${Math.round(job.amount).toLocaleString('de-DE')} ${WARES[c.ware].name} holen.`);
 }
 
 /** Lageranteil einer Ware festlegen (0..1) oder mit null wieder automatisch verteilen */

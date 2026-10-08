@@ -36,6 +36,7 @@ import { setSound, sfx, soundEnabled } from './sound';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { buyOffers, defaultBuyModal } from './buyView';
+import { deliveryShips, deliverySources } from './deliveryView';
 import { saleOffers } from '../engine/sales';
 import { SPEEDS, saveBgMode, saveIconStyle, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
@@ -840,7 +841,23 @@ function onClick(e: MouseEvent): void {
       case 'yard-cancel': result(cancelShipBuild(state, d.st!, Number(d.uid))); break;
       case 'courier-modal': ui.modal = { type: 'courier', contract: Number(d.id) }; refresh(); break;
       case 'courier-ship-modal': ui.modal = { type: 'courierShip', contract: Number(d.id) }; refresh(); break;
-      case 'courier-ship': ui.modal = null; result(A.courierOrder(state, d.sh!, Number(d.c))); break;
+      case 'cs-src': if (ui.modal?.type === 'courierShip') { ui.modal = { ...ui.modal, source: d.k }; refresh(); } break;
+      case 'cs-ship': if (ui.modal?.type === 'courierShip') { ui.modal = { ...ui.modal, ship: d.id }; refresh(); } break;
+      case 'cs-accept': ui.modal = null; result(acceptContract(state, Number(d.id))); break;
+      case 'cs-go': {
+        const m = ui.modal;
+        if (m?.type !== 'courierShip') break;
+        const c = state.contracts.find((x) => x.id === m.contract);
+        if (!c) break;
+        const ship = deliveryShips(state, c).find((s) => s.id === m.ship) ?? deliveryShips(state, c)[0];
+        if (!ship) { toast('Kein passender Transporter.', 'warn'); break; }
+        const srcs = deliverySources(state, c, ship);
+        const src = srcs.find((x) => x.id === m.source) ?? srcs[0];
+        const r = A.courierOrder(state, ship.id, c.id, src?.endpoint);
+        if (r.ok) ui.modal = null;
+        result(r);
+        break;
+      }
       case 'courier': ui.modal = null; result(A.courierDeliver(state, Number(d.c), d.st!)); break;
       case 'courier-station': if (ui.modal?.type === 'courier') { ui.modal = { ...ui.modal, station: d.st ?? '' }; refresh(); } break;
       case 'deliver-ship': { const r = deliverWithShip(state, Number(d.c), d.st!, d.ship!); if (r.ok) ui.modal = null; result(r); break; }

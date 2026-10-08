@@ -3,6 +3,8 @@
 import { WARES } from '../data/wares';
 import { buildDemand, buildMoveLimits } from '../engine/economy';
 import { currentMission, missionComplete } from '../engine/story';
+import { isDelivery } from '../engine/contracts';
+import { inTransitForContract } from '../engine/fleet';
 import type { GameState } from '../engine/types';
 import { esc } from './dom';
 import type { UIState } from './uistate';
@@ -45,6 +47,29 @@ function buyShipStep(ui: UIState, id: string, cls: string, intro: string, buy: s
   return { id: id + '-nav', sel: '#nav [data-tab="fleet"]', text: intro };
 }
 
+/**
+ * Lieferaufträge: beim ersten Mal Schritt für Schritt – Auftrag ansehen, Einkaufsort und Schiff wählen, losschicken.
+ * undefined = kein Lieferhinweis fällig (andere Hinweise dürfen kommen).
+ */
+function deliveryStep(state: GameState, ui: UIState, chapter: boolean): CoachStep | null | undefined {
+  if (coachSeen(state, 'dl-done')) return undefined;
+  const live = state.contracts.filter((c) => isDelivery(c) && (c.status === 'offer' || c.status === 'active'));
+  const sent = live.some((c) => c.status === 'active' && inTransitForContract(state, c.id) > 0);
+  if (ui.modal?.type === 'courierShip') {
+    if (!coachSeen(state, 'dl-src')) return { id: 'dl-src', sel: '#modal .dl-sources h3', text: 'Hier wählst du, wo du einkaufst. Der Abnehmer zahlt einen festen Preis je Einheit – je günstiger du einkaufst, desto größer dein Gewinn. Das beste Angebot ist vorausgewählt.', next: true };
+    return { id: 'dl-go', sel: '#modal [data-act="cs-go"]', text: 'Schiff und Einkaufsort passen? Dann losschicken – der Transporter kauft ein und liefert ab.' };
+  }
+  if (sent) return { id: 'dl-done', sel: null, text: 'Unterwegs! Der Lohn kommt mit der Lieferung und zählt als Ertrag des Schiffs. Aufträge, die du annimmst, erledigen Transporter im Autohandel auch selbst.', next: true };
+  // Ohne Kapitel nur, wenn schon ein Auftrag angenommen ist, der noch auf ein Schiff wartet
+  const waiting = live.find((c) => c.status === 'active');
+  if (!chapter && !waiting) return undefined;
+  if (!live.length || ui.modal) return null;
+  const target = waiting ?? live[0];
+  if (ui.panel?.type === 'missions') return { id: 'dl-open', sel: `#panel [data-key="c${target.id}"] [data-act="courier-ship-modal"]`, text: waiting ? 'Dieser Auftrag wartet noch auf ein Schiff. Tippe hier, um Einkaufsort und Transporter zu wählen.' : 'Ein Lieferauftrag: Eine Station braucht dringend Ware und zahlt gut. Tippe hier, um ihn dir anzusehen.' };
+  if (ui.panel) return null;
+  return { id: 'dl-nav', sel: '#nav [data-tab="missions"]', text: waiting ? 'Dein Lieferauftrag wartet auf ein Schiff. Tippe auf „Aufträge“.' : 'Willkommen, Kommandant! Unter „Aufträge“ warten Lieferaufträge – Stationen, die dringend Ware brauchen und gut zahlen. Tippe hier.' };
+}
+
 export function coachStep(state: GameState, ui: UIState): CoachStep | null {
   const st0 = state.stations[0];
   if (state.help?.coachOff || !st0 || ui.view === 'galaxy' || ui.placing || ui.modal?.type === 'help') return null;
@@ -57,6 +82,8 @@ export function coachStep(state: GameState, ui: UIState): CoachStep | null {
     if (!ui.panel) return { id: 'claim-open', sel: '#objective .objective', text: 'Kapitel geschafft. Tippe hier, um die Belohnung abzuholen.' };
     return { id: 'claim-nav', sel: '#nav [data-tab="missions"]', text: 'Kapitel geschafft! Unter „Aufträge“ holst du die Belohnung ab.' };
   }
+  const dl = deliveryStep(state, ui, m.id === 't-courier');
+  if (dl !== undefined) return dl;
   if (m.id === 'm-first') {
     if (!coachSeen(state, 'mine-intro') && !ui.modal && !ui.panel) {
       return { id: 'mine-intro', sel: null, text: 'Dein Alligator fliegt schon los: Er fördert selbst und verkauft an die NPC-Fabrik, die gerade am besten zahlt. Unten steht dein Ziel.', next: true };
@@ -66,20 +93,8 @@ export function coachStep(state: GameState, ui: UIState): CoachStep | null {
     }
     return null;
   }
-  if (m.id === 't-courier') {
-    if (ui.modal?.type === 'courierShip') return { id: 'tc-ship', sel: '#modal [data-act="courier-ship"]', text: 'Wähle deinen Transporter. Er kauft die Ware beim Verkäufer und liefert sie ab.' };
-    if (ui.modal) return null;
-    if (state.contracts.some((c) => c.source && c.status === 'active')) {
-      if (!coachSeen(state, 'speed')) return { id: 'speed', sel: '#hud [data-act="speed"]', text: 'Der Transporter ist unterwegs. Hier beschleunigst du das Spiel (bis ×60).', next: true, doneOn: 'speed' };
-      return null;
-    }
-    if (!state.contracts.some((c) => c.source && c.status === 'offer')) return null;
-    if (ui.panel?.type === 'missions') return { id: 'tc-accept', sel: '#panel [data-act="courier-ship-modal"]', text: 'Ein Kurierauftrag: Ware abholen, hinbringen, 30–50 % mehr kassieren. Tippe auf „Annehmen und Schiff schicken“.' };
-    if (ui.panel) return null;
-    return { id: 'tc-nav', sel: '#nav [data-tab="missions"]', text: 'Willkommen, Kommandant! Unter „Aufträge“ warten Kurieraufträge – der schnellste Weg zu Geld. Tippe hier.' };
-  }
   if (m.id === 'm-fleet') {
-    return buyShipStep(ui, 'fleet2', 'tuatara', 'Zeit für ein zweites Schiff. Öffne die Flotte.', 'Der Tuatara ist ein kleiner Transporter – günstig und genau richtig für Kurieraufträge. Kaufen.');
+    return buyShipStep(ui, 'fleet2', 'tuatara', 'Zeit für ein zweites Schiff. Öffne die Flotte.', 'Der Tuatara ist ein kleiner Transporter – günstig und genau richtig für Lieferaufträge. Kaufen.');
   }
   if (m.id === 't-fleet') {
     return buyShipStep(ui, 'fleet2', 'alligator_min', 'Zeit für ein zweites Schiff. Öffne die Flotte.', 'Der Alligator fördert Erz und Silizium und verkauft es selbst an die NPC-Fabriken. Kaufen.');

@@ -1,5 +1,5 @@
 // Lieferaufträge der Fraktionen
-import { NPC_MAP, SECTOR_MAP, marketInfo, sector, FACTIONS } from '../data/sectors';
+import { SECTOR_MAP, marketInfo, sector, FACTIONS } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { MODULE_MAP } from '../data/modules';
 import { WARES, WARE_IDS } from '../data/wares';
@@ -10,24 +10,34 @@ import { marketPrice, marketRoom, marketStock } from './economy';
 
 const TITLES = ['Nachschub für', 'Dringende Lieferung:', 'Großauftrag:', 'Wiederaufbau:', 'Bestellung von'];
 
-export function contractDeliver(state: GameState, id: number, wareId: string, amount: number): number {
+/**
+ * Liefert Ware für einen Auftrag. Der Lohn wird anteilig mit jeder Lieferung gezahlt (Rückgabe: abgenommene Menge und
+ * gezahlter Lohn), der Rest beim Abschluss.
+ */
+export function contractDeliver(state: GameState, id: number, wareId: string, amount: number): { used: number; pay: number } {
   const c = state.contracts.find((x) => x.id === id);
-  if (!c || c.status !== 'active' || c.ware !== wareId) return 0;
+  if (!c || c.status !== 'active' || c.ware !== wareId) return { used: 0, pay: 0 };
   const used = Math.min(amount, c.amount - c.delivered);
   c.delivered += used;
-  if (c.delivered >= c.amount - 0.5) completeContract(state, c);
-  return used;
+  let pay = Math.max(0, Math.min(c.reward - (c.paid ?? 0), (c.reward * used) / c.amount));
+  state.credits += pay;
+  c.paid = (c.paid ?? 0) + pay;
+  if (c.delivered >= c.amount - 0.5) pay += completeContract(state, c);
+  return { used, pay };
 }
 
-function completeContract(state: GameState, c: Contract): void {
+function completeContract(state: GameState, c: Contract): number {
   c.delivered = c.amount;
   c.status = 'done';
-  state.credits += c.reward;
-  if (c.source) state.totals.couriers = (state.totals.couriers ?? 0) + 1;
+  const rest = Math.max(0, c.reward - (c.paid ?? 0));
+  state.credits += rest;
+  c.paid = c.reward;
+  if (isDelivery(c)) state.totals.couriers = (state.totals.couriers ?? 0) + 1;
   const f = sector(c.sector).faction;
   state.rep[f] = Math.min(30, state.rep[f] + c.rep);
   log(state, `Auftrag erfüllt: ${c.title} (+${Math.round(c.reward).toLocaleString('de-DE')} Cr, Ruf +${c.rep} bei ${FACTIONS[f].short})`, 'good', true);
   emit({ type: 'contractDone', id: c.id });
+  return rest;
 }
 
 /** Spieler-Fortschritt bestimmt, welche Waren angefragt werden */
@@ -76,57 +86,74 @@ export function generateOffer(state: GameState): Contract | null {
   return c;
 }
 
-/** Kurieraufträge zahlen so viel mehr als der übliche Verkaufswert am Ziel */
+/** Lieferaufträge zahlen so viel mehr als der aktuelle Preis am Ziel */
 export const COURIER_BONUS: [number, number] = [0.3, 0.5];
 
+/** Bedarfsauftrag (Lieferauftrag für die eigene Schiffsklasse): Ziel steht fest, wo eingekauft wird, entscheidet der Spieler */
+export function isDelivery(c: Contract): boolean {
+  return !!c.size;
+}
+
+export interface WareSeller { key: string; sector: string; price: number; stock: number }
+
+/** Wer in bekannten Sektoren eine Ware verkauft: Handelsposten und NPC-Fabriken (nur eigene Produkte), günstigste zuerst */
+export function wareSellers(state: GameState, ware: string, exclude = ''): WareSeller[] {
+  const out: WareSeller[] = [];
+  for (const sec of knownSectors(state)) {
+    const keys = [sec, ...sector(sec).npcStations.filter((n) => n.makes?.includes(ware)).map((n) => n.id)];
+    for (const key of keys) {
+      if (key === exclude || !state.markets[key]?.[ware]) continue;
+      const stock = marketStock(state, key, ware);
+      if (stock >= 1) out.push({ key, sector: marketInfo(key).sector, price: marketPrice(state, key, ware), stock });
+    }
+  }
+  return out.sort((a, b) => a.price - b.price);
+}
+
 /**
- * Kurierauftrag: Eine Station braucht dringend eine Lieferung. Ware bei einem Verkäufer abholen (der Spieler kauft sie)
- * und zum Ziel bringen. Die Menge passt in eine Ladung eines eigenen Transporters, der Lohn liegt 30–50 % über dem
- * üblichen Verkaufswert am Ziel.
+ * Bedarfsauftrag: Eine Station braucht dringend eine Ware – ihr Lager ist fast leer, ihr Preis liegt über dem Durchschnitt.
+ * Sie zahlt 30–50 % über ihrem aktuellen (hohen) Preis. Angeboten wird nur, was anderswo in bekannten Sektoren
+ * deutlich günstiger zu haben ist: Wer gut einkauft, verdient am Handel und am Aufschlag. Die Menge passt in eine Ladung
+ * eines eigenen Transporters (ohne Transporter: für einen Tuatara).
  */
 export function generateCourier(state: GameState): Contract | null {
   const traders = state.ships.map((s) => SHIP_MAP[s.cls]).filter((c) => c?.role === 'trader');
-  // Noch kein Transporter: Aufträge für einen kleinen Frachter als Anreiz
   const cls = traders.length ? pick(state, traders) : SHIP_MAP.tuatara;
   if (!cls) return null;
-  const known = knownSectors(state);
-  const sellers: string[] = [];
-  const buyers: string[] = [];
-  for (const sec of known) {
-    sellers.push(sec);
-    for (const n of sector(sec).npcStations) {
-      if (n.makes?.length) sellers.push(n.id);
-      if (n.buys.length) buyers.push(n.id);
-    }
-  }
-  const sells = (key: string, id: string) => !NPC_MAP[key] || !!NPC_MAP[key].makes?.includes(id);
-  const pairs: { from: string; to: string; ware: string; n: number; need: number }[] = [];
-  for (const to of buyers) {
-    const tm = state.markets[to];
-    if (!tm) continue;
-    for (const id of NPC_MAP[to].buys) {
-      const w = WARES[id];
-      if (!w || w.storage !== cls.storage || !tm[id]) continue;
-      // „dringend“: das Ziel hat wenig davon
-      const need = 1 - tm[id].stock / Math.max(1, tm[id].cap);
-      if (need < 0.4) continue;
-      for (const from of sellers) {
-        if (from === to || !sells(from, id) || !state.markets[from]?.[id]) continue;
-        const load = (cls.capacity / w.volume) * (0.6 + rand(state) * 0.4);
-        const n = Math.floor(Math.min(load, marketStock(state, from, id) * 0.6, marketRoom(state, to, id)));
-        if (n < (cls.capacity / w.volume) * 0.3 || n < 1) continue;
-        pairs.push({ from, to, ware: id, n, need });
+  const taken = new Set(state.contracts.filter((c) => (c.status === 'offer' || c.status === 'active') && c.market).map((c) => c.market + ':' + c.ware));
+  const cands: { to: string; ware: string; n: number; price: number; weight: number }[] = [];
+  for (const sec of knownSectors(state)) {
+    // Abnehmer: NPC-Stationen (was sie ankaufen) und Handelsposten (was der Sektor braucht)
+    const buyers: [string, string[]][] = [[sec, SECTOR_MAP[sec].demand], ...sector(sec).npcStations.filter((n) => n.buys.length).map((n): [string, string[]] => [n.id, n.buys])];
+    for (const [to, wares] of buyers) {
+      const tm = state.markets[to];
+      if (!tm) continue;
+      for (const id of wares) {
+        const w = WARES[id];
+        if (!w || w.storage !== cls.storage || !tm[id] || taken.has(to + ':' + id)) continue;
+        const need = 1 - tm[id].stock / Math.max(1, tm[id].cap);
+        const price = marketPrice(state, to, id);
+        if (need < 0.5 || price < w.price.avg) continue;
+        const load = cls.capacity / w.volume;
+        const n = Math.floor(Math.min(load * (0.6 + rand(state) * 0.4), marketRoom(state, to, id)));
+        if (n < load * 0.3 || n < 1) continue;
+        // Nur wenn es anderswo genug Ware deutlich unter dem Zielpreis gibt
+        const cheap = wareSellers(state, id, to).find((x) => x.stock >= n * 0.5);
+        if (!cheap || cheap.price > price * 0.85) continue;
+        cands.push({ to, ware: id, n, price, weight: need * (price / w.price.avg) });
       }
     }
   }
-  if (!pairs.length) return null;
-  // Dringendere Ziele häufiger
-  const total = pairs.reduce((a, p) => a + p.need, 0);
+  if (!cands.length) return null;
+  // Abwechslung: Jede Ware bekommt insgesamt ähnlich viel Gewicht, egal wie viele Stationen sie gerade brauchen
+  const perWare = new Map<string, number>();
+  for (const c of cands) perWare.set(c.ware, (perWare.get(c.ware) ?? 0) + 1);
+  for (const c of cands) c.weight /= perWare.get(c.ware)!;
+  const total = cands.reduce((a, p) => a + p.weight, 0);
   let r = rand(state) * total;
-  const p = pairs.find((x) => (r -= x.need) <= 0) ?? pairs[pairs.length - 1];
+  const p = cands.find((x) => (r -= x.weight) <= 0) ?? cands[cands.length - 1];
   const w = WARES[p.ware];
-  const value = p.n * marketPrice(state, p.to, p.ware);
-  const reward = Math.round((value * (1 + COURIER_BONUS[0] + rand(state) * (COURIER_BONUS[1] - COURIER_BONUS[0]))) / 100) * 100;
+  const reward = Math.round((p.n * p.price * (1 + COURIER_BONUS[0] + rand(state) * (COURIER_BONUS[1] - COURIER_BONUS[0]))) / 100) * 100;
   const dest = marketInfo(p.to);
   return {
     id: state.nextId++,
@@ -139,8 +166,7 @@ export function generateCourier(state: GameState): Contract | null {
     deadline: state.time + 2 * 3600,
     duration: Math.round((1.5 + rand(state)) * 3600),
     status: 'offer',
-    title: `Kurier: ${w.name}`,
-    source: p.from,
+    title: `Lieferung: ${w.name}`,
     market: p.to,
     size: cls.size,
   };
@@ -181,8 +207,8 @@ export function stepContracts(state: GameState, dt: number): void {
     state.contractTimer = (state.start ? 12 + rand(state) * 18 : 25 + rand(state) * 25) * 60;
     const offers = state.contracts.filter((c) => c.status === 'offer').length;
     if (offers < 4) {
-      // Neue Spiele: meist kleine Kurieraufträge, die zum eigenen Schiff passen
-      const c = state.start && rand(state) < 0.75 ? generateCourier(state) ?? generateOffer(state) : generateOffer(state);
+      // Neue Spiele: Bedarfsaufträge, die zum eigenen Schiff passen
+      const c = state.start ? generateCourier(state) : generateOffer(state);
       if (c) {
         state.contracts.push(c);
         log(state, `Neues Auftragsangebot: ${c.title} (${SECTOR_MAP[c.sector].name}).`, 'info', true);

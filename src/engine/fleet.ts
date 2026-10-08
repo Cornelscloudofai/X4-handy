@@ -9,7 +9,7 @@ import {
   dockPoint, sellableStock, endpointName, endpointPlace, fieldById, fieldWare, incoming, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
   type Place,
 } from './logistics';
-import { contractDeliver } from './contracts';
+import { contractDeliver, isDelivery, wareSellers } from './contracts';
 import { endOf, fieldEnd, recordFlow, stationEnd } from './flows';
 import type { Contract, GameState, RestAction, RestCase, Ship, ShipClassDef, Station, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
@@ -542,24 +542,46 @@ export function contractEndpoint(c: Contract): TradeEndpoint {
   return c.market && c.market !== c.sector ? { kind: 'market', sector: c.sector, market: c.market } : { kind: 'market', sector: c.sector };
 }
 
-/** Kurierauftrag als Fahrt: Ware beim Verkäufer kaufen, zum Ziel bringen */
-export function courierTrip(state: GameState, s: Ship, c: Contract): TradeJob | null {
-  if (c.status !== 'active' || !c.source) return null;
+/** Marktschlüssel → Handelsendpunkt */
+export function marketEndpoint(key: string): TradeEndpoint {
+  const p = marketInfo(key);
+  return key === p.sector ? { kind: 'market', sector: p.sector } : { kind: 'market', sector: p.sector, market: key };
+}
+
+/**
+ * Bedarfsauftrag als Fahrt: Ware einkaufen und zum Ziel bringen. Ohne vorgegebenen Verkäufer wählt das Schiff den mit dem
+ * besten Gewinn pro Flugzeit (Lohn minus Einkauf).
+ */
+export function courierTrip(state: GameState, s: Ship, c: Contract, from?: TradeEndpoint): TradeJob | null {
+  if (c.status !== 'active' || !isDelivery(c)) return null;
   const w = WARES[c.ware];
   if (w.storage !== SHIP_MAP[s.cls].storage || SHIP_MAP[s.cls].role !== 'trader') return null;
   const rest = c.amount - c.delivered - inTransitForContract(state, c.id);
   const n = Math.min(rest, unitsFor(s, c.ware));
   if (n < 1) return null;
-  const src = marketInfo(c.source);
-  const from: TradeEndpoint = c.source === src.sector ? { kind: 'market', sector: src.sector } : { kind: 'market', sector: src.sector, market: c.source };
-  return { ware: c.ware, amount: n, from, to: contractEndpoint(c), stage: 'pickup', contract: c.id };
+  const to = contractEndpoint(c);
+  if (!from) {
+    const perUnit = c.reward / c.amount;
+    let best: { ep: TradeEndpoint; score: number } | null = null;
+    const sellers = c.source ? [{ key: c.source, price: marketPrice(state, c.source, c.ware), stock: marketStock(state, c.source, c.ware) }] : wareSellers(state, c.ware, c.market);
+    for (const x of sellers) {
+      const k = Math.min(n, x.stock);
+      if (k < Math.min(n, 1)) continue;
+      const ep = marketEndpoint(x.key);
+      const score = (k * (perUnit - x.price)) / travelTime(state, s, ep, to);
+      if (!best || score > best.score) best = { ep, score };
+    }
+    if (!best) return null;
+    from = best.ep;
+  }
+  return { ware: c.ware, amount: n, from, to, stage: 'pickup', contract: c.id };
 }
 
 function courierJob(state: GameState, s: Ship): TradeJob | null {
   let best: { job: TradeJob; t: number } | null = null;
   for (const c of state.contracts) {
     const job = courierTrip(state, s, c);
-    if (!job || marketStock(state, marketKey(job.from), c.ware) < 1) continue;
+    if (!job) continue;
     const t = travelTime(state, s, job.from, job.to);
     if (!best || t < best.t) best = { job, t };
   }
@@ -637,7 +659,11 @@ function pickByPriority(home: Station, cands: Candidate[]): Candidate | null {
 
 export function inTransitForContract(state: GameState, contractId: number): number {
   let n = 0;
-  for (const s of state.ships) if (s.job?.contract === contractId) n += s.cargo?.amount ?? s.job.amount;
+  for (const s of state.ships) {
+    if (s.job?.contract === contractId) n += s.cargo?.amount ?? s.job.amount;
+    // Erteilte, noch nicht begonnene Fahrten zählen mit – sonst würde derselbe Auftrag mehrfach vergeben
+    for (const o of s.orders ?? []) if (o.contract === contractId) n += o.amount;
+  }
   for (const npc of state.npcs) if (npc.contract === contractId) n += npc.amount;
   return n;
 }
@@ -776,8 +802,16 @@ function doTrade(state: GameState, s: Ship): void {
   } else {
     const key = marketKey(job.to);
     if (job.contract != null) {
-      const used = contractDeliver(state, job.contract, s.cargo.ware, s.cargo.amount);
+      const { used, pay } = contractDeliver(state, job.contract, s.cargo.ware, s.cargo.amount);
       s.cargo.amount -= used;
+      // Der Lohn zählt als Ertrag des Schiffs und seiner Heimat – mit Credit-Anzeige am Ziel
+      if (pay > 0) {
+        s.earned += pay;
+        const home = stationById(state, s.home);
+        if (home) home.income += pay;
+        const place = marketInfo(key);
+        emit({ type: 'sale', station: '', sector: place.sector, x: place.x, z: place.z, value: pay });
+      }
       state.totals.delivered += used;
       recordFlow(state, endOf(state, job.from), endOf(state, job.to), s.cargo.ware, used);
     }

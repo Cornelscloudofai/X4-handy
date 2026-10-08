@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
-import { COURIER_BONUS, generateCourier } from '../src/engine/contracts';
+import { COURIER_BONUS, contractDeliver, generateCourier, isDelivery, wareSellers } from '../src/engine/contracts';
 import { buyOrder, courierOrder } from '../src/engine/actions';
 import { marketPrice } from '../src/engine/economy';
 import { SHIP_MAP } from '../src/data/ships';
 import { WARES } from '../src/data/wares';
-import { NPC_MAP } from '../src/data/sectors';
 
-describe('Kurieraufträge', () => {
-  it('passen in eine Ladung des eigenen Transporters und zahlen 30–50 % über dem Verkaufswert', () => {
+describe('Lieferaufträge nach Bedarf', () => {
+  it('entstehen, wo eine Station dringend Ware braucht und viel zahlt – und anderswo ist sie günstiger zu haben', () => {
     const s = newGame(7, 'trading');
     const cls = SHIP_MAP[s.ships[0].cls];
     let n = 0;
@@ -17,38 +16,64 @@ describe('Kurieraufträge', () => {
       const c = generateCourier(s);
       if (!c) continue;
       n++;
-      expect(c.source && c.market).toBeTruthy();
-      expect(c.source).not.toBe(c.market);
-      expect(WARES[c.ware].storage).toBe(cls.storage);
-      expect(c.amount).toBeLessThanOrEqual(cls.capacity / WARES[c.ware].volume + 0.01);
+      expect(isDelivery(c)).toBe(true);
+      expect(c.source).toBeUndefined();
+      const w = WARES[c.ware];
+      expect(w.storage).toBe(cls.storage);
+      expect(c.amount).toBeLessThanOrEqual(cls.capacity / w.volume + 0.01);
       expect(c.size).toBe(cls.size);
-      expect(NPC_MAP[c.market!].buys).toContain(c.ware);
-      const value = c.amount * marketPrice(s, c.market!, c.ware);
-      expect(c.reward / value).toBeGreaterThanOrEqual(1 + COURIER_BONUS[0] - 0.01);
-      expect(c.reward / value).toBeLessThanOrEqual(1 + COURIER_BONUS[1] + 0.01);
+      // Ziel: knapp und teuer
+      const m = s.markets[c.market!][c.ware];
+      expect(m.stock / m.cap).toBeLessThanOrEqual(0.5);
+      const price = marketPrice(s, c.market!, c.ware);
+      expect(price).toBeGreaterThanOrEqual(w.price.avg);
+      expect(c.reward / (c.amount * price)).toBeGreaterThanOrEqual(1 + COURIER_BONUS[0] - 0.01);
+      expect(c.reward / (c.amount * price)).toBeLessThanOrEqual(1 + COURIER_BONUS[1] + 0.01);
+      // Es gibt einen Verkäufer, bei dem sich der Einkauf lohnt
+      const cheap = wareSellers(s, c.ware, c.market)[0];
+      expect(cheap.price).toBeLessThan(price * 0.86);
     }
     expect(n).toBeGreaterThan(20);
   });
 
-  it('Schiff schicken: holt die Ware, liefert sie ab und kassiert den Lohn', () => {
+  it('Schiff schicken: kauft beim gewählten Verkäufer, liefert ab, Lohn zählt als Ertrag des Schiffs', () => {
     const s = newGame(7, 'trading');
     const c = generateCourier(s)!;
     s.contracts.push(c);
-    const r = courierOrder(s, s.ships[0].id, c.id);
+    const ship = s.ships[0];
+    const r = courierOrder(s, ship.id, c.id);
     expect(r.ok, r.msg).toBe(true);
     expect(c.status).toBe('active');
     const before = s.credits;
-    for (let t = 0; t < 3 * 3600 && c.status === 'active'; t += 60) step(s, 60);
+    for (let t = 0; t < 3 * 3600 && c.status === 'active'; t += 30) step(s, 30);
     expect(c.status).toBe('done');
-    // Einkauf bezahlt, Lohn erhalten: unterm Strich Gewinn
+    expect(c.paid).toBeCloseTo(c.reward, 0);
+    // Gewinn beim Spieler und in der Schiffsbilanz
     expect(s.credits).toBeGreaterThan(before);
+    expect(ship.earned).toBeGreaterThan(0);
   }, 60000);
 
-  it('neue Spiele bekommen vor allem Kurieraufträge', () => {
+  it('Lohn wird anteilig mit jeder Lieferung gezahlt', () => {
+    const s = newGame(7, 'trading');
+    const c = generateCourier(s)!;
+    c.status = 'active';
+    s.contracts.push(c);
+    const before = s.credits;
+    const half = Math.floor(c.amount / 2);
+    const r = contractDeliver(s, c.id, c.ware, half);
+    expect(r.used).toBe(half);
+    expect(r.pay).toBeCloseTo((c.reward * half) / c.amount, 3);
+    expect(s.credits - before).toBeCloseTo(r.pay, 3);
+    const r2 = contractDeliver(s, c.id, c.ware, c.amount);
+    expect(c.status).toBe('done');
+    expect(s.credits - before).toBeCloseTo(c.reward, 3);
+    expect(r.pay + r2.pay).toBeCloseTo(c.reward, 3);
+  });
+
+  it('neue Spiele bekommen Lieferaufträge', () => {
     const s = newGame(3, 'mining');
     step(s, 6 * 3600);
-    const couriers = s.contracts.filter((c) => c.source);
-    expect(couriers.length).toBeGreaterThan(0);
+    expect(s.contracts.filter((c) => isDelivery(c)).length).toBeGreaterThan(0);
   }, 60000);
 
   it('einmaliger Einkauf: Transporter kauft beim Handelsposten und bringt die Ware zur Station', () => {

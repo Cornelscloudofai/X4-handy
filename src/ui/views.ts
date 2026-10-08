@@ -50,6 +50,8 @@ import { soundEnabled } from './sound';
 import { buildModal, diagramEditor, pickerModal, plannerPanel } from './plannerView';
 import { sellModalHtml } from './sellView';
 import { buyModalHtml } from './buyView';
+import { deliverySources, deliveryModalHtml } from './deliveryView';
+import { isDelivery } from '../engine/contracts';
 import { computePlan, producible } from '../engine/planner';
 import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
 
@@ -904,15 +906,17 @@ function missionsPanel(state: GameState): string {
   const contractRow = (c: typeof active[number], offer: boolean) => {
     const w = WARES[c.ware];
     const s = SECTOR_MAP[c.sector];
-    const courier = !!c.source;
-    const route = courier ? `${esc(marketInfo(c.source!).name)} → ${esc(marketInfo(c.market!).name)}` : `→ ${esc(s.tradeStation.name)}`;
-    const cost = courier ? c.amount * marketPrice(state, c.source!, c.ware) : 0;
+    const courier = isDelivery(c);
+    const destKey = c.market ?? c.sector;
+    const route = `→ ${esc(courier ? marketInfo(destKey).name : s.tradeStation.name)}`;
+    // Bester Einkauf (ohne Schiffsposition): was bei diesem Auftrag hängen bleibt
+    const best = courier ? deliverySources(state, c, null).filter((x) => !x.own).sort((a, b) => b.profit - a.profit)[0] : undefined;
     const btn = courier
-      ? `<button class="btn small ${offer ? 'primary' : ''}" ${act('courier-ship-modal', { id: c.id })}>${icon('trader', 16)}${offer ? 'Annehmen und Schiff schicken' : 'Schiff schicken'}</button>`
+      ? `<button class="btn small ${offer ? 'primary' : ''}" ${act('courier-ship-modal', { id: c.id })}>${icon('trader', 16)}${offer ? 'Ansehen und annehmen' : 'Schiff schicken'}</button>`
       : offer ? `<button class="btn small primary" ${act('accept', { id: c.id })}>Annehmen</button>` : `<button class="btn small" ${act('courier-modal', { id: c.id })}>Aus Lager liefern</button>`;
     return `<div class="row" data-key="c${c.id}" style="flex-wrap:wrap">${wareTile(c.ware)}<div class="grow"><div class="title two-lines">${esc(c.title)}</div>
       <div class="sub wrap">${fmtInt(c.amount)} ${esc(w.name)} ${route}</div>
-      ${courier ? `<div class="small muted">Lohn <b class="pos">${fmtCr(c.reward)}</b> · Einkauf ca. ${fmtCr(cost)} · Gewinn ca. <b class="pos">${fmtCr(c.reward - cost)}</b> · für ${c.size}-Frachter${offer ? ` · ${fmtDur(c.duration)} Frist` : ''}</div>` : ''}
+      ${courier ? `<div class="small muted">Zahlt <b class="pos">${fmtInt(c.reward / c.amount)} Cr</b> je Einheit (üblich ${fmtInt(w.price.avg)}) · Lohn ${fmtCr(c.reward)}${best ? ` · günstig bei ${esc(best.name)} für ${fmtInt(best.price)} Cr · Gewinn bis ${fmtCr(best.profit)}${best.units < c.amount - 0.5 ? ' je Fahrt' : ''}` : ''} · für ${c.size}-Frachter${offer ? ` · ${fmtDur(c.duration)} Frist` : ''}</div>` : ''}
       ${offer ? '' : `${bar(c.delivered / c.amount)}<div class="small muted" style="margin-top:4px">${fmtInt(c.delivered)} / ${fmtInt(c.amount)} geliefert · noch ${fmtDur(c.deadline - state.time)}</div>`}</div>
       ${courier ? '' : `<div class="right"><b class="pos">${fmtCr(c.reward)}</b><div class="small muted">${offer ? `${fmtDur(c.duration)} Frist` : `Ruf +${c.rep}`}</div></div>`}
       <div style="width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
@@ -1229,7 +1233,11 @@ export function modalHtml(state: GameState, ui: UIState): string {
     case 'planDiagram': return diagramEditor(state, ui);
     case 'planBuild': return modalShell('Plan in Station bauen', buildModal(state, computePlan(ui.plan)), `<button class="btn" ${act('modal-close')}>Abbrechen</button>`, 'Stationsplaner');
     case 'courier': return deliveryModal(state, m);
-    case 'courierShip': return courierShipModal(state, m);
+    case 'courierShip': {
+      const v = deliveryModalHtml(state, m);
+      if (!v) return modalShell('Lieferauftrag', '<div class="box empty">Der Auftrag ist nicht mehr verfügbar.</div>', `<button class="btn" ${act('modal-close')}>Schließen</button>`);
+      return `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(v.title)}"><div class="sheet-head"><h1><span class="eyebrow">${esc(v.eyebrow)}</span>${esc(v.title)}</h1><button class="icon-btn" ${act('modal-close')} aria-label="Schließen">${icon('close', 22)}</button></div><div class="sheet-body">${v.body}</div><div class="modal-foot">${v.foot}</div></div>`;
+    }
   }
 }
 
@@ -1282,25 +1290,6 @@ function storageModal(state: GameState, stationId: string, ware: string, back = 
       <p class="small muted" style="margin:4px 0 0">${consumed ? 'Die Station verbraucht diese Ware selbst. Verkäufe und Händler greifen nur auf den Teil über der Reserve zu.' : 'Die Station verbraucht diese Ware nicht – eine Reserve ist meist unnötig.'}</p>
       ${st.reserve?.[ware] === undefined ? '' : `<button class="linkish" ${act('storage-auto', { st: st.id, ware, k: 'reserve' })}>Reserve automatisch (${consumed ? '40 % der Grenze' : 'keine'})</button>`}</div>`,
     `<button class="btn primary" ${act(back ? 'modal-back' : 'modal-close')}>${back ? 'Zurück zur Lieferung' : 'Fertig'}</button>`, st.name);
-}
-
-/** Kurierauftrag: einen passenden Transporter auswählen */
-function courierShipModal(state: GameState, m: Extract<Modal, { type: 'courierShip' }>): string {
-  const c = state.contracts.find((x) => x.id === m.contract);
-  if (!c || !c.source || (c.status !== 'offer' && c.status !== 'active')) return modalShell('Kurierauftrag', '<div class="box empty">Der Auftrag ist nicht mehr verfügbar.</div>', `<button class="btn" ${act('modal-close')}>Schließen</button>`);
-  const w = WARES[c.ware];
-  const fit = state.ships.filter((s) => SHIP_MAP[s.cls].role === 'trader' && SHIP_MAP[s.cls].storage === w.storage);
-  const rows = fit.map((s) => {
-    const cls = SHIP_MAP[s.cls];
-    const units = Math.min(c.amount - c.delivered, cls.capacity / w.volume);
-    const trips = Math.ceil((c.amount - c.delivered) / (cls.capacity / w.volume));
-    return `<div class="row tap" ${act('courier-ship', { c: c.id, sh: s.id })}>${icon('trader', 20)}<div class="grow"><div class="title">${esc(s.name)}</div>
-      <div class="sub wrap">${esc(s.status)} · ${fmtInt(units)} je Fahrt${trips > 1 ? ` · ${trips} Fahrten` : ''}</div></div>${icon('chev', 20, 'chev')}</div>`;
-  }).join('');
-  const body = `<p class="small muted" style="margin-top:0">Abholen bei <b>${esc(marketInfo(c.source).name)}</b>, liefern an <b>${esc(marketInfo(c.market!).name)}</b>. Die Ware kaufst du beim Abholen (ca. ${fmtCr(c.amount * marketPrice(state, c.source, c.ware))}); der Lohn von <b class="pos">${fmtCr(c.reward)}</b> liegt 30–50 % über dem üblichen Verkaufswert.</p>
-    ${fit.length ? `<div class="box rows">${rows}</div>` : `<div class="box empty">Kein passender Transporter für ${esc(STORAGE_LABEL[w.storage])}. Kaufe einen unter Stationen → Schiffe.</div>`}
-    <p class="small muted">Transporter im Autohandel übernehmen angenommene Kurieraufträge auch von selbst.</p>`;
-  return modalShell('Schiff schicken', body, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`, `${fmtInt(c.amount)} ${esc(w.name)}`);
 }
 
 function deliveryModal(state: GameState, m: Extract<Modal, { type: 'courier' }>): string {
@@ -1412,7 +1401,7 @@ function welcomeModal(): string {
     <div class="sheet-body"><div class="small muted" style="margin:0 0 8px">Wie willst du anfangen?</div>
       <div class="start-pick">
         <button class="start-card" ${act('start-game', { kind: 'mining' })}>${icon('miner', 26)}<b>Loslegen mit Bergbau</b><span>Alligator-Miner (M) · 20.000 Cr</span><small>Erz und Silizium fördern und an NPC-Fabriken verkaufen. Läuft fast von selbst.</small></button>
-        <button class="start-card" ${act('start-game', { kind: 'trading' })}>${icon('trader', 26)}<b>Loslegen mit Handel</b><span>Tuatara-Transporter (S) · 50.000 Cr</span><small>Feste Routen, Kurieraufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></button>
+        <button class="start-card" ${act('start-game', { kind: 'trading' })}>${icon('trader', 26)}<b>Loslegen mit Handel</b><span>Tuatara-Transporter (S) · 50.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></button>
       </div>
       <div class="steps" style="margin-top:14px">
       <div><span class="n">1</span><div><b>Bauen</b>Module planst du unter Stationen → Module. Das Baumaterial liefern Schiffe ins Baulager der Station.</div></div>

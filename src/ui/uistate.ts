@@ -1,6 +1,7 @@
 import { defaultPlan, type PlanSettings } from '../engine/planner';
 import type { SellModal } from './sellView';
 import type { BuyModal } from './buyView';
+import type { DeliveryModal } from './deliveryView';
 import type { ChartSpec } from './charts';
 
 export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc' | 'npcst';
@@ -29,7 +30,7 @@ export type Modal =
   | { type: 'import'; error?: string }
   | { type: 'home'; ship: string }
   | { type: 'courier'; contract: number; station?: string }
-  | { type: 'courierShip'; contract: number }
+  | DeliveryModal
   | { type: 'planPick'; group: string; back?: boolean }
   | { type: 'vendor'; sector: string; npc?: string; vendor?: string }
   | { type: 'storage'; station: string; ware: string; back?: Modal }
