@@ -1364,13 +1364,13 @@ export class SectorRenderer {
       const yardImg = moduleSprite('yard_' + d.yardSize, seed);
       if (yardImg) {
         // Werft als Bild (Anschluss unten, Bucht nach außen offen); baut sie, liegt das Schiff in der Bucht und es sprühen Funken
-        const s = unit * YARD_IMG;
+        const s = unit * YARD_IMG[d.yardSize ?? 'M'];
         ctx.save();
         ctx.rotate(Math.PI / 2);
         ctx.drawImage(yardImg, -s / 2, -s / 2, s, s);
         ctx.restore();
         if (o.yardBusy) {
-          const L = unit * 0.7, H2 = unit * 0.16;
+          const L = s * 0.56, H2 = s * (d.yardSize === 'M' ? 0.13 : 0.2);
           ctx.strokeStyle = rgba(C.trader, 0.55 + 0.25 * Math.sin(now / 300));
           ctx.lineWidth = Math.max(1, lw);
           ctx.beginPath();
@@ -2234,8 +2234,8 @@ const CORE_TURN: Record<string, number> = { ring: Math.PI / 6, block: Math.PI / 
 const CORE_SIZE: Record<string, number> = { ring: 2.1, block: 2.1, tri: 2.1, spine: 2.65 };
 /** Kantenlänge der Modulbilder in Moduleinheiten (Anschluss zu Anschluss rund 1,05) */
 const MODULE_IMG = 1.1;
-/** Kantenlänge des S/M-Werftbilds in Moduleinheiten */
-const YARD_IMG = 1.25;
+/** Kantenlänge der Werftbilder in Moduleinheiten (Anschluss bis Spitze 95 %) */
+const YARD_IMG: Record<string, number> = { M: 1.25, L: 1.79 };
 /** Pierbild: Kantenlänge (Moduleinheiten) und Abstand des Anschlusses von der Bildmitte (Anteil der Kante) */
 const PIER_IMG = 2.0;
 const PIER_PORT = 469 / 1254;
