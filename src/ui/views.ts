@@ -785,9 +785,13 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     const r = s.route;
     const eps: { v: string; label: string }[] = [
       ...state.stations.map((st) => ({ v: 'station:' + st.id, label: st.name })),
-      ...knownSectors(state).map((sec) => ({ v: 'market:' + sec, label: SECTOR_MAP[sec].tradeStation.name + ' (Markt)' })),
+      ...knownSectors(state).flatMap((sec) => [
+        { v: 'market:' + sec, label: SECTOR_MAP[sec].tradeStation.name + ' (Markt)' },
+        // NPC-Stationen: Fabriken (kaufen Vorprodukte, verkaufen ihre Produkte), Werften und andere Abnehmer
+        ...sector(sec).npcStations.map((n) => ({ v: `market:${sec}:${n.id}`, label: n.name })),
+      ]),
     ];
-    const epVal = (ep?: TradeEndpoint) => (ep ? (ep.kind === 'station' ? 'station:' + ep.id : 'market:' + ep.sector) : '');
+    const epVal = (ep?: TradeEndpoint) => (ep ? (ep.kind === 'station' ? 'station:' + ep.id : ep.market ? `market:${ep.sector}:${ep.market}` : 'market:' + ep.sector) : '');
     const wares = WARE_IDS.filter((id) => WARES[id].storage === c.storage).sort((a, b) => WARES[a].name.localeCompare(WARES[b].name));
     const sel = (field: string, value: string, opts: { v: string; label: string }[]) =>
       `<select data-change="${field}" data-id="${s.id}">${opts.map((o) => `<option value="${esc(o.v)}" ${o.v === value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;

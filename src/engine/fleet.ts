@@ -668,6 +668,11 @@ export function inTransitForContract(state: GameState, contractId: number): numb
   return n;
 }
 
+/** Angenommener, noch offener Auftrag mit diesem Lieferziel (Marktschlüssel) und dieser Ware */
+export function openContractAt(state: GameState, key: string, ware: string): Contract | undefined {
+  return state.contracts.find((c) => c.status === 'active' && c.ware === ware && !c.story && (c.market ?? c.sector) === key && c.delivered < c.amount - 0.5);
+}
+
 function routeJob(state: GameState, s: Ship): TradeJob | null {
   const r = s.route;
   if (!r) return null;
@@ -689,7 +694,11 @@ function routeJob(state: GameState, s: Ship): TradeJob | null {
     const st = stationById(state, r.to.id);
     if (!st) return null;
     room = roomAt(st, r.ware, r.from.kind === 'station' ? 'own' : 'market');
-  } else room = marketRoom(state, marketKey(r.to), r.ware);
+  } else {
+    // Liegt am Ziel ein angenommener Auftrag, nimmt er den Rest zusätzlich zum Marktlager ab
+    const c = openContractAt(state, marketKey(r.to), r.ware);
+    room = marketRoom(state, marketKey(r.to), r.ware) + (c ? Math.max(0, c.amount - c.delivered - inTransitForContract(state, c.id)) : 0);
+  }
   const n = Math.min(units, have, room);
   if (n < Math.min(units * 0.2, 100)) return null;
   return { ware: r.ware, amount: n, from: r.from, to: r.to, stage: 'pickup' };
@@ -801,8 +810,10 @@ function doTrade(state: GameState, s: Ship): void {
     }
   } else {
     const key = marketKey(job.to);
-    if (job.contract != null) {
-      const { used, pay } = contractDeliver(state, job.contract, s.cargo.ware, s.cargo.amount);
+    // Jede Lieferung an ein Auftragsziel zählt für den Auftrag – auch über Versorgungslinien, Einzelverkäufe oder freien Handel
+    const contractId = job.contract ?? openContractAt(state, key, s.cargo.ware)?.id;
+    if (contractId != null) {
+      const { used, pay } = contractDeliver(state, contractId, s.cargo.ware, s.cargo.amount);
       s.cargo.amount -= used;
       // Der Lohn zählt als Ertrag des Schiffs und seiner Heimat – mit Credit-Anzeige am Ziel
       if (pay > 0) {

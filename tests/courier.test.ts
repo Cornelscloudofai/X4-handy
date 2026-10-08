@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
 import { COURIER_BONUS, contractDeliver, generateCourier, isDelivery, wareSellers } from '../src/engine/contracts';
-import { buyOrder, cancelJob, courierOrder, moveOrderUp, removeOrder } from '../src/engine/actions';
+import { buyOrder, cancelJob, courierOrder, moveOrderUp, removeOrder, setTraderMode } from '../src/engine/actions';
 import { marketPrice } from '../src/engine/economy';
 import { SHIP_MAP } from '../src/data/ships';
 import { WARES } from '../src/data/wares';
@@ -117,4 +117,21 @@ describe('Lieferaufträge nach Bedarf', () => {
     sh.cargo = { ware: 'energycells', amount: 100 };
     expect(cancelJob(s, sh.id).ok).toBe(false);
   });
+
+  it('Versorgungslinie zum Auftragsziel erfüllt den Auftrag in mehreren Flügen', () => {
+    const s = newGame(7, 'trading');
+    const st = s.stations[0];
+    const sh = s.ships[0];
+    // Auftrag über mehr als eine Ladung an den Zhin-Handelsposten, Ware liegt im eigenen Lager
+    const c = { id: s.nextId++, sector: 'zhin', ware: 'graphene', amount: 1500, delivered: 0, reward: 300_000, rep: 1, deadline: s.time + 10 * 3600, duration: 10 * 3600, status: 'active' as const, title: 'Test: Graphen' };
+    s.contracts.push(c);
+    st.inventory.graphene = 2000;
+    const r = setTraderMode(s, sh.id, 'route', { from: { kind: 'station', id: st.id }, to: { kind: 'market', sector: 'zhin' }, ware: 'graphene' });
+    expect(r.ok, r.msg).toBe(true);
+    const sold = s.totals.sold;
+    for (let t = 0; t < 4 * 3600 && c.status === 'active'; t += 30) step(s, 30);
+    expect(c.status).toBe('done');
+    expect(c.delivered).toBe(1500);
+    expect(s.totals.sold - sold).toBeGreaterThanOrEqual(300_000);
+  }, 60000);
 });

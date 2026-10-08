@@ -985,9 +985,9 @@ function onClick(e: MouseEvent): void {
 }
 
 function parseEp(v: string): TradeEndpoint | null {
-  const [kind, id] = v.split(':');
+  const [kind, id, npc] = v.split(':');
   if (kind === 'station' && stationById(state, id)) return { kind: 'station', id };
-  if (kind === 'market' && SECTOR_MAP[id]) return { kind: 'market', sector: id };
+  if (kind === 'market' && SECTOR_MAP[id]) return npc && NPC_MAP[npc] ? { kind: 'market', sector: id, market: npc } : { kind: 'market', sector: id };
   return null;
 }
 
