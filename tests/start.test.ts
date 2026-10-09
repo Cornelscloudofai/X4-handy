@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { START_KIT, newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
+import { acceptContract } from '../src/engine/contracts';
+import type { GameState } from '../src/engine/types';
+
+/** Spielt wie im ersten Kapitel angeleitet: Handel nimmt Lieferaufträge an, Bergbau lässt den Miner arbeiten */
+function play(s: GameState, hours: number): void {
+  for (let t = 0; t < hours * 3600; t += 60) {
+    if (s.start === 'trading') for (const c of s.contracts) if (c.status === 'offer' && c.size) acceptContract(s, c.id);
+    step(s, 60);
+  }
+}
 
 describe('Spielstart', () => {
   for (const kind of ['mining', 'trading'] as const) {
@@ -10,7 +20,7 @@ describe('Spielstart', () => {
       expect(s.credits).toBe(START_KIT[kind].credits);
       expect(s.stations[0].modules.map((m) => m.def).sort()).toEqual(['core', 'dock_m', 'storage_container', 'storage_solid']);
       expect(s.ships.map((x) => x.cls)).toEqual([START_KIT[kind].ship]);
-      step(s, 2 * 3600);
+      play(s, 2);
       const perHour = (s.credits - START_KIT[kind].credits) / 2;
       expect(perHour).toBeGreaterThan(40_000);
       expect(perHour).toBeLessThan(250_000);
@@ -20,11 +30,19 @@ describe('Spielstart', () => {
   it('beide Starts sind ähnlich lohnend', () => {
     const gain = (k: 'mining' | 'trading') => {
       const s = newGame(5, k);
-      step(s, 4 * 3600);
+      play(s, 4);
       return s.credits - START_KIT[k].credits;
     };
     const m = gain('mining');
     const t = gain('trading');
     expect(Math.max(m, t) / Math.min(m, t)).toBeLessThan(2);
+  }, 60000);
+
+  it('Autohandel ganz ohne Eingriff verdient am Handelsstart nur wenig', () => {
+    const s = newGame(5, 'trading');
+    s.contractTimer = 1e9;
+    s.contracts = [];
+    step(s, 2 * 3600);
+    expect((s.credits - START_KIT.trading.credits) / 2).toBeLessThan(80_000);
   }, 60000);
 });

@@ -7,6 +7,7 @@ import type { Contract, GameState } from './types';
 import { emit, log, pick, rand } from './util';
 import { knownSectors } from './logistics';
 import { marketPrice, marketRoom, marketStock } from './economy';
+import { activeOpportunity, effectivePrice } from './trading';
 
 const TITLES = ['Nachschub für', 'Dringende Lieferung:', 'Großauftrag:', 'Wiederaufbau:', 'Bestellung von'];
 
@@ -116,6 +117,24 @@ export function wareSellers(state: GameState, ware: string, exclude = ''): WareS
     }
   }
   return out.sort((a, b) => a.price - b.price);
+}
+
+export interface WareBuyer { key: string; name: string; sector: string; price: number; room: number; /** Gelegenheit: zahlt gerade mehr */ opp?: boolean }
+
+/** Wer in bekannten Sektoren eine Ware ankauft: Handelsposten und NPC-Stationen, die sie brauchen – bester Preis zuerst */
+export function wareBuyers(state: GameState, ware: string, exclude = ''): WareBuyer[] {
+  const out: WareBuyer[] = [];
+  for (const sec of knownSectors(state)) {
+    for (const key of [sec, ...sector(sec).npcStations.filter((n) => n.buys.includes(ware)).map((n) => n.id)]) {
+      if (key === exclude || !state.markets[key]?.[ware]) continue;
+      const room = marketRoom(state, key, ware);
+      if (room < 1) continue;
+      const p = marketInfo(key);
+      const opp = activeOpportunity(state, key, ware, 'demand');
+      out.push({ key, name: p.name, sector: p.sector, price: effectivePrice(state, key, ware, 'demand'), room, opp: !!opp });
+    }
+  }
+  return out.sort((a, b) => b.price - a.price);
 }
 
 /**

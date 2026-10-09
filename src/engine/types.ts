@@ -225,6 +225,13 @@ export interface TradeJob {
   hold?: boolean;
   /** Laderaum verkaufen: liefert die Ladung an Bord (beim Start der Fahrt) an `to` */
   fromHold?: boolean;
+  /** Vom Spieler befohlen (Einzelauftrag, Handelsroute, Lieferauftrag): nutzt Gelegenheiten */
+  manual?: boolean;
+  /** Fahrt einer Handelsroute: zählt für den Stammkunden-Bonus */
+  route?: boolean;
+  /** Freier Autohandel: Der Pilot behält einen Gewinnanteil; cost = Einkaufspreis der Ladung */
+  free?: boolean;
+  cost?: number;
 }
 
 /** market: Handelsposten eines Sektors (market fehlt) oder eine NPC-Käuferstation (market = deren ID) */
@@ -234,10 +241,14 @@ export interface RouteOrder {
   from: TradeEndpoint;
   to: TradeEndpoint;
   ware: string;
+  /** Weitere Abnehmer: verkauft wird jeweils an den, der gerade am besten zahlt */
+  alt?: TradeEndpoint[];
   /** Handelsroute zwischen Märkten: Mindestgewinn (Anteil am Einkaufspreis, z. B. 0,1 = 10 %) */
   minMargin?: number;
   /** Fällt der Gewinn darunter: pausieren (wartet, bis es sich wieder lohnt) oder beenden */
   onLow?: 'pause' | 'end';
+  /** Abgeschlossene Fahrten auf dieser Route (Stammkunden-Bonus) */
+  streak?: number;
 }
 
 export type RestAction = 'auto' | 'topup' | 'sell' | 'wait';
@@ -296,6 +307,10 @@ export interface Ship {
   holdCargo?: boolean;
   /** Anzeige, warum die Handelsroute gerade ruht (z. B. Gewinn unter der Schwelle) */
   routeNote?: string;
+  /** Zuletzt gemeldeter Pilotenrang */
+  rank?: number;
+  /** Summe der Gewinnanteile, die der Pilot im freien Autohandel behalten hat */
+  pilotShare?: number;
   status: string;
   trips: number;
   earned: number;
@@ -370,6 +385,21 @@ export interface LogEntry { t: number; text: string; kind: 'info' | 'good' | 'wa
 /** Verlaufsdaten (Diagramme): Messzeitpunkte und Reihen mit gleich vielen Werten (null = keine Messung) */
 export interface HistoryData { times: number[]; s: Record<string, (number | null)[]>; last: Record<string, number> }
 
+/** Gelegenheit: eine Station zahlt kurz deutlich mehr (demand) oder verkauft günstig (supply) – nur für eigene Befehle */
+export interface Opportunity {
+  id: number;
+  /** Marktschlüssel */
+  key: string;
+  ware: string;
+  /** demand: zahlt mehr · supply: verkauft günstiger */
+  kind: 'demand' | 'supply';
+  /** Preisfaktor (z. B. 1,8 oder 0,6) */
+  mult: number;
+  /** Einheiten, die noch zum Sonderpreis gehandelt werden */
+  left: number;
+  until: number;
+}
+
 /** Spielstart: Bergbau mit Alligator oder Handel mit Tuatara */
 export type StartKind = 'mining' | 'trading';
 
@@ -391,6 +421,9 @@ export interface GameState {
   story: { id?: string; index: number; claimed: boolean; startedAt: number; base: Record<string, number>; contractFloor: number };
   /** Gewählter Spielstart (fehlt bei alten Spielständen und beim klassischen Start mit fertiger Station) */
   start?: StartKind;
+  /** Gelegenheiten (Preisspitzen) und Zeit bis zur nächsten */
+  opportunities?: Opportunity[];
+  oppTimer?: number;
   /** Einstieg: geführte erste Schritte (gesehene Hinweise, ausgeblendet) */
   help?: { coachOff?: boolean; seen?: string[] };
   totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number; shipsBuiltL?: number; buildOwn?: Record<string, number>; couriers?: number };

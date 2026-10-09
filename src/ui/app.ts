@@ -606,7 +606,13 @@ function onClick(e: MouseEvent): void {
       case 'trade-mode': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, mode: d.mode === 'route' ? 'route' : 'buy' }; refresh(); } break;
       case 'trade-ship': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, ship: d.id, amount: undefined }; refresh(); } break;
       case 'trade-amount': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, amount: Math.floor(Number(d.v)) }; refresh(); } break;
-      case 'trade-to': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, to: d.k }; refresh(); } break;
+      case 'trade-to': if (ui.modal?.type === 'trade') {
+        // Abnehmer an-/abwählen, höchstens drei (ohne Auswahl gilt der beste)
+        const cur = ui.modal.to ?? [];
+        const next = cur.includes(d.k!) ? cur.filter((k) => k !== d.k) : [...cur, d.k!].slice(-3);
+        ui.modal = { ...ui.modal, to: next };
+        refresh();
+      } break;
       case 'trade-low': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, onLow: d.v === 'end' ? 'end' : 'pause' }; refresh(); } break;
       case 'trade-buy': case 'trade-route': {
         const m = ui.modal;
@@ -615,7 +621,7 @@ function onClick(e: MouseEvent): void {
         if (!ship) { toast('Kein passender Transporter.', 'warn'); break; }
         const r = a === 'trade-buy'
           ? A.holdBuyOrder(state, ship.id, m.ware, marketEndpoint(m.from), Number(d.amount))
-          : d.to ? A.setTradeRoute(state, ship.id, { from: marketEndpoint(m.from), to: marketEndpoint(d.to), ware: m.ware, minMargin: m.minPct / 100, onLow: m.onLow }) : { ok: false, msg: 'Wähle einen Käufer.' };
+          : d.to ? (() => { const ks = d.to!.split(','); return A.setTradeRoute(state, ship.id, { from: marketEndpoint(m.from), to: marketEndpoint(ks[0]), alt: ks.slice(1).map(marketEndpoint), ware: m.ware, minMargin: m.minPct / 100, onLow: m.onLow }); })() : { ok: false, msg: 'Wähle einen Käufer.' };
         if (r.ok) ui.modal = null;
         result(r);
         break;
@@ -1225,5 +1231,7 @@ function onChange(e: Event): void {
   if (field === 'route-from') { const ep = parseEp(el.value); if (ep) route.from = ep; }
   if (field === 'route-to') { const ep = parseEp(el.value); if (ep) route.to = ep; }
   if (field === 'route-ware') route.ware = el.value;
+  // Geänderte Route: Stammkunden-Bonus beginnt neu
+  if (field === 'route-from' || field === 'route-to' || field === 'route-ware') { delete route.streak; if (field === 'route-to') delete route.alt; }
   result(A.setTraderMode(state, s.id, 'route', route));
 }

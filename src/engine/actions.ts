@@ -311,7 +311,7 @@ export function sellOrder(state: GameState, shipId: string, stationId: string, w
   if (!hasDockFor(st, cls.size)) return fail(cls.size === 'L' ? 'Die Station braucht einen Pier.' : 'Die Station braucht ein Dock.');
   const n = Math.min(amount, cls.capacity / WARES[ware].volume, sellableStock(st, ware));
   if (n < 1) return fail('Nichts über der Reserve zu verladen.');
-  const job = { ware, amount: n, from: { kind: 'station' as const, id: st.id }, to, stage: 'pickup' as const, contract };
+  const job = { ware, amount: n, from: { kind: 'station' as const, id: st.id }, to, stage: 'pickup' as const, contract, manual: true };
   if (repeat) {
     s.mode = 'route';
     s.route = { from: { kind: 'station', id: st.id }, to, ware };
@@ -342,7 +342,7 @@ export function buyOrder(state: GameState, shipId: string, stationId: string, wa
   const n = Math.min(amount, cls.capacity / WARES[ware].volume);
   if (n < 1) return fail('Keine Menge gewählt.');
   const to = { kind: 'station' as const, id: st.id };
-  const job = { ware, amount: n, from, to, stage: 'pickup' as const };
+  const job = { ware, amount: n, from, to, stage: 'pickup' as const, manual: true };
   if (repeat) {
     s.mode = 'route';
     s.route = { from, to, ware };
@@ -378,6 +378,7 @@ export function courierOrder(state: GameState, shipId: string, contractId: numbe
     if (!r.ok) return r;
   }
   const job = courierTrip(state, s, c, from);
+  if (job) job.manual = true;
   if (!job) return fail('Für diesen Auftrag ist schon alles unterwegs oder nirgends Ware zu haben.');
   const busy = !!s.job || !!s.cargo || s.phase === 'toTarget' || s.phase === 'docking';
   if (busy) {
@@ -412,7 +413,7 @@ export function holdBuyOrder(state: GameState, shipId: string, ware: string, fro
   if (expectedCargo(s)) return fail('Der Laderaum ist nach den geplanten Befehlen noch belegt – zuerst „Laderaum verkaufen“ einreihen.');
   const n = Math.floor(Math.min(amount, cls.capacity / WARES[ware].volume));
   if (n < 1) return fail('Keine Menge gewählt.');
-  const busy = enqueue(s, { ware, amount: n, from, to: from, stage: 'pickup', hold: true });
+  const busy = enqueue(s, { ware, amount: n, from, to: from, stage: 'pickup', hold: true, manual: true });
   return ok(busy ? `${s.name} kauft nach den laufenden Befehlen ${n.toLocaleString('de-DE')} ${WARES[ware].name}.` : `${s.name} fliegt los: ${n.toLocaleString('de-DE')} ${WARES[ware].name} kaufen.`);
 }
 
@@ -426,7 +427,7 @@ export function holdSellOrder(state: GameState, shipId: string, to: TradeEndpoin
     const st = stationById(state, to.id);
     if (!st || !hasDockFor(st, SHIP_MAP[s.cls].size)) return fail('Die Station hat kein passendes Dock.');
   }
-  const busy = enqueue(s, { ware: cargo.ware, amount: cargo.amount, from: to, to, stage: 'deliver', fromHold: true });
+  const busy = enqueue(s, { ware: cargo.ware, amount: cargo.amount, from: to, to, stage: 'deliver', fromHold: true, manual: true });
   return ok(busy ? `${s.name} verkauft die Ladung nach den laufenden Befehlen.` : `${s.name} bringt die Ladung zum Käufer.`);
 }
 

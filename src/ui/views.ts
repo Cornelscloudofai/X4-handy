@@ -53,6 +53,7 @@ import { buyModalHtml } from './buyView';
 import { holdSellModalHtml, tradeModalHtml, wareBuyers } from './tradeView';
 import { deliverySources, deliveryModalHtml } from './deliveryView';
 import { isDelivery } from '../engine/contracts';
+import { RANK_LOAD, RANK_RANGE, RANK_SHARE, activeOpportunity, effectivePrice, pilotRank, rankStars, streakBonus, tripsToNextRank } from '../engine/trading';
 import { computePlan, producible } from '../engine/planner';
 import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
 
@@ -215,7 +216,7 @@ function shipCard(state: GameState, s: Ship, following: boolean): string {
   const c = SHIP_MAP[s.cls];
   const eta = shipEta(state, s);
   const cargo = s.cargo ? `${fmtAmount(s.cargo.amount)} ${WARES[s.cargo.ware].name}` : 'leer';
-  return cardShell(icon(c.role === 'miner' ? 'miner' : 'trader', 24), s.name, `${esc(c.name)} · ${esc(stationName(state, s.home))}`, `
+  return cardShell(icon(c.role === 'miner' ? 'miner' : 'trader', 24), s.name, `${esc(c.name)} · ${esc(stationName(state, s.home))}${c.role === 'trader' ? ` · <span class="teal-text">${rankStars(pilotRank(s))}</span>` : ''}`, `
     <div class="stats3">
       <div>${icon('info', 22)}<span><b>Status</b>${esc(s.status)}</span></div>
       <div>${icon('box', 22)}<span><b>Fracht</b>${esc(cargo)}</span></div>
@@ -787,6 +788,7 @@ function orderQueue(state: GameState, s: Ship): string {
 
 function shipPanel(state: GameState, s: Ship, p: Panel): string {
   const c = SHIP_MAP[s.cls];
+  const rank = pilotRank(s);
   const home = stationById(state, s.home);
   let orders = '';
   if (c.role === 'miner') {
@@ -814,12 +816,14 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     orders = `${orderQueue(state, s)}<div class="section"><h3>Befehl</h3>
       <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Autohandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Versorgungslinie</button></div>
       ${s.mode === 'auto'
-        ? `<p class="small muted">Verkauft Überschüsse der Heimatstation an eigene Stationen, aktive Aufträge oder den besten Markt in der Nähe und kauft fehlende Eingangswaren für sie ein. Die Heimatstation ist immer einer der beiden Handelspartner – für andere Stationen arbeitet er nur über Einzelaufträge oder eine Versorgungslinie.</p>`
+        ? `<p class="small muted">Versorgt zuerst die Heimatstation: verkauft ihre Überschüsse und kauft fehlende Eingangswaren und Baumaterial. Angenommene Lieferaufträge erledigt er auch.${state.start ? ` Hat die Heimat nichts zu tun, handelt er frei zwischen fremden Stationen – dort zählt der Pilotenrang: Rang ${rank} handelt ${RANK_RANGE[rank] === 0 ? 'nur im Heimatsektor' : RANK_RANGE[rank] >= 99 ? 'in allen bekannten Sektoren' : `bis ${RANK_RANGE[rank]} Sprung${RANK_RANGE[rank] === 1 ? '' : 'e'} weit`}, kauft ${Math.round(RANK_LOAD[rank] * 100)} % Ladungen und behält ${Math.round(RANK_SHARE[rank] * 100)} % des Gewinns. Eigene Handelsrouten und Befehle sind davon frei – und nutzen Gelegenheiten.` : ''}</p>`
         : `<div class="form">
           <div class="field"><label>Von</label>${sel('route-from', epVal(r?.from), eps)}</div>
           <div class="field"><label>Nach</label>${sel('route-to', epVal(r?.to), eps)}</div>
           <div class="field"><label>Ware</label>${sel('route-ware', r?.ware ?? '', wares.map((id) => ({ v: id, label: WARES[id].name })))}</div>
           ${r ? `<p class="small muted" style="margin:0">Pendelt dauerhaft: ${esc(epName(state, r.from))} → ${esc(epName(state, r.to))} mit ${esc(WARES[r.ware].name)}. Märkte kaufen und verkaufen zum Tagespreis.</p>` : ''}
+          ${r?.alt?.length ? `<p class="small muted" style="margin:0">Weitere Abnehmer: ${r.alt.map((e) => esc(epName(state, e))).join(', ')} – verkauft wird an den, der gerade am besten zahlt.</p>` : ''}
+          ${r?.streak ? `<p class="small pos" style="margin:0">Stammkunde: ${r.streak} Fahrten · +${Math.round(streakBonus(r.streak) * 100)} % beim Verkauf</p>` : ''}
           ${r?.minMargin != null ? (() => { const m = routeMargin(state, r); return `<p class="small ${m != null && m < r.minMargin ? 'warn-text' : 'muted'}" style="margin:0">Gewinnschwelle ${Math.round(r.minMargin * 100)} % – darunter ${r.onLow === 'end' ? 'endet die Route' : 'pausiert die Route'}. Gerade ${m == null ? '–' : `${Math.round(m * 100)} %`}. <button class="linkish" ${act('route-margin-off', { id: s.id })}>Schwelle entfernen</button></p>`; })() : ''}
         </div>`}
     </div>`;
@@ -833,6 +837,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
       <div><small>Frachtraum</small><b style="font-size:15px">${fmtInt(c.capacity)} m³ ${esc(STORAGE_LABEL[c.storage])}</b></div>
       <div><small>Fahrten</small><b>${fmtInt(s.trips)}</b></div>
       <div><small>${c.role === 'miner' ? 'Geförderter Wert' : 'Handelsergebnis'}</small><b class="${s.earned >= 0 ? 'pos' : 'neg'}">${fmtCr(s.earned)}</b></div>
+      ${c.role === 'trader' ? `<div class="wide"><small>Pilot</small><b style="font-size:15px"><span class="teal-text">${rankStars(rank)}</span> Rang ${rank}${tripsToNextRank(s) != null ? ` · noch ${tripsToNextRank(s)} Fahrten bis Rang ${rank + 1}` : ' · Bestwert'}</b>${s.pilotShare ? `<div class="small muted">Gewinnanteil des Piloten im freien Handel bisher ${fmtCr(s.pilotShare)}</div>` : ''}</div>` : ''}
     </div></div>
     ${orders}
     <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(home?.name ?? '—')}</div><div class="sub">${esc(home ? sector(home.sector).name : '')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
@@ -1029,7 +1034,11 @@ function marketPanel(state: GameState, ui: UIState): string {
       ${sparkline(state, { key: H.price(secId, id), title: `Preis ${w.name}`, sub: SECTOR_MAP[secId].tradeStation.name, color: w.color, kind: 'level', unit: 'price' }, 52, 22)}
       <div class="right"><b>${tw(price)} Cr</b><div class="small ${rel > 0.05 ? 'pos' : rel < -0.05 ? 'neg' : 'muted'}">${rel >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(rel * 100))} %</div></div></div>`;
   }).join('');
+  const opps = (state.opportunities ?? []).filter((o) => o.until > state.time && o.left >= 1);
+  const oppRows = opps.map((o) => `<div class="row tap" ${act('open-ware', { id: o.ware })}>${wareTile(o.ware)}<div class="grow"><div class="title two-lines" style="font-weight:500">${esc(marketInfo(o.key).name)} ${o.kind === 'demand' ? `zahlt ×${o.mult.toFixed(1).replace('.', ',')}` : `verkauft für ${Math.round(o.mult * 100)} %`}</div>
+      <div class="sub wrap">${esc(WARES[o.ware].name)} · noch ${fmtAmount(o.left)} Einheiten · ${fmtDur(o.until - state.time)}</div></div>${icon('chev', 20, 'chev')}</div>`).join('');
   return sheet('Handel', SECTOR_MAP[secId].tradeStation.name, `
+    ${opps.length ? `<div class="section"><h3>Gelegenheiten · ${opps.length}</h3><div class="box rows">${oppRows}</div><p class="small muted" style="margin:6px 0 0">Sonderpreise gelten für deine Befehle und Handelsrouten – der freie Autohandel nutzt sie nicht.</p></div>` : ''}
     <p class="lead">Preise folgen dem Bestand: Leere Lager zahlen den Höchstpreis, volle nur den Mindestpreis. Große Verkäufe drücken die Preise.</p>
     <div class="pills" style="margin-bottom:10px">${known.map((id) => `<button class="pill ${id === secId ? 'teal' : ''}" ${act('market-sector', { id })}>${esc(SECTOR_MAP[id].name)}</button>`).join('')}</div>
     <div class="pills" style="margin-bottom:14px">${groups.map((g) => `<button class="pill ${ui.marketGroup === g ? 'amber' : ''}" ${act('market-group', { g })}>${g === 'all' ? 'Alle' : esc(GROUP_LABEL[g as 'mineral'])}</button>`).join('')}</div>
@@ -1058,12 +1067,15 @@ function warePanel(state: GameState, id: string, p: Panel): string {
   }
   const users = WARE_IDS.filter((x) => WARES[x].inputs.some((i) => i.ware === id));
   // Verkäufer antippen: einmal kaufen oder Handelsroute einrichten
-  const sellerRow = (key: string, name: string, secName: string) => `<div class="row tap" ${act('trade-open', { ware: id, from: key })}><div class="grow"><div class="title" style="font-weight:500">${esc(name)}</div><div class="sub">${esc(secName)} · Vorrat ${fmtAmount(marketStock(state, key, id))}</div></div><div class="right"><b>${fmtInt(marketPrice(state, key, id))} Cr</b><div class="small teal-text">Kaufen ›</div></div></div>`;
+  const sellerRow = (key: string, name: string, secName: string) => {
+    const o = activeOpportunity(state, key, id, 'supply');
+    return `<div class="row tap" ${act('trade-open', { ware: id, from: key })}><div class="grow"><div class="title" style="font-weight:500">${esc(name)}${o ? ' <span class="pill amber" style="padding:1px 6px;font-size:10px">GELEGENHEIT</span>' : ''}</div><div class="sub">${esc(secName)} · Vorrat ${fmtAmount(marketStock(state, key, id))}${o ? ` · Sonderpreis noch ${fmtDur(o.until - state.time)}` : ''}</div></div><div class="right"><b>${fmtInt(effectivePrice(state, key, id, 'supply'))} Cr</b><div class="small teal-text">Kaufen ›</div></div></div>`;
+  };
   const sellers = known.flatMap((sec) => [
     ...(marketStock(state, sec, id) >= 1 ? [{ key: sec, name: SECTOR_MAP[sec].tradeStation.name, sec }] : []),
     ...SECTOR_MAP[sec].npcStations.filter((n) => n.makes?.includes(id) && marketStock(state, n.id, id) >= 1).map((n) => ({ key: n.id, name: n.name, sec })),
-  ]).sort((a, b) => marketPrice(state, a.key, id) - marketPrice(state, b.key, id));
-  const buyerRows = wareBuyers(state, id).map((b) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(b.name)}</div><div class="sub">${esc(SECTOR_MAP[b.sector].name)} · nimmt ${fmtAmount(b.room)}</div></div><div class="right"><b>${fmtInt(b.price)} Cr</b></div></div>`).join('');
+  ]).sort((a, b) => effectivePrice(state, a.key, id, 'supply') - effectivePrice(state, b.key, id, 'supply'));
+  const buyerRows = wareBuyers(state, id).map((b) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(b.name)}${b.opp ? ' <span class="pill amber" style="padding:1px 6px;font-size:10px">GELEGENHEIT</span>' : ''}</div><div class="sub">${esc(SECTOR_MAP[b.sector].name)} · nimmt ${fmtAmount(b.room)}</div></div><div class="right"><b>${fmtInt(b.price)} Cr</b></div></div>`).join('');
   const prices = `${sellers.length ? sellers.map((x) => sellerRow(x.key, x.name, SECTOR_MAP[x.sec].name)).join('') : '<div class="empty">Gerade bietet niemand diese Ware an.</div>'}`;
   return sheet(w.name, `${GROUP_LABEL[w.group]} · Stufe ${w.tier}`, `
     <div class="section"><div class="kv">
