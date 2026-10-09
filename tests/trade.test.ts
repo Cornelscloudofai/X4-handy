@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
 import { holdBuyOrder, holdSellOrder, setTradeRoute } from '../src/engine/actions';
-import { expectedCargo, freeTradeJob, routeMargin, routeTarget } from '../src/engine/fleet';
-import { RANK_TRIPS, applyOpportunity, effectivePrice, pilotRank, relationBonus, noteDelivery, stepOpportunities } from '../src/engine/trading';
-import { knownSectors } from '../src/engine/logistics';
-import { sectorDistanceHint } from '../src/engine/logistics';
+import { expectedCargo, routeMargin, routeTarget, sectorTradeJob } from '../src/engine/fleet';
+import { RANK_RANGE, RANK_TRIPS, applyOpportunity, effectivePrice, pilotRank, relationBonus, noteDelivery, stepOpportunities } from '../src/engine/trading';
+import { marketKey } from '../src/engine/logistics';
+import { seenPrice } from '../src/engine/intel';
 import { marketPrice } from '../src/engine/economy';
 import type { GameState, TradeEndpoint } from '../src/engine/types';
 
@@ -71,20 +71,27 @@ describe('Handel: einmaliger Kauf, Laderaum verkaufen, Handelsrouten', () => {
     expect(sh.mode).toBe('auto');
   }, 60000);
 
-  it('Pilotenrang: steigt mit Fahrten; Rang 1 handelt frei nur im Heimatsektor – mit voller Ladung', () => {
+  it('Pilotenrang steigt mit Fahrten; Stationshändler: Rang 1–2 Heimatsektor, ab Rang 3 Nachbarsektoren', () => {
     const s = newGame(7, 'trading');
     const sh = s.ships[0];
     expect(pilotRank(sh)).toBe(1);
     sh.trips = RANK_TRIPS[4];
     expect(pilotRank(sh)).toBe(5);
-    sh.trips = 0;
-    const cap = 1350;
-    for (let i = 0; i < 20; i++) {
-      const j = freeTradeJob(s, sh, knownSectors(s));
-      if (!j) continue;
-      for (const ep of [j.from, j.to]) expect(sectorDistanceHint('zhin', ep.kind === 'market' ? ep.sector : 'zhin')).toBe(0);
-      expect(j.amount).toBeLessThanOrEqual(cap + 1);
-    }
+    expect([1, 2, 3, 4, 5].map((r) => RANK_RANGE[r])).toEqual([0, 0, 1, 1, 1]);
+  });
+
+  it('Sektor-Autohandel: günstigster Verkäufer, bestbietender Abnehmer – unabhängig vom Rang', () => {
+    const s = newGame(7, 'trading');
+    const sh = s.ships[0];
+    sh.home = '';
+    const j = sectorTradeJob(s, sh, 'zhin', 'energycells')!;
+    expect(j).toBeTruthy();
+    const from = marketKey(j.from), to = marketKey(j.to);
+    expect(seenPrice(s, to, 'energycells')!).toBeGreaterThan(seenPrice(s, from, 'energycells')!);
+    sh.trips = 500;
+    const j5 = sectorTradeJob(s, sh, 'zhin', 'energycells')!;
+    expect(marketKey(j5.from)).toBe(from);
+    expect(marketKey(j5.to)).toBe(to);
   });
 
   it('Sonderangebote gelten nur für Fahrten, die sie angenommen haben', () => {

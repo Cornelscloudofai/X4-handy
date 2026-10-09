@@ -84,7 +84,7 @@ function bar(frac: number, cls = ''): string {
 }
 
 function stationName(state: GameState, id: string): string {
-  return stationById(state, id)?.name ?? '—';
+  return id ? stationById(state, id)?.name ?? '—' : 'frei';
 }
 
 function epName(state: GameState, ep: TradeEndpoint): string {
@@ -684,7 +684,9 @@ function deliveryPrioBox(state: GameState, st: Station): string {
   const last = `<div class="row locked"><span class="pos-no num">${prio.length + 1}</span>${icon('market', 18, 'muted')}<div class="grow"><div class="title">Verkauf zum besten Preis</div><div class="sub wrap">Märkte, NPC-Käufer, Aufträge${prio.length ? ' und nicht eingetragene Stationen' : ' und eigene Stationen – je nach Ertrag'}</div></div></div>`;
   const add = others.length ? `<select class="prio-add" data-change="prio-add" data-st="${st.id}" aria-label="Station hinzufügen"><option value="">+ Station hinzufügen …</option>${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>` : '';
   const noTrader = state.ships.some((x) => x.home === st.id && SHIP_MAP[x.cls].role === 'trader') ? '' : ' <span class="warn-text">Diese Station hat noch keinen eigenen Transporter.</span>';
-  return `<div class="section"><h3>Lieferreihenfolge für Überschüsse ${helpBtn('trade')}</h3><div class="box rows">${rows}${last}</div>${add}
+  const ownOnly = `<div class="box" style="padding:12px 14px;margin-top:10px"><label class="check"><input type="checkbox" data-change="own-only" data-st="${st.id}" ${st.ownOnly ? 'checked' : ''}> Nur bei eigenen Stationen einkaufen</label>
+    <p class="small muted" style="margin:6px 0 0">Die Händler dieser Station kaufen fehlende Waren dann nur bei eigenen Stationen, nicht am Markt.</p></div>`;
+  return `<div class="section"><h3>Lieferreihenfolge für Überschüsse ${helpBtn('trade')}</h3><div class="box rows">${rows}${last}</div>${add}${ownOnly}
     <p class="small muted" style="margin:6px 0 0">Die Transporter dieser Station beliefern die Stationen der Reihe nach. Kann eine Station weniger als eine halbe Ladung abnehmen, rutschen sie eine Stufe tiefer – zuletzt wird zum besten Preis verkauft.${noTrader}</p>
     ${prio.length ? `<div class="box" style="padding:12px 14px;margin-top:10px"><label class="check"><input type="checkbox" data-change="prio-npc" data-st="${st.id}" ${st.prioBeforeNpc ? 'checked' : ''}> NPC-Händler erst kaufen lassen, wenn diese Stationen versorgt sind</label>
       <p class="small muted" style="margin:6px 0 0">Ohne Haken kaufen NPC-Händler an dieser Station alles, was zum Verkauf freigegeben ist. Mit Haken bekommen sie eine Ware erst, wenn keine Station der Reihenfolge mehr eine halbe Ladung davon braucht – so geht z. B. jedes Hüllenteil zuerst an die Werft und erst der Rest an NPC-Händler.${st.prioBeforeNpc && noTrader ? ' <span class="warn-text">Ohne eigenen Transporter holt nur ein Transporter der Zielstation die Ware ab.</span>' : ''}</p></div>` : ''}</div>`;
@@ -829,21 +831,10 @@ function orderQueue(state: GameState, s: Ship): string {
     </div></div>`;
 }
 
-function shipPanel(state: GameState, s: Ship, p: Panel): string {
+/** Formular für Handelsroute / Versorgungslinie */
+function routeForm(state: GameState, s: Ship): string {
   const c = SHIP_MAP[s.cls];
-  const rank = pilotRank(s);
-  const home = stationById(state, s.home);
-  let orders = '';
-  if (c.role === 'miner') {
-    const fields = home ? sector(home.sector).fields.filter((f) => WARES[f.ware].storage === c.storage) : [];
-    const wares = [...new Set(fields.map((f) => f.ware))];
-    orders = `<div class="section"><h3>Abbau</h3><div class="pills">
-      <button class="pill ${!s.mineWare ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: '' })}>Automatisch nach Bedarf</button>
-      ${wares.map((w) => `<button class="pill ${s.mineWare === w ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: w })}>${wareMark(w, 8)}${esc(WARES[w].name)}</button>`).join('')}
-    </div><p class="small muted" style="margin-top:8px">${wares.length ? 'Automatisch: fördert, was im Lager am knappsten ist – Rohstoffe, auf die Module warten, zuerst. Mehrere Miner teilen sich die Waren so von selbst auf.' : 'Im Heimatsektor gibt es kein passendes Feld für diesen Miner.'}</p></div>
-    ${restSection(state, s)}`;
-  } else {
-    const r = s.route;
+  const r = s.route;
     const eps: { v: string; label: string }[] = [
       ...state.stations.map((st) => ({ v: 'station:' + st.id, label: st.name })),
       ...knownSectors(state).flatMap((sec) => [
@@ -856,12 +847,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     const wares = WARE_IDS.filter((id) => WARES[id].storage === c.storage).sort((a, b) => WARES[a].name.localeCompare(WARES[b].name));
     const sel = (field: string, value: string, opts: { v: string; label: string }[]) =>
       `<select data-change="${field}" data-id="${s.id}">${opts.map((o) => `<option value="${esc(o.v)}" ${o.v === value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
-    orders = `${orderQueue(state, s)}<div class="section"><h3>Befehl</h3>
-      <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Autohandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Versorgungslinie</button></div>
-      ${s.mode === 'auto'
-        ? `<p class="small muted">Versorgt zuerst die Heimatstation: verkauft ihre Überschüsse und kauft fehlende Eingangswaren und Baumaterial. Angenommene Lieferaufträge erledigt er auch.${state.start ? ` Hat die Heimat nichts zu tun, handelt er frei zwischen fremden Stationen – nur mit Stationen, die du kennst, und nach dem Stand, den du kennst. Der Pilotenrang bestimmt die Reichweite: Rang ${rank} handelt ${RANK_RANGE[rank] === 0 ? 'nur im Heimatsektor' : RANK_RANGE[rank] >= 99 ? 'in allen bekannten Sektoren' : `bis ${RANK_RANGE[rank]} Sprung${RANK_RANGE[rank] === 1 ? '' : 'e'} weit`}. Abnehmer deiner Handelsrouten lässt er in Ruhe; Sonderangebote und Aufträge nimmt er nicht von selbst an.` : ''}</p>
-          ${state.start ? `<div class="row tap" style="margin-top:8px;padding:8px 0" ${act('auto-wares-modal', { id: s.id })}>${icon('box', 18)}<div class="grow"><div class="title" style="font-size:14px">Waren im freien Handel</div><div class="sub wrap">${s.autoWares?.length ? s.autoWares.map((id) => esc(WARES[id].name)).join(', ') : 'Alle'}</div></div>${icon('chev', 20, 'chev')}</div>` : ''}`
-        : `<div class="form">
+  return `<div class="form">
           <div class="field"><label>Von</label>${sel('route-from', epVal(r?.from), eps)}</div>
           <div class="field"><label>Nach</label>${sel('route-to', epVal(r?.to), eps)}</div>
           <div class="field"><label>Ware</label>${sel('route-ware', r?.ware ?? '', wares.map((id) => ({ v: id, label: WARES[id].name })))}</div>
@@ -869,7 +855,63 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
           ${r?.alt?.length ? `<p class="small muted" style="margin:0">Weitere Abnehmer: ${r.alt.map((e) => esc(epName(state, e))).join(', ')} – verkauft wird an den, der gerade am besten zahlt.</p>` : ''}
           ${r && r.to.kind === 'market' && relationBonus(state, marketKey(r.to)) > 0 ? `<p class="small pos" style="margin:0">Stammkunde bei ${esc(epName(state, r.to))}: +${Math.round(relationBonus(state, marketKey(r.to)) * 100)} % beim Verkauf</p>` : ''}
           ${r?.minMargin != null ? (() => { const m = routeMargin(state, r); return `<p class="small ${m != null && m < r.minMargin ? 'warn-text' : 'muted'}" style="margin:0">Gewinnschwelle ${Math.round(r.minMargin * 100)} % – darunter ${r.onLow === 'end' ? 'endet die Route' : 'pausiert die Route'}. Gerade ${m == null ? '–' : `${Math.round(m * 100)} %`}. <button class="linkish" ${act('route-margin-off', { id: s.id })}>Schwelle entfernen</button></p>`; })() : ''}
-        </div>`}
+        </div>`;
+}
+
+/** Befehle für freie Schiffe: Sektorbefehl (Handel bzw. Abbau), bei Transportern alternativ eine Handelsroute */
+function freeOrders(state: GameState, s: Ship): string {
+  const c = SHIP_MAP[s.cls];
+  const o = s.sectorOrder;
+  const secs = knownSectors(state);
+  const sec = o?.sector && secs.includes(o.sector) ? o.sector : (secs.includes(s.sector) ? s.sector : secs[0]);
+  const sel = (field: string, value: string, opts: { v: string; label: string }[]) =>
+    `<select data-change="${field}" data-id="${s.id}">${opts.map((x) => `<option value="${esc(x.v)}" ${x.v === value ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>`;
+  const secOpts = secs.map((id) => ({ v: id, label: SECTOR_MAP[id].name }));
+  if (c.role === 'miner') {
+    const wares = [...new Set(SECTOR_MAP[sec].fields.filter((f) => WARES[f.ware].storage === c.storage).map((f) => f.ware))];
+    const ware = o?.ware && wares.includes(o.ware) ? o.ware : wares[0] ?? '';
+    const buyers = ware ? [sec, ...sector(sec).npcStations.filter((n) => n.buys.includes(ware)).map((n) => n.id)].filter((k) => state.markets[k]?.[ware] && knows(state, k)) : [];
+    const toOpts = [{ v: '', label: 'Bestbietender im Sektor' }, ...buyers.map((k) => ({ v: k, label: marketInfo(k).name })), ...state.stations.map((st) => ({ v: 'st:' + st.id, label: `${st.name} (eigene Station)` }))];
+    return `<div class="section"><h3>Sektorbefehl: Abbau</h3><div class="form">
+      <div class="field"><label>Sektor</label>${sel('so-sector', sec, secOpts)}</div>
+      <div class="field"><label>Rohstoff</label>${wares.length ? sel('so-ware', ware, wares.map((w) => ({ v: w, label: WARES[w].name }))) : '<p class="small muted" style="margin:0">Kein passendes Feld in diesem Sektor.</p>'}</div>
+      <div class="field"><label>Abnehmer</label>${sel('so-to', o?.to ?? '', toOpts)}</div>
+      </div><p class="small muted" style="margin:8px 0 0">${o ? `Aktiv: baut ${esc(WARES[o.ware].name)} in ${esc(SECTOR_MAP[o.sector].name)} ab und ${o.to ? `liefert an ${esc(o.to.startsWith('st:') ? stationName(state, o.to.slice(3)) : marketInfo(o.to).name)}` : 'verkauft an den Bestbietenden im Sektor'}.` : 'Noch kein Befehl – wähle Sektor, Rohstoff und Abnehmer.'}</p>
+      ${!o && wares.length ? `<button class="btn primary block" style="margin-top:8px" ${act('so-apply', { id: s.id, sec, ware })}>Abbau starten</button>` : ''}</div>`;
+  }
+  const wares = WARE_IDS.filter((id) => WARES[id].storage === c.storage).sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
+  const ware = o?.ware ?? 'energycells';
+  return `${orderQueue(state, s)}<div class="section"><h3>Befehl</h3>
+    <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Sektorhandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Handelsroute</button></div>
+    ${s.mode === 'auto' ? `<div class="form">
+      <div class="field"><label>Sektor</label>${sel('so-sector', sec, secOpts)}</div>
+      <div class="field"><label>Ware</label>${sel('so-ware', ware, wares.map((w) => ({ v: w, label: WARES[w].name })))}</div></div>
+      <p class="small muted" style="margin:8px 0 0">${o ? `Aktiv: kauft ${esc(WARES[o.ware].name)} beim günstigsten bekannten Verkäufer in ${esc(SECTOR_MAP[o.sector].name)} und verkauft an den Bestbietenden dort – unabhängig vom Pilotenrang. Angenommene Lieferaufträge erledigt er zuerst.` : 'Noch kein Befehl – wähle Sektor und Ware.'}</p>
+      ${!o ? `<button class="btn primary block" style="margin-top:8px" ${act('so-apply', { id: s.id, sec, ware })}>Sektorhandel starten</button>` : ''}` : routeForm(state, s)}
+  </div>`;
+}
+
+function shipPanel(state: GameState, s: Ship, p: Panel): string {
+  const c = SHIP_MAP[s.cls];
+  const rank = pilotRank(s);
+  const home = stationById(state, s.home);
+  let orders = '';
+  if (!home) {
+    orders = freeOrders(state, s);
+  } else if (c.role === 'miner') {
+    const fields = home ? sector(home.sector).fields.filter((f) => WARES[f.ware].storage === c.storage) : [];
+    const wares = [...new Set(fields.map((f) => f.ware))];
+    orders = `<div class="section"><h3>Abbau</h3><div class="pills">
+      <button class="pill ${!s.mineWare ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: '' })}>Automatisch nach Bedarf</button>
+      ${wares.map((w) => `<button class="pill ${s.mineWare === w ? 'teal' : ''}" ${act('miner-ware', { id: s.id, ware: w })}>${wareMark(w, 8)}${esc(WARES[w].name)}</button>`).join('')}
+    </div><p class="small muted" style="margin-top:8px">${wares.length ? 'Automatisch: fördert, was im Lager am knappsten ist – Rohstoffe, auf die Module warten, zuerst. Mehrere Miner teilen sich die Waren so von selbst auf.' : 'Im Heimatsektor gibt es kein passendes Feld für diesen Miner.'}</p></div>
+    ${restSection(state, s)}`;
+  } else {
+    orders = `${orderQueue(state, s)}<div class="section"><h3>Befehl</h3>
+      <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Stationshandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Versorgungslinie</button></div>
+      ${s.mode === 'auto'
+        ? `<p class="small muted">Versorgt zuerst die Heimatstation: verkauft ihre Überschüsse und kauft fehlende Eingangswaren und Baumaterial. Angenommene Lieferaufträge erledigt er auch.${state.start ? ` Gehandelt wird nur mit Stationen, die du kennst. Der Pilotenrang bestimmt die Reichweite: Rang ${rank} handelt für die Station ${RANK_RANGE[rank] ? 'im Heimatsektor und in den Nachbarsektoren' : 'nur im Heimatsektor (ab Rang 3 auch in den Nachbarsektoren)'}. Freien Handel zwischen fremden Stationen machen freie Schiffe mit einem Sektorbefehl.` : ''}</p>`
+        : routeForm(state, s)}
     </div>`;
   }
   const dockWarn = home && !hasDockFor(home, c.size) ? `<div class="section"><div class="box rows"><div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(home.name)} braucht ${c.size === 'L' ? 'einen Pier' : 'ein Dock'}, damit dieses Schiff andocken kann.</div></div><button class="btn small amber" ${act('queue', { st: home.id, def: c.size === 'L' ? 'pier_l' : 'dock_m' })}>Bauen</button></div></div></div>` : '';
@@ -884,7 +926,8 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
       ${c.role === 'trader' ? `<div class="wide"><small>Pilot</small><b style="font-size:15px"><span class="teal-text">${rankStars(rank)}</span> Rang ${rank}${tripsToNextRank(s) != null ? ` · noch ${tripsToNextRank(s)} Fahrten bis Rang ${rank + 1}` : ' · Bestwert'}</b></div>` : ''}
     </div></div>
     ${orders}
-    <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(home?.name ?? '—')}</div><div class="sub">${esc(home ? sector(home.sector).name : '')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
+    <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon(home ? 'station' : 'fleet', 20)}<div class="grow"><div class="title">${esc(home?.name ?? 'Frei – keiner Station zugeordnet')}</div><div class="sub">${esc(home ? `${sector(home.sector).name} · Stationshändler` : 'Sektorbefehle, Routen, Einzelaufträge')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div>
+      ${home ? `<button class="linkish" style="margin-top:6px" ${act('set-home', { id: s.id, st: '' })}>Zuordnung lösen – Schiff wird frei</button>` : ''}</div>
     <div class="card-actions"><button class="btn" ${act('focus', { kind: 'ship', id: s.id })}>${icon('target', 20)}Auf Karte folgen</button><button class="btn danger" ${act('ask-sell-ship', { id: s.id })}>Verkaufen</button></div>`,
   { back: !!p.back });
 }
@@ -1344,7 +1387,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
     case 'import': return modalShell('Spielstand laden', `<p class="lead">Füge einen gesicherten Spielstand ein. Der aktuelle Stand wird ersetzt.</p><label class="btn block file-btn">${icon('save', 18)}Datei wählen …<input type="file" id="importFile" accept=".json,.txt,application/json,text/plain" data-change="import-file" hidden></label><textarea id="importText" placeholder="{&quot;version&quot;:1, …}"></textarea>${m.error ? `<p class="small neg">${esc(m.error)}</p>` : ''}`, `<button class="btn" ${act('modal-close')}>Abbrechen</button><button class="btn primary" ${act('import-do')}>Laden</button>`);
     case 'home': {
       const s = state.ships.find((x) => x.id === m.ship);
-      return modalShell('Heimatstation wählen', `<div class="box rows">${state.stations.map((st) => `<div class="row tap" ${act('set-home', { id: m.ship, st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${esc(sector(st.sector).name)}</div></div>${s?.home === st.id ? icon('check', 20, 'pos') : ''}</div>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
+      return modalShell('Heimatstation wählen', `<div class="box rows"><div class="row tap" ${act('set-home', { id: m.ship, st: '' })}>${icon('fleet', 20)}<div class="grow"><div class="title">Keiner Station (frei)</div><div class="sub wrap">Sektorbefehle, Handelsrouten und Einzelaufträge</div></div>${s && !s.home ? icon('check', 20, 'pos') : ''}</div>${state.stations.map((st) => `<div class="row tap" ${act('set-home', { id: m.ship, st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${esc(sector(st.sector).name)}</div></div>${s?.home === st.id ? icon('check', 20, 'pos') : ''}</div>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
     }
     case 'vendor': return vendorModal(state, ui, m);
     case 'storage': return storageModal(state, m.station, m.ware, !!m.back);

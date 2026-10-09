@@ -639,6 +639,7 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
+      case 'so-apply': result(A.setSectorOrder(state, d.id!, { sector: d.sec!, ware: d.ware! })); break;
       case 'survey-modal': ui.modal = { type: 'survey', field: d.f! }; refresh(); break;
       case 'field-up': {
         const info = fieldById(d.f!);
@@ -893,8 +894,8 @@ function onClick(e: MouseEvent): void {
         const s = state.ships.find((x) => x.id === d.id);
         if (!s) break;
         if (d.mode === 'route' && !s.route) {
-          const home = stationById(state, s.home)!;
-          s.route = { from: { kind: 'station', id: home.id }, to: { kind: 'market', sector: home.sector }, ware: 'energycells' };
+          const home = stationById(state, s.home);
+          s.route = home ? { from: { kind: 'station', id: home.id }, to: { kind: 'market', sector: home.sector }, ware: 'energycells' } : { from: { kind: 'market', sector: s.sector }, to: { kind: 'market', sector: s.sector }, ware: 'energycells' };
         }
         result(A.setTraderMode(state, s.id, d.mode as 'auto' | 'route', s.route ?? undefined));
         break;
@@ -1152,6 +1153,15 @@ function onChange(e: Event): void {
     refresh();
     return;
   }
+  if (field === 'own-only') {
+    const st = stationById(state, el.dataset.st ?? '');
+    if (st) {
+      st.ownOnly = (el as unknown as HTMLInputElement).checked;
+      toast(st.ownOnly ? `${st.name}: Händler kaufen nur noch bei eigenen Stationen ein.` : `${st.name}: Händler kaufen wieder auch am Markt ein.`, 'good');
+      refresh();
+    }
+    return;
+  }
   if (field === 'prio-npc') {
     const st = stationById(state, el.dataset.st ?? '');
     if (st) {
@@ -1249,8 +1259,19 @@ function onChange(e: Event): void {
   }
   const s = state.ships.find((x) => x.id === el.dataset.id);
   if (!s) return;
-  const home = stationById(state, s.home)!;
-  const route = s.route ?? { from: { kind: 'station', id: home.id } as TradeEndpoint, to: { kind: 'market', sector: home.sector } as TradeEndpoint, ware: 'energycells' };
+  if (field === 'so-sector' || field === 'so-ware' || field === 'so-to') {
+    const o = s.sectorOrder;
+    const sec = field === 'so-sector' ? el.value : o?.sector ?? s.sector;
+    let ware = field === 'so-ware' ? el.value : o?.ware ?? '';
+    // Miner: im neuen Sektor den ersten passenden Rohstoff nehmen, wenn der bisherige dort fehlt
+    if (SHIP_MAP[s.cls].role === 'miner' && !SECTOR_MAP[sec].fields.some((f) => f.ware === ware)) ware = SECTOR_MAP[sec].fields.find((f) => WARES[f.ware].storage === SHIP_MAP[s.cls].storage)?.ware ?? '';
+    if (!ware) ware = 'energycells';
+    const to = field === 'so-to' ? el.value : field === 'so-sector' ? '' : o?.to;
+    result(A.setSectorOrder(state, s.id, { sector: sec, ware, to }));
+    return;
+  }
+  const home = stationById(state, s.home);
+  const route = s.route ?? { from: (home ? { kind: 'station', id: home.id } : { kind: 'market', sector: s.sector }) as TradeEndpoint, to: { kind: 'market', sector: home?.sector ?? s.sector } as TradeEndpoint, ware: 'energycells' };
   if (field === 'route-from') { const ep = parseEp(el.value); if (ep) route.from = ep; }
   if (field === 'route-to') { const ep = parseEp(el.value); if (ep) route.to = ep; }
   if (field === 'route-ware') route.ware = el.value;

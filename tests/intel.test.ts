@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
 import { SAT_COST, deploySatellite, intelAge, isLive, knows, quadrantOf, seenPrice, stepIntel } from '../src/engine/intel';
-import { freeTradeJob, fieldLevel, mineRate } from '../src/engine/fleet';
-import { knownSectors, marketKey } from '../src/engine/logistics';
+import { sectorTradeJob, fieldLevel, mineRate } from '../src/engine/fleet';
+import { marketKey } from '../src/engine/logistics';
 import { marketPrice } from '../src/engine/economy';
 import { SHIP_MAP } from '../src/data/ships';
 import { marketInfo } from '../src/data/sectors';
@@ -47,15 +47,15 @@ describe('Marktwissen', () => {
     expect(knows(s, 'tkr')).toBe(true);
   });
 
-  it('Autohandel handelt nur mit bekannten Stationen', () => {
+  it('Sektor-Autohandel handelt nur mit bekannten Stationen', () => {
     const s = newGame(5, 'trading');
     const sh = s.ships[0];
-    sh.trips = 500; // Rang 5: Reichweite überall – aber nur Bekanntes
-    for (let i = 0; i < 10; i++) {
-      const j = freeTradeJob(s, sh, knownSectors(s));
-      if (!j) continue;
-      for (const ep of [j.from, j.to]) if (ep.kind === 'market') expect(knows(s, marketKey(ep))).toBe(true);
-    }
+    sh.home = '';
+    const j = sectorTradeJob(s, sh, 'zhin', 'energycells');
+    expect(j).toBeTruthy();
+    for (const ep of [j!.from, j!.to]) if (ep.kind === 'market') expect(knows(s, marketKey(ep))).toBe(true);
+    // In einem unbekannten Sektor findet er nichts
+    expect(sectorTradeJob(s, sh, 'tkr', 'energycells')).toBeNull();
   });
 
   it('Rohstofffelder erschöpfen sich beim Abbau und wachsen nach', () => {

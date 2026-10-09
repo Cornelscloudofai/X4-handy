@@ -146,6 +146,8 @@ export interface QueueItem { uid: number; def: string; paid: number }
 export interface TradeRule { buy: boolean; sell: boolean }
 
 export interface Station {
+  /** Stationshändler kaufen nur bei eigenen Stationen ein (nicht am Markt) */
+  ownOnly?: boolean;
   id: string;
   name: string;
   sector: string;
@@ -309,6 +311,9 @@ export interface Ship {
   holdCargo?: boolean;
   /** Anzeige, warum die Handelsroute gerade ruht (z. B. Gewinn unter der Schwelle) */
   routeNote?: string;
+  /** Freies Schiff (home = ''): Sektorbefehl – Handel mit einer Ware oder Abbau eines Rohstoffs in einem Sektor.
+   *  to: fester Abnehmer für Miner (Marktschlüssel oder 'st:<Stations-ID>'), sonst der Bestbietende im Sektor */
+  sectorOrder?: { kind: 'trade' | 'mine'; sector: string; ware: string; to?: string };
   /** Miner: vermisst dieses Feld (Feldausbau Stufe 1) */
   survey?: string;
   surveyGo?: boolean;

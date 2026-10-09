@@ -124,7 +124,7 @@ export function sectorFlows(state: GameState, sectorId: string, volumeOf: (ware:
   for (const s of state.ships) {
     if (s.job) add(endOf(state, s.job.from), endOf(state, s.job.to), s.job.ware, 0, 'own', true);
     else if (s.mode === 'route' && s.route) add(endOf(state, s.route.from), endOf(state, s.route.to), s.route.ware, 0, 'own', true);
-    if (s.miningField && s.cargo) add(fieldEnd(s.miningField), stationEnd(state, s.home), s.cargo.ware, 0, 'own', true);
+    if (s.miningField && s.cargo && s.home) add(fieldEnd(s.miningField), stationEnd(state, s.home), s.cargo.ware, 0, 'own', true);
   }
   return [...out.values()];
 }

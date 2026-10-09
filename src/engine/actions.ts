@@ -219,8 +219,20 @@ export function sellShip(state: GameState, shipId: string): Result {
 
 export function setShipHome(state: GameState, shipId: string, homeId: string): Result {
   const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Nicht gefunden.');
+  // Leere ID: Zuordnung lösen – das Schiff ist frei und wartet auf Befehle (Sektorbefehl, Route, Einzelaufträge)
+  if (!homeId) {
+    s.home = '';
+    s.job = null;
+    s.miningField = '';
+    s.survey = undefined;
+    if (s.mode === 'auto') s.sectorOrder = undefined;
+    if (!s.cargo) { s.phase = 'idle'; s.path = []; }
+    return ok(`${s.name} ist jetzt frei – gib ihm einen Sektorbefehl oder eine Route.`);
+  }
   const home = stationById(state, homeId);
-  if (!s || !home) return fail('Nicht gefunden.');
+  if (!home) return fail('Nicht gefunden.');
+  s.sectorOrder = undefined;
   s.home = home.id;
   s.job = null;
   s.miningField = '';
@@ -453,6 +465,25 @@ export function exploreOrder(state: GameState, shipId: string, key: string): Res
   const to: TradeEndpoint = key === p.sector ? { kind: 'market', sector: p.sector } : { kind: 'market', sector: p.sector, market: key };
   const busy = enqueue(s, { ware: 'energycells', amount: 0, from: to, to, stage: 'deliver', manual: true, explore: true });
   return ok(busy ? `${s.name} fliegt nach den laufenden Befehlen zu ${p.name}.` : `${s.name} fliegt zu ${p.name} und erfasst die Station.`);
+}
+
+/** Sektorbefehl für ein freies Schiff: Handel mit einer Ware (Transporter) oder Abbau eines Rohstoffs (Miner) */
+export function setSectorOrder(state: GameState, shipId: string, order: { sector: string; ware: string; to?: string } | null): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Schiff nicht gefunden.');
+  if (s.home) return fail('Sektorbefehle gibt es nur für freie Schiffe – erst die Zuordnung zur Station lösen.');
+  if (!order) { s.sectorOrder = undefined; return ok('Sektorbefehl aufgehoben.'); }
+  const cls = SHIP_MAP[s.cls];
+  if (!SECTOR_MAP[order.sector] || !WARES[order.ware]) return fail('Ungültiger Befehl.');
+  if (WARES[order.ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
+  if (cls.role === 'miner' && !SECTOR_MAP[order.sector].fields.some((f) => f.ware === order.ware)) return fail('In diesem Sektor gibt es kein solches Feld.');
+  s.sectorOrder = { kind: cls.role === 'miner' ? 'mine' : 'trade', sector: order.sector, ware: order.ware, to: order.to || undefined };
+  s.mode = 'auto';
+  s.route = null;
+  if (!s.cargo && !s.job) { s.phase = 'idle'; s.path = []; }
+  return ok(cls.role === 'miner'
+    ? `${s.name} baut ${WARES[order.ware].name} in ${SECTOR_MAP[order.sector].name} ab.`
+    : `${s.name} handelt ${WARES[order.ware].name} in ${SECTOR_MAP[order.sector].name}.`);
 }
 
 /** Warteschlange: Befehl an Stelle i streichen */

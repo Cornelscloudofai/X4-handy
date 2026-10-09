@@ -61,7 +61,11 @@ export function newGame(seed = Date.now() % 2147483647, start?: StartKind): Game
     state.credits = START_KIT[start].credits;
     for (const def of ['core', 'dock_m', 'storage_container', 'storage_solid']) st.modules.push({ ...newModule(state, def), util: 1 });
     state.stations.push(st);
-    state.ships.push(newShip(state, START_KIT[start].ship, st));
+    const ship = newShip(state, START_KIT[start].ship, st);
+    state.ships.push(ship);
+    // Handelsstart: Der Tuatara ist frei und handelt schon Energiezellen im Heimatsektor (Sektorhandel) – die Startstation
+    // produziert noch nichts, als Stationshändler hätte er nichts zu tun
+    if (start === 'trading') { ship.home = ''; ship.sectorOrder = { kind: 'trade', sector: st.sector, ware: 'energycells' }; }
     // Marktbericht der Familie: letzter bekannter Stand aller Stationen im Heimatsektor
     initIntel(state, st.sector);
     // Gleich zu Beginn ein passender Kurierauftrag, die nächsten folgen bald
@@ -137,7 +141,8 @@ export function deserialize(text: string): GameState {
     delete st.ownFirst;
     if (st.deliveryPrio) st.deliveryPrio = st.deliveryPrio.filter((id) => ids.has(id) && id !== st.id);
   }
-  state.ships = (raw.ships ?? []).filter((s) => SHIP_MAP[s.cls] && ids.has(s.home) && SECTOR_MAP[s.sector]);
+  // Freie Schiffe (ohne Station) haben home = ''
+  state.ships = (raw.ships ?? []).filter((s) => SHIP_MAP[s.cls] && (s.home === '' || ids.has(s.home)) && SECTOR_MAP[s.sector]);
   state.npcs = (raw.npcs ?? []).filter((n) => SECTOR_MAP[n.sector]);
   state.markets = { ...base.markets, ...(raw.markets ?? {}) };
   initMarkets(state);

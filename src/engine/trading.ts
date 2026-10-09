@@ -26,8 +26,8 @@ export function tripsToNextRank(s: Ship): number | null {
   return r >= 5 ? null : RANK_TRIPS[r] - s.trips;
 }
 
-/** Freier Autohandel: wie viele Sprünge vom Heimatsektor der Pilot selbstständig handelt (Rang 1: nur dort) */
-export const RANK_RANGE = [0, 0, 1, 2, 99, 99];
+/** Stationshändler: wie viele Sprünge vom Heimatsektor er für die Station handelt (Rang 1–2: nur dort, ab Rang 3: Nachbarsektoren) */
+export const RANK_RANGE = [0, 0, 0, 1, 1, 1];
 
 
 
@@ -40,7 +40,7 @@ export function noteTrip(state: GameState, s: Ship): void {
   const r = pilotRank(s);
   if ((s.rank ?? 1) < r) {
     s.rank = r;
-    log(state, `${s.name}: Pilot steigt auf Rang ${r} auf (${rankStars(r)}) – handelt selbstständig ${RANK_RANGE[r] >= 99 ? 'in allen bekannten Sektoren' : `bis ${RANK_RANGE[r]} Sprung${RANK_RANGE[r] === 1 ? '' : 'e'} weit`}.`, 'good', true);
+    log(state, `${s.name}: Pilot steigt auf Rang ${r} auf (${rankStars(r)}) – handelt für seine Station ${RANK_RANGE[r] ? 'jetzt auch in den Nachbarsektoren' : 'im Heimatsektor'}.`, 'good', true);
   } else s.rank = r;
 }
 
