@@ -5,6 +5,8 @@ import { setSectorOrder, setShipHome, setTradeRule } from '../src/engine/actions
 import { SECTOR_MAP, NPC_MAP } from '../src/data/sectors';
 import { buyMineRight, canMine, mineRightBlock } from '../src/engine/mineRights';
 import { npcSource } from '../src/engine/npc';
+import { wanted } from '../src/engine/logistics';
+import { wareLimit } from '../src/engine/economy';
 import { START_KIT } from '../src/engine/state';
 
 describe('Wirtschaftszweige und Schürfrechte', () => {
@@ -75,4 +77,13 @@ describe('Wirtschaftszweige und Schürfrechte', () => {
     }
     expect(st.inventory.hullparts ?? 0).toBeGreaterThan(before);
   }, 60000);
+  it('Kauforder mit Füllstand: die Station kauft nur bis zum eingestellten Anteil', () => {
+    const s = newGame(5, 'mining');
+    const st = s.stations[0];
+    const limit = wareLimit(st, 'hullparts');
+    setTradeRule(s, st.id, 'hullparts', { buy: true, price: 250, fill: 0.5 });
+    expect(wanted(s, st, 'hullparts')).toBeCloseTo(limit * 0.5, 0);
+    st.inventory.hullparts = limit * 0.6;
+    expect(wanted(s, st, 'hullparts')).toBe(0);
+  });
 });

@@ -194,7 +194,9 @@ export function wanted(state: GameState, st: Station, wareId: string, ignoreRule
     const limit = wareLimit(st, wareId, storageCap(st), stationWares(st));
     // Für bestellte Schiffe wird die volle Menge gebraucht – nicht nur 95 % des Limits
     const yard = Math.min(pendingNeeds(st)[wareId] ?? 0, cap / WARES[wareId].volume);
-    stock = Math.max(0, Math.max(limit * 0.95, yard) - (st.inventory[wareId] ?? 0));
+    // Kauforder mit Füllstand: nur bis zu diesem Anteil der Lagergrenze einkaufen
+    const target = rule.buy && rule.fill != null ? limit * rule.fill : limit * 0.95;
+    stock = Math.max(0, Math.max(target, yard) - (st.inventory[wareId] ?? 0));
   }
   return Math.max(0, stock + build - incoming(state, st.id, wareId));
 }

@@ -151,6 +151,8 @@ export interface TradeRule {
   buy: boolean; sell: boolean;
   /** Kauforder: Die Station zahlt bis zu diesem Preis je Einheit – NPC-Händler und Fabrikfrachter liefern dann direkt an */
   price?: number;
+  /** Kauforder: Lager dieser Ware bis zu diesem Anteil der Lagergrenze füllen (0..1; ohne Angabe fast voll) */
+  fill?: number;
 }
 
 export interface Station {

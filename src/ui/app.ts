@@ -105,7 +105,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -604,7 +604,25 @@ function onClick(e: MouseEvent): void {
       case 'modal-back': ui.modal = ui.modal?.type === 'storage' ? ui.modal.back ?? null : null; refresh(); break;
       case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
       case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'sell') ui.modal.ship = d.ship; refresh(); break;
-      case 'buy-open': ui.modal = defaultBuyModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'buy') ui.modal.ship = d.ship; refresh(); break;
+      case 'buy-open': ui.modal = defaultBuyModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'buy') { ui.modal.ship = d.ship; ui.modal.mode = 'ship'; } refresh(); break;
+      case 'buy-mode': if (ui.modal?.type === 'buy') { ui.modal = { ...ui.modal, mode: d.mode === 'ship' ? 'ship' : 'order' }; refresh(); } break;
+      case 'buy-order-set': {
+        const m = ui.modal;
+        if (m?.type !== 'buy') break;
+        A.setTradeRule(state, m.station, m.ware, { buy: true, price: m.price, fill: m.fill });
+        ui.modal = null;
+        result({ ok: true, msg: `Kauforder: ${WARES[m.ware].name} bis ${Math.round(m.price).toLocaleString('de-DE')} Cr, füllen bis ${Math.round(m.fill * 100)} %.` });
+        break;
+      }
+      case 'buy-order-off': {
+        const m = ui.modal;
+        if (m?.type !== 'buy') break;
+        const st = stationById(state, m.station);
+        if (st?.trade[m.ware]) { delete st.trade[m.ware].price; delete st.trade[m.ware].fill; }
+        ui.modal = null;
+        result({ ok: true, msg: `Kauforder für ${WARES[m.ware].name} aufgehoben.` });
+        break;
+      }
       case 'order-del': result(A.removeOrder(state, d.id!, Number(d.i))); break;
       case 'trade-open': ui.modal = { type: 'trade', ware: d.ware!, from: d.from!, mode: 'buy', minPct: 10, onLow: 'pause' }; refresh(); break;
       case 'trade-mode': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, mode: d.mode === 'route' ? 'route' : 'buy' }; refresh(); } break;
@@ -872,7 +890,7 @@ function onClick(e: MouseEvent): void {
       case 'buyship': result(A.buyShip(state, d.cls!, d.st!)); break;
       case 'buy-price-off': {
         const st = stationById(state, d.st!);
-        if (st?.trade[d.ware!]) delete st.trade[d.ware!].price;
+        if (st?.trade[d.ware!]) { delete st.trade[d.ware!].price; delete st.trade[d.ware!].fill; }
         refresh();
         break;
       }
@@ -1215,8 +1233,14 @@ function onChange(e: Event): void {
     refresh();
     return;
   }
+  if ((field === 'buy-order-price' || field === 'buy-order-fill') && ui.modal?.type === 'buy') {
+    ui.modal = field === 'buy-order-price' ? { ...ui.modal, price: Number(el.value) } : { ...ui.modal, fill: Number(el.value) / 100 };
+    refresh();
+    return;
+  }
   if (field === 'buy-ware' && ui.modal?.type === 'buy') {
-    ui.modal = defaultBuyModal(state, ui.modal.station, el.value);
+    const mode = ui.modal.mode;
+    ui.modal = { ...defaultBuyModal(state, ui.modal.station, el.value), mode };
     refresh();
     return;
   }
