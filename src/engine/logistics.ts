@@ -230,7 +230,9 @@ export function prioNeeds(state: GameState, st: Station, wareId: string, load: n
     const o = stationById(state, id);
     if (!o) continue;
     // Bedarf im Baulager zählt immer – auch kleine Restmengen halten sonst einen Bau auf
-    if (wanted(state, o, wareId) >= ref * 0.5 || Math.min(buildRoom(o, wareId), wanted(state, o, wareId)) >= 0.5) return o;
+    // ebenso der Rest für ein geplantes Schiff der Werft
+    const yardRest = (pendingNeeds(o)[wareId] ?? 0) - (o.inventory[wareId] ?? 0);
+    if (wanted(state, o, wareId) >= ref * 0.5 || Math.min(buildRoom(o, wareId), wanted(state, o, wareId)) >= 0.5 || Math.min(yardRest, wanted(state, o, wareId)) >= 0.5) return o;
   }
   return null;
 }

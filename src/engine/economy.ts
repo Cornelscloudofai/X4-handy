@@ -3,7 +3,7 @@ import { MODULE_MAP, moduleDef } from '../data/modules';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { NPC_STATIONS, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
-import type { GameState, Market, Station, StorageType } from './types';
+import type { GameState, Market, NpcEco, Station, StorageType, TradeRule } from './types';
 import { clamp, emit, log, rand } from './util';
 
 const TYPES: StorageType[] = ['Container', 'Solid', 'Liquid'];
@@ -183,10 +183,21 @@ export function storageShare(st: Station, id: string, wares = stationWares(st)):
 export function wareLimit(st: Station, id: string, cap = storageCap(st), wares = stationWares(st)): number {
   const w = WARES[id];
   if (!w) return 0;
-  const byShare = (cap[w.storage] * storageShare(st, id, wares).share) / w.volume;
+  const share = (x: string) => (cap[w.storage] * storageShare(st, x, wares).share) / WARES[x].volume;
+  const byShare = share(id);
   // Werftmaterial darf seinen Bedarf immer einlagern (sonst könnte das Schiff nie starten)
-  const need = pendingNeeds(st)[id] ?? 0;
-  return need > byShare ? Math.min(need, cap[w.storage] / w.volume) : byShare;
+  const needs = pendingNeeds(st);
+  const need = needs[id] ?? 0;
+  if (need > byShare) return Math.min(need, cap[w.storage] / w.volume);
+  // Die übrigen Waren derselben Lagerart rücken dafür zusammen – sonst wäre das Lager voll, bevor der Bedarf drin ist
+  let over = 0, rest = 0;
+  for (const x of wares) {
+    if (WARES[x].storage !== w.storage) continue;
+    const b = share(x), n = needs[x] ?? 0;
+    if (n > b) over += (Math.min(n, cap[w.storage] / WARES[x].volume) - b) * WARES[x].volume;
+    else rest += b * WARES[x].volume;
+  }
+  return over > 0 && rest > 0 ? byShare * Math.max(0, 1 - over / rest) : byShare;
 }
 
 /**
@@ -214,7 +225,16 @@ export function freeUnits(st: Station, id: string): number {
   const used = usedVolume(st);
   const pend = pendingOutput(st);
   const byLimit = wareLimit(st, id, cap) - (st.inventory[id] ?? 0) - (pend.units[id] ?? 0);
-  const byVolume = (cap[w.storage] - used[w.storage] - pend.volume[w.storage]) / w.volume;
+  let byVolume = (cap[w.storage] - used[w.storage] - pend.volume[w.storage]) / w.volume;
+  // Material für ein geplantes Schiff hat Vorrang vor dem Vorrat der Werft: Was andere Waren über ihrer (dafür
+  // verkleinerten) Grenze lagern, zählt nicht als belegt – sonst blockiert der Vorrat den Bau
+  const rest = (pendingNeeds(st)[id] ?? 0) - (st.inventory[id] ?? 0);
+  if (rest > 0 && byVolume < rest) {
+    const wl = stationWares(st);
+    let excess = 0;
+    for (const x of wl) if (x !== id && WARES[x].storage === w.storage) excess += Math.max(0, (st.inventory[x] ?? 0) - wareLimit(st, x, cap, wl)) * WARES[x].volume;
+    byVolume = Math.min(rest, byVolume + excess / w.volume);
+  }
   return Math.max(0, Math.min(byLimit, byVolume));
 }
 
@@ -253,7 +273,7 @@ export function defaultTradeRule(st: Station, id: string): { buy: boolean; sell:
   return { buy: consumed && !produced, sell: produced };
 }
 
-export function tradeRule(st: Station, id: string): { buy: boolean; sell: boolean } {
+export function tradeRule(st: Station, id: string): TradeRule {
   return st.trade[id] ?? defaultTradeRule(st, id);
 }
 
@@ -431,6 +451,37 @@ export function baseDemand(id: string): number {
   return clamp(300_000 / WARES[id].price.avg, 40, 30_000);
 }
 
+/** Lagerkapazität (m³) je Lagerart: NPC-Stationen haben S-Lager, große Fabriken (ab 7 Modulen) M-Lager */
+const NPC_STORE: Record<'S' | 'M', Record<StorageType, number>> = {
+  S: { Container: 25_000, Solid: 100_000, Liquid: 100_000 },
+  M: { Container: 100_000, Solid: 500_000, Liquid: 500_000 },
+};
+export const NPC_STORE_M_MODULES = 7;
+
+/**
+ * Neue Spiele: Lagerplatz einer NPC-Station (Einheiten je Ware). Jede Lagerart wird gleichmäßig auf die Waren dieser Art
+ * verteilt – kleine Lager füllen und leeren sich schnell, die Preise schwanken stärker. Mindestens zwei Produktionszyklen
+ * (Ergebnis) bzw. drei Zyklen Vorprodukte passen immer hinein.
+ */
+export function npcStoreCaps(wares: string[], modules: number, eco?: NpcEco): Record<string, number> {
+  const size = modules >= NPC_STORE_M_MODULES ? 'M' : 'S';
+  const count: Partial<Record<StorageType, number>> = {};
+  for (const id of wares) count[WARES[id].storage] = (count[WARES[id].storage] ?? 0) + 1;
+  const out: Record<string, number> = {};
+  for (const id of wares) {
+    const w = WARES[id];
+    let cap = NPC_STORE[size][w.storage] / count[w.storage]! / w.volume;
+    if (eco) {
+      for (const [p, n] of Object.entries(eco.prod)) {
+        if (p === id) cap = Math.max(cap, WARES[p].batch * 2);
+        for (const i of WARES[p].inputs) if (i.ware === id) cap = Math.max(cap, i.amount * n * 3);
+      }
+    }
+    out[id] = Math.round(cap);
+  }
+  return out;
+}
+
 export function initMarkets(state: GameState): void {
   for (const s of SECTORS) {
     if (state.markets[s.id]) continue;
@@ -453,10 +504,12 @@ export function initMarkets(state: GameState): void {
   for (const n of NPC_STATIONS) {
     if (state.markets[n.id]) continue;
     const m: Market = {};
+    // Neue Spiele: S-Lager, auf die angekauften Waren verteilt (Fabriken legen ihr Lager in der NPC-Wirtschaft an)
+    const small = state.start ? npcStoreCaps(n.buys.filter((id) => WARES[id]), 0) : null;
     for (const id of n.buys) {
       if (!WARES[id]) continue;
       const eq = 0.12 + rand(state) * 0.18;
-      const cap = baseDemand(id) * 2;
+      const cap = small ? small[id] : baseDemand(id) * 2;
       m[id] = { stock: cap * eq, cap, eq };
     }
     state.markets[n.id] = m;
@@ -595,7 +648,9 @@ export function stepMarkets(state: GameState, dt: number): void {
       const target = m.eq * (post ? postShare(id, made) : 1);
       // Neue Spiele: verkaufte Rohstoffe baut der Handelsposten nur langsam ab
       const slow = post && scarce && WARES[id]?.mined && m.stock > target * m.cap;
-      m.stock += (target * m.cap - m.stock) * (slow ? 1 - Math.exp(-dt / RAW_ABSORB_SECONDS) : k);
+      // NPC-Käufer mit S-Lager verbrauchen so viel wie mit großem Lager – das kleine Lager leert sich nur schneller
+      const fast = !post && scarce ? Math.max(1, (baseDemand(id) * 2) / m.cap) : 1;
+      m.stock += (target * m.cap - m.stock) * (slow ? 1 - Math.exp(-dt / RAW_ABSORB_SECONDS) : fast > 1 ? 1 - Math.exp((-dt * fast) / REVERT_SECONDS) : k);
     }
   }
 }
@@ -610,7 +665,8 @@ export function marketEvent(state: GameState): string | null {
   // Fabrikwaren entstehen nicht aus dem Nichts: bei ihnen gibt es nur steigende Nachfrage
   const up = (!!state.start && manufactured(id)) || rand(state) < 0.5;
   m.eq = clamp(m.eq + (up ? -0.25 : 0.25), 0.1, 0.9);
-  m.stock = clamp(m.stock + (up ? -0.25 : 0.2) * m.cap, 0, m.cap);
+  // Neue Spiele: Grundwaren (Baumaterial) bleiben unangetastet – sonst könnte ein Ereignis jeden Bau blockieren
+  if (!(state.start && up && ESSENTIAL_WARES.includes(id))) m.stock = clamp(m.stock + (up ? -0.25 : 0.2) * m.cap, 0, m.cap);
   return up
     ? `Nachfrage nach ${WARES[id].name} in ${s.name} steigt.`
     : `Überangebot an ${WARES[id].name} in ${s.name} – Preise fallen.`;

@@ -19,13 +19,17 @@ export const SECTORS: SectorDef[] = [
       { id: 'zhin-hydrogen', ware: 'hydrogen', x: 122, z: 0, r: 32, richness: 1 },
       { id: 'zhin-helium', ware: 'helium', x: -95, z: 95, r: 30, richness: 1 },
       { id: 'zhin-methane', ware: 'methane', x: 62, z: 105, r: 30, richness: 1 },
-      { id: 'zhin-nividium', ware: 'nividium', x: -22, z: 72, r: 18, richness: 0.8 },
+      // Nividium gibt es in neuen Spielen erst in Tkr und der Schlucht (Schürfrecht nötig)
+      { id: 'zhin-nividium', ware: 'nividium', x: -22, z: 72, r: 18, richness: 0.8, legacy: true },
     ],
     tradeStation: { name: 'Zhin-Handelsposten', x: 25, z: -40 },
     npcStations: [
       { id: 'zhin-werft', name: 'Zhin-Werft', kind: 'wharf', x: 95, z: 50, buys: ['hullparts', 'claytronics', 'engineparts', 'advancedcomposites', 'scanningarrays', 'smartchips', 'dronecomponents', 'antimatterconverters', 'energycells'] },
       { id: 'zhin-wacht', name: 'Grenzposten Zhin', kind: 'defence', x: -80, z: 40, buys: ['weaponscomponents', 'turretcomponents', 'missilecomponents', 'shieldcomponents', 'medicalsupplies', 'cheltmeat', 'energycells'] },
-      { id: 'zhin-huette', name: 'Zhin-Metallhütte', kind: 'factory', x: 80, z: -60, buys: ['ore', 'silicon', 'refinedmetals', 'graphene', 'energycells'], makes: ['refinedmetals', 'hullparts', 'siliconwafers'] },
+      // Erz und Silizium getrennt: Die Hütte macht aus Erz Veredelte Metalle und Hüllenteile, das Siliziumwerk Siliziumscheiben
+      // (die gehen weiter an das Elektronikwerk in Tharka's Cascade, das daraus Claytronik baut)
+      { id: 'zhin-huette', name: 'Zhin-Metallhütte', kind: 'factory', x: 80, z: -60, buys: ['ore', 'refinedmetals', 'graphene', 'energycells'], makes: ['refinedmetals', 'hullparts'] },
+      { id: 'zhin-silizium', name: 'Zhin-Siliziumwerk', kind: 'factory', x: -80, z: -150, buys: ['silicon', 'energycells'], makes: ['siliconwafers'] },
     ],
     links: ['tkr', 'rhy', 'hoa', 'cascade'], licenseCost: 0, repRequired: 0,
     description: 'Heimat der Familie Zhin. Nach dem Xenon-Angriff wird jede Fabrik gebraucht.',

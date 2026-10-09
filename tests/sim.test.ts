@@ -550,13 +550,15 @@ describe('Lieferreihenfolge für Überschüsse', () => {
     const Y = await import('../src/engine/yard');
     const s = newGame(7);
     s.credits = 60e6;
+    delete s.npcEco!['zhin-huette'].prod.hullparts; // die NPC-Hütte stellt hier keine Hüllenteile her (nur die eigene Fabrik liefert)
     const werft = s.stations[0];
     werft.modules.push({ uid: s.nextId++, def: 'yard_m', t: 0, running: false, stall: '', util: 0 });
     const r = foundStation(s, 'zhin', 60, 55);
     const huelle = instantModules(s, r.id!, ['storage_container', 'dock_m']);
     step(s, 1800);
     huelle.inventory.hullparts = 3000;
-    if (ownFirst) huelle.deliveryPrio = [werft.id];
+    // NPC-Händler verkaufen inzwischen auch an NPC-Stationen (mehr Abnehmer) – die Werft soll zuerst versorgt sein
+    if (ownFirst) { huelle.deliveryPrio = [werft.id]; huelle.prioBeforeNpc = true; }
     setTradeRule(s, huelle.id, 'hullparts', { sell: true });
     Y.queueShipBuild(s, werft.id, 'boa');
     buyShip(s, 'boa', huelle.id);
@@ -565,6 +567,7 @@ describe('Lieferreihenfolge für Überschüsse', () => {
     werft.inventory.hullparts = 0; // Werft-Vorrat leer: sie hat Bedarf
     for (let t = 0; t < 4 * 3600; t += 10) {
       s.markets.zhin.hullparts.stock = 0; // nur die eigene Fabrik liefert (keine NPC-Verkäufer)
+      s.markets['zhin-huette'].hullparts.stock = 0;
       step(s, 10);
       const j = boa.job;
       if (j?.ware === 'hullparts' && j.stage === 'pickup') {
@@ -635,6 +638,7 @@ describe('NPC-Händler nach der Lieferreihenfolge', () => {
     const Y = await import('../src/engine/yard');
     const s = newGame(19);
     s.credits = 60e6;
+    delete s.npcEco!['zhin-huette'].prod.hullparts; // die NPC-Hütte stellt hier keine Hüllenteile her (nur die eigene Fabrik liefert)
     const werft = s.stations[0];
     werft.modules.push({ uid: s.nextId++, def: 'yard_m', t: 0, running: false, stall: '', util: 0 });
     const r = foundStation(s, 'zhin', 60, 55);
@@ -649,6 +653,7 @@ describe('NPC-Händler nach der Lieferreihenfolge', () => {
     for (let t = 0; t < 6 * 3600; t += 10) {
       fab.inventory.hullparts = 3000; // Fabrik produziert laufend nach
       s.markets.zhin.hullparts.stock = 0; // kein Nachschub vom Markt – sonst gilt die Werft durch NPC-Verkäufer als versorgt
+      s.markets['zhin-huette'].hullparts.stock = 0; // NPC-Händler kaufen auch direkt beim Hersteller
       const before = fab.inventory.hullparts;
       step(s, 10);
       bought += Math.max(0, before - (fab.inventory.hullparts ?? 0));

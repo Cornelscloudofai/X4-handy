@@ -15,7 +15,7 @@ export const START_CREDITS = 2_500_000;
 /** Neuer Spielstart: kleine Station ohne Produktion, wenig Geld – Handel bekommt mehr Credits, Bergbau das teurere Schiff */
 export const START_KIT: Record<StartKind, { credits: number; ship: string }> = {
   trading: { credits: 50_000, ship: 'tuatara' },
-  mining: { credits: 20_000, ship: 'tuatara_min' },
+  mining: { credits: 5_000, ship: 'tuatara_min' },
 };
 
 export function newModule(state: GameState, def: string): ModuleInst {

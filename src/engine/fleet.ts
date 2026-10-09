@@ -13,6 +13,7 @@ import { contractDeliver, isDelivery, wareSellers } from './contracts';
 import { endOf, fieldEnd, recordFlow, stationEnd } from './flows';
 import type { Contract, FieldDef, GameState, RouteOrder, RestAction, RestCase, Ship, ShipClassDef, Station, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
+import { canMine } from './mineRights';
 import { intelAge, knows, noteMarket, seenPrice, seenRoom, seenStock } from './intel';
 import { FIELD_STEPS, fieldCapFactor, fieldFloor, fieldRegenFactor, finishSurvey, stepFieldUp } from './fieldUp';
 import { RANK_RANGE, applyOpportunity, effectivePrice, noteDelivery, noteTrip, pilotRank, relationBonus } from './trading';
@@ -76,7 +77,7 @@ export function chooseMining(state: GameState, s: Ship): MiningChoice {
   if (!home) return { reason: 'Keine Heimatstation' };
   const sec = sector(home.sector);
   const typeName = cls.storage === 'Liquid' ? 'Gas' : 'Mineral';
-  const fields = sec.fields.filter((f) => WARES[f.ware].storage === cls.storage && (!s.mineWare || f.ware === s.mineWare));
+  const fields = sec.fields.filter((f) => WARES[f.ware].storage === cls.storage && (!s.mineWare || f.ware === s.mineWare) && canMine(state, sec.id, f.ware));
   if (!fields.length) return { reason: s.mineWare ? `Kein ${WARES[s.mineWare].name}-Feld in ${sec.name}` : `Kein ${typeName}-Feld in ${sec.name}` };
   if (storageCap(home)[cls.storage] <= 0) return { reason: cls.storage === 'Liquid' ? 'Heimat hat kein Flüssiglager' : 'Heimat hat kein Feststofflager' };
   const rates = stationRates(home);
@@ -288,6 +289,7 @@ function stepFreeMiner(state: GameState, s: Ship, dt: number): void {
       const fields = sector(o.sector).fields.filter((f) => f.ware === o.ware);
       const f = fields.sort((a, b) => fieldLevel(state, b.id) * b.richness - fieldLevel(state, a.id) * a.richness)[0];
       if (!f) { s.status = 'Kein passendes Feld im Sektor'; s.phase = 'waiting'; s.timer = 30; return; }
+      if (!canMine(state, o.sector, o.ware)) { s.status = `Kein Schürfrecht für ${WARES[o.ware].name} in ${sector(o.sector).name}`; s.phase = 'waiting'; s.timer = 30; return; }
       const a = rand(state) * Math.PI * 2, r = Math.sqrt(rand(state)) * f.r * 0.6;
       s.miningField = f.id;
       goTo(s, { sector: o.sector, x: f.x + Math.cos(a) * r, z: f.z + Math.sin(a) * r });
@@ -831,7 +833,7 @@ export const SCOUT_AGE = 15 * 60;
  * Kein lohnendes Geschäft bekannt: Der freie Händler fliegt den Markt mit der ältesten Momentaufnahme an und erfasst ihn
  * (wie ein Spieler, der nachschaut). Live abgedeckte Märkte (Station, Satellit) braucht er nicht anzufliegen.
  */
-export function sectorScoutJob(state: GameState, s: Ship, sectorId: string, ware: string): TradeJob | null {
+export function sectorScoutJob(state: GameState, _s: Ship, sectorId: string, ware: string): TradeJob | null {
   if (!SECTOR_MAP[sectorId]) return null;
   let pick: { key: string; age: number } | null = null;
   for (const k of [sectorId, ...sector(sectorId).npcStations.map((n) => n.id)]) {

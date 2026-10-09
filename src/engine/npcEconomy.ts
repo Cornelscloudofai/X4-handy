@@ -4,9 +4,10 @@
 // zum Handelsposten.
 import { FACTIONS, NPC_MAP, NPC_STATIONS, SECTORS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { baseDemand } from './economy';
+import { baseDemand, hasDockFor, marketPrice, marketRoom, npcStoreCaps, tradeRule } from './economy';
+import { dockPoint, wanted } from './logistics';
 import { makeNpc } from './npc';
-import type { GameState, NpcEco, NpcStationDef } from './types';
+import type { GameState, Market, NpcEco, NpcStationDef, Station } from './types';
 import { log, rand } from './util';
 
 /** Anteil des Vorproduktbedarfs (bei voller Produktion), den die Fraktion mit eigenen Frachtern heranschafft */
@@ -60,18 +61,26 @@ export function factoryInputs(eco: NpcEco): string[] {
   return [...new Set(Object.keys(eco.prod).flatMap((w) => WARES[w].inputs.map((i) => i.ware)))];
 }
 
-/** Lager der Fabrik passend zur Größe: Vorprodukte für 3 Stunden, Produkte für 4 Stunden */
+/** Lager der Fabrik passend zur Größe: Vorprodukte für 3 Stunden, Produkte für 4 Stunden (neue Spiele: S-/M-Lager) */
 function ensureMarket(state: GameState, n: Factory): void {
   const eco = state.npcEco![n.id];
   const m = (state.markets[n.id] ??= {});
   const want = new Map<string, number>();
   for (const id of factoryInputs(eco)) want.set(id, inputRate(eco, id) * 3 * 3600);
   for (const id of Object.keys(eco.prod)) want.set(id, Math.max(want.get(id) ?? 0, outputRate(eco, id) * 4 * 3600));
+  const small = state.start ? npcStoreCaps([...want.keys()], Object.values(eco.prod).reduce((a, b) => a + b, 0), eco) : null;
   for (const [id, size] of want) {
-    const cap = Math.max(baseDemand(id) * 2, size);
-    if (!m[id]) m[id] = { stock: cap * 0.3, cap, eq: 0.3 };
+    const cap = small ? small[id] : Math.max(baseDemand(id) * 2, size);
+    // Neue Spiele: Rohstoffe knapp – die Fabrik wartet auf Lieferungen
+    const fill = state.start && WARES[id].mined ? 0.1 : 0.3;
+    if (!m[id]) m[id] = { stock: cap * fill, cap, eq: fill };
     else m[id].cap = Math.max(m[id].cap, cap);
   }
+}
+
+/** Ladung eines NPC-Frachters (Einheiten): höchstens die Hälfte des Lagerplatzes der Ware */
+function haulLoad(m: Market | undefined, id: string): number {
+  return Math.min(HAUL_M3 / WARES[id].volume, (m?.[id]?.cap ?? Infinity) * 0.5);
 }
 
 /**
@@ -89,11 +98,20 @@ export function syncFounded(state: GameState): void {
   }
 }
 
+/** Alle Rohstofffelder laut Sektordaten (auch die nur in alten Spielständen vorhandenen) */
+const ALL_FIELDS = Object.fromEntries(SECTORS.map((s) => [s.id, [...s.fields]]));
+
+/** Felder passend zum Spielstand: Neue Spiele (mit Startwahl) ohne die Altfelder */
+export function syncFields(state: GameState): void {
+  for (const s of SECTORS) s.fields = ALL_FIELDS[s.id].filter((f) => !state.start || !f.legacy);
+}
+
 /** Legt die Fabrikdaten an (neue Spiele und alte Spielstände) */
 export function initNpcEconomy(state: GameState): void {
   state.npcEco ??= {};
   state.npcGrow ??= {};
   state.npcFound ??= {};
+  syncFields(state);
   syncFounded(state);
   for (const n of npcFactories()) {
     if (!state.npcEco[n.id]) {
@@ -101,6 +119,9 @@ export function initNpcEconomy(state: GameState): void {
       const prod = Object.fromEntries(n.makes!.map((w, i) => [w, i < 2 ? 2 : 1]));
       state.npcEco[n.id] = { prod, t: {}, util: {}, grown: state.time, supply: {}, export: {} };
     }
+    // Produkte, die die Fabrik laut Sektordaten nicht mehr herstellt (z. B. Siliziumscheiben, jetzt im Siliziumwerk), entfallen
+    const eco = state.npcEco[n.id];
+    for (const w of Object.keys(eco.prod)) if (!n.makes!.includes(w)) delete eco.prod[w];
     ensureMarket(state, n);
   }
 }
@@ -149,32 +170,39 @@ function haul(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
   // Vorprodukte (nur, was die Fabrik nicht selbst herstellt)
   for (const id of factoryInputs(eco)) {
     if (own.has(id)) continue;
-    const load = HAUL_M3 / WARES[id].volume;
+    const load = haulLoad(m, id);
     eco.supply[id] = Math.min(load * 2, (eco.supply[id] ?? 0) + SELF_SHARE * inputRate(eco, id) * dt);
   }
   if (!inFlight(n.id)) {
     // zuerst, was am knappsten ist (volle Lager nicht weiter auffüllen)
     const fill = (id: string) => (m[id] ? m[id].stock / m[id].cap : 1);
     const pick = Object.entries(eco.supply)
-      .filter(([id, b]) => fill(id) < 0.8 && b >= (HAUL_M3 / WARES[id].volume) * 0.4)
+      .filter(([id, b]) => fill(id) < 0.8 && b >= haulLoad(m, id) * 0.4)
       .sort((a, b) => fill(a[0]) - fill(b[0]))[0];
     if (pick) {
       const [id, budget] = pick;
-      const load = HAUL_M3 / WARES[id].volume;
-      const amount = Math.min(budget, load, (post?.[id]?.stock ?? 0) * 0.5, m[id] ? m[id].cap - m[id].stock : 0);
+      const load = haulLoad(m, id);
+      // Bezug vom eigenen Handelsposten oder – wenn dort zu wenig liegt – von einem Nachbarsektor
+      // (so kommen z. B. Siliziumscheiben aus Zhin zum Elektronikwerk in Tharka's Cascade)
+      const room = m[id] ? m[id].cap - m[id].stock : 0;
+      const src = [n.sector, ...sector(n.sector).links].filter((k) => state.markets[k]?.[id])
+        .map((k) => ({ k, amount: Math.min(budget, load, state.markets[k][id].stock * 0.5, room) }))
+        .sort((a, b) => Number(b.k === n.sector && b.amount >= load * 0.4) - Number(a.k === n.sector && a.amount >= load * 0.4) || b.amount - a.amount)[0];
       // erst losfliegen, wenn sich die Fahrt lohnt (mindestens 40 % einer Ladung)
-      if (amount >= load * 0.4 && post?.[id]) {
-        post[id].stock -= amount;
+      if (src && src.amount >= load * 0.4) {
+        const amount = src.amount;
+        state.markets[src.k][id].stock -= amount;
         eco.supply[id] = budget - amount;
         const npc = makeNpc(state, { sector: n.sector, kind: 'haul', tx: n.x, tz: n.z, station: n.id, ware: id, amount, home: n.id });
-        npc.x = ts.x; npc.z = ts.z;
+        const g = src.k === n.sector ? null : gatesOf(n.sector).find((x) => x.to === src.k);
+        if (g) { npc.x = g.x * 0.96; npc.z = g.z * 0.96; } else { npc.x = ts.x; npc.z = ts.z; }
         state.npcs.push(npc);
       }
     }
   }
   // Produkte zum Handelsposten
   for (const id of own) {
-    const load = HAUL_M3 / WARES[id].volume;
+    const load = haulLoad(m, id);
     // unabhängig von der Auslastung, sonst bleibt eine volle Fabrik für immer stehen
     eco.export[id] = Math.min(load * 2, (eco.export[id] ?? 0) + EXPORT_SHARE * outputRate(eco, id) * dt);
   }
@@ -182,21 +210,56 @@ function haul(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
     // zuerst das Produkt mit dem vollsten Lager
     const full = (id: string) => (m[id] ? m[id].stock / m[id].cap : 0);
     const pick = Object.entries(eco.export)
-      .filter(([id, b]) => b >= (HAUL_M3 / WARES[id].volume) * 0.4 && (m[id]?.stock ?? 0) >= (HAUL_M3 / WARES[id].volume) * 0.4)
+      .filter(([id, b]) => b >= haulLoad(m, id) * 0.4 && (m[id]?.stock ?? 0) >= haulLoad(m, id) * 0.4)
       .sort((a, b) => full(b[0]) - full(a[0]))[0];
     if (pick) {
       const [id, budget] = pick;
-      const load = HAUL_M3 / WARES[id].volume;
+      const load = haulLoad(m, id);
       const amount = Math.min(budget, load, m[id]?.stock ?? 0);
-      if (amount >= load * 0.5 && post[id]) {
+      // Ziel: wer am meisten zahlt – eine eigene Station mit Kauforder über dem Preis des Handelspostens bekommt die Ladung direkt
+      const order = bestBuyOrder(state, n.sector, id, amount * 0.5);
+      if (amount >= load * 0.5 && order && order.price > marketPrice(state, n.sector, id)) {
         m[id].stock -= amount;
         eco.export[id] = budget - amount;
-        const npc = makeNpc(state, { sector: n.sector, kind: 'haul', tx: ts.x, tz: ts.z, station: n.sector, ware: id, amount, home: n.id });
+        const dp = dockPoint(order.st, 'npc' + state.nextId);
+        const npc = makeNpc(state, { sector: n.sector, kind: 'haul', tx: dp.x, tz: dp.z, station: order.st.id, ware: id, amount, home: n.id, price: order.price });
         npc.x = n.x; npc.z = n.z;
         state.npcs.push(npc);
+      } else if (amount >= load * 0.5 && post[id]) {
+        m[id].stock -= amount;
+        eco.export[id] = budget - amount;
+        // Handelsposten: der eigene oder ein Nachbarsektor, wenn die Ware dort deutlich knapper ist (≥ 10 % teurer) –
+        // so kommt z. B. Claytronik aus Tharka's Cascade auch nach Zhin
+        const own = marketPrice(state, n.sector, id);
+        const far = sector(n.sector).links.filter((l) => state.markets[l]?.[id] && marketRoom(state, l, id) >= amount)
+          .map((l) => ({ l, p: marketPrice(state, l, id) })).sort((a, b) => b.p - a.p)[0];
+        if (far && far.p >= own * 1.1) {
+          const fts = sector(far.l).tradeStation;
+          const g = gatesOf(far.l).find((x) => x.to === n.sector);
+          const npc = makeNpc(state, { sector: far.l, kind: 'haul', tx: fts.x, tz: fts.z, station: far.l, ware: id, amount, home: n.id });
+          if (g) { npc.x = g.x * 0.96; npc.z = g.z * 0.96; }
+          state.npcs.push(npc);
+        } else {
+          const npc = makeNpc(state, { sector: n.sector, kind: 'haul', tx: ts.x, tz: ts.z, station: n.sector, ware: id, amount, home: n.id });
+          npc.x = n.x; npc.z = n.z;
+          state.npcs.push(npc);
+        }
       }
     }
   }
+}
+
+/** Eigene Station im Sektor mit der höchsten Kauforder für die Ware (braucht Dock und Bedarf) */
+export function bestBuyOrder(state: GameState, sec: string, id: string, min: number): { st: Station; price: number } | null {
+  let best: { st: Station; price: number } | null = null;
+  for (const st of state.stations) {
+    if (st.sector !== sec || !hasDockFor(st, 'M')) continue;
+    const rule = tradeRule(st, id);
+    if (!rule.buy || rule.price == null) continue;
+    if (wanted(state, st, id, false, true) < min || state.credits < rule.price * min) continue;
+    if (!best || rule.price > best.price) best = { st, price: rule.price };
+  }
+  return best;
 }
 
 /** Ausbau: gut ausgelastete Fabriken bekommen ein Modul für das Produkt, das am Handelsposten am meisten fehlt */

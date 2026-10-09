@@ -35,7 +35,8 @@ describe('Spielstart', () => {
     };
     const m = gain('mining');
     const t = gain('trading');
-    expect(Math.max(m, t) / Math.min(m, t)).toBeLessThan(2);
+    // Bergbau versorgt hungrige Fabriken (S-Lager, Höchstpreis) – Handel mit Aufträgen soll in derselben Größenordnung liegen
+    expect(Math.max(m, t) / Math.min(m, t)).toBeLessThan(2.5);
   }, 60000);
 
 });

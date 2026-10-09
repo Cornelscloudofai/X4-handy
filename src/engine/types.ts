@@ -74,7 +74,11 @@ export interface ShipClassDef {
   crew: number;
 }
 
-export interface FieldDef { id: string; ware: string; x: number; z: number; r: number; richness: number }
+export interface FieldDef {
+  id: string; ware: string; x: number; z: number; r: number; richness: number;
+  /** Nur in alten Spielständen (ohne Startwahl) vorhanden */
+  legacy?: boolean;
+}
 
 export interface NpcStationDef {
   id: string;
@@ -143,7 +147,11 @@ export interface ModulePlace {
 
 export interface QueueItem { uid: number; def: string; paid: number }
 
-export interface TradeRule { buy: boolean; sell: boolean }
+export interface TradeRule {
+  buy: boolean; sell: boolean;
+  /** Kauforder: Die Station zahlt bis zu diesem Preis je Einheit – NPC-Händler und Fabrikfrachter liefern dann direkt an */
+  price?: number;
+}
 
 export interface Station {
   /** Stationshändler kaufen nur bei eigenen Stationen ein (nicht am Markt) */
@@ -347,6 +355,10 @@ export interface NpcShip {
   speed: number;
   contract?: number;
   hue: number;
+  /** NPC-Händler: Markt, an dem er einkauft (seller) bzw. verkauft (buyer) – Handelsposten oder NPC-Station */
+  market?: string;
+  /** Zugesagter Preis je Einheit (Kauforder der Station) */
+  price?: number;
   /** NPC-Frachter einer Fraktionsfabrik: deren Kennung (station = Ziel-Markt) */
   home?: string;
 }
@@ -438,6 +450,8 @@ export interface GameState {
   satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
   scanTimer?: number;
   /** Feldausbau je Feld: erreichte Stufe und laufender Ausbau */
+  /** Schürfrechte (neue Spiele): "sektor:base" bzw. "sektor:nividium" */
+  mineRights?: string[];
   fieldUp?: Record<string, { level: number; work?: { level: number; until: number } }>;
   /** Rohstofffelder (neue Spiele): Füllstand 0–1 je Feld */
   fieldStock?: Record<string, number>;

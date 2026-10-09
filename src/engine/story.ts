@@ -5,6 +5,7 @@ import { WARES } from '../data/wares';
 import type { Contract, FactionId, GameState, StartKind } from './types';
 import { emit, log } from './util';
 import { netWorth } from './stats';
+import { factoryUtil } from './npcEconomy';
 import { MODULES } from '../data/modules';
 import { vendorsFor } from '../data/vendors';
 
@@ -344,12 +345,12 @@ export const INTRO: Record<StartKind, StoryMission[]> = {
     },
     {
       id: 'm-buyers',
-      title: 'Abnehmer finden',
-      about: 'Jede NPC-Fabrik hat ein Lager für ihre Vorprodukte. Ist es voll, sinkt der Preis – volle Lager wechseln sich ab, darum lohnt es sich, mehrere Rohstoffe zu fördern.',
-      story: 'Die Zhin-Hütte schmilzt Erz und Silizium für den Wiederaufbau. Sie zahlt gut, solange ihr Lager nicht voll ist.',
-      goal: 'Verdiene insgesamt 250.000 Cr mit Rohstoffen',
-      hint: 'Tippe eine NPC-Fabrik an: Dort siehst du, was sie braucht und was sie herstellt. Unter Flotte → Miner kannst du die Rohstoffart auch fest einstellen.',
-      progress: (s) => ({ cur: Math.floor(soldSince(s)), target: 250_000 }),
+      title: 'Wirtschaftszweig wählen',
+      about: 'Erz und Silizium gehen in Zhin an zwei verschiedene Fabriken: Die Metallhütte macht aus Erz Veredelte Metalle und Hüllenteile, das Siliziumwerk Siliziumscheiben – der Grundstoff für Claytronik. Ohne Rohstoffe stehen beide still; was du lieferst, bringt ihren Zweig in Gang, und ihre Produkte werden reichlicher und günstiger.',
+      story: 'Die Familie braucht beides: Hüllenteile für den Wiederaufbau und Claytronik für alles, was danach kommt. Wen versorgst du zuerst?',
+      goal: 'Bring eine Fabrik auf 40 % Auslastung',
+      hint: 'Tippe die Metallhütte oder das Siliziumwerk an: Dort siehst du Auslastung und Vorräte. Unter Flotte → Miner stellst du die Rohstoffart fest ein (Erz oder Silizium).',
+      progress: (s) => ({ cur: Math.round(Math.max(...['zhin-huette', 'zhin-silizium'].map((k) => (s.npcEco?.[k] ? factoryUtil(s.npcEco[k]) : 0))) * 100), target: 40 }),
       reward: { credits: 25_000, rep: { frf: 1 } },
     },
     {

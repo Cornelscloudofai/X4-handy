@@ -34,6 +34,7 @@ import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
 import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
+import { npcSource } from '../engine/npc';
 import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin, shipEta } from '../engine/fleet';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
@@ -54,6 +55,7 @@ import { holdSellModalHtml, tradeModalHtml, wareBuyers } from './tradeView';
 import { deliverySources, deliveryModalHtml } from './deliveryView';
 import { isDelivery } from '../engine/contracts';
 import { FIELD_STEPS, fieldFloor, fieldRegenFactor, fieldUp, nextStepCheck } from '../engine/fieldUp';
+import { hasMineRight, mineRightBlock, rightTerms, type MineRightKind } from '../engine/mineRights';
 import { QUADRANT_NAME, SAT_COST, intelAge, knows, quadrantCovered, seenPrice, seenRoom, seenStock } from '../engine/intel';
 import { RANK_RANGE, activeOpportunity, pilotRank, rankStars, relationBonus, tripsToNextRank } from '../engine/trading';
 import { computePlan, producible } from '../engine/planner';
@@ -261,6 +263,21 @@ function fieldCard(state: GameState, id: string): string {
 }
 
 /** Feldausbau: Stufe, Vorrat und Nachwuchs, nächster Schritt mit Kosten, Material und Knopf */
+/** Schürfrechte eines Sektors (neue Spiele): Grundrohstoffe und Nividium, mit Ruf und Preis */
+function mineRightsBox(state: GameState, id: string): string {
+  if (!state.start) return '';
+  const s = SECTOR_MAP[id];
+  const kinds: MineRightKind[] = ['base', ...(s.fields.some((f) => f.ware === 'nividium') ? ['nividium' as const] : [])];
+  const rows = kinds.map((k) => {
+    const name = k === 'nividium' ? 'Nividium' : 'Grundrohstoffe (Erz, Silizium, Eis, Gas)';
+    if (hasMineRight(state, id, k)) return `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${name}</div><div class="sub pos">${k === 'base' && state.sectors.includes(id) ? 'frei (eigener Lizenzsektor)' : 'Schürfrecht vorhanden'}</div></div></div>`;
+    const t = rightTerms(id, k);
+    const block = mineRightBlock(state, id, k);
+    return `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${name}</div><div class="sub">Ruf ${t.rep} bei ${esc(FACTIONS[s.faction].short)} · ${fmtCr(t.cost)}${block ? ` · <span class="neg">${esc(block)}</span>` : ''}</div></div><button class="btn small ${block ? 'disabled' : 'amber'}" ${act('buy-mine-right', { sec: id, kind: k })}>Erwerben</button></div>`;
+  }).join('');
+  return `<div class="section"><h3>Schürfrechte</h3><div class="box rows">${rows}</div><p class="small" style="margin:6px 0 0;color:var(--text-2)">Ruf gibt es für Lieferungen und Aufträge der Fraktion – wer ihre Wirtschaft versorgt, darf auch ihr Nividium abbauen.</p></div>`;
+}
+
 function fieldUpBox(state: GameState, f: FieldDef): string {
   const up = fieldUp(state, f.id);
   const c = nextStepCheck(state, f);
@@ -705,7 +722,7 @@ function stationStorage(state: GameState, st: Station): string {
     const reserve = reserveFor(st, id, limit);
     const spark = sparkline(state, { key: H.stock(st.id, id), title: `${w.name} im Lager`, sub: st.name, color: w.color, kind: 'level', unit: 'units' });
     return `<div class="row" data-key="${id}">${wareTile(id)}<div class="grow"><div class="title-line"><div class="title two-lines" style="font-weight:500">${esc(w.name)}</div>${spark}</div>
-      <div class="sub wrap">${tw(have, 'amount')} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
+      <div class="sub wrap">${tw(have, 'amount')} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}${rule.buy && rule.price != null ? ` · Kauforder ${fmtCr(rule.price)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
       <div class="row-links"><button class="linkish" ${act('storage-open', { st: st.id, ware: id })}>Lager einstellen</button>${have >= 1 && w.storage === 'Container' ? `<button class="linkish" ${act('sell-open', { st: st.id, ware: id })}>Verkaufen …</button>` : ''}${w.storage === 'Container' ? `<button class="linkish" ${act('buy-open', { st: st.id, ware: id })}>Einkaufen …</button>` : ''}</div></div>
       <div class="toggle"><button class="buy ${rule.buy ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'buy' })} aria-pressed="${rule.buy}">Kauf</button><button class="sell ${rule.sell ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'sell' })} aria-pressed="${rule.sell}">Verkauf</button></div></div>`;
   }).join('');
@@ -1193,7 +1210,8 @@ function sectorPanel(state: GameState, id: string, p: Panel): string {
       <div><small>Sonnenlicht</small><b>${s.sunlight} %</b></div><div><small>Stationen</small><b>${state.stations.filter((x) => x.sector === id).length}</b></div>
       <div><small>Baulizenz</small><b style="font-size:15px">${owned ? 'vorhanden' : fmtCr(s.licenseCost)}</b></div><div><small>Ruf nötig</small><b style="font-size:15px">${s.repRequired} ${FACTIONS[s.faction].short} <span class="small ${rep >= s.repRequired ? 'pos' : 'neg'}">(${fmtNum(rep, 1)})</span></b></div>
     </div></div>
-    <div class="section"><h3>Rohstofffelder</h3><div class="box rows">${s.fields.map((f) => `<div class="row">${wareTile(f.ware)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[f.ware].name)}</div><div class="sub">Ertrag ${pct(f.richness)} · Radius ${f.r} km</div></div></div>`).join('')}</div></div>
+    <div class="section"><h3>Rohstofffelder</h3><div class="box rows">${s.fields.map((f) => `<div class="row">${wareTile(f.ware)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[f.ware].name)}</div><div class="sub">Ertrag ${pct(f.richness)} · Radius ${f.r} km${state.start && !hasMineRight(state, id, f.ware === 'nividium' ? 'nividium' : 'base') ? ' · <span class="neg">kein Schürfrecht</span>' : ''}</div></div></div>`).join('')}</div></div>
+    ${mineRightsBox(state, id)}
     ${state.start && (owned || reachable || state.sectors.some((x) => SECTOR_MAP[x].links.includes(id))) ? `<div class="section"><h3>Aufklärung</h3><div class="quad-grid">${([0, 1, 2, 3] as const).map((q) => {
       const on = quadrantCovered(state, id, q);
       const sat = state.satellites?.some((x) => x.sector === id && x.q === q);
@@ -1461,6 +1479,22 @@ function buildMoveModal(state: GameState, m: Extract<Modal, { type: 'buildMove' 
     `<button class="btn" ${act('modal-close')}>Fertig</button>`, st.name);
 }
 
+/** Kauforder: Preis, bis zu dem die Station kauft – NPC-Händler und Fabrikfrachter liefern dann direkt an */
+function buyOrderField(state: GameState, st: Station, ware: string): string {
+  const w = WARES[ware];
+  const rule = tradeRule(st, ware);
+  const src = npcSource(state, st.sector, ware);
+  const p = rule.price ?? Math.round(src?.price ?? w.price.avg);
+  const hint = rule.price == null
+    ? 'Ohne Kauforder kaufen NPC-Händler beim günstigsten Anbieter im Sektor und berechnen dessen Preis.'
+    : `NPC-Händler und die Frachter der Fabriken liefern an, solange sie die Ware für höchstens ${fmtCr(rule.price)} bekommen – je höher dein Gebot, desto lieber kommen sie.`;
+  return `<div class="field" style="margin-top:16px"><label for="buyPrice">Kauforder · ${rule.price == null ? 'keine' : `bis ${fmtCr(rule.price)} je Einheit`}</label>
+      <input type="range" id="buyPrice" min="${w.price.min}" max="${w.price.max}" step="1" value="${p}" data-change="buy-price" data-st="${st.id}" data-ware="${ware}">
+      <div class="small muted" style="display:flex;justify-content:space-between"><span>${fmtCr(w.price.min)}</span><span>Ø ${fmtCr(w.price.avg)}${src ? ` · günstigster Anbieter jetzt ${fmtCr(src.price)}` : ''}</span><span>${fmtCr(w.price.max)}</span></div>
+      <p class="small muted" style="margin:4px 0 0">${hint}</p>
+      ${rule.price == null ? '' : `<button class="linkish" ${act('buy-price-off', { st: st.id, ware })}>Kauforder aufheben</button>`}</div>`;
+}
+
 function storageModal(state: GameState, stationId: string, ware: string, back = false): string {
   const st = stationById(state, stationId);
   if (!st) return '';
@@ -1483,7 +1517,8 @@ function storageModal(state: GameState, stationId: string, ware: string, back = 
     <div class="field" style="margin-top:16px"><label for="storReserve">Für eigene Produktion behalten · ${fmtAmount(reserve)} Einheiten${st.reserve?.[ware] === undefined ? ' (automatisch)' : ''}</label>
       <input type="range" id="storReserve" min="0" max="${Math.max(1, Math.round(limit))}" step="${Math.max(1, Math.round(limit / 100))}" value="${Math.round(Math.min(reserve, limit))}" data-change="storage-reserve" data-st="${st.id}" data-ware="${ware}">
       <p class="small muted" style="margin:4px 0 0">${consumed ? 'Die Station verbraucht diese Ware selbst. Verkäufe und Händler greifen nur auf den Teil über der Reserve zu.' : 'Die Station verbraucht diese Ware nicht – eine Reserve ist meist unnötig.'}</p>
-      ${st.reserve?.[ware] === undefined ? '' : `<button class="linkish" ${act('storage-auto', { st: st.id, ware, k: 'reserve' })}>Reserve automatisch (${consumed ? '40 % der Grenze' : 'keine'})</button>`}</div>`,
+      ${st.reserve?.[ware] === undefined ? '' : `<button class="linkish" ${act('storage-auto', { st: st.id, ware, k: 'reserve' })}>Reserve automatisch (${consumed ? '40 % der Grenze' : 'keine'})</button>`}</div>
+    ${buyOrderField(state, st, ware)}`,
     `<button class="btn primary" ${act(back ? 'modal-back' : 'modal-close')}>${back ? 'Zurück zur Lieferung' : 'Fertig'}</button>`, st.name);
 }
 
@@ -1595,7 +1630,7 @@ function welcomeModal(): string {
     <div class="welcome-hero"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
     <div class="sheet-body"><div class="small muted" style="margin:0 0 8px">Wie willst du anfangen?</div>
       <div class="start-pick">
-        <button class="start-card" ${act('start-game', { kind: 'mining' })}>${icon('miner', 26)}<b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 20.000 Cr</span><small>Erz und Silizium fördern und an NPC-Fabriken verkaufen. Läuft fast von selbst.</small></button>
+        <button class="start-card" ${act('start-game', { kind: 'mining' })}>${icon('miner', 26)}<b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 5.000 Cr</span><small>Erz oder Silizium fördern und damit einen Wirtschaftszweig voranbringen.</small></button>
         <button class="start-card" ${act('start-game', { kind: 'trading' })}>${icon('trader', 26)}<b>Loslegen mit Handel</b><span>Tuatara-Transporter (S) · 50.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></button>
       </div>
       <div class="steps" style="margin-top:14px">

@@ -23,7 +23,7 @@ function run(s: GameState, seconds: number, each?: () => void, dt = 2): void {
 describe('NPC-Wirtschaft', () => {
   it('jede NPC-Fabrik hat Produktion und verkauft ihre Produkte am eigenen Markt', () => {
     const s = newGame();
-    expect(NPC_FACTORIES.length).toBe(5);
+    expect(NPC_FACTORIES.length).toBe(6);
     for (const n of NPC_FACTORIES) {
       const eco = s.npcEco![n.id];
       expect(Object.keys(eco.prod).sort()).toEqual([...n.makes!].sort());
@@ -97,7 +97,7 @@ describe('NPC-Wirtschaft', () => {
     delete s.npcEco;
     delete s.npcGrow;
     const t = deserialize(serialize(s));
-    expect(Object.keys(t.npcEco ?? {}).length).toBe(5);
+    expect(Object.keys(t.npcEco ?? {}).length).toBe(6);
     step(t, 60);
     expect(Object.values(t.markets[huette.id]).every((w) => Number.isFinite(w.stock))).toBe(true);
     expect(WARES.hullparts).toBeTruthy();

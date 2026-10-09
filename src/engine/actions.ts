@@ -12,6 +12,7 @@ import { newModule, newShip, newStation } from './state';
 import type { FactionId, GameState, RouteOrder, Ship, TradeEndpoint, TradeJob, TradeRule } from './types';
 import { log } from './util';
 import { acceptContract, isDelivery } from './contracts';
+import { canMine } from './mineRights';
 
 export interface Result { ok: boolean; msg: string }
 const ok = (msg: string): Result => ({ ok: true, msg });
@@ -477,6 +478,7 @@ export function setSectorOrder(state: GameState, shipId: string, order: { sector
   if (!SECTOR_MAP[order.sector] || !WARES[order.ware]) return fail('Ungültiger Befehl.');
   if (WARES[order.ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
   if (cls.role === 'miner' && !SECTOR_MAP[order.sector].fields.some((f) => f.ware === order.ware)) return fail('In diesem Sektor gibt es kein solches Feld.');
+  if (cls.role === 'miner' && !canMine(state, order.sector, order.ware)) return fail(`Kein Schürfrecht für ${WARES[order.ware].name} in ${SECTOR_MAP[order.sector].name} (Sektor → Schürfrechte).`);
   s.sectorOrder = { kind: cls.role === 'miner' ? 'mine' : 'trade', sector: order.sector, ware: order.ware, to: order.to || undefined };
   s.mode = 'auto';
   s.route = null;

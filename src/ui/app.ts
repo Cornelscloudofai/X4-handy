@@ -40,6 +40,7 @@ import { deliveryShips, deliverySources } from './deliveryView';
 import { marketEndpoint, tradeShips } from './tradeView';
 import { activeOpportunity } from '../engine/trading';
 import { deploySatellite } from '../engine/intel';
+import { buyMineRight } from '../engine/mineRights';
 import { startFieldStep } from '../engine/fieldUp';
 import { saleOffers } from '../engine/sales';
 import { SPEEDS, saveBgMode, saveIconStyle, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
@@ -104,7 +105,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -631,6 +632,7 @@ function onClick(e: MouseEvent): void {
       }
       case 'route-margin-off': { const sh = state.ships.find((x) => x.id === d.id); if (sh?.route) { delete sh.route.minMargin; delete sh.route.onLow; } refresh(); break; }
       case 'satellite': result(deploySatellite(state, d.sec!, Number(d.q) as 0 | 1 | 2 | 3)); break;
+      case 'buy-mine-right': result(buyMineRight(state, d.sec!, d.kind === 'nividium' ? 'nividium' : 'base')); break;
       case 'auto-wares-modal': ui.modal = { type: 'autoWares', ship: d.id! }; refresh(); break;
       case 'auto-ware-all': { const sh = state.ships.find((x) => x.id === d.id); if (sh) delete sh.autoWares; refresh(); break; }
       case 'auto-ware': {
@@ -868,6 +870,12 @@ function onClick(e: MouseEvent): void {
       case 'modal-close': ui.modal = null; refresh(); break;
       case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all' }; refresh(); break;
       case 'buyship': result(A.buyShip(state, d.cls!, d.st!)); break;
+      case 'buy-price-off': {
+        const st = stationById(state, d.st!);
+        if (st?.trade[d.ware!]) delete st.trade[d.ware!].price;
+        refresh();
+        break;
+      }
       case 'trade-toggle': {
         const st = stationById(state, d.st!);
         if (!st) break;
@@ -1231,6 +1239,12 @@ function onChange(e: Event): void {
   if ((field === 'build-move-in' || field === 'build-move-out') && ui.modal?.type === 'buildMove') {
     const v = Number(el.value);
     ui.modal = field === 'build-move-in' ? { ...ui.modal, toBuild: v } : { ...ui.modal, toStation: v };
+    refresh();
+    return;
+  }
+  if (field === 'buy-price') {
+    // Eine Kauforder schaltet den Kauf der Ware ein
+    A.setTradeRule(state, el.dataset.st!, el.dataset.ware!, { buy: true, price: Number(el.value) });
     refresh();
     return;
   }
