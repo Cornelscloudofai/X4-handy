@@ -10,7 +10,7 @@ import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
-import { stationById } from '../engine/logistics';
+import { fieldById, stationById } from '../engine/logistics';
 import { catchUp, step } from '../engine/sim';
 import { deserialize, serialize, loadLocal, newGame, saveLocal, clearLocal } from '../engine/state';
 import { claimMission } from '../engine/story';
@@ -40,6 +40,7 @@ import { deliveryShips, deliverySources } from './deliveryView';
 import { marketEndpoint, tradeShips } from './tradeView';
 import { activeOpportunity } from '../engine/trading';
 import { deploySatellite } from '../engine/intel';
+import { startFieldStep } from '../engine/fieldUp';
 import { saleOffers } from '../engine/sales';
 import { SPEEDS, saveBgMode, saveIconStyle, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
@@ -636,6 +637,15 @@ function onClick(e: MouseEvent): void {
         const sh = state.ships.find((x) => x.id === d.id);
         if (sh) { const cur = sh.autoWares ?? []; sh.autoWares = cur.includes(d.ware!) ? cur.filter((x) => x !== d.ware) : [...cur, d.ware!]; if (!sh.autoWares.length) delete sh.autoWares; }
         refresh();
+        break;
+      }
+      case 'survey-modal': ui.modal = { type: 'survey', field: d.f! }; refresh(); break;
+      case 'field-up': {
+        const info = fieldById(d.f!);
+        if (!info) break;
+        const r = startFieldStep(state, info.field, d.sh);
+        if (r.ok) ui.modal = null;
+        result(r);
         break;
       }
       case 'explore-modal': ui.modal = { type: 'explore', key: d.k! }; refresh(); break;

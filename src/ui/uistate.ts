@@ -41,6 +41,7 @@ export type Modal =
   | SellModal
   | TradeModal
   | { type: 'explore'; key: string }
+  | { type: 'survey'; field: string }
   | { type: 'autoWares'; ship: string }
   | HoldSellModal
   | BuyModal;

@@ -160,10 +160,18 @@ export function fieldById(fieldId: string) {
 }
 
 /** Reserve, die eine Station für die eigene Produktion zurückhält */
+/** Material für den nächsten Feldausbau, das im Lager einer Station bereitliegt (wird nicht verkauft) */
+const fieldReserve = new Map<string, Record<string, number>>();
+export function setFieldReserve(stationId: string, needs: Record<string, number> | null): void {
+  if (needs) fieldReserve.set(stationId, needs);
+  else fieldReserve.delete(stationId);
+}
+
 export function reserveFor(st: Station, wareId: string, limit: number): number {
   const set = st.reserve?.[wareId];
-  if (set !== undefined) return set;
-  const yard = pendingNeeds(st)[wareId] ?? 0;
+  const field = fieldReserve.get(st.id)?.[wareId] ?? 0;
+  if (set !== undefined) return Math.max(set, field);
+  const yard = (pendingNeeds(st)[wareId] ?? 0) + field;
   return Math.max(yard, consumesWare(st, wareId) ? limit * 0.4 : 0);
 }
 

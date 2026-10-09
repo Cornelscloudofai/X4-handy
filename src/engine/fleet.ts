@@ -14,6 +14,7 @@ import { endOf, fieldEnd, recordFlow, stationEnd } from './flows';
 import type { Contract, FieldDef, GameState, RouteOrder, RestAction, RestCase, Ship, ShipClassDef, Station, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
 import { knows, noteMarket, seenPrice, seenRoom, seenStock } from './intel';
+import { FIELD_STEPS, fieldCapFactor, fieldFloor, fieldRegenFactor, finishSurvey, stepFieldUp } from './fieldUp';
 import { RANK_RANGE, applyOpportunity, effectivePrice, noteDelivery, noteTrip, pilotRank, relationBonus } from './trading';
 
 /**
@@ -21,24 +22,27 @@ import { RANK_RANGE, applyOpportunity, effectivePrice, noteDelivery, noteTrip, p
  * Je leerer das Feld, desto länger dauert eine Ladung – viele Miner auf einem Feld bringen abnehmenden Ertrag.
  */
 export const FIELD_REGEN = 0.2; // Anteil des Vorrats pro Stunde
-export function fieldCap(f: FieldDef): number {
-  return f.r * f.r * 60 * f.richness; // m³
+export function fieldCap(f: FieldDef, state?: GameState): number {
+  return f.r * f.r * 60 * f.richness * (state ? fieldCapFactor(state, f.id) : 1); // m³, mit Feldausbau
 }
 export function fieldLevel(state: GameState, fieldId: string): number {
   return state.start ? state.fieldStock?.[fieldId] ?? 1 : 1;
 }
 /** Abbaurate in m³/s an einem Feld (mit Erschöpfung) */
 export function mineRate(state: GameState, cls: ShipClassDef, fieldId?: string): number {
-  return cls.miningRate * (fieldId ? 0.25 + 0.75 * fieldLevel(state, fieldId) : 1);
+  if (!fieldId) return cls.miningRate;
+  const floor = fieldFloor(state, fieldId);
+  return cls.miningRate * (floor + (1 - floor) * fieldLevel(state, fieldId));
 }
 function depleteField(state: GameState, f: FieldDef, m3: number): void {
   if (!state.start) return;
-  (state.fieldStock ??= {})[f.id] = Math.max(0, fieldLevel(state, f.id) - m3 / fieldCap(f));
+  (state.fieldStock ??= {})[f.id] = Math.max(0, fieldLevel(state, f.id) - m3 / fieldCap(f, state));
 }
 export function stepFields(state: GameState, dt: number): void {
   const fs = state.fieldStock;
   if (!fs) return;
-  for (const id in fs) fs[id] = Math.min(1, fs[id] + (FIELD_REGEN * dt) / 3600);
+  for (const id in fs) fs[id] = Math.min(1, fs[id] + (FIELD_REGEN * fieldRegenFactor(state, id) * dt) / 3600);
+  stepFieldUp(state);
 }
 
 export function shipPlace(s: Ship): Place {
@@ -266,10 +270,39 @@ function startTopUp(state: GameState, s: Ship, home: Station): void {
   s.status = `Füllt auf: ${WARES[s.cargo!.ware].name} (${fmtN(s.cargo!.amount)} an Bord)`;
 }
 
+function stepSurvey(state: GameState, s: Ship, dt: number): void {
+  const info = fieldById(s.survey!);
+  if (!info) { s.survey = undefined; s.surveyGo = false; s.phase = 'idle'; return; }
+  const cls = SHIP_MAP[s.cls];
+  if (s.phase === 'surveying') {
+    s.timer -= dt;
+    s.status = `Vermisst ${WARES[info.field.ware].name}-Feld · noch ${Math.ceil(Math.max(0, s.timer) / 60)} min`;
+    if (s.timer <= 0) {
+      finishSurvey(state, info.field.id);
+      s.survey = undefined;
+      s.phase = 'idle';
+    }
+    return;
+  }
+  if (!s.surveyGo) {
+    goTo(s, { sector: info.sector.id, x: info.field.x, z: info.field.z });
+    s.surveyGo = true;
+    s.status = `Fliegt zur Vermessung: ${WARES[info.field.ware].name}-Feld`;
+    return;
+  }
+  if (moveAlong(s, cls.speed, dt)) {
+    s.surveyGo = false;
+    s.phase = 'surveying';
+    s.timer = FIELD_STEPS[0].time;
+  }
+}
+
 function stepMiner(state: GameState, s: Ship, dt: number): void {
   const cls = SHIP_MAP[s.cls];
   const home = stationById(state, s.home);
   if (!home) { s.status = 'Keine Heimatstation'; return; }
+  // Feldausbau: Vermessung – erst die laufende Ladung abliefern, dann eine Stunde vor Ort kartieren
+  if (s.survey && (s.surveyGo || s.phase === 'surveying' || (!s.cargo && (s.phase === 'idle' || s.phase === 'waiting')))) { stepSurvey(state, s, dt); return; }
   switch (s.phase) {
     case 'idle': {
       if (s.cargo) { goTo(s, home, s.id); s.phase = 'toHome'; s.status = 'Rückflug mit Ladung'; return; }

@@ -203,6 +203,7 @@ export interface ShipOrder {
 
 export type ShipPhase =
   | 'idle'
+  | 'surveying'
   | 'toTarget'
   | 'docking'
   | 'mining'
@@ -308,6 +309,9 @@ export interface Ship {
   holdCargo?: boolean;
   /** Anzeige, warum die Handelsroute gerade ruht (z. B. Gewinn unter der Schwelle) */
   routeNote?: string;
+  /** Miner: vermisst dieses Feld (Feldausbau Stufe 1) */
+  survey?: string;
+  surveyGo?: boolean;
   /** Autohandel: nur mit diesen Waren frei handeln (leer = alle) */
   autoWares?: string[];
   /** Zuletzt gemeldeter Pilotenrang */
@@ -426,6 +430,8 @@ export interface GameState {
   intel?: Record<string, { t: number; stock: Record<string, number> }>;
   satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
   scanTimer?: number;
+  /** Feldausbau je Feld: erreichte Stufe und laufender Ausbau */
+  fieldUp?: Record<string, { level: number; work?: { level: number; until: number } }>;
   /** Rohstofffelder (neue Spiele): Füllstand 0–1 je Feld */
   fieldStock?: Record<string, number>;
   /** Beziehung zu Stationen (Stammkunde): Punkte und letzte Lieferung */

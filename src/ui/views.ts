@@ -34,13 +34,13 @@ import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
 import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
-import { expectedCargo, restMode, routeMargin, shipEta } from '../engine/fleet';
+import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin, shipEta } from '../engine/fleet';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { currentMission, missionComplete, storyOf } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
 import { SHIP_BUILD_TIME, hasYard, materialValue, missingFor, yardSizes, yardStations } from '../engine/yard';
-import type { Contract, GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
+import type { Contract, FieldDef, GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
 import { helpBtn, helpList, helpModalParts } from './help';
 import { canUndo, undoLabel } from './undo';
@@ -53,6 +53,7 @@ import { buyModalHtml } from './buyView';
 import { holdSellModalHtml, tradeModalHtml, wareBuyers } from './tradeView';
 import { deliverySources, deliveryModalHtml } from './deliveryView';
 import { isDelivery } from '../engine/contracts';
+import { FIELD_STEPS, fieldFloor, fieldRegenFactor, fieldUp, nextStepCheck } from '../engine/fieldUp';
 import { QUADRANT_NAME, SAT_COST, intelAge, knows, quadrantCovered, seenPrice, seenRoom, seenStock } from '../engine/intel';
 import { RANK_RANGE, activeOpportunity, pilotRank, rankStars, relationBonus, tripsToNextRank } from '../engine/trading';
 import { computePlan, producible } from '../engine/planner';
@@ -250,12 +251,36 @@ function fieldCard(state: GameState, id: string): string {
   const miners = state.ships.filter((s) => s.miningField === id).length;
   return cardShell(`${wareIcon(w.id, 26)}`, w.name, `Rohstofffeld · ${esc(info.sector.name)}`, `
     <div class="stats3">
-      <div>${icon('star', 22)}<span><b>${pct(info.field.richness)}</b>Ertrag</span></div>
-      <div>${icon('market', 22)}<span><b>${fmtInt(marketPrice(state, info.sector.id, w.id))} Cr</b>Marktpreis</span></div>
+      ${state.start ? `<div>${icon('box', 22)}<span><b>${pct(fieldLevel(state, id))}</b>Vorrat</span></div>` : `<div>${icon('star', 22)}<span><b>${pct(info.field.richness)}</b>Ertrag</span></div>`}
+      <div>${icon('market', 22)}<span><b>${fmtInt(seenPrice(state, info.sector.id, w.id) ?? marketPrice(state, info.sector.id, w.id))} Cr</b>Marktpreis</span></div>
       <div>${icon('miner', 22)}<span><b>${miners}</b>Miner aktiv</span></div>
     </div>
+    ${state.start ? fieldUpBox(state, info.field) : ''}
     <p class="small muted" style="margin:0 0 10px">${w.storage === 'Liquid' ? 'Gas – braucht Gas-Miner und ein Flüssiglager.' : 'Mineral – braucht Mineral-Miner und ein Feststofflager.'} Stationen nahe am Feld verkürzen die Flugzeit.</p>
     <div class="card-actions one"><button class="btn" ${act('open-ware', { id: w.id })}>${icon('market', 20)}Warenkunde: ${esc(w.name)}</button></div>`, true);
+}
+
+/** Feldausbau: Stufe, Vorrat und Nachwuchs, nächster Schritt mit Kosten, Material und Knopf */
+function fieldUpBox(state: GameState, f: FieldDef): string {
+  const up = fieldUp(state, f.id);
+  const c = nextStepCheck(state, f);
+  const cap = fieldCap(f, state);
+  const regen = FIELD_REGEN * fieldRegenFactor(state, f.id);
+  const head = `<div class="small" style="margin:0 0 6px;color:var(--text-2)">Ausbau <b style="color:var(--text)">Stufe ${up.level} von 3</b> · Vorrat ${fmtAmount(cap * fieldLevel(state, f.id))} von ${fmtAmount(cap)} m³ · Nachwuchs ${Math.round(regen * 100)} %/h · leer noch ${Math.round(fieldFloor(state, f.id) * 100)} % Tempo</div>`;
+  if (!c.step) return `<div class="box" style="padding:10px;margin-bottom:10px">${head}<p class="small pos" style="margin:0">Voll ausgebaut.</p></div>`;
+  const step = c.step;
+  const work = up.work ? `<p class="small" style="margin:6px 0 0">${esc(FIELD_STEPS[up.work.level - 1].name)} läuft – fertig in ${fmtDur(up.work.until - state.time)}.</p>` : '';
+  const surveying = state.ships.find((x) => x.survey === f.id);
+  const mats = Object.entries(step.materials).map(([id, n]) => `<span class="pill ${c.missing[id] ? 'amber' : ''}">${wareMark(id, 8)}${fmtInt(n)} ${esc(WARES[id].name)}${c.missing[id] ? ` · fehlt ${fmtInt(c.missing[id])}` : ''}</span>`).join('');
+  const buy = Object.keys(c.missing).length && c.station ? `<div class="pills" style="margin-top:6px">${Object.keys(c.missing).map((id) => `<button class="pill teal" ${act('buy-open', { st: c.station!, ware: id })}>${icon('plus', 12)}${esc(WARES[id].name)} einkaufen</button>`).join('')}</div>` : '';
+  const btn = step.level === 1 ? act('survey-modal', { f: f.id }) : act('field-up', { f: f.id });
+  return `<div class="box" style="padding:10px;margin-bottom:10px">${head}
+    <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>Nächste Stufe: ${esc(step.name)}</b><span class="small muted">${fmtCr(step.cost)}${step.level === 1 ? ' · ein Miner kartiert 1 h vor Ort' : ` · Bauzeit ${Math.round(step.time / 3600)} h · Material aus einer eigenen Station im Sektor`}</span></div>
+    <p class="small pos" style="margin:4px 0 6px">${esc(step.effect)}</p>
+    ${mats ? `<div class="pills">${mats}</div>${buy}` : ''}
+    ${surveying ? `<p class="small" style="margin:6px 0 0">${esc(surveying.name)}: ${esc(surveying.status)}</p>` : ''}${work}
+    ${!up.work && !surveying ? `<button class="btn small ${c.ok ? 'primary' : 'disabled'}" style="margin-top:8px" ${btn}>${c.ok ? `${esc(step.name)} starten` : esc(c.why)}</button>` : ''}
+  </div>`;
 }
 
 function tradeCard(state: GameState, secId: string): string {
@@ -1346,6 +1371,13 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const sel = sh.autoWares ?? [];
       return modalShell('Waren im freien Handel', `<p class="small muted" style="margin-top:0">Ohne Auswahl handelt der Pilot mit allen Waren. Mit Auswahl nur mit diesen – die Versorgung der Heimatstation bleibt davon unberührt.</p>
         <div class="pills"><button class="pill ${sel.length ? '' : 'teal'}" ${act('auto-ware-all', { id: sh.id })}>Alle</button>${list.map((id) => `<button class="pill ${sel.includes(id) ? 'teal' : ''}" ${act('auto-ware', { id: sh.id, ware: id })}>${wareMark(id, 8)}${esc(WARES[id].name)}</button>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Fertig</button>`, sh.name);
+    }
+    case 'survey': {
+      const info = fieldById(m.field);
+      if (!info) return '';
+      const miners = state.ships.filter((x) => SHIP_MAP[x.cls].role === 'miner' && !x.survey);
+      const rows = miners.map((x) => `<div class="row tap" ${act('field-up', { f: m.field, sh: x.id })}>${icon('miner', 20)}<div class="grow"><div class="title">${esc(x.name)}</div><div class="sub wrap">${esc(x.status)}</div></div>${icon('chev', 20, 'chev')}</div>`).join('');
+      return modalShell('Feld vermessen', `<p class="small muted" style="margin-top:0">Der Miner liefert seine Ladung ab, fliegt zum ${esc(WARES[info.field.ware].name)}-Feld und kartiert es eine Stunde lang. Kosten ${fmtCr(FIELD_STEPS[0].cost)}. Danach ist der Vorrat um die Hälfte größer.</p>${miners.length ? `<div class="box rows">${rows}</div>` : '<div class="box empty">Dafür brauchst du einen Miner.</div>'}`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
     }
     case 'explore': {
       const ships = state.ships.filter((x) => SHIP_MAP[x.cls].role === 'trader');
