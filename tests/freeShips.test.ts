@@ -96,6 +96,9 @@ describe('Freie Schiffe', () => {
     expect(c.size).toBe('S');
     expect(c.capacity).toBe(1720);
     // Baumaterial nur aus Waren, die es im Spiel gibt
+    // Abbaulaser S brauchen Waffenkomponenten (nicht Geschützkomponenten)
+    expect(c.materials.weaponscomponents).toBeGreaterThan(0);
+    expect(c.materials.turretcomponents).toBeUndefined();
     for (const cls of Object.values(SHIP_MAP)) for (const m of Object.keys(cls.materials)) expect(WARES[m], `${cls.id}: ${m}`).toBeTruthy();
     const s = newGame(5, 'mining');
     s.ships[0].cls = 'tuatara_min';

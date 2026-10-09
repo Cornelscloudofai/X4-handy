@@ -34,8 +34,9 @@ function build(): ShipClassDef[] {
     const materials: Record<string, number> = {};
     for (const m of r.hullMaterials) materials[m.ware] = (materials[m.ware] ?? 0) + m.amount;
     for (const e of r.equipment) for (const m of e.materials) {
-      // Waffenkomponenten (S-Abbaulaser) gibt es im Spiel nicht – nächstverwandte Ware sind Geschützkomponenten
-      const ware = m.ware === 'weaponcomponents' ? 'turretcomponents' : m.ware;
+      // X4 schreibt Waffenkomponenten „weaponcomponents“, die Warenliste des Spiels „weaponscomponents“ (nicht mit
+      // Geschützkomponenten verwechseln – das ist eine eigene Ware)
+      const ware = m.ware === 'weaponcomponents' ? 'weaponscomponents' : m.ware;
       materials[ware] = (materials[ware] ?? 0) + m.amount * e.count;
     }
     return { ...b, name: r.name, capacity: r.cargo, speed: r.travelSpeed / 1000, maxSpeed: r.speed, price, hullPrice: r.hullPrice, parts, materials, crew: r.crew };
