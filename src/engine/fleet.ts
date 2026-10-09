@@ -818,13 +818,9 @@ export function sectorTradeJob(state: GameState, s: Ship, sectorId: string, ware
     if (!buyer || price > buyer.price) buyer = { key: k, price, room };
   }
   if (!buyer) return null;
-  // Große Ladungen verschieben die Preise: Einkauf wird im Mittel teurer, Verkauf billiger. Der Händler nimmt die Menge,
-  // die am meisten Gewinn bringt (nicht stur den vollen Laderaum) und rechnet mit den echten Durchschnittspreisen.
-  const slope = (w.price.max - w.price.min) / 2 * (1 / state.markets[seller.key][ware].cap + 1 / state.markets[buyer.key][ware].cap);
-  const best = slope > 0 ? (buyer.price - seller.price) / (2 * slope) : Infinity;
-  const n = Math.min(units, seller.stock * 0.9, buyer.room, spendable(state, 10_000) / seller.price, best);
-  const profit = n * (buyer.price - seller.price) - slope * n * n;
-  if (n < 1 || profit < Math.max(2_000, n * w.price.avg * 0.04)) return null;
+  // Gehandelt wird die ganze Ladung zum Preis bei Abschluss (ein Preis je Fuhre)
+  const n = Math.min(units, seller.stock, buyer.room, spendable(state, 10_000) / seller.price);
+  if (n < 1 || n * (buyer.price - seller.price) < Math.max(2_000, n * w.price.avg * 0.04)) return null;
   return { ware, amount: n, from: marketEndpoint(seller.key), to: marketEndpoint(buyer.key), stage: 'pickup' };
 }
 

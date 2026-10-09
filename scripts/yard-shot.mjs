@@ -139,7 +139,7 @@ report.buildBlocked = await page.evaluate(() => !!document.querySelector('#modal
 await page.evaluate(() => {
   const g = window.__game, s = g.state;
   g.ui.modal = null;
-  const m = s.ships.find((x) => x.cls.startsWith('alligator'));
+  const m = s.ships.find((x) => /_(min|gas)$/.test(x.cls));
   m.restStreak = 1;
   m.lastRest = { t: s.time - 300, ware: 'methane', amount: 317, choice: 'topup', reason: 'Methan wird weiter gebraucht – der Rest bleibt an Bord, Nachfüllen kostet keine Zeit.', wait: 238, sell: 212, sellValue: 15400, topup: 0, topupSaves: 127 };
   g.openPanel('ship', m.id);

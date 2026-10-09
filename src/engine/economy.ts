@@ -465,9 +465,14 @@ export function initMarkets(state: GameState): void {
 
 /* Marktfunktionen: key = Sektor-ID (Handelsposten) oder ID einer NPC-Käuferstation */
 
+/**
+ * Preis nach Lagerfüllung (wie in X4): bis 10 % Füllung Höchstpreis, bei 50 % Durchschnittspreis, ab 90 % Tiefstpreis,
+ * dazwischen linear.
+ */
 export function priceAt(id: string, ratio: number): number {
   const p = WARES[id].price;
-  return p.min + (p.max - p.min) * (1 - clamp(ratio, 0, 1));
+  const r = clamp(ratio, 0.1, 0.9);
+  return r <= 0.5 ? p.max + (p.avg - p.max) * ((r - 0.1) / 0.4) : p.avg + (p.min - p.avg) * ((r - 0.5) / 0.4);
 }
 
 export function marketPrice(state: GameState, key: string, id: string): number {
@@ -490,9 +495,9 @@ export function marketStock(state: GameState, key: string, id: string): number {
 export function marketTradeValue(state: GameState, key: string, id: string, amount: number): number {
   const m = state.markets[key]?.[id];
   if (!m) return 0;
-  const before = priceAt(id, m.stock / m.cap);
-  const after = priceAt(id, (m.stock + amount) / m.cap);
-  return Math.abs(amount) * (before + after) / 2;
+  // Ein Preis für die ganze Ladung: der Preis bei Abschluss (vor dem Handel) – wie in X4. Große Laderäume handeln so
+  // eine ganze Fuhre zum selben Preis; erst die nächste Ladung sieht den veränderten Lagerstand.
+  return Math.abs(amount) * priceAt(id, m.stock / m.cap);
 }
 
 export function applyMarketTrade(state: GameState, key: string, id: string, amount: number): number {

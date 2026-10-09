@@ -412,7 +412,7 @@ export interface Opportunity {
   until: number;
 }
 
-/** Spielstart: Bergbau mit Alligator oder Handel mit Boa */
+/** Spielstart: Bergbau mit Tuatara (Mineral) oder Handel mit Tuatara – beide S */
 export type StartKind = 'mining' | 'trading';
 
 export interface GameState {

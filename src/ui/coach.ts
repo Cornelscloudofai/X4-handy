@@ -86,7 +86,7 @@ export function coachStep(state: GameState, ui: UIState): CoachStep | null {
   if (dl !== undefined) return dl;
   if (m.id === 'm-first') {
     if (!coachSeen(state, 'mine-intro') && !ui.modal && !ui.panel) {
-      return { id: 'mine-intro', sel: null, text: 'Dein Alligator fliegt schon los: Er fördert selbst und verkauft an die NPC-Fabrik, die gerade am besten zahlt. Unten steht dein Ziel.', next: true };
+      return { id: 'mine-intro', sel: null, text: 'Dein Tuatara-Miner fliegt schon los: Er fördert selbst und verkauft an die NPC-Fabrik, die gerade am besten zahlt. Unten steht dein Ziel.', next: true };
     }
     if (!coachSeen(state, 'speed') && !ui.modal) {
       return { id: 'speed', sel: '#hud [data-act="speed"]', text: 'Abbau und Flüge brauchen Zeit. Hier beschleunigst du das Spiel (bis ×60).', next: true, doneOn: 'speed' };

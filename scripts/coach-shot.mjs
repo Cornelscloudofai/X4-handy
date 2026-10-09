@@ -55,7 +55,7 @@ for (let i = 0; i < 60; i++) {
   else problems.push('Hinweis ohne Ziel und ohne Weiter: ' + info.text.slice(0, 40));
   await page.waitForTimeout(400);
 }
-const state = await page.evaluate(() => { const s = window.__game.state; return { chapter: s.story.index, miners: s.ships.filter((x) => x.cls.startsWith('alligator')).length, traders: s.ships.filter((x) => !x.cls.startsWith('alligator')).length, refinery: s.stations[0].modules.some((m) => m.def === 'prod_refinedmetals'), help: s.help }; });
+const state = await page.evaluate(() => { const s = window.__game.state; return { chapter: s.story.index, miners: s.ships.filter((x) => /_(min|gas)$/.test(x.cls)).length, traders: s.ships.filter((x) => !/_(min|gas)$/.test(x.cls)).length, refinery: s.stations[0].modules.some((m) => m.def === 'prod_refinedmetals'), help: s.help }; });
 
 // Hilfe: „?“-Knopf öffnet das passende Thema, Menü zeigt alle Themen
 await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.openPanel('station', g.state.stations[0].id, 'modules'); g.refresh(); });

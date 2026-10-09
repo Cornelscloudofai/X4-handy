@@ -1595,8 +1595,8 @@ function welcomeModal(): string {
     <div class="welcome-hero"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
     <div class="sheet-body"><div class="small muted" style="margin:0 0 8px">Wie willst du anfangen?</div>
       <div class="start-pick">
-        <button class="start-card" ${act('start-game', { kind: 'mining' })}>${icon('miner', 26)}<b>Loslegen mit Bergbau</b><span>Alligator-Miner (M) · 20.000 Cr</span><small>Erz und Silizium fördern und an NPC-Fabriken verkaufen. Läuft fast von selbst.</small></button>
-        <button class="start-card" ${act('start-game', { kind: 'trading' })}>${icon('trader', 26)}<b>Loslegen mit Handel</b><span>Boa-Transporter (M) · 50.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></button>
+        <button class="start-card" ${act('start-game', { kind: 'mining' })}>${icon('miner', 26)}<b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 20.000 Cr</span><small>Erz und Silizium fördern und an NPC-Fabriken verkaufen. Läuft fast von selbst.</small></button>
+        <button class="start-card" ${act('start-game', { kind: 'trading' })}>${icon('trader', 26)}<b>Loslegen mit Handel</b><span>Tuatara-Transporter (S) · 50.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></button>
       </div>
       <div class="steps" style="margin-top:14px">
       <div><span class="n">1</span><div><b>Bauen</b>Module planst du unter Stationen → Module. Das Baumaterial liefern Schiffe ins Baulager der Station.</div></div>

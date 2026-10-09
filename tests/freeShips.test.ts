@@ -5,6 +5,7 @@ import { setSectorOrder, setShipHome } from '../src/engine/actions';
 import { sectorScoutJob, sectorTradeJob, SCOUT_AGE } from '../src/engine/fleet';
 import { SHIP_MAP } from '../src/data/ships';
 import { WARES } from '../src/data/wares';
+import { marketTradeValue, priceAt } from '../src/engine/economy';
 
 describe('Freie Schiffe', () => {
   it('Zuordnung lösen: freies Schiff wartet auf Befehl, übersteht Speichern und Laden', () => {
@@ -63,16 +64,26 @@ describe('Freie Schiffe', () => {
     expect(sh.trips).toBeGreaterThan(0);
     expect(credits).toBeGreaterThan(0);
   }, 60000);
-  it('Sektorhandel rechnet mit Durchschnittspreisen: große Ladungen nur, soweit sie sich lohnen', () => {
+  it('Preis nach Lagerfüllung, ein Preis für die ganze Ladung', () => {
+    const p = WARES.energycells.price;
+    expect(priceAt('energycells', 0)).toBeCloseTo(p.max);
+    expect(priceAt('energycells', 0.1)).toBeCloseTo(p.max);
+    expect(priceAt('energycells', 0.5)).toBeCloseTo(p.avg);
+    expect(priceAt('energycells', 0.9)).toBeCloseTo(p.min);
+    expect(priceAt('energycells', 1)).toBeCloseTo(p.min);
+    expect(priceAt('energycells', 0.3)).toBeCloseTo((p.max + p.avg) / 2);
+    const s = newGame(5, 'trading');
+    const m = s.markets['zhin-werft'].energycells;
+    m.stock = 0;
+    // Leeres Lager: die ganze Fuhre zum Höchstpreis, auch wenn sie das Lager füllt
+    expect(marketTradeValue(s, 'zhin-werft', 'energycells', m.cap)).toBeCloseTo(m.cap * p.max);
+  });
+
+  it('Sektorhandel: volle Ladung, wenn Vorrat und Platz reichen', () => {
     const s = newGame(5, 'trading');
     const sh = s.ships[0];
-    expect(sh.cls).toBe('boa');
     const job = sectorTradeJob(s, sh, 'zhin', 'energycells');
-    if (job) {
-      // Nie mehr als die gewinnoptimale Menge – ein voller Laderaum, der die Preise kippt, wäre ein Verlustgeschäft
-      expect(job.amount).toBeLessThanOrEqual(SHIP_MAP.boa.capacity / 1 + 1);
-      expect(job.amount).toBeGreaterThan(0);
-    }
+    if (job) expect(job.amount).toBeCloseTo(SHIP_MAP[sh.cls].capacity / WARES.energycells.volume);
     // Kein Gewinn möglich (Verkäufer teurer als alle Käufer): kein Auftrag
     for (const k of Object.keys(s.markets)) if (k.startsWith('zhin') && s.markets[k].energycells) s.markets[k].energycells.stock = k === 'zhin' ? 0 : s.markets[k].energycells.cap;
     s.intel = {};

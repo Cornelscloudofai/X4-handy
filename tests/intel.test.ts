@@ -62,7 +62,8 @@ describe('Marktwissen', () => {
     const s = newGame(5, 'mining');
     const cls = SHIP_MAP.alligator_min;
     step(s, 3 * 3600);
-    const id = Object.keys(s.fieldStock ?? {})[0];
+    // Feld mit dem niedrigsten Stand (der Miner kann zwischen Feldern wechseln)
+    const id = Object.keys(s.fieldStock ?? {}).sort((a, b) => fieldLevel(s, a) - fieldLevel(s, b))[0];
     expect(id).toBeTruthy();
     expect(fieldLevel(s, id)).toBeLessThan(1);
     expect(mineRate(s, cls, id)).toBeLessThan(cls.miningRate);
