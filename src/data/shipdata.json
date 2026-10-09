@@ -375,6 +375,120 @@
     "turrets": 9
    }
   },
+  "tuatara_min": {
+   "x4Id": "ship_spl_s_miner_solid_01_a",
+   "name": "Tuatara (Mineral)",
+   "size": "small",
+   "hull": 1200,
+   "crew": 2,
+   "cargo": 1720,
+   "cargoType": "solid",
+   "hullPrice": 128200,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 35
+    },
+    {
+     "ware": "hullparts",
+     "amount": 120
+    }
+   ],
+   "equipment": [
+    {
+     "id": "engine_spl_s_allround_01_mk1",
+     "name": "Allround-Triebwerk Mk1",
+     "count": 3,
+     "price": 5119,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 22
+      },
+      {
+       "ware": "engineparts",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_s_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 1528,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_s_allround_01_mk1",
+     "name": "Steuerdüsen S Mk1",
+     "count": 1,
+     "price": 5948,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "engineparts",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_s_mining_01_mk1",
+     "name": "Abbaulaser S Mk1",
+     "count": 2,
+     "price": 7247,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 5
+      },
+      {
+       "ware": "weaponcomponents",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ],
+   "speed": 401,
+   "travelSpeed": 3208,
+   "slots": {
+    "engines": 3,
+    "shields": 1,
+    "weapons": 2,
+    "turrets": 0
+   }
+  },
   "alligator_min": {
    "x4Id": "ship_spl_m_miner_solid_01_a",
    "name": "Alligator (Mineral)",

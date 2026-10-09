@@ -27,6 +27,7 @@ const PICK = {
   tuatara: 'ship_spl_s_trans_container_01_a',
   boa: 'ship_spl_m_trans_container_01_a',
   buffalo: 'ship_spl_l_trans_container_01_a',
+  tuatara_min: 'ship_spl_s_miner_solid_01_a',
   alligator_min: 'ship_spl_m_miner_solid_01_a',
   alligator_gas: 'ship_spl_m_miner_liquid_01_a',
   wyvern_min: 'ship_spl_l_miner_solid_01_a',
@@ -59,7 +60,10 @@ for (const [key, id] of Object.entries(PICK)) {
     else laser[z] = (laser[z] ?? 0) + 1;
   }
   if (miner) for (const t of (s.weapons ?? []).filter((w) => (w.types ?? []).includes('mining'))) mining[sz[t.size]] = (mining[sz[t.size]] ?? 0) + 1;
-  for (const [z, n] of Object.entries(mining)) add(`turret_spl_${z}_mining_01_mk1`, n, `Abbauturm ${z.toUpperCase()} Mk1`);
+  for (const [z, n] of Object.entries(mining)) {
+    // S-Miner tragen Abbaulaser als Waffe (keine Türme)
+    if (!add(`turret_spl_${z}_mining_01_mk1`, n, `Abbauturm ${z.toUpperCase()} Mk1`)) add(`weapon_gen_${z}_mining_01_mk1`, n, `Abbaulaser ${z.toUpperCase()} Mk1`);
+  }
   for (const [z, n] of Object.entries(laser)) add(`turret_spl_${z}_laser_01_mk1`, n, `Puls-Laserturm ${z.toUpperCase()} Mk1`);
   // Drohnen (nur Schiffe mit Drohnenplätzen): Miner Abbaudrohnen, Frachter Frachtdrohnen – halbe Kapazität
   const units = s.storage?.unit ?? 0;

@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
     build: single
       ? { target: 'es2020', assetsInlineLimit: 100_000_000, chunkSizeWarningLimit: 2000, outDir: 'dist-einzeldatei' }
       : { target: 'es2020', assetsInlineLimit: 0, chunkSizeWarningLimit: 2000 },
-    test: { environment: 'node' },
+    // Langsimulationen (12 h Spielzeit) brauchen unter Last mehr als die üblichen 5 s
+    test: { environment: 'node', testTimeout: 20_000 },
   };
 });

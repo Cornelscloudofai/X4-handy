@@ -293,6 +293,8 @@ export interface Ship {
   fullAction?: 'sell' | 'wait';
   /** Miner: Markt, an dem die aktuelle Ladung verkauft wird */
   sellKey?: string;
+  /** Miner fördert gezielt für diesen Käufer (fliegt nicht erst nach Hause) */
+  sellDirect?: boolean;
   /** Miner: Was mit einer Restladung geschieht, die nicht mehr ins Lager passt */
   restAction?: RestAction;
   /** Miner: Rückkehren in Folge, bei denen ein Rest blieb (Überförderung erkennen) */
@@ -410,7 +412,7 @@ export interface Opportunity {
   until: number;
 }
 
-/** Spielstart: Bergbau mit Alligator oder Handel mit Tuatara */
+/** Spielstart: Bergbau mit Alligator oder Handel mit Boa */
 export type StartKind = 'mining' | 'trading';
 
 export interface GameState {

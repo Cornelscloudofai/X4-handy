@@ -16,6 +16,7 @@ const RAW = (data as unknown as { ships: Record<string, RawShip> }).ships;
 
 const BASE: Omit<ShipClassDef, 'name' | 'capacity' | 'speed' | 'price' | 'parts' | 'materials' | 'maxSpeed' | 'hullPrice' | 'crew'>[] = [
   { id: 'alligator_min', role: 'miner', size: 'M', storage: 'Solid', miningRate: 14, description: 'M-Miner für Erz, Silizium, Eis und Nividium. Braucht ein Dock.' },
+  { id: 'tuatara_min', role: 'miner', size: 'S', storage: 'Solid', miningRate: 4, description: 'S-Miner für Erz, Silizium, Eis und Nividium. Klein und schnell, aber wenig Laderaum. Braucht ein Dock.' },
   { id: 'alligator_gas', role: 'miner', size: 'M', storage: 'Liquid', miningRate: 15, description: 'M-Gassammler für Wasserstoff, Helium und Methan. Braucht ein Dock.' },
   { id: 'wyvern_min', role: 'miner', size: 'L', storage: 'Solid', miningRate: 40, description: 'L-Miner mit großem Frachtraum. Braucht einen Pier.' },
   { id: 'wyvern_gas', role: 'miner', size: 'L', storage: 'Liquid', miningRate: 42, description: 'L-Gassammler mit hohem Durchsatz. Braucht einen Pier.' },
@@ -32,7 +33,11 @@ function build(): ShipClassDef[] {
     // Baumaterial für den Eigenbau: Rumpf + Ausrüstung
     const materials: Record<string, number> = {};
     for (const m of r.hullMaterials) materials[m.ware] = (materials[m.ware] ?? 0) + m.amount;
-    for (const e of r.equipment) for (const m of e.materials) materials[m.ware] = (materials[m.ware] ?? 0) + m.amount * e.count;
+    for (const e of r.equipment) for (const m of e.materials) {
+      // Waffenkomponenten (S-Abbaulaser) gibt es im Spiel nicht – nächstverwandte Ware sind Geschützkomponenten
+      const ware = m.ware === 'weaponcomponents' ? 'turretcomponents' : m.ware;
+      materials[ware] = (materials[ware] ?? 0) + m.amount * e.count;
+    }
     return { ...b, name: r.name, capacity: r.cargo, speed: r.travelSpeed / 1000, maxSpeed: r.speed, price, hullPrice: r.hullPrice, parts, materials, crew: r.crew };
   });
 }

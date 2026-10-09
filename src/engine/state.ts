@@ -14,7 +14,7 @@ export const SAVE_KEY = 'x4-sektorbau-save-v1';
 export const START_CREDITS = 2_500_000;
 /** Neuer Spielstart: kleine Station ohne Produktion, wenig Geld – Handel bekommt mehr Credits, Bergbau das teurere Schiff */
 export const START_KIT: Record<StartKind, { credits: number; ship: string }> = {
-  trading: { credits: 50_000, ship: 'tuatara' },
+  trading: { credits: 50_000, ship: 'boa' },
   mining: { credits: 20_000, ship: 'alligator_min' },
 };
 
@@ -63,8 +63,8 @@ export function newGame(seed = Date.now() % 2147483647, start?: StartKind): Game
     state.stations.push(st);
     const ship = newShip(state, START_KIT[start].ship, st);
     state.ships.push(ship);
-    // Handelsstart: Der Tuatara ist frei und handelt schon Energiezellen im Heimatsektor (Sektorhandel) – die Startstation
-    // produziert noch nichts, als Stationshändler hätte er nichts zu tun
+    // Handelsstart: Die Boa ist frei und handelt schon Energiezellen im Heimatsektor (Sektorhandel) – die Startstation
+    // produziert noch nichts, als Stationshändler hätte sie nichts zu tun
     if (start === 'trading') { ship.home = ''; ship.sectorOrder = { kind: 'trade', sector: st.sector, ware: 'energycells' }; }
     // Marktbericht der Familie: letzter bekannter Stand aller Stationen im Heimatsektor
     initIntel(state, st.sector);
