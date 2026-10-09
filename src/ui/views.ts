@@ -33,9 +33,9 @@ import { bestRepFor, bestStorage, blueprintState, stationCost, vendorOffer } fro
 import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/vendors';
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
-import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, marketRoom, marketStock, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
+import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { expectedCargo, restMode, routeMargin, shipEta } from '../engine/fleet';
-import { endpointName, fieldById, incoming, knownSectors, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
+import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { currentMission, missionComplete, storyOf } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
@@ -53,7 +53,8 @@ import { buyModalHtml } from './buyView';
 import { holdSellModalHtml, tradeModalHtml, wareBuyers } from './tradeView';
 import { deliverySources, deliveryModalHtml } from './deliveryView';
 import { isDelivery } from '../engine/contracts';
-import { RANK_LOAD, RANK_RANGE, RANK_SHARE, activeOpportunity, effectivePrice, pilotRank, rankStars, streakBonus, tripsToNextRank } from '../engine/trading';
+import { QUADRANT_NAME, SAT_COST, intelAge, knows, quadrantCovered, seenPrice, seenRoom, seenStock } from '../engine/intel';
+import { RANK_RANGE, activeOpportunity, pilotRank, rankStars, relationBonus, tripsToNextRank } from '../engine/trading';
 import { computePlan, producible } from '../engine/planner';
 import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
 
@@ -87,6 +88,20 @@ function stationName(state: GameState, id: string): string {
 
 function epName(state: GameState, ep: TradeEndpoint): string {
   return endpointName(state, ep);
+}
+
+/** Stand der Marktdaten: „live“, „vor 25 min“ oder „unbekannt“ (nur neue Spiele) */
+function intelTag(state: GameState, key: string): string {
+  if (!state.start) return '';
+  const age = intelAge(state, key);
+  if (age == null) return '<span class="small warn-text">unbekannt</span>';
+  return age < 60 ? '<span class="small pos">live</span>' : `<span class="small muted">Stand vor ${fmtDur(age)}</span>`;
+}
+
+/** Hinweis für unbekannte Stationen: Schiff hinschicken oder Satellit */
+function unknownBox(key: string): string {
+  return `<div class="box empty">Noch nicht erfasst. Schick ein Schiff hin (es erfasst Stationen im Vorbeiflug) oder setz im Sektor einen Satelliten aus.
+    <div class="card-actions" style="margin-top:8px"><button class="btn small" ${act('explore-modal', { k: key })}>${icon('trader', 16)}Schiff hinschicken</button></div></div>`;
 }
 
 // ---------- HUD ----------
@@ -246,8 +261,9 @@ function fieldCard(state: GameState, id: string): string {
 function tradeCard(state: GameState, secId: string): string {
   const s = SECTOR_MAP[secId];
   const top = [...s.demand].slice(0, 3);
-  return cardShell(icon('market', 24), s.tradeStation.name, `${esc(FACTIONS[s.faction].name)} · Handelsposten`, `
-    <div class="stats3">${top.map((id) => `<div>${wareMark(id, 10)}<span><b>${fmtInt(marketPrice(state, secId, id))} Cr</b>${esc(WARES[id].name)}</span></div>`).join('')}</div>
+  if (!knows(state, secId)) return cardShell(icon('market', 24), s.tradeStation.name, `${esc(FACTIONS[s.faction].name)} · Handelsposten`, unknownBox(secId), true);
+  return cardShell(icon('market', 24), s.tradeStation.name, `${esc(FACTIONS[s.faction].name)} · Handelsposten ${intelTag(state, secId)}`, `
+    <div class="stats3">${top.map((id) => `<div>${wareMark(id, 10)}<span><b>${fmtInt(seenPrice(state, secId, id) ?? 0)} Cr</b>${esc(WARES[id].name)}</span></div>`).join('')}</div>
     <div class="card-actions"><button class="btn primary" ${act('open-market', { id: secId })}>${icon('market', 20)}Marktpreise</button>${vendorButton(state, secId)}</div>`, true);
 }
 
@@ -265,14 +281,15 @@ const NPC_KIND: Record<string, string> = { wharf: 'Werft', defence: 'Verteidigun
 function npcCard(state: GameState, id: string): string {
   const n = NPC_MAP[id];
   if (!n) return '';
+  if (!knows(state, id)) return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)}`, unknownBox(id), true);
   const rows = n.buys.map((w) => {
-    const room = marketRoom(state, id, w);
-    return `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub">nimmt noch ${fmtAmount(room)}</div></div><div class="right"><b>${fmtInt(marketPrice(state, id, w))} Cr</b></div></div>`;
+    const room = seenRoom(state, id, w) ?? 0;
+    return `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub">nimmt noch ${fmtAmount(room)}</div></div><div class="right"><b>${fmtInt(seenPrice(state, id, w) ?? 0)} Cr</b></div></div>`;
   }).join('');
   const eco = state.npcEco?.[id];
   // NPC-Fabrik: echte Produktion – Produkte mit Bestand und Preis, Module und Auslastung
-  const made = eco ? Object.entries(eco.prod).map(([w, k]) => `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub wrap">${k} Module · ${pct(eco.util[w] ?? 0)} ausgelastet · ${fmtAmount(marketStock(state, id, w))} auf Lager</div></div><div class="right"><b>${fmtInt(marketPrice(state, id, w))} Cr</b></div></div>`).join('') : '';
-  return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)}${eco ? '' : ' · kauft an'}`, `
+  const made = eco ? Object.entries(eco.prod).map(([w, k]) => `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub wrap">${k} Module · ${pct(eco.util[w] ?? 0)} ausgelastet · ${fmtAmount(seenStock(state, id, w) ?? 0)} auf Lager</div></div><div class="right"><b>${fmtInt(seenPrice(state, id, w) ?? 0)} Cr</b></div></div>`).join('') : '';
+  return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)}${eco ? '' : ' · kauft an'} ${intelTag(state, id)}`, `
     ${eco ? `<div class="small muted" style="margin:0 0 6px">Stellt her und verkauft</div><div class="box rows npc-buys" style="margin-bottom:10px">${made}</div><div class="small muted" style="margin:0 0 6px">Kauft an (Vorprodukte)</div>` : ''}
     <div class="box rows npc-buys">${rows}</div>
     <p class="small muted" style="margin:8px 0 0">${eco ? 'Produziert nach X4-Rezepten. Eigene Frachter bringen nur gut ein Drittel der Vorprodukte – der Rest muss geliefert werden. Gut ausgelastete Fabriken bauen langsam aus.' : 'Kleine Lager, meist gute Preise. Wer viel liefert, drückt den Preis – nach einigen Stunden ist wieder Bedarf da.'}</p>
@@ -754,6 +771,7 @@ function contractPayNote(state: GameState, c: Contract): string {
 function jobText(state: GameState, j: NonNullable<Ship['job']>): { title: string; sub: string } {
   const c = j.contract != null ? state.contracts.find((x) => x.id === j.contract) : undefined;
   const w = WARES[j.ware].name;
+  if (j.explore) return { title: 'Station erfassen', sub: `${endpointName(state, j.to)} anfliegen` };
   if (j.hold) return { title: `Kauf in den Laderaum: ${fmtAmount(j.amount)} ${w}`, sub: `bei ${endpointName(state, j.from)}, danach warten` };
   if (j.fromHold) return { title: `Laderaum verkaufen: ${w}`, sub: `an ${endpointName(state, j.to)}` };
   const verb = c ? 'Lieferauftrag' : j.from.kind === 'market' && j.to.kind === 'station' ? 'Einkauf' : j.from.kind === 'station' && j.to.kind === 'market' ? 'Verkauf' : j.from.kind === 'market' && j.to.kind === 'market' ? 'Handel' : 'Transport';
@@ -816,14 +834,15 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     orders = `${orderQueue(state, s)}<div class="section"><h3>Befehl</h3>
       <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Autohandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Versorgungslinie</button></div>
       ${s.mode === 'auto'
-        ? `<p class="small muted">Versorgt zuerst die Heimatstation: verkauft ihre Überschüsse und kauft fehlende Eingangswaren und Baumaterial. Angenommene Lieferaufträge erledigt er auch.${state.start ? ` Hat die Heimat nichts zu tun, handelt er frei zwischen fremden Stationen – dort zählt der Pilotenrang: Rang ${rank} handelt ${RANK_RANGE[rank] === 0 ? 'nur im Heimatsektor' : RANK_RANGE[rank] >= 99 ? 'in allen bekannten Sektoren' : `bis ${RANK_RANGE[rank]} Sprung${RANK_RANGE[rank] === 1 ? '' : 'e'} weit`}, kauft ${Math.round(RANK_LOAD[rank] * 100)} % Ladungen und behält ${Math.round(RANK_SHARE[rank] * 100)} % des Gewinns. Eigene Handelsrouten und Befehle sind davon frei – und nutzen Gelegenheiten.` : ''}</p>`
+        ? `<p class="small muted">Versorgt zuerst die Heimatstation: verkauft ihre Überschüsse und kauft fehlende Eingangswaren und Baumaterial. Angenommene Lieferaufträge erledigt er auch.${state.start ? ` Hat die Heimat nichts zu tun, handelt er frei zwischen fremden Stationen – nur mit Stationen, die du kennst, und nach dem Stand, den du kennst. Der Pilotenrang bestimmt die Reichweite: Rang ${rank} handelt ${RANK_RANGE[rank] === 0 ? 'nur im Heimatsektor' : RANK_RANGE[rank] >= 99 ? 'in allen bekannten Sektoren' : `bis ${RANK_RANGE[rank]} Sprung${RANK_RANGE[rank] === 1 ? '' : 'e'} weit`}. Abnehmer deiner Handelsrouten lässt er in Ruhe; Sonderangebote und Aufträge nimmt er nicht von selbst an.` : ''}</p>
+          ${state.start ? `<div class="row tap" style="margin-top:8px;padding:8px 0" ${act('auto-wares-modal', { id: s.id })}>${icon('box', 18)}<div class="grow"><div class="title" style="font-size:14px">Waren im freien Handel</div><div class="sub wrap">${s.autoWares?.length ? s.autoWares.map((id) => esc(WARES[id].name)).join(', ') : 'Alle'}</div></div>${icon('chev', 20, 'chev')}</div>` : ''}`
         : `<div class="form">
           <div class="field"><label>Von</label>${sel('route-from', epVal(r?.from), eps)}</div>
           <div class="field"><label>Nach</label>${sel('route-to', epVal(r?.to), eps)}</div>
           <div class="field"><label>Ware</label>${sel('route-ware', r?.ware ?? '', wares.map((id) => ({ v: id, label: WARES[id].name })))}</div>
           ${r ? `<p class="small muted" style="margin:0">Pendelt dauerhaft: ${esc(epName(state, r.from))} → ${esc(epName(state, r.to))} mit ${esc(WARES[r.ware].name)}. Märkte kaufen und verkaufen zum Tagespreis.</p>` : ''}
           ${r?.alt?.length ? `<p class="small muted" style="margin:0">Weitere Abnehmer: ${r.alt.map((e) => esc(epName(state, e))).join(', ')} – verkauft wird an den, der gerade am besten zahlt.</p>` : ''}
-          ${r?.streak ? `<p class="small pos" style="margin:0">Stammkunde: ${r.streak} Fahrten · +${Math.round(streakBonus(r.streak) * 100)} % beim Verkauf</p>` : ''}
+          ${r && r.to.kind === 'market' && relationBonus(state, marketKey(r.to)) > 0 ? `<p class="small pos" style="margin:0">Stammkunde bei ${esc(epName(state, r.to))}: +${Math.round(relationBonus(state, marketKey(r.to)) * 100)} % beim Verkauf</p>` : ''}
           ${r?.minMargin != null ? (() => { const m = routeMargin(state, r); return `<p class="small ${m != null && m < r.minMargin ? 'warn-text' : 'muted'}" style="margin:0">Gewinnschwelle ${Math.round(r.minMargin * 100)} % – darunter ${r.onLow === 'end' ? 'endet die Route' : 'pausiert die Route'}. Gerade ${m == null ? '–' : `${Math.round(m * 100)} %`}. <button class="linkish" ${act('route-margin-off', { id: s.id })}>Schwelle entfernen</button></p>`; })() : ''}
         </div>`}
     </div>`;
@@ -837,7 +856,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
       <div><small>Frachtraum</small><b style="font-size:15px">${fmtInt(c.capacity)} m³ ${esc(STORAGE_LABEL[c.storage])}</b></div>
       <div><small>Fahrten</small><b>${fmtInt(s.trips)}</b></div>
       <div><small>${c.role === 'miner' ? 'Geförderter Wert' : 'Handelsergebnis'}</small><b class="${s.earned >= 0 ? 'pos' : 'neg'}">${fmtCr(s.earned)}</b></div>
-      ${c.role === 'trader' ? `<div class="wide"><small>Pilot</small><b style="font-size:15px"><span class="teal-text">${rankStars(rank)}</span> Rang ${rank}${tripsToNextRank(s) != null ? ` · noch ${tripsToNextRank(s)} Fahrten bis Rang ${rank + 1}` : ' · Bestwert'}</b>${s.pilotShare ? `<div class="small muted">Gewinnanteil des Piloten im freien Handel bisher ${fmtCr(s.pilotShare)}</div>` : ''}</div>` : ''}
+      ${c.role === 'trader' ? `<div class="wide"><small>Pilot</small><b style="font-size:15px"><span class="teal-text">${rankStars(rank)}</span> Rang ${rank}${tripsToNextRank(s) != null ? ` · noch ${tripsToNextRank(s)} Fahrten bis Rang ${rank + 1}` : ' · Bestwert'}</b></div>` : ''}
     </div></div>
     ${orders}
     <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(home?.name ?? '—')}</div><div class="sub">${esc(home ? sector(home.sector).name : '')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
@@ -1023,11 +1042,12 @@ function marketPanel(state: GameState, ui: UIState): string {
   const secId = known.includes(ui.marketSector) ? ui.marketSector : 'zhin';
   const groups = ['all', 'mineral', 'gas', 'energy', 'refined', 'hightech', 'shiptech', 'food', 'agri', 'pharma'];
   const ids = WARE_IDS.filter((id) => ui.marketGroup === 'all' || WARES[id].group === ui.marketGroup).sort((a, b) => WARES[a].tier - WARES[b].tier || WARES[a].name.localeCompare(WARES[b].name));
-  const rows = ids.map((id) => {
+  const secKnown = knows(state, secId);
+  const rows = !secKnown ? '' : ids.map((id) => {
     const w = WARES[id];
-    const price = marketPrice(state, secId, id);
+    const price = seenPrice(state, secId, id) ?? marketPrice(state, secId, id);
     const rel = (price - w.price.avg) / w.price.avg;
-    const m = state.markets[secId][id];
+    const m = { stock: seenStock(state, secId, id) ?? 0, cap: state.markets[secId][id].cap };
     const mine = state.stations.some((st) => st.modules.some((mm) => MODULE_MAP[mm.def]?.ware === id));
     return `<div class="row tap" ${act('open-ware', { id })} data-key="${id}">${wareTile(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(w.name)}${mine ? ' <span class="pill teal" style="padding:1px 6px;font-size:10px">EIGEN</span>' : ''}</div>
       <div class="sub">Bestand ${pct(m.stock / m.cap)} · Spanne ${fmtInt(w.price.min)}–${fmtInt(w.price.max)}</div></div>
@@ -1035,15 +1055,15 @@ function marketPanel(state: GameState, ui: UIState): string {
       <div class="right"><b>${tw(price)} Cr</b><div class="small ${rel > 0.05 ? 'pos' : rel < -0.05 ? 'neg' : 'muted'}">${rel >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(rel * 100))} %</div></div></div>`;
   }).join('');
   const opps = (state.opportunities ?? []).filter((o) => o.until > state.time && o.left >= 1);
-  const oppRows = opps.map((o) => `<div class="row tap" ${act('open-ware', { id: o.ware })}>${wareTile(o.ware)}<div class="grow"><div class="title two-lines" style="font-weight:500">${esc(marketInfo(o.key).name)} ${o.kind === 'demand' ? `zahlt ×${o.mult.toFixed(1).replace('.', ',')}` : `verkauft für ${Math.round(o.mult * 100)} %`}</div>
+  const oppRows = opps.map((o) => `<div class="row tap" ${act('trade-open', { ware: o.ware, from: o.key })}>${wareTile(o.ware)}<div class="grow"><div class="title two-lines" style="font-weight:500">${esc(marketInfo(o.key).name)} räumt für ${Math.round(o.mult * 100)} %</div>
       <div class="sub wrap">${esc(WARES[o.ware].name)} · noch ${fmtAmount(o.left)} Einheiten · ${fmtDur(o.until - state.time)}</div></div>${icon('chev', 20, 'chev')}</div>`).join('');
   return sheet('Handel', SECTOR_MAP[secId].tradeStation.name, `
-    ${opps.length ? `<div class="section"><h3>Gelegenheiten · ${opps.length}</h3><div class="box rows">${oppRows}</div><p class="small muted" style="margin:6px 0 0">Sonderpreise gelten für deine Befehle und Handelsrouten – der freie Autohandel nutzt sie nicht.</p></div>` : ''}
+    ${opps.length ? `<div class="section"><h3>Sonderangebote · ${opps.length}</h3><div class="box rows">${oppRows}</div><p class="small muted" style="margin:6px 0 0">Antippen und kaufen – damit nimmst du das Angebot an. Der Autohandel nimmt Sonderangebote nicht von selbst an.</p></div>` : ''}
     <p class="lead">Preise folgen dem Bestand: Leere Lager zahlen den Höchstpreis, volle nur den Mindestpreis. Große Verkäufe drücken die Preise.</p>
     <div class="pills" style="margin-bottom:10px">${known.map((id) => `<button class="pill ${id === secId ? 'teal' : ''}" ${act('market-sector', { id })}>${esc(SECTOR_MAP[id].name)}</button>`).join('')}</div>
     <div class="pills" style="margin-bottom:14px">${groups.map((g) => `<button class="pill ${ui.marketGroup === g ? 'amber' : ''}" ${act('market-group', { g })}>${g === 'all' ? 'Alle' : esc(GROUP_LABEL[g as 'mineral'])}</button>`).join('')}</div>
-    <div class="box rows">${rows}</div>
-    <p class="small muted" style="margin-top:10px">▲/▼ Abweichung vom Durchschnittspreis. Grün: guter Verkaufsort.</p>`);
+    ${secKnown ? `<p class="small muted" style="margin:0 0 6px">${SECTOR_MAP[secId].tradeStation.name}: ${intelTag(state, secId)}</p><div class="box rows">${rows}</div>` : unknownBox(secId)}
+    <p class="small muted" style="margin-top:10px">▲/▼ Abweichung vom Durchschnittspreis. Grün: guter Verkaufsort.${state.start ? ' Live sind nur Quadranten mit eigener Station oder Satellit – sonst gilt der Stand, als zuletzt ein Schiff dort war.' : ''}</p>`);
 }
 
 function warePanel(state: GameState, id: string, p: Panel): string {
@@ -1069,13 +1089,14 @@ function warePanel(state: GameState, id: string, p: Panel): string {
   // Verkäufer antippen: einmal kaufen oder Handelsroute einrichten
   const sellerRow = (key: string, name: string, secName: string) => {
     const o = activeOpportunity(state, key, id, 'supply');
-    return `<div class="row tap" ${act('trade-open', { ware: id, from: key })}><div class="grow"><div class="title" style="font-weight:500">${esc(name)}${o ? ' <span class="pill amber" style="padding:1px 6px;font-size:10px">GELEGENHEIT</span>' : ''}</div><div class="sub">${esc(secName)} · Vorrat ${fmtAmount(marketStock(state, key, id))}${o ? ` · Sonderpreis noch ${fmtDur(o.until - state.time)}` : ''}</div></div><div class="right"><b>${fmtInt(effectivePrice(state, key, id, 'supply'))} Cr</b><div class="small teal-text">Kaufen ›</div></div></div>`;
+    return `<div class="row tap" ${act('trade-open', { ware: id, from: key })}><div class="grow"><div class="title" style="font-weight:500">${esc(name)}${o ? ' <span class="pill amber" style="padding:1px 6px;font-size:10px">GELEGENHEIT</span>' : ''}</div><div class="sub">${esc(secName)} · Vorrat ${fmtAmount(seenStock(state, key, id) ?? 0)}${o ? ` · Sonderpreis noch ${fmtDur(o.until - state.time)}` : ''} ${intelTag(state, key)}</div></div><div class="right"><b>${fmtInt((seenPrice(state, key, id) ?? 0) * (o ? o.mult : 1))} Cr</b><div class="small teal-text">Kaufen ›</div></div></div>`;
   };
+  const has = (key: string) => knows(state, key) && (seenStock(state, key, id) ?? 0) >= 1;
   const sellers = known.flatMap((sec) => [
-    ...(marketStock(state, sec, id) >= 1 ? [{ key: sec, name: SECTOR_MAP[sec].tradeStation.name, sec }] : []),
-    ...SECTOR_MAP[sec].npcStations.filter((n) => n.makes?.includes(id) && marketStock(state, n.id, id) >= 1).map((n) => ({ key: n.id, name: n.name, sec })),
-  ]).sort((a, b) => effectivePrice(state, a.key, id, 'supply') - effectivePrice(state, b.key, id, 'supply'));
-  const buyerRows = wareBuyers(state, id).map((b) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(b.name)}${b.opp ? ' <span class="pill amber" style="padding:1px 6px;font-size:10px">GELEGENHEIT</span>' : ''}</div><div class="sub">${esc(SECTOR_MAP[b.sector].name)} · nimmt ${fmtAmount(b.room)}</div></div><div class="right"><b>${fmtInt(b.price)} Cr</b></div></div>`).join('');
+    ...(state.markets[sec]?.[id] && has(sec) ? [{ key: sec, name: SECTOR_MAP[sec].tradeStation.name, sec }] : []),
+    ...SECTOR_MAP[sec].npcStations.filter((n) => n.makes?.includes(id) && has(n.id)).map((n) => ({ key: n.id, name: n.name, sec })),
+  ]).sort((a, b) => (seenPrice(state, a.key, id) ?? 0) - (seenPrice(state, b.key, id) ?? 0));
+  const buyerRows = wareBuyers(state, id).map((b) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(b.name)}${b.opp ? ' <span class="pill amber" style="padding:1px 6px;font-size:10px">GELEGENHEIT</span>' : ''}</div><div class="sub">${esc(SECTOR_MAP[b.sector].name)} · nimmt ${fmtAmount(b.room)} ${intelTag(state, b.key)}</div></div><div class="right"><b>${fmtInt(b.price)} Cr</b></div></div>`).join('');
   const prices = `${sellers.length ? sellers.map((x) => sellerRow(x.key, x.name, SECTOR_MAP[x.sec].name)).join('') : '<div class="empty">Gerade bietet niemand diese Ware an.</div>'}`;
   return sheet(w.name, `${GROUP_LABEL[w.group]} · Stufe ${w.tier}`, `
     <div class="section"><div class="kv">
@@ -1105,6 +1126,11 @@ function sectorPanel(state: GameState, id: string, p: Panel): string {
       <div><small>Baulizenz</small><b style="font-size:15px">${owned ? 'vorhanden' : fmtCr(s.licenseCost)}</b></div><div><small>Ruf nötig</small><b style="font-size:15px">${s.repRequired} ${FACTIONS[s.faction].short} <span class="small ${rep >= s.repRequired ? 'pos' : 'neg'}">(${fmtNum(rep, 1)})</span></b></div>
     </div></div>
     <div class="section"><h3>Rohstofffelder</h3><div class="box rows">${s.fields.map((f) => `<div class="row">${wareTile(f.ware)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[f.ware].name)}</div><div class="sub">Ertrag ${pct(f.richness)} · Radius ${f.r} km</div></div></div>`).join('')}</div></div>
+    ${state.start && (owned || reachable || state.sectors.some((x) => SECTOR_MAP[x].links.includes(id))) ? `<div class="section"><h3>Aufklärung</h3><div class="quad-grid">${([0, 1, 2, 3] as const).map((q) => {
+      const on = quadrantCovered(state, id, q);
+      const sat = state.satellites?.some((x) => x.sector === id && x.q === q);
+      return `<div class="quad ${on ? 'on' : ''}"><b>${QUADRANT_NAME[q]}</b><small>${on ? (sat ? 'Satellit · live' : 'eigene Station · live') : 'nur Momentaufnahmen'}</small>${on ? '' : `<button class="btn small ${state.credits >= SAT_COST ? 'amber' : 'disabled'}" ${act('satellite', { sec: id, q })}>Satellit · ${fmtCr(SAT_COST)}</button>`}</div>`;
+    }).join('')}</div><p class="small muted" style="margin:6px 0 0">Live sichtbar sind Preise nur in Quadranten mit eigener Station oder Satellit. Sonst gilt der Stand, als zuletzt ein Schiff dort angedockt hat oder vorbeigeflogen ist.</p></div>` : ''}
     <div class="section"><h3>Markt</h3><div class="pills">${s.demand.map((w) => `<span class="pill amber">${esc(WARES[w].name)} gefragt</span>`).join('')}${s.surplus.map((w) => `<span class="pill">${esc(WARES[w].name)} günstig</span>`).join('')}</div></div>
     ${owned ? '' : `<button class="btn ${canBuy ? 'amber' : 'disabled'} block" ${act('license', { id })}>${icon('lock', 20)}${!reachable ? 'Nur über Nachbarsektoren erreichbar' : rep < s.repRequired ? `Ruf ${s.repRequired} nötig` : `Baulizenz kaufen · ${fmtCr(s.licenseCost)}`}</button>`}
     <button class="btn block" style="margin-top:8px" ${act('goto-sector', { id })}>${icon('arrowRight', 20)}Sektor ansehen</button>`, { back: !!p.back });
@@ -1312,6 +1338,20 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const v = m.type === 'trade' ? tradeModalHtml(state, m) : holdSellModalHtml(state, m);
       if (!v) return modalShell('Laderaum verkaufen', '<div class="box empty">Der Laderaum ist leer.</div>', `<button class="btn" ${act('modal-close')}>Schließen</button>`);
       return `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(v.title)}"><div class="sheet-head"><h1><span class="eyebrow">${esc(v.eyebrow)}</span>${esc(v.title)}</h1><button class="icon-btn" ${act('modal-close')} aria-label="Schließen">${icon('close', 22)}</button></div><div class="sheet-body">${v.body}</div><div class="modal-foot">${v.foot}</div></div>`;
+    }
+    case 'autoWares': {
+      const sh = state.ships.find((x) => x.id === m.ship);
+      if (!sh) return '';
+      const list = WARE_IDS.filter((id) => WARES[id].storage === SHIP_MAP[sh.cls].storage).sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
+      const sel = sh.autoWares ?? [];
+      return modalShell('Waren im freien Handel', `<p class="small muted" style="margin-top:0">Ohne Auswahl handelt der Pilot mit allen Waren. Mit Auswahl nur mit diesen – die Versorgung der Heimatstation bleibt davon unberührt.</p>
+        <div class="pills"><button class="pill ${sel.length ? '' : 'teal'}" ${act('auto-ware-all', { id: sh.id })}>Alle</button>${list.map((id) => `<button class="pill ${sel.includes(id) ? 'teal' : ''}" ${act('auto-ware', { id: sh.id, ware: id })}>${wareMark(id, 8)}${esc(WARES[id].name)}</button>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Fertig</button>`, sh.name);
+    }
+    case 'explore': {
+      const ships = state.ships.filter((x) => SHIP_MAP[x.cls].role === 'trader');
+      const p = marketInfo(m.key);
+      const rows = ships.map((x) => `<div class="row tap" ${act('explore', { k: m.key, sh: x.id })}>${icon('trader', 20)}<div class="grow"><div class="title">${esc(x.name)}</div><div class="sub wrap">${esc(x.status)}</div></div>${icon('chev', 20, 'chev')}</div>`).join('');
+      return modalShell('Station erfassen', `<p class="small muted" style="margin-top:0">Das Schiff fliegt zu <b>${esc(p.name)}</b> (${esc(SECTOR_MAP[p.sector].name)}), dockt an und erfasst Preise und Bestände. Unterwegs erfasst es auch Stationen, an denen es vorbeifliegt.</p>${ships.length ? `<div class="box rows">${rows}</div>` : '<div class="box empty">Dafür brauchst du einen Transporter.</div>'}`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
     }
     case 'courierShip': {
       const v = deliveryModalHtml(state, m);

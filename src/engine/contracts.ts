@@ -6,8 +6,9 @@ import { WARES, WARE_IDS } from '../data/wares';
 import type { Contract, GameState } from './types';
 import { emit, log, pick, rand } from './util';
 import { knownSectors } from './logistics';
-import { marketPrice, marketRoom, marketStock } from './economy';
-import { activeOpportunity, effectivePrice } from './trading';
+import { marketPrice, marketRoom } from './economy';
+import { activeOpportunity } from './trading';
+import { knows, noteMarket, seenPrice, seenRoom, seenStock } from './intel';
 
 const TITLES = ['Nachschub für', 'Dringende Lieferung:', 'Großauftrag:', 'Wiederaufbau:', 'Bestellung von'];
 
@@ -111,9 +112,10 @@ export function wareSellers(state: GameState, ware: string, exclude = ''): WareS
   for (const sec of knownSectors(state)) {
     const keys = [sec, ...sector(sec).npcStations.filter((n) => n.makes?.includes(ware)).map((n) => n.id)];
     for (const key of keys) {
-      if (key === exclude || !state.markets[key]?.[ware]) continue;
-      const stock = marketStock(state, key, ware);
-      if (stock >= 1) out.push({ key, sector: marketInfo(key).sector, price: marketPrice(state, key, ware), stock });
+      if (key === exclude || !state.markets[key]?.[ware] || !knows(state, key)) continue;
+      // Bekannter Stand (live oder Momentaufnahme)
+      const stock = seenStock(state, key, ware) ?? 0;
+      if (stock >= 1) out.push({ key, sector: marketInfo(key).sector, price: seenPrice(state, key, ware) ?? marketPrice(state, key, ware), stock });
     }
   }
   return out.sort((a, b) => a.price - b.price);
@@ -126,12 +128,12 @@ export function wareBuyers(state: GameState, ware: string, exclude = ''): WareBu
   const out: WareBuyer[] = [];
   for (const sec of knownSectors(state)) {
     for (const key of [sec, ...sector(sec).npcStations.filter((n) => n.buys.includes(ware)).map((n) => n.id)]) {
-      if (key === exclude || !state.markets[key]?.[ware]) continue;
-      const room = marketRoom(state, key, ware);
+      if (key === exclude || !state.markets[key]?.[ware] || !knows(state, key)) continue;
+      const room = seenRoom(state, key, ware) ?? 0;
       if (room < 1) continue;
       const p = marketInfo(key);
       const opp = activeOpportunity(state, key, ware, 'demand');
-      out.push({ key, name: p.name, sector: p.sector, price: effectivePrice(state, key, ware, 'demand'), room, opp: !!opp });
+      out.push({ key, name: p.name, sector: p.sector, price: seenPrice(state, key, ware) ?? marketPrice(state, key, ware), room, opp: !!opp });
     }
   }
   return out.sort((a, b) => b.price - a.price);
@@ -182,6 +184,8 @@ export function generateCourier(state: GameState): Contract | null {
   const w = WARES[p.ware];
   const reward = Math.round((p.n * p.price * (1 + COURIER_BONUS[0] + rand(state) * (COURIER_BONUS[1] - COURIER_BONUS[0]))) / 100) * 100;
   const dest = marketInfo(p.to);
+  // Der Auftraggeber meldet sich: seine Lage ist ab jetzt bekannt
+  noteMarket(state, p.to);
   return {
     id: state.nextId++,
     sector: dest.sector,

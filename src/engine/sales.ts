@@ -7,6 +7,7 @@ import { marketRoom, marketTradeValue, stationRates } from './economy';
 import { knownSectors, marketKey, sectorDistanceHint, stationById, travelDistance, type Place } from './logistics';
 import type { GameState, ShipClassDef, TradeEndpoint } from './types';
 import { productionUtil } from './analysis';
+import { isLive, knows, seenPrice, seenRoom } from './intel';
 
 export type SalePriority = 'price' | 'perHour' | 'throughput';
 
@@ -84,21 +85,25 @@ export function saleOffers(state: GameState, stationId: string, ware: string, cl
     });
   };
 
+  // Nur bekannte Käufer; ohne Live-Sicht gilt die letzte Momentaufnahme
+  const known = (key: string) => knows(state, key);
+  const roomAt = (key: string) => (isLive(state, key) ? marketRoom(state, key, ware) : seenRoom(state, key, ware) ?? 0);
+  const valueAt = (key: string, n: number) => (isLive(state, key) ? marketTradeValue(state, key, ware, n) : n * (seenPrice(state, key, ware) ?? 0));
   for (const secId of knownSectors(state)) {
     const sec = SECTOR_MAP[secId];
     // Handelsposten: großes Lager, Preis nach Bestand
-    add({
+    if (known(secId)) add({
       id: 'm:' + secId, endpoint: { kind: 'market', sector: secId }, kind: 'trade', name: sec.tradeStation.name, sector: secId,
-      room: marketRoom(state, secId, ware), listPrice: marketTradeValue(state, secId, ware, 1),
-      valueOf: (n) => marketTradeValue(state, secId, ware, n),
+      room: roomAt(secId), listPrice: valueAt(secId, 1),
+      valueOf: (n) => valueAt(secId, n),
     });
     // Spezialisierte Käufer: begrenzte Abnahme, meist bessere Preise
     for (const n of sector(secId).npcStations) {
-      if (!n.buys.includes(ware)) continue;
+      if (!n.buys.includes(ware) || !known(n.id)) continue;
       add({
         id: 'm:' + n.id, endpoint: { kind: 'market', sector: secId, market: n.id }, kind: 'npc', name: n.name, sector: secId,
-        room: marketRoom(state, n.id, ware), listPrice: marketTradeValue(state, n.id, ware, 1),
-        valueOf: (x) => marketTradeValue(state, n.id, ware, x),
+        room: roomAt(n.id), listPrice: valueAt(n.id, 1),
+        valueOf: (x) => valueAt(n.id, x),
       });
     }
   }
@@ -108,7 +113,7 @@ export function saleOffers(state: GameState, stationId: string, ware: string, cl
     const rest = c.amount - c.delivered;
     const perUnit = c.story ? 0 : c.reward / c.amount;
     add({
-      id: 'c:' + c.id, endpoint: { kind: 'market', sector: c.sector }, kind: 'contract', contract: c.id, name: c.title, sector: c.sector,
+      id: 'c:' + c.id, endpoint: c.market && c.market !== c.sector ? { kind: 'market', sector: c.sector, market: c.market } : { kind: 'market', sector: c.sector }, kind: 'contract', contract: c.id, name: c.title, sector: c.sector,
       room: rest, listPrice: perUnit, valueOf: (n) => n * perUnit,
     });
   }

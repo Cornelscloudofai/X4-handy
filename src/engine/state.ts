@@ -5,6 +5,7 @@ import { SHIP_MAP, shipName } from '../data/ships';
 import { addBuildStore, initMarkets } from './economy';
 import { initNpcEconomy } from './npcEconomy';
 import { generateCourier } from './contracts';
+import { initIntel } from './intel';
 import { OLD_STORY_IDS, STORY, startMission, storyOf } from './story';
 import type { GameState, ModuleInst, Ship, StartKind, Station } from './types';
 
@@ -61,6 +62,8 @@ export function newGame(seed = Date.now() % 2147483647, start?: StartKind): Game
     for (const def of ['core', 'dock_m', 'storage_container', 'storage_solid']) st.modules.push({ ...newModule(state, def), util: 1 });
     state.stations.push(st);
     state.ships.push(newShip(state, START_KIT[start].ship, st));
+    // Marktbericht der Familie: letzter bekannter Stand aller Stationen im Heimatsektor
+    initIntel(state, st.sector);
     // Gleich zu Beginn ein passender Kurierauftrag, die nächsten folgen bald
     const c = generateCourier(state);
     if (c) state.contracts.push(c);

@@ -3,6 +3,7 @@ import { marketInfo } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { STORAGE_LABEL, WARES } from '../data/wares';
 import { wareSellers } from '../engine/contracts';
+import { seenPrice } from '../engine/intel';
 import { hasDockFor, marketPrice } from '../engine/economy';
 import { inTransitForContract, marketEndpoint, shipPlace } from '../engine/fleet';
 import { endpointPlace, sellableStock, travelDistance } from '../engine/logistics';
@@ -42,7 +43,7 @@ export function deliverySources(state: GameState, c: Contract, ship: Ship | null
     out.push({ id: 'st:' + st.id, name: st.name, own: true, price: 0, stock, units, profit: units * perUnit, flight: flight(st), endpoint: { kind: 'station', id: st.id } });
   }
   for (const x of c.source ? [{ key: c.source, stock: Infinity }] : wareSellers(state, c.ware, c.market)) {
-    const price = marketPrice(state, x.key, c.ware);
+    const price = seenPrice(state, x.key, c.ware) ?? marketPrice(state, x.key, c.ware);
     const units = Math.min(load, x.stock);
     const p = marketInfo(x.key);
     out.push({ id: x.key, name: p.name, own: false, price, stock: x.stock, units, profit: units * (perUnit - price), flight: flight(p), endpoint: marketEndpoint(x.key) });
@@ -61,7 +62,7 @@ export function deliveryModalHtml(state: GameState, m: DeliveryModal): { title: 
   const sources = deliverySources(state, c, ship);
   const src = sources.find((x) => x.id === m.source) ?? sources[0];
   const destKey = c.market ?? c.sector;
-  const destPrice = marketPrice(state, destKey, c.ware);
+  const destPrice = seenPrice(state, destKey, c.ware) ?? marketPrice(state, destKey, c.ware);
   const perUnit = c.reward / c.amount;
   const rows = sources.slice(0, 8).map((x) => `<button class="offer ${x === src ? 'picked' : ''}" ${act('cs-src', { k: x.id })}>
       <div class="offer-head"><div style="min-width:0;flex:1"><div class="title">${esc(x.name)}</div>

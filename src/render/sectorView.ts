@@ -1,6 +1,7 @@
 // Zeichnet einen Sektor: Sechseck, Felder, Tore, Stationen, Schiffe, Routen.
 import { MODULE_MAP } from '../data/modules';
 import { FACTIONS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, hexCorners } from '../data/sectors';
+import { quadrantCovered } from '../engine/intel';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { endOf, sectorFlows, segIn, type FlowSeg } from '../engine/flows';
@@ -221,6 +222,7 @@ export class SectorRenderer {
     this.density = ui.labelDensity;
 
     this.drawHex(ctx, cam, sec.faction === 'zya' ? '#ff8a5c' : C.amber, state.sectors.includes(ui.sector), s);
+    if (state.start) this.drawIntel(ctx, cam, state, ui.sector);
 
     // Felder: Gas als driftender Schleier, Gestein als Brockenwolke
     for (const f of sec.fields) {
@@ -535,6 +537,38 @@ export class SectorRenderer {
     }
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
+  }
+
+  /** Marktwissen: nicht abgedeckte Quadranten leicht abgedunkelt, Satelliten als kleines Symbol */
+  private drawIntel(ctx: CanvasRenderingContext2D, cam: Camera, state: GameState, sectorId: string): void {
+    const pts = hexCorners(SECTOR_RADIUS).map((p) => cam.toScreen(p.x, p.z));
+    const R = SECTOR_RADIUS;
+    ctx.save();
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.clip();
+    for (const q of [0, 1, 2, 3] as const) {
+      const x0 = q % 2 ? 0 : -R, z0 = q >= 2 ? 0 : -R;
+      const [ax, ay] = cam.toScreen(x0, z0);
+      const [bx, by] = cam.toScreen(x0 + R, z0 + R);
+      ctx.fillStyle = quadrantCovered(state, sectorId, q) ? 'rgba(63,224,197,0.04)' : 'rgba(2,6,12,0.45)';
+      ctx.fillRect(ax, ay, bx - ax, by - ay);
+    }
+    ctx.restore();
+    for (const sat of state.satellites ?? []) {
+      if (sat.sector !== sectorId) continue;
+      const [x, y] = cam.toScreen(sat.q % 2 ? R * 0.42 : -R * 0.42, sat.q >= 2 ? R * 0.42 : -R * 0.42);
+      const r = 5 * Math.max(0.8, cam.iconScale());
+      ctx.save();
+      ctx.strokeStyle = 'rgba(63,224,197,0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - r * 2.2, y); ctx.lineTo(x - r, y); ctx.moveTo(x + r, y); ctx.lineTo(x + r * 2.2, y); ctx.stroke();
+      ctx.globalAlpha = 0.25;
+      ctx.beginPath(); ctx.arc(x, y, r * 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
   }
 
   private drawHex(ctx: CanvasRenderingContext2D, cam: Camera, color: string, owned: boolean, scale = 1): void {

@@ -5,6 +5,7 @@ import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { wareBuyers } from '../engine/contracts';
 import { activeOpportunity, effectivePrice } from '../engine/trading';
+import { intelAge, seenPrice, seenStock } from '../engine/intel';
 import { marketStock, spendable } from '../engine/economy';
 import { expectedCargo, marketEndpoint, shipPlace } from '../engine/fleet';
 import { travelDistance } from '../engine/logistics';
@@ -45,9 +46,11 @@ const kindLabel = (key: string) => (key === marketInfo(key).sector ? 'Handelspos
 export function tradeModalHtml(state: GameState, m: TradeModal): { title: string; eyebrow: string; body: string; foot: string } {
   const w = WARES[m.ware];
   const src = marketInfo(m.from);
-  const buy = effectivePrice(state, m.from, m.ware, 'supply');
+  // Bekannter Stand (live oder Momentaufnahme); bezahlt wird beim Andocken der echte Preis
+  const buy = (seenPrice(state, m.from, m.ware) ?? effectivePrice(state, m.from, m.ware, 'supply')) * (activeOpportunity(state, m.from, m.ware, 'supply')?.mult ?? 1);
   const supplyOpp = activeOpportunity(state, m.from, m.ware, 'supply');
-  const stock = marketStock(state, m.from, m.ware);
+  const stock = seenStock(state, m.from, m.ware) ?? marketStock(state, m.from, m.ware);
+  const age = intelAge(state, m.from);
   const ships = tradeShips(state, m.ware);
   const ship = ships.find((s) => s.id === m.ship) ?? ships[0] ?? null;
   const cls = ship ? SHIP_MAP[ship.cls] : SHIP_MAP.tuatara;
@@ -59,7 +62,7 @@ export function tradeModalHtml(state: GameState, m: TradeModal): { title: string
       }).join('')}</div>`
     : `<div class="box empty">Kein Transporter für diese Ware. <button class="linkish" ${act('buyship-modal', { st: state.stations[0]?.id ?? '', role: 'trader' })}>Transporter kaufen</button></div>`;
   const seg = `<div class="segment" style="margin-bottom:12px"><button class="${m.mode === 'buy' ? 'on' : ''}" ${act('trade-mode', { mode: 'buy' })}>Einmal kaufen</button><button class="${m.mode === 'route' ? 'on' : ''}" ${act('trade-mode', { mode: 'route' })}>Handelsroute</button></div>`;
-  const head = `${supplyOpp ? `<div class="advice">${icon('star', 18)}<p><b>Gelegenheit:</b> nur noch ${fmtDur(supplyOpp.until - state.time)} für ${Math.round(supplyOpp.mult * 100)} % des Preises, bis ${fmtAmount(supplyOpp.left)} Einheiten – gilt für deine Befehle und Routen, nicht für den freien Autohandel.</p></div>` : ''}<div class="kv sell-ctx"><div><small>Preis</small><b>${fmtInt(buy)} Cr</b></div><div><small>Vorrat</small><b>${fmtAmount(stock)}</b></div><div><small>Ø Preis</small><b>${fmtInt(w.price.avg)} Cr</b></div></div>`;
+  const head = `${supplyOpp ? `<div class="advice">${icon('star', 18)}<p><b>Sonderangebot:</b> nur noch ${fmtDur(supplyOpp.until - state.time)} für ${Math.round(supplyOpp.mult * 100)} % des Preises, bis ${fmtAmount(supplyOpp.left)} Einheiten. Mit „Kaufen“ nimmst du es an – der Rabatt gilt für diesen Kauf.</p></div>` : ''}<div class="kv sell-ctx"><div><small>Preis</small><b>${fmtInt(buy)} Cr</b></div><div><small>Vorrat</small><b>${fmtAmount(stock)}</b></div><div><small>Ø Preis</small><b>${fmtInt(w.price.avg)} Cr</b></div></div>${state.start && age != null && age >= 60 ? `<p class="small muted" style="margin:6px 0 0">Stand vor ${fmtDur(age)} – vor Ort kann der Preis anders sein.</p>` : ''}`;
   let body: string;
   let foot: string;
   if (m.mode === 'buy') {

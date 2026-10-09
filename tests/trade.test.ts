@@ -3,7 +3,7 @@ import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
 import { holdBuyOrder, holdSellOrder, setTradeRoute } from '../src/engine/actions';
 import { expectedCargo, freeTradeJob, routeMargin, routeTarget } from '../src/engine/fleet';
-import { RANK_LOAD, RANK_TRIPS, applyOpportunity, effectivePrice, pilotRank, stepOpportunities, streakBonus } from '../src/engine/trading';
+import { RANK_TRIPS, applyOpportunity, effectivePrice, pilotRank, relationBonus, noteDelivery, stepOpportunities } from '../src/engine/trading';
 import { knownSectors } from '../src/engine/logistics';
 import { sectorDistanceHint } from '../src/engine/logistics';
 import { marketPrice } from '../src/engine/economy';
@@ -71,7 +71,7 @@ describe('Handel: einmaliger Kauf, Laderaum verkaufen, Handelsrouten', () => {
     expect(sh.mode).toBe('auto');
   }, 60000);
 
-  it('Pilotenrang: steigt mit Fahrten; Rang 1 handelt frei nur im Heimatsektor und mit Teilladungen', () => {
+  it('Pilotenrang: steigt mit Fahrten; Rang 1 handelt frei nur im Heimatsektor – mit voller Ladung', () => {
     const s = newGame(7, 'trading');
     const sh = s.ships[0];
     expect(pilotRank(sh)).toBe(1);
@@ -82,13 +82,12 @@ describe('Handel: einmaliger Kauf, Laderaum verkaufen, Handelsrouten', () => {
     for (let i = 0; i < 20; i++) {
       const j = freeTradeJob(s, sh, knownSectors(s));
       if (!j) continue;
-      expect(j.free).toBe(true);
       for (const ep of [j.from, j.to]) expect(sectorDistanceHint('zhin', ep.kind === 'market' ? ep.sector : 'zhin')).toBe(0);
-      expect(j.amount * 1).toBeLessThanOrEqual((cap / 1) * RANK_LOAD[1] + 1);
+      expect(j.amount).toBeLessThanOrEqual(cap + 1);
     }
   });
 
-  it('Gelegenheiten entstehen und geben nur eigenen Befehlen den Sonderpreis', () => {
+  it('Sonderangebote gelten nur für Fahrten, die sie angenommen haben', () => {
     const s = newGame(7, 'trading');
     s.oppTimer = 0;
     stepOpportunities(s, 1);
@@ -97,21 +96,28 @@ describe('Handel: einmaliger Kauf, Laderaum verkaufen, Handelsrouten', () => {
     const base = s.markets[o.key][o.ware] ? effectivePrice(s, o.key, o.ware, o.kind) : 0;
     expect(base).toBeGreaterThan(0);
     const before = s.credits;
-    const extra = applyOpportunity(s, o.key, o.ware, o.kind, 10, 1000);
+    expect(o.kind).toBe('supply');
+    expect(applyOpportunity(s, o.key, o.ware, o.kind, 10, 1000)).toBe(0); // ohne Zusage kein Rabatt
+    const extra = applyOpportunity(s, o.key, o.ware, o.kind, 10, 1000, o.id);
     expect(extra).toBeGreaterThan(0);
     expect(s.credits - before).toBeCloseTo(extra, 5);
     expect(o.left).toBeLessThan(o.left + 10);
   });
 
-  it('Handelsroute mit mehreren Abnehmern verkauft an den besten; Stammkunde bis +10 %', () => {
+  it('Handelsroute mit mehreren Abnehmern verkauft an den besten; Stammkunde je Station bis +10 %', () => {
     const s = newGame(7, 'trading');
     const r = { from: post, to: { kind: 'market' as const, sector: 'zhin', market: 'zhin-huette' }, alt: [{ kind: 'market' as const, sector: 'zhin', market: 'zhin-werft' }], ware: 'energycells' };
     s.markets['zhin-huette'].energycells.stock = s.markets['zhin-huette'].energycells.cap * 0.9; // fast voll: niedriger Preis
     s.markets['zhin-werft'].energycells.stock = 0;
     const t = routeTarget(s, r)!;
     expect(t.to.kind === 'market' && t.to.market).toBe('zhin-werft');
-    expect(streakBonus(0)).toBe(0);
-    expect(streakBonus(3)).toBeCloseTo(0.03);
-    expect(streakBonus(50)).toBeCloseTo(0.1);
+    expect(relationBonus(s, 'zhin-werft')).toBe(0);
+    for (let i = 0; i < 3; i++) noteDelivery(s, 'zhin-werft', 'energycells', 1350);
+    expect(relationBonus(s, 'zhin-werft')).toBeCloseTo(0.03);
+    for (let i = 0; i < 30; i++) noteDelivery(s, 'zhin-werft', 'energycells', 1350);
+    expect(relationBonus(s, 'zhin-werft')).toBeCloseTo(0.1);
+    // Ohne Lieferungen schläft die Beziehung ein
+    s.time += 6 * 3600 * 12;
+    expect(relationBonus(s, 'zhin-werft')).toBe(0);
   });
 });

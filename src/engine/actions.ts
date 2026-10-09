@@ -1,6 +1,6 @@
 // Spieleraktionen. Jede Aktion prüft ihre Voraussetzungen und liefert eine Meldung.
 import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
-import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, sector } from '../data/sectors';
+import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, marketInfo, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { BUILD_STORAGE_COST, addBuildStore, defaultTradeRule, hasDockFor, moveBuildStock } from './economy';
@@ -403,7 +403,7 @@ function enqueue(s: Ship, job: TradeJob): boolean {
  * Einmaliger Kauf in den Laderaum: Das Schiff kauft beim Verkäufer und wartet dann mit der Ladung auf den nächsten Befehl
  * (z. B. „Laderaum verkaufen“). Der Laderaum muss am Ende der Warteschlange leer sein.
  */
-export function holdBuyOrder(state: GameState, shipId: string, ware: string, from: TradeEndpoint, amount: number): Result {
+export function holdBuyOrder(state: GameState, shipId: string, ware: string, from: TradeEndpoint, amount: number, opp?: number): Result {
   const s = state.ships.find((x) => x.id === shipId);
   if (!s) return fail('Schiff nicht gefunden.');
   const cls = SHIP_MAP[s.cls];
@@ -413,7 +413,7 @@ export function holdBuyOrder(state: GameState, shipId: string, ware: string, fro
   if (expectedCargo(s)) return fail('Der Laderaum ist nach den geplanten Befehlen noch belegt – zuerst „Laderaum verkaufen“ einreihen.');
   const n = Math.floor(Math.min(amount, cls.capacity / WARES[ware].volume));
   if (n < 1) return fail('Keine Menge gewählt.');
-  const busy = enqueue(s, { ware, amount: n, from, to: from, stage: 'pickup', hold: true, manual: true });
+  const busy = enqueue(s, { ware, amount: n, from, to: from, stage: 'pickup', hold: true, manual: true, opp });
   return ok(busy ? `${s.name} kauft nach den laufenden Befehlen ${n.toLocaleString('de-DE')} ${WARES[ware].name}.` : `${s.name} fliegt los: ${n.toLocaleString('de-DE')} ${WARES[ware].name} kaufen.`);
 }
 
@@ -442,6 +442,17 @@ export function setTradeRoute(state: GameState, shipId: string, route: RouteOrde
   s.route = { ...route };
   log(state, `${s.name}: Handelsroute ${WARES[route.ware].name} eingerichtet.`, 'info');
   return ok(`${s.name} fliegt jetzt die Handelsroute${route.minMargin != null ? ` (${route.onLow === 'end' ? 'endet' : 'pausiert'} unter ${Math.round(route.minMargin * 100)} % Gewinn)` : ''}.`);
+}
+
+/** Erkunden: Schiff fliegt zu einer Station und dockt an – danach ist ihre Lage bekannt */
+export function exploreOrder(state: GameState, shipId: string, key: string): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Schiff nicht gefunden.');
+  if (SHIP_MAP[s.cls].role !== 'trader') return fail('Nur Transporter nehmen solche Befehle an.');
+  const p = marketInfo(key);
+  const to: TradeEndpoint = key === p.sector ? { kind: 'market', sector: p.sector } : { kind: 'market', sector: p.sector, market: key };
+  const busy = enqueue(s, { ware: 'energycells', amount: 0, from: to, to, stage: 'deliver', manual: true, explore: true });
+  return ok(busy ? `${s.name} fliegt nach den laufenden Befehlen zu ${p.name}.` : `${s.name} fliegt zu ${p.name} und erfasst die Station.`);
 }
 
 /** Warteschlange: Befehl an Stelle i streichen */

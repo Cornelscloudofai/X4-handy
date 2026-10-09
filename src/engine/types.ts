@@ -229,9 +229,10 @@ export interface TradeJob {
   manual?: boolean;
   /** Fahrt einer Handelsroute: zählt für den Stammkunden-Bonus */
   route?: boolean;
-  /** Freier Autohandel: Der Pilot behält einen Gewinnanteil; cost = Einkaufspreis der Ladung */
-  free?: boolean;
-  cost?: number;
+  /** Erkundungsflug: nur hinfliegen und andocken */
+  explore?: boolean;
+  /** Angenommenes Sonderangebot (Opportunity-ID): Rabatt beim Einkauf */
+  opp?: number;
 }
 
 /** market: Handelsposten eines Sektors (market fehlt) oder eine NPC-Käuferstation (market = deren ID) */
@@ -307,10 +308,10 @@ export interface Ship {
   holdCargo?: boolean;
   /** Anzeige, warum die Handelsroute gerade ruht (z. B. Gewinn unter der Schwelle) */
   routeNote?: string;
+  /** Autohandel: nur mit diesen Waren frei handeln (leer = alle) */
+  autoWares?: string[];
   /** Zuletzt gemeldeter Pilotenrang */
   rank?: number;
-  /** Summe der Gewinnanteile, die der Pilot im freien Autohandel behalten hat */
-  pilotShare?: number;
   status: string;
   trips: number;
   earned: number;
@@ -421,6 +422,14 @@ export interface GameState {
   story: { id?: string; index: number; claimed: boolean; startedAt: number; base: Record<string, number>; contractFloor: number };
   /** Gewählter Spielstart (fehlt bei alten Spielständen und beim klassischen Start mit fertiger Station) */
   start?: StartKind;
+  /** Marktwissen (neue Spiele): Momentaufnahmen je Markt, Satelliten, Takt der Schiffsscans */
+  intel?: Record<string, { t: number; stock: Record<string, number> }>;
+  satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
+  scanTimer?: number;
+  /** Rohstofffelder (neue Spiele): Füllstand 0–1 je Feld */
+  fieldStock?: Record<string, number>;
+  /** Beziehung zu Stationen (Stammkunde): Punkte und letzte Lieferung */
+  relations?: Record<string, { pts: number; t: number }>;
   /** Gelegenheiten (Preisspitzen) und Zeit bis zur nächsten */
   opportunities?: Opportunity[];
   oppTimer?: number;

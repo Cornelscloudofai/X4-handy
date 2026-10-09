@@ -2,7 +2,8 @@
 import { NPC_MAP, marketInfo, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES, WARE_IDS } from '../data/wares';
-import { marketPrice, marketStock, roomAt } from '../engine/economy';
+import { marketPrice, roomAt } from '../engine/economy';
+import { knows, seenPrice, seenStock } from '../engine/intel';
 import { knownSectors, sectorDistanceHint, stationById, travelDistance } from '../engine/logistics';
 import type { GameState, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
@@ -33,12 +34,12 @@ export function buyOffers(state: GameState, stationId: string, ware: string, spe
   for (const sec of knownSectors(state)) {
     const keys = [sec, ...sector(sec).npcStations.filter((n) => n.makes?.includes(ware)).map((n) => n.id)];
     for (const key of keys) {
-      if (!state.markets[key]?.[ware]) continue;
-      const stock = marketStock(state, key, ware);
+      if (!state.markets[key]?.[ware] || !knows(state, key)) continue;
+      const stock = seenStock(state, key, ware) ?? 0;
       if (stock < 1) continue;
       const p = marketInfo(key);
       out.push({
-        key, name: p.name, sector: p.sector, stock, unitPrice: marketPrice(state, key, ware), hops: sectorDistanceHint(st.sector, p.sector),
+        key, name: p.name, sector: p.sector, stock, unitPrice: seenPrice(state, key, ware) ?? marketPrice(state, key, ware), hops: sectorDistanceHint(st.sector, p.sector),
         endpoint: key === sec ? { kind: 'market', sector: sec } : { kind: 'market', sector: sec, market: key },
         flight: travelDistance(st, p) / speed,
       });

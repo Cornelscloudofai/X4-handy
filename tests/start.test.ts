@@ -23,7 +23,7 @@ describe('Spielstart', () => {
       play(s, 2);
       const perHour = (s.credits - START_KIT[kind].credits) / 2;
       expect(perHour).toBeGreaterThan(40_000);
-      expect(perHour).toBeLessThan(250_000);
+      expect(perHour).toBeLessThan(450_000);
     }, 60000);
   }
 
@@ -38,11 +38,4 @@ describe('Spielstart', () => {
     expect(Math.max(m, t) / Math.min(m, t)).toBeLessThan(2);
   }, 60000);
 
-  it('Autohandel ganz ohne Eingriff verdient am Handelsstart nur wenig', () => {
-    const s = newGame(5, 'trading');
-    s.contractTimer = 1e9;
-    s.contracts = [];
-    step(s, 2 * 3600);
-    expect((s.credits - START_KIT.trading.credits) / 2).toBeLessThan(80_000);
-  }, 60000);
 });

@@ -38,6 +38,8 @@ import { defaultSellModal, shipClass } from './sellView';
 import { buyOffers, defaultBuyModal } from './buyView';
 import { deliveryShips, deliverySources } from './deliveryView';
 import { marketEndpoint, tradeShips } from './tradeView';
+import { activeOpportunity } from '../engine/trading';
+import { deploySatellite } from '../engine/intel';
 import { saleOffers } from '../engine/sales';
 import { SPEEDS, saveBgMode, saveIconStyle, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
@@ -620,13 +622,24 @@ function onClick(e: MouseEvent): void {
         const ship = tradeShips(state, m.ware).find((s) => s.id === m.ship) ?? tradeShips(state, m.ware)[0];
         if (!ship) { toast('Kein passender Transporter.', 'warn'); break; }
         const r = a === 'trade-buy'
-          ? A.holdBuyOrder(state, ship.id, m.ware, marketEndpoint(m.from), Number(d.amount))
+          ? A.holdBuyOrder(state, ship.id, m.ware, marketEndpoint(m.from), Number(d.amount), activeOpportunity(state, m.from, m.ware, 'supply')?.id)
           : d.to ? (() => { const ks = d.to!.split(','); return A.setTradeRoute(state, ship.id, { from: marketEndpoint(m.from), to: marketEndpoint(ks[0]), alt: ks.slice(1).map(marketEndpoint), ware: m.ware, minMargin: m.minPct / 100, onLow: m.onLow }); })() : { ok: false, msg: 'Wähle einen Käufer.' };
         if (r.ok) ui.modal = null;
         result(r);
         break;
       }
       case 'route-margin-off': { const sh = state.ships.find((x) => x.id === d.id); if (sh?.route) { delete sh.route.minMargin; delete sh.route.onLow; } refresh(); break; }
+      case 'satellite': result(deploySatellite(state, d.sec!, Number(d.q) as 0 | 1 | 2 | 3)); break;
+      case 'auto-wares-modal': ui.modal = { type: 'autoWares', ship: d.id! }; refresh(); break;
+      case 'auto-ware-all': { const sh = state.ships.find((x) => x.id === d.id); if (sh) delete sh.autoWares; refresh(); break; }
+      case 'auto-ware': {
+        const sh = state.ships.find((x) => x.id === d.id);
+        if (sh) { const cur = sh.autoWares ?? []; sh.autoWares = cur.includes(d.ware!) ? cur.filter((x) => x !== d.ware) : [...cur, d.ware!]; if (!sh.autoWares.length) delete sh.autoWares; }
+        refresh();
+        break;
+      }
+      case 'explore-modal': ui.modal = { type: 'explore', key: d.k! }; refresh(); break;
+      case 'explore': ui.modal = null; result(A.exploreOrder(state, d.sh!, d.k!)); break;
       case 'hold-sell-modal': ui.modal = { type: 'holdSell', ship: d.id! }; refresh(); break;
       case 'hold-sell': { const r = A.holdSellOrder(state, d.id!, marketEndpoint(d.k!)); if (r.ok) ui.modal = null; result(r); break; }
       case 'order-up': result(A.moveOrderUp(state, d.id!, Number(d.i))); break;
