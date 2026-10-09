@@ -8,6 +8,7 @@ import { stationById } from './logistics';
 import { newShip } from './state';
 import type { GameState, ShipOrder, Station } from './types';
 import { emit, log, rand } from './util';
+import { book } from './ledger';
 
 /** Bauzeit eines Schiffs in Sekunden (Spielwert; in X4 hängt sie von Rumpf und Ausrüstung ab) */
 export const SHIP_BUILD_TIME: Record<'S' | 'M' | 'L', number> = { S: 6 * 60, M: 12 * 60, L: 30 * 60 };
@@ -101,19 +102,19 @@ export function stepYard(state: GameState, st: Station, dt: number): void {
   const c = SHIP_MAP[job.cls];
   const order = job.order ? state.shipOrders?.find((o) => o.id === job.order) : undefined;
   if (order && order.status === 'active') {
-    state.credits += order.price;
+    book(state, order.price, 'ships', `Schiffsbestellung ${FACTIONS[order.faction].short}: ${c.name}`, { kind: 'station', id: st.id });
     st.income += order.price;
     state.totals.sold += order.price;
     state.rep[order.faction] = Math.min(30, state.rep[order.faction] + order.rep);
     order.status = 'done';
     state.totals.shipsSold = (state.totals.shipsSold ?? 0) + 1;
-    log(state, `${st.name}: ${c.name} an ${FACTIONS[order.faction].short} übergeben · +${order.price.toLocaleString('de-DE')} Cr.`, 'good', true);
+    log(state, `${st.name}: ${c.name} an ${FACTIONS[order.faction].short} übergeben · +${order.price.toLocaleString('de-DE')} Cr.`, 'good', true, { kind: 'station', id: st.id });
   } else {
     const ship = newShip(state, job.cls, st);
     state.ships.push(ship);
     state.totals.shipsBuilt = (state.totals.shipsBuilt ?? 0) + 1;
     if (c.size === 'L') state.totals.shipsBuiltL = (state.totals.shipsBuiltL ?? 0) + 1;
-    log(state, `${st.name}: ${ship.name} (${c.name}) vom Stapel gelaufen.`, 'good', true);
+    log(state, `${st.name}: ${ship.name} (${c.name}) vom Stapel gelaufen.`, 'good', true, { kind: 'ship', id: ship.id });
   }
   emit({ type: 'shipBuilt', station: st.id, cls: job.cls });
 }
@@ -132,7 +133,7 @@ export function stepShipOrders(state: GameState, dt: number): void {
       o.status = 'failed';
       state.rep[o.faction] = Math.max(-10, state.rep[o.faction] - 2);
       for (const st of state.stations) if (st.yard) st.yard.queue = st.yard.queue.filter((j) => j.order !== o.id);
-      log(state, `Schiffsbestellung verfallen: ${SHIP_MAP[o.cls].name}. Ruf −2.`, 'bad', true);
+      log(state, `Schiffsbestellung verfallen: ${SHIP_MAP[o.cls].name}. Ruf −2.`, 'bad', true, { kind: 'shipOrder', id: o.id });
     }
   }
   state.shipOrders = [...state.shipOrders.filter((o) => o.status === 'done' || o.status === 'failed').slice(-8), ...state.shipOrders.filter((o) => o.status === 'offer' || o.status === 'active')];
@@ -154,7 +155,7 @@ export function stepShipOrders(state: GameState, dt: number): void {
     rep: c.size === 'L' ? 2 : 1, deadline: state.time + OFFER_TTL, status: 'offer',
   };
   state.shipOrders.push(o);
-  log(state, `Schiffsbestellung: ${FACTIONS[faction].short} sucht eine ${c.name} (${o.price.toLocaleString('de-DE')} Cr).`, 'info', true);
+  log(state, `Schiffsbestellung: ${FACTIONS[faction].short} sucht eine ${c.name} (${o.price.toLocaleString('de-DE')} Cr).`, 'info', true, { kind: 'shipOrder', id: o.id });
 }
 
 export function acceptShipOrder(state: GameState, orderId: number, stationId: string): Result {

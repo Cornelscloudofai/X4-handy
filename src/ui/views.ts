@@ -60,6 +60,7 @@ import { QUADRANT_NAME, SAT_COST, intelAge, knows, quadrantCovered, seenPrice, s
 import { RANK_RANGE, activeOpportunity, pilotRank, rankStars, relationBonus, tripsToNextRank } from '../engine/trading';
 import { computePlan, producible } from '../engine/planner';
 import { SPEEDS, type Modal, type Panel, type UIState } from './uistate';
+import { ledgerBody, newsBody, unreadNews } from './newsView';
 
 // ---------- Hilfen ----------
 
@@ -114,10 +115,12 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
   const sec = SECTOR_MAP[ui.sector];
   const speedLabel = `×${state.speed}`;
   const inGalaxy = ui.view === 'galaxy';
+  const unread = unreadNews(state);
+  const newsBtn = `<button class="btn menu-btn news-btn" ${act('open-news')} aria-label="Nachrichten${unread ? ` – ${unread} neu` : ''}">${icon('info', 20)}${unread ? `<b class="badge num">${unread > 99 ? '99+' : unread}</b>` : ''}</button>`;
   return `
   <div class="hud-row">
     <button class="chip sector" ${act('galaxy')} aria-label="Galaxiekarte öffnen">${icon(inGalaxy ? 'sector' : 'galaxy', 18)}<b>${esc(inGalaxy ? 'Galaxie' : sec.name)}</b></button>
-    <div class="chip credits ${creditFlash}" aria-label="Credits"><b class="num">${fmtCr(shownCredits)}</b></div>
+    <button class="chip credits ${creditFlash}" ${act('open-ledger')} aria-label="Credits – Kontobuch öffnen"><b class="num">${fmtCr(shownCredits)}</b></button>
     <div class="chip time ${ui.paused ? 'paused' : ''}">
       <button ${act('pause')} aria-label="${ui.paused ? 'Fortsetzen' : 'Pausieren'}">${icon(ui.paused ? 'play' : 'pause', 18)}</button>
       <button class="speed" ${act('speed')} aria-label="Spieltempo">${speedLabel}</button>
@@ -128,10 +131,10 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${state.sectors.length} von ${SECTORS.length} Sektoren` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
-  ${inGalaxy ? `<div class="tool-row"><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button></div>` : `<div class="tool-row">
+  ${inGalaxy ? `<div class="tool-row">${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button></div>` : `<div class="tool-row">
     <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 20)}Station</button>
     <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 20)}Routen</button>
-    <button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button>
+    ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button>
     <div class="zoom"><button ${act('zoom-in')} aria-label="Hineinzoomen">${icon('plus', 20)}</button><button ${act('zoom-out')} aria-label="Herauszoomen">${icon('minus', 20)}</button></div>
   </div>${flowFilter(state, ui)}`}`;
 }
@@ -392,6 +395,8 @@ export function panelHtml(state: GameState, ui: UIState): string {
     case 'more': return morePanel(state, ui);
     case 'blueprints': return blueprintsPanel(state, ui, p);
     case 'planner': return sheet('Stationsplaner', 'Produktionsketten nach X4', plannerPanel(state, ui));
+    case 'news': return sheet('Nachrichten', 'Alle Meldungen', newsBody(state, ui.newsFilter ?? 'all', ui.newsSeenBefore ?? -1));
+    case 'ledger': return sheet('Konto', 'Ein- und Ausgänge', ledgerBody(state, ui.ledgerFilter ?? 'all'));
   }
 }
 
@@ -1227,7 +1232,7 @@ function sectorPanel(state: GameState, id: string, p: Panel): string {
 
 function morePanel(state: GameState, ui: UIState): string {
   const worth = netWorth(state);
-  const logRows = [...state.log].reverse().slice(0, 25).map((l) => `<div class="row"><span class="small muted num" style="flex:none;width:74px">${fmtClock(l.t).replace('Tag ', 'T')}</span><div class="grow"><div class="sub wrap ${l.kind === 'good' ? 'pos' : l.kind === 'bad' ? 'neg' : l.kind === 'warn' ? 'warn-text' : ''}" style="${l.kind === 'info' ? 'color:var(--text-2)' : ''}">${esc(l.text)}</div></div></div>`).join('');
+  const logRows = [...state.log].reverse().slice(0, 8).map((l) => `<div class="row"><span class="small muted num" style="flex:none;width:74px">${fmtClock(l.t).replace('Tag ', 'T')}</span><div class="grow"><div class="sub wrap ${l.kind === 'good' ? 'pos' : l.kind === 'bad' ? 'neg' : l.kind === 'warn' ? 'warn-text' : ''}" style="${l.kind === 'info' ? 'color:var(--text-2)' : ''}">${esc(l.text)}</div></div></div>`).join('');
   return sheet('Leitstand', 'Mehr', `
     <div class="section"><h3>Unternehmen</h3><div class="kv">
       <div><small>Unternehmenswert</small><b>${tw(worth, 'cr')}</b></div><div><small>Spielzeit</small><b style="font-size:15px">${fmtClock(state.time)}</b></div>
@@ -1265,7 +1270,8 @@ function morePanel(state: GameState, ui: UIState): string {
       <div class="row tap" ${act('minigames')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Minispiele (Vorschau)</div><div class="sub wrap">Rohr-Puzzle, Bergbau, Gas sammeln und Kampf ausprobieren</div></div>${icon('chev', 20, 'chev')}</div>
       <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
       <div class="toggle"><button class="plain ${soundEnabled() ? 'on' : ''}" ${act('sound-toggle')}>${soundEnabled() ? 'An' : 'Aus'}</button></div></div></div></div>
-    <div class="section"><h3>Ereignisse</h3><div class="box rows">${logRows}</div></div>
+    <div class="section"><h3>Ereignisse</h3><div class="box rows">${logRows}</div>
+      <div class="card-actions" style="margin-top:8px"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Alle Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>
     <div class="section"><h3>Daten & Quellen</h3><div class="box" style="padding:14px"><p class="small" style="margin:0 0 8px;color:var(--text-2)">Rezepte, Preisspannen, Warenvolumen und Lagerarten aus dem Community-Datensatz X4Foundations_FactoryStationsTracker. Baumaterialien, Bauzeiten und Kapazitäten der Module (auch Lager S/M/L und Schiffsfertigung) sowie Schiffsdaten (Rumpf, Ausrüstung, Schub, Frachtraum) aus crissian/x4.</p>
       <p class="small muted" style="margin:0">Spielwerte: Abbauraten, Schiffsbauzeiten, Kartenlage der Felder, die Nachbarsektoren sowie der Nividium-Preis. Belegschaft und Kampf sind nicht Teil dieses Spiels. X4: Foundations ist ein Spiel von Egosoft; dies ist ein inoffizielles Fanprojekt.</p></div></div>`);
 }

@@ -5,7 +5,7 @@ import * as Y from '../engine/yard';
 import { VENDOR_MAP } from '../data/vendors';
 import { deliverWithShip } from '../engine/delivery';
 import { acceptShipOrder, cancelShipBuild, queueShipBuild } from '../engine/yard';
-import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS } from '../data/sectors';
+import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { acceptContract } from '../engine/contracts';
@@ -14,7 +14,7 @@ import { fieldById, stationById } from '../engine/logistics';
 import { catchUp, step } from '../engine/sim';
 import { deserialize, serialize, loadLocal, newGame, saveLocal, clearLocal } from '../engine/state';
 import { claimMission } from '../engine/story';
-import type { RestAction, GameState, TradeEndpoint } from '../engine/types';
+import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
 import { GALAXY_HEX, drawGalaxy, galaxyHit, sectorCenter } from '../render/galaxyView';
@@ -50,6 +50,7 @@ import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
 import { MODULE_MAP } from '../data/modules';
 import { WARES } from '../data/wares';
 import { cardHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml } from './views';
+import { linkFrom, type LedgerFilter, type NewsFilter } from './newsView';
 
 let state: GameState;
 const renderer = new SectorRenderer();
@@ -350,6 +351,7 @@ function refresh(): void {
 function toast(text: string, kind: 'info' | 'good' | 'warn' | 'bad' = 'info'): void {
   const host = $('toasts');
   const el = document.createElement('div');
+  // Eingeblendete Meldungen blockieren keine Knöpfe darunter – nachlesen und hinspringen geht im Nachrichtenblatt
   el.className = 'toast ' + kind;
   el.innerHTML = icon(kind === 'good' ? 'check' : kind === 'info' ? 'info' : 'warn', 18) + `<span></span>`;
   el.querySelector('span')!.textContent = text;
@@ -361,6 +363,56 @@ function toast(text: string, kind: 'info' | 'good' | 'warn' | 'bad' = 'info'): v
 function result(r: A.Result): void {
   toast(r.msg, r.ok ? 'good' : 'warn');
   refresh();
+}
+
+/** Nachrichtenblatt öffnen: was seit dem letzten Mal dazukam, ist als „NEU“ markiert */
+function openNews(): void {
+  ui.modal = null;
+  ui.newsSeenBefore = state.newsSeen ?? -1;
+  state.newsSeen = state.time;
+  openPanel('news');
+}
+
+/** Sprung zum Ort einer Meldung oder Buchung – mit passendem Dialog, wo es etwas zu tun gibt */
+function followLink(l: LogLink): void {
+  const back = ui.panel?.type === 'news' || ui.panel?.type === 'ledger';
+  switch (l.kind) {
+    case 'station': if (stationById(state, l.id)) openPanel('station', l.id, undefined, back); break;
+    case 'ship': if (state.ships.some((s) => s.id === l.id)) openPanel('ship', l.id, undefined, back); break;
+    case 'sector': openPanel('sector', l.id, undefined, back); break;
+    case 'market': {
+      if (!state.markets[l.key]) break;
+      const info = marketInfo(l.key);
+      ui.panel = null;
+      focusOn(info.x, info.z, info.sector);
+      ui.selection = info.npc ? { kind: 'npcst', id: l.key } : { kind: 'trade', id: info.sector };
+      refresh();
+      break;
+    }
+    case 'field': {
+      const f = fieldById(l.id);
+      if (!f) break;
+      ui.panel = null;
+      focusOn(f.field.x, f.field.z, f.sector.id);
+      ui.selection = { kind: 'field', id: l.id };
+      refresh();
+      break;
+    }
+    case 'opp': {
+      const o = state.opportunities?.find((x) => x.id === l.id);
+      // Noch gültiges Sonderangebot: direkt der Kaufdialog (damit wird das Angebot angenommen), sonst die Station
+      if (o && o.until > state.time && o.left >= 1) { ui.modal = { type: 'trade', ware: l.ware, from: l.key, mode: 'buy', minPct: 10, onLow: 'pause' }; refresh(); }
+      else followLink({ kind: 'market', key: l.key });
+      break;
+    }
+    case 'contract': {
+      const c = state.contracts.find((x) => x.id === l.id);
+      if (c?.status === 'offer' && c.size) { ui.modal = { type: 'courierShip', contract: c.id }; refresh(); }
+      else openPanel('missions', undefined, undefined, back);
+      break;
+    }
+    case 'shipOrder': case 'story': openPanel('missions', undefined, undefined, back); break;
+  }
 }
 
 function openPanel(type: PanelType, id?: string, tab?: string, stack = false): void {
@@ -792,6 +844,11 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'alerts': ui.modal = { type: 'alerts' }; refresh(); break;
+      case 'open-ledger': ui.modal = null; openPanel('ledger'); break;
+      case 'open-news': openNews(); break;
+      case 'news-filter': ui.newsFilter = (d.f as NewsFilter) || 'all'; state.newsSeen = state.time; refresh(); break;
+      case 'ledger-filter': ui.ledgerFilter = (d.f as LedgerFilter) || 'all'; refresh(); break;
+      case 'news-go': { const l = linkFrom(d); if (l) followLink(l); break; }
       case 'layer-menu': ui.layerMenu = !ui.layerMenu; refresh(); break;
       case 'layer-toggle':
         if (d.layer === 'flows') ui.flows = !ui.flows;

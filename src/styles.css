@@ -747,3 +747,11 @@ html.calm .mg-stars span.on svg { animation: none; }
 .quad.on { border-color: rgba(63, 224, 197, 0.5); background: rgba(63, 224, 197, 0.07); }
 .quad small { color: var(--text-2); font-size: 12px; }
 .quad .btn { margin-top: 4px; }
+
+/* Kontobuch (Tipp auf die Credits) und Nachrichtenblatt */
+button.chip.credits { cursor: pointer; color: inherit; font: inherit; }
+.news-btn { position: relative; }
+.news-btn .badge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--amber, #ffb84d); color: #1a1205; font-size: 11px; line-height: 18px; text-align: center; font-weight: 700; box-shadow: 0 0 0 2px rgba(5, 11, 20, 0.9); }
+.news-row.new { background: rgba(255, 184, 77, 0.06); }
+.news-row .row-links .linkish, .row .row-links .linkish .ic { white-space: nowrap; }
+.news-row .row-links .linkish { display: inline-flex; align-items: center; gap: 3px; }

@@ -9,6 +9,7 @@ import { knownSectors } from './logistics';
 import { marketPrice, marketRoom } from './economy';
 import { activeOpportunity } from './trading';
 import { knows, noteMarket, seenPrice, seenRoom, seenStock } from './intel';
+import { book } from './ledger';
 
 const TITLES = ['Nachschub für', 'Dringende Lieferung:', 'Großauftrag:', 'Wiederaufbau:', 'Bestellung von'];
 
@@ -22,13 +23,13 @@ export function contractDeliver(state: GameState, id: number, wareId: string, am
   const used = Math.min(amount, c.amount - c.delivered);
   c.delivered += used;
   let pay = Math.max(0, Math.min(c.reward - (c.paid ?? 0), (c.reward * used) / c.amount));
-  state.credits += pay;
+  book(state, pay, 'contract', `Lieferauftrag: ${c.title}`, { kind: 'contract', id: c.id });
   c.paid = (c.paid ?? 0) + pay;
   // Auftragslohn ist Verkaufserlös (zählt z. B. für Kapitelziele „Verkaufe Waren für …“)
   state.totals.sold += pay;
   const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
   // Teillieferung sichtbar machen: Der Lohn kommt anteilig, nicht erst am Ende
-  if (c.delivered < c.amount - 0.5 && pay > 0) log(state, `Lieferung für „${c.title}“: ${fmt(used)} ${WARES[c.ware].name} → +${fmt(pay)} Cr (${fmt(c.delivered)} von ${fmt(c.amount)}, bisher ${fmt(c.paid ?? 0)} von ${fmt(c.reward)} Cr)`, 'good', true);
+  if (c.delivered < c.amount - 0.5 && pay > 0) log(state, `Lieferung für „${c.title}“: ${fmt(used)} ${WARES[c.ware].name} → +${fmt(pay)} Cr (${fmt(c.delivered)} von ${fmt(c.amount)}, bisher ${fmt(c.paid ?? 0)} von ${fmt(c.reward)} Cr)`, 'good', true, { kind: 'contract', id: c.id });
   if (c.delivered >= c.amount - 0.5) pay += completeContract(state, c, pay);
   return { used, pay };
 }
@@ -37,7 +38,7 @@ function completeContract(state: GameState, c: Contract, lastPay = 0): number {
   c.delivered = c.amount;
   c.status = 'done';
   const rest = Math.max(0, c.reward - (c.paid ?? 0));
-  state.credits += rest;
+  book(state, rest, 'contract', `Lieferauftrag: ${c.title}`, { kind: 'contract', id: c.id });
   state.totals.sold += rest;
   c.paid = c.reward;
   if (isDelivery(c)) state.totals.couriers = (state.totals.couriers ?? 0) + 1;
@@ -45,7 +46,7 @@ function completeContract(state: GameState, c: Contract, lastPay = 0): number {
   state.rep[f] = Math.min(30, state.rep[f] + c.rep);
   const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
   const earlier = c.reward - rest - lastPay;
-  log(state, `Auftrag erfüllt: ${c.title} – insgesamt ${fmt(c.reward)} Cr${earlier > 1 ? ` (davon ${fmt(earlier)} Cr schon mit früheren Lieferungen, jetzt +${fmt(rest + lastPay)} Cr)` : ''}, Ruf +${c.rep} bei ${FACTIONS[f].short}`, 'good', true);
+  log(state, `Auftrag erfüllt: ${c.title} – insgesamt ${fmt(c.reward)} Cr${earlier > 1 ? ` (davon ${fmt(earlier)} Cr schon mit früheren Lieferungen, jetzt +${fmt(rest + lastPay)} Cr)` : ''}, Ruf +${c.rep} bei ${FACTIONS[f].short}`, 'good', true, { kind: 'contract', id: c.id });
   emit({ type: 'contractDone', id: c.id });
   return rest;
 }
@@ -214,7 +215,7 @@ export function acceptContract(state: GameState, id: number): { ok: boolean; msg
   if (active >= 4) return { ok: false, msg: 'Höchstens 4 Aufträge gleichzeitig.' };
   c.status = 'active';
   c.deadline = state.time + c.duration;
-  log(state, `Auftrag angenommen: ${c.title}${c.market ? '' : ` für ${sector(c.sector).tradeStation.name}`}.`, 'info');
+  log(state, `Auftrag angenommen: ${c.title}${c.market ? '' : ` für ${sector(c.sector).tradeStation.name}`}.`, 'info', false, { kind: 'contract', id: c.id });
   return { ok: true, msg: 'Auftrag angenommen.' };
 }
 
@@ -227,7 +228,7 @@ export function stepContracts(state: GameState, dt: number): void {
       c.status = 'failed';
       const f = sector(c.sector).faction;
       state.rep[f] = Math.max(-10, state.rep[f] - 1);
-      log(state, `Frist verpasst: ${c.title}. Ruf −1.`, 'bad', true);
+      log(state, `Frist verpasst: ${c.title}. Ruf −1.`, 'bad', true, { kind: 'contract', id: c.id });
     }
   }
   // Alte Einträge entfernen
@@ -242,7 +243,7 @@ export function stepContracts(state: GameState, dt: number): void {
       const c = state.start ? generateCourier(state) : generateOffer(state);
       if (c) {
         state.contracts.push(c);
-        log(state, `Neues Auftragsangebot: ${c.title} (${SECTOR_MAP[c.sector].name}).`, 'info', true);
+        log(state, `Neues Auftragsangebot: ${c.title} (${SECTOR_MAP[c.sector].name}).`, 'info', true, { kind: 'contract', id: c.id });
       }
     }
   }

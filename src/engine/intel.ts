@@ -6,6 +6,7 @@ import { NPC_STATIONS, SECTORS, marketInfo } from '../data/sectors';
 import { priceAt } from './economy';
 import type { GameState } from './types';
 import { log } from './util';
+import { book } from './ledger';
 
 export const SAT_COST = 35_000;
 /** Schiffe erfassen Stationen in diesem Umkreis (km) */
@@ -70,7 +71,7 @@ export function noteMarket(state: GameState, key: string): void {
   for (const id in m) stock[id] = m[id].stock;
   const first = !state.intel?.[key];
   (state.intel ??= {})[key] = { t: state.time, stock };
-  if (first) log(state, `Neue Station erfasst: ${marketInfo(key).name}.`, 'info');
+  if (first) log(state, `Neue Station erfasst: ${marketInfo(key).name}.`, 'info', false, { kind: 'market', key });
 }
 
 /** Bekannter Bestand: live der echte, sonst die Momentaufnahme; null = unbekannt */
@@ -123,7 +124,7 @@ export function deploySatellite(state: GameState, sector: string, q: Quadrant): 
   if (!limited(state)) return { ok: false, msg: 'In diesem Spielstand sind alle Märkte sichtbar.' };
   if (quadrantCovered(state, sector, q)) return { ok: false, msg: 'Dieser Quadrant ist schon abgedeckt.' };
   if (state.credits < SAT_COST) return { ok: false, msg: `Ein Satellit kostet ${SAT_COST.toLocaleString('de-DE')} Cr.` };
-  state.credits -= SAT_COST;
+  book(state, -SAT_COST, 'intel', `Satellit: ${SECTORS.find((x) => x.id === sector)?.name ?? sector} · ${QUADRANT_NAME[q]}`, { kind: 'sector', id: sector });
   (state.satellites ??= []).push({ id: state.nextId++, sector, q });
   coverCache = null;
   log(state, `Satellit ausgesetzt: ${QUADRANT_NAME[q]}.`, 'good');

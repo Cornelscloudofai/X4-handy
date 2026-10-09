@@ -8,6 +8,7 @@ import type { GameState, Opportunity, Ship } from './types';
 export type { Opportunity };
 import { log, pick, rand } from './util';
 import { knows } from './intel';
+import { book } from './ledger';
 
 // ---------- Pilotenrang ----------
 
@@ -40,7 +41,7 @@ export function noteTrip(state: GameState, s: Ship): void {
   const r = pilotRank(s);
   if ((s.rank ?? 1) < r) {
     s.rank = r;
-    log(state, `${s.name}: Pilot steigt auf Rang ${r} auf (${rankStars(r)}) – handelt für seine Station ${RANK_RANGE[r] ? 'jetzt auch in den Nachbarsektoren' : 'im Heimatsektor'}.`, 'good', true);
+    log(state, `${s.name}: Pilot steigt auf Rang ${r} auf (${rankStars(r)}) – handelt für seine Station ${RANK_RANGE[r] ? 'jetzt auch in den Nachbarsektoren' : 'im Heimatsektor'}.`, 'good', true, { kind: 'ship', id: s.id });
   } else s.rank = r;
 }
 
@@ -106,9 +107,9 @@ export function applyOpportunity(state: GameState, key: string, ware: string, ki
   o.left -= n;
   const perUnit = value / units;
   const extra = kind === 'demand' ? n * perUnit * (o.mult - 1) : n * perUnit * (1 - o.mult);
-  state.credits += extra;
+  book(state, extra, 'trade', `Sonderangebot ${WARES[ware].name} · ${marketInfo(key).name}`, { kind: 'market', key });
   if (kind === 'demand') state.totals.sold += extra;
-  if (o.left < 1) log(state, `Gelegenheit ausgeschöpft: ${WARES[ware].name} bei ${marketInfo(key).name}.`, 'info');
+  if (o.left < 1) log(state, `Gelegenheit ausgeschöpft: ${WARES[ware].name} bei ${marketInfo(key).name}.`, 'info', false, { kind: 'market', key });
   return extra;
 }
 
@@ -126,7 +127,7 @@ export function stepOpportunities(state: GameState, dt: number): void {
   const w = WARES[o.ware];
   const mins = Math.round((o.until - state.time) / 60);
   const name = marketInfo(o.key).name;
-  log(state, `Sonderangebot: ${name} räumt ${mins} min lang ${w.name} für ${Math.round(o.mult * 100)} % des Preises (bis ${Math.round(o.left).toLocaleString('de-DE')} Einheiten) – Handel → Sonderangebote.`, 'good', true);
+  log(state, `Sonderangebot: ${name} räumt ${mins} min lang ${w.name} für ${Math.round(o.mult * 100)} % des Preises (bis ${Math.round(o.left).toLocaleString('de-DE')} Einheiten) – antippen zum Kaufen.`, 'good', true, { kind: 'opp', id: o.id, key: o.key, ware: o.ware });
 }
 
 function containerWare(id: string): boolean {

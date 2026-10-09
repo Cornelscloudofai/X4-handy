@@ -4,13 +4,14 @@ import type { BuyModal } from './buyView';
 import type { DeliveryModal } from './deliveryView';
 import type { HoldSellModal, TradeModal } from './tradeView';
 import type { ChartSpec } from './charts';
+import type { LedgerFilter, NewsFilter } from './newsView';
 
 export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc' | 'npcst';
 export interface Selection { kind: SelKind; id: string }
 
 const PLAN_KEY = 'x4-sektorbau-planer-v1';
 
-export type PanelType = 'stations' | 'fleet' | 'missions' | 'market' | 'more' | 'station' | 'ship' | 'ware' | 'sector' | 'planner' | 'blueprints';
+export type PanelType = 'stations' | 'fleet' | 'missions' | 'market' | 'more' | 'station' | 'ship' | 'ware' | 'sector' | 'planner' | 'blueprints' | 'news' | 'ledger';
 export interface Panel { type: PanelType; id?: string; tab?: string; back?: Panel | null }
 
 export type Modal =
@@ -50,6 +51,11 @@ export interface UIState {
   view: 'sector' | 'galaxy';
   sector: string;
   selection: Selection | null;
+  /** Nachrichtenblatt: Filter und Zeitpunkt, bis zu dem beim Öffnen gelesen war (für „NEU“) */
+  newsFilter?: NewsFilter;
+  newsSeenBefore?: number;
+  /** Kontobuch: Filter */
+  ledgerFilter?: LedgerFilter;
   /** Schiff, dem die Kamera folgt */
   follow?: string;
   placing: { x: number; z: number; valid: boolean; msg: string; set: boolean } | null;

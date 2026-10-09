@@ -17,6 +17,7 @@ import { canMine } from './mineRights';
 import { intelAge, knows, noteMarket, seenPrice, seenRoom, seenStock } from './intel';
 import { FIELD_STEPS, fieldCapFactor, fieldFloor, fieldRegenFactor, finishSurvey, stepFieldUp } from './fieldUp';
 import { RANK_RANGE, applyOpportunity, effectivePrice, noteDelivery, noteTrip, pilotRank, relationBonus } from './trading';
+import { book } from './ledger';
 
 /**
  * Rohstofffelder (neue Spiele): Der Vorrat eines Felds erschöpft sich beim Abbau und wächst langsam nach.
@@ -175,7 +176,7 @@ function sellCargo(state: GameState, s: Ship, key: string): number {
   const info = marketInfo(key);
   const n = info.npc ? Math.min(s.cargo.amount, marketRoom(state, key, s.cargo.ware)) : s.cargo.amount;
   if (n < 0.5) return 0;
-  const value = applyMarketTrade(state, key, s.cargo.ware, n);
+  const value = applyMarketTrade(state, key, s.cargo.ware, n, { who: s.name, link: { kind: 'ship', id: s.id } });
   recordFlow(state, fieldEnd(s.miningField), { key: 'm:' + key, sector: info.sector, x: info.x, z: info.z }, s.cargo.ware, n);
   s.cargo.amount -= n;
   s.earned += value;
@@ -552,7 +553,7 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
         sellCargo(state, s, post ?? home.sector);
         s.cargo = null;
       }
-      log(state, `${s.name}: ${s.sellDirect ? 'Ladung' : 'Überschuss'} verkauft für ${Math.round(value).toLocaleString('de-DE')} Cr (${marketInfo(key).name}).`, 'info');
+      log(state, `${s.name}: ${s.sellDirect ? 'Ladung' : 'Überschuss'} verkauft für ${Math.round(value).toLocaleString('de-DE')} Cr (${marketInfo(key).name}).`, 'info', false, { kind: 'ship', id: s.id });
       s.cargo = null;
       s.trips++;
       s.sellKey = undefined;
@@ -946,7 +947,7 @@ function routeJob(state: GameState, s: Ship): TradeJob | null {
   if (margin != null && margin < r.minMargin!) {
     const pct = (x: number) => `${Math.round(x * 100)} %`;
     if (r.onLow === 'end') {
-      log(state, `${s.name}: Handelsroute ${WARES[r.ware].name} beendet – Gewinn ${pct(margin)} unter ${pct(r.minMargin!)}.`, 'warn', true);
+      log(state, `${s.name}: Handelsroute ${WARES[r.ware].name} beendet – Gewinn ${pct(margin)} unter ${pct(r.minMargin!)}.`, 'warn', true, { kind: 'ship', id: s.id });
       s.route = null;
       s.mode = 'auto';
       return null;
@@ -1082,7 +1083,7 @@ function tradeAtDock(state: GameState, s: Ship): void {
       const sells = !job.from.market || !!NPC_MAP[job.from.market]?.makes?.includes(job.ware);
       n = !sells ? 0 : Math.min(job.amount, units, marketStock(state, key, job.ware), spendable(state, 10_000) / price);
       if (n > 0) {
-        let cost = applyMarketTrade(state, key, job.ware, -n);
+        let cost = applyMarketTrade(state, key, job.ware, -n, { who: s.name, link: { kind: 'ship', id: s.id } });
         // Angenommenes Sonderangebot: Rabatt auf die zugesagte Menge
         if (job.opp != null) cost -= applyOpportunity(state, key, job.ware, 'supply', n, cost, job.opp);
         const home = stationById(state, s.home);
@@ -1138,10 +1139,10 @@ function tradeAtDock(state: GameState, s: Ship): void {
       // NPC-Käufer nehmen nur, was in ihr Lager passt; der Handelsposten etwas mehr zum Mindestpreis
       const n = Math.min(s.cargo.amount, marketRoom(state, key, s.cargo.ware) + (job.to.market ? 0 : s.cargo.amount * 0.2));
       if (n > 0) {
-        let value = applyMarketTrade(state, key, s.cargo.ware, n);
+        let value = applyMarketTrade(state, key, s.cargo.ware, n, { who: s.name, link: { kind: 'ship', id: s.id } });
         // Stammkunde: Wer eine Station regelmäßig beliefert, bekommt dort bessere Preise (bis +10 %)
         const extra = value * relationBonus(state, key);
-        if (extra > 0) { state.credits += extra; state.totals.sold += extra; value += extra; }
+        if (extra > 0) { book(state, extra, 'trade', `Stammkundenbonus · ${marketInfo(key).name}`, { kind: 'market', key }); state.totals.sold += extra; value += extra; }
         noteDelivery(state, key, s.cargo.ware, n);
         recordFlow(state, endOf(state, job.from), endOf(state, job.to), s.cargo.ware, n);
         s.cargo.amount -= n;
@@ -1158,7 +1159,7 @@ function tradeAtDock(state: GameState, s: Ship): void {
   if (s.cargo.amount < 0.5) { s.cargo = null; s.holdCargo = false; }
   if (s.cargo) {
     // Nicht alles abgesetzt: Rest beim nächsten Leerlauf am Markt verkaufen
-    log(state, `${s.name}: ${fmtN(s.cargo.amount)} ${w.name} konnten nicht abgeliefert werden.`, 'warn');
+    log(state, `${s.name}: ${fmtN(s.cargo.amount)} ${w.name} konnten nicht abgeliefert werden.`, 'warn', false, { kind: 'ship', id: s.id });
     s.job = null;
   } else s.job = null;
   s.phase = 'idle';

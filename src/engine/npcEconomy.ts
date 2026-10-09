@@ -10,6 +10,7 @@ import { endOf, recordFlow } from './flows';
 import { makeNpc } from './npc';
 import type { GameState, Market, NpcEco, NpcStationDef, Station } from './types';
 import { emit, log, rand } from './util';
+import { book } from './ledger';
 
 /** Anteil des Vorproduktbedarfs (bei voller Produktion), den die Fraktion mit eigenen Frachtern heranschafft */
 export const SELF_SHARE = 0.35;
@@ -190,7 +191,7 @@ function haul(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
         const amount = Math.min(budget, load, room0, sellableStock(offer.st, id));
         offer.st.inventory[id] -= amount;
         const value = amount * offer.price;
-        state.credits += value;
+        book(state, value, 'station', `Verkaufsorder ${WARES[id].name}: ${n.name} holt an ${offer.st.name}`, { kind: 'station', id: offer.st.id }, amount);
         state.totals.sold += value;
         offer.st.income += value;
         eco.supply[id] = budget - amount;
@@ -307,7 +308,7 @@ function grow(state: GameState, n: Factory, eco: NpcEco): void {
   eco.prod[w]++;
   state.npcGrow![f] = state.time;
   ensureMarket(state, n);
-  log(state, `${n.name} baut ein weiteres Modul für ${WARES[w].name} aus.`, 'info', true);
+  log(state, `${n.name} baut ein weiteres Modul für ${WARES[w].name} aus.`, 'info', true, { kind: 'market', key: n.id });
 }
 
 /** Waren, die eine neue Fabrik herstellen könnte: gefertigt (keine Rohstoffe, keine Energie), Vorprodukte erhältlich */
@@ -369,7 +370,7 @@ function found(state: GameState): void {
     syncFounded(state);
     state.npcEco![n.id] = { prod: { [w]: 2 }, t: {}, util: {}, grown: state.time, supply: {}, export: {} };
     ensureMarket(state, n);
-    log(state, `${FACTIONS[f].name}: neue Fabrik „${n.name}“ in ${sec.name} – stellt ${WARES[w].name} her und kauft ${buys.filter((b) => b !== 'energycells').map((b) => WARES[b].name).join(', ')}.`, 'info', true);
+    log(state, `${FACTIONS[f].name}: neue Fabrik „${n.name}“ in ${sec.name} – stellt ${WARES[w].name} her und kauft ${buys.filter((b) => b !== 'energycells').map((b) => WARES[b].name).join(', ')}.`, 'info', true, { kind: 'market', key: n.id });
   }
 }
 

@@ -4,6 +4,7 @@ import { FACTIONS, SECTOR_MAP } from '../data/sectors';
 import { WARES } from '../data/wares';
 import type { GameState } from './types';
 import { log } from './util';
+import { book } from './ledger';
 
 export type MineRightKind = 'base' | 'nividium';
 
@@ -54,9 +55,9 @@ export function buyMineRight(state: GameState, sectorId: string, kind: MineRight
   if (block) return { ok: false, msg: block };
   const s = SECTOR_MAP[sectorId];
   const t = rightTerms(sectorId, kind);
-  state.credits -= t.cost;
+  book(state, -t.cost, 'build', `Schürfrecht ${kind === 'nividium' ? 'Nividium' : 'Grundrohstoffe'}: ${s.name}`, { kind: 'sector', id: sectorId });
   (state.mineRights ??= []).push(`${sectorId}:${kind}`);
   const what = kind === 'nividium' ? WARES.nividium.name : 'Grundrohstoffe';
-  log(state, `Schürfrecht für ${what} in ${s.name} erworben.`, 'good', true);
+  log(state, `Schürfrecht für ${what} in ${s.name} erworben.`, 'good', true, { kind: 'sector', id: sectorId });
   return { ok: true, msg: `Deine Miner dürfen jetzt ${what} in ${s.name} abbauen.` };
 }

@@ -410,7 +410,30 @@ export interface Contract {
   size?: 'S' | 'M' | 'L';
 }
 
-export interface LogEntry { t: number; text: string; kind: 'info' | 'good' | 'warn' | 'bad' }
+export interface LogEntry {
+  t: number; text: string; kind: 'info' | 'good' | 'warn' | 'bad';
+  /** Worauf sich die Meldung bezieht – im Nachrichtenblatt anspringbar */
+  link?: LogLink;
+  /** Wurde unten eingeblendet (wichtige Meldung) */
+  toast?: boolean;
+}
+
+/** Verweis einer Meldung oder Buchung */
+export type LogLink =
+  | { kind: 'station'; id: string }
+  | { kind: 'ship'; id: string }
+  | { kind: 'market'; key: string }
+  | { kind: 'sector'; id: string }
+  | { kind: 'contract'; id: number }
+  | { kind: 'opp'; id: number; key: string; ware: string }
+  | { kind: 'shipOrder'; id: number }
+  | { kind: 'field'; id: string }
+  | { kind: 'story' };
+
+export type LedgerCat = 'trade' | 'station' | 'contract' | 'build' | 'ships' | 'reward' | 'intel' | 'other';
+
+/** Kontobuch: Betrag (+ Eingang, − Ausgang), Grund und Verweis; n = zusammengefasste Buchungen */
+export interface LedgerEntry { t: number; amount: number; cat: LedgerCat; text: string; link?: LogLink; units?: number; n?: number }
 
 /** Verlaufsdaten (Diagramme): Messzeitpunkte und Reihen mit gleich vielen Werten (null = keine Messung) */
 export interface HistoryData { times: number[]; s: Record<string, (number | null)[]>; last: Record<string, number> }
@@ -456,6 +479,10 @@ export interface GameState {
   satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
   scanTimer?: number;
   /** Feldausbau je Feld: erreichte Stufe und laufender Ausbau */
+  /** Kontobuch der letzten Buchungen */
+  ledger?: LedgerEntry[];
+  /** Nachrichtenblatt: bis zu diesem Zeitpunkt gelesen */
+  newsSeen?: number;
   /** Schürfrechte (neue Spiele): "sektor:base" bzw. "sektor:nividium" */
   mineRights?: string[];
   fieldUp?: Record<string, { level: number; work?: { level: number; until: number } }>;

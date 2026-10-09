@@ -5,6 +5,7 @@ import { WARES } from '../data/wares';
 import type { FieldDef, GameState } from './types';
 import { log } from './util';
 import { setFieldReserve } from './logistics';
+import { book } from './ledger';
 
 export interface FieldStep {
   level: 1 | 2 | 3;
@@ -81,16 +82,16 @@ export function startFieldStep(state: GameState, f: FieldDef, shipId?: string): 
   if (step.level === 1) {
     const ship = state.ships.find((s) => s.id === shipId);
     if (!ship || ship.survey) return { ok: false, msg: 'Wähle einen Miner für die Vermessung.' };
-    state.credits -= step.cost;
+    book(state, -step.cost, 'build', `Feldausbau: ${step.name} (${WARES[f.ware].name})`, { kind: 'field', id: f.id });
     ship.survey = f.id;
-    log(state, `${ship.name} vermisst das Feld ${WARES[f.ware].name} (1 Stunde vor Ort).`, 'info');
+    log(state, `${ship.name} vermisst das Feld ${WARES[f.ware].name} (1 Stunde vor Ort).`, 'info', false, { kind: 'field', id: f.id });
     return { ok: true, msg: `${ship.name} fliegt zur Vermessung – danach ist der Vorrat um die Hälfte größer.` };
   }
   const st = state.stations.find((x) => x.id === c.station)!;
-  state.credits -= step.cost;
+  book(state, -step.cost, 'build', `Feldausbau: ${step.name} (${WARES[f.ware].name})`, { kind: 'field', id: f.id });
   for (const [id, need] of Object.entries(step.materials)) st.inventory[id] = (st.inventory[id] ?? 0) - need;
   (state.fieldUp ??= {})[f.id] = { ...fieldUp(state, f.id), work: { level: step.level, until: state.time + step.time } };
-  log(state, `${step.name} am Feld ${WARES[f.ware].name} begonnen (${Math.round(step.time / 3600)} h).`, 'info');
+  log(state, `${step.name} am Feld ${WARES[f.ware].name} begonnen (${Math.round(step.time / 3600)} h).`, 'info', false, { kind: 'field', id: f.id });
   return { ok: true, msg: `${step.name} begonnen – fertig in ${Math.round(step.time / 3600)} Stunden.` };
 }
 
@@ -99,7 +100,7 @@ export function finishSurvey(state: GameState, fieldId: string): void {
   const up = fieldUp(state, fieldId);
   if (up.level >= 1) return;
   (state.fieldUp ??= {})[fieldId] = { ...up, level: 1 };
-  log(state, 'Vermessung abgeschlossen: verborgene Adern gefunden – Vorrat +50 %.', 'good', true);
+  log(state, 'Vermessung abgeschlossen: verborgene Adern gefunden – Vorrat +50 %.', 'good', true, { kind: 'field', id: fieldId });
 }
 
 /** Laufende Ausbauten abschließen; Material für die nächste Stufe im Stationslager zurückhalten */
@@ -123,7 +124,7 @@ export function stepFieldUp(state: GameState): void {
     if (up.work && state.time >= up.work.until) {
       const step = FIELD_STEPS[up.work.level - 1];
       state.fieldUp![id] = { level: up.work.level };
-      log(state, `${step.name} fertig: ${step.effect}.`, 'good', true);
+      log(state, `${step.name} fertig: ${step.effect}.`, 'good', true, { kind: 'field', id });
     }
   }
 }

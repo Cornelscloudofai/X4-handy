@@ -1,4 +1,4 @@
-import type { FactionId, GameState, LogEntry } from './types';
+import type { FactionId, GameState, LogEntry, LogLink } from './types';
 
 /** Deterministischer Zufall (mulberry32), Zustand liegt im Spielstand */
 export function rand(state: GameState): number {
@@ -48,7 +48,7 @@ export function newId(state: GameState, prefix: string): string {
 // ---------- Ereignisse für die Oberfläche ----------
 
 export type GameEvent =
-  | { type: 'toast'; text: string; kind: LogEntry['kind'] }
+  | { type: 'toast'; text: string; kind: LogEntry['kind']; link?: LogLink }
   | { type: 'moduleDone'; station: string; module: string }
   | { type: 'contractDone'; id: number }
   | { type: 'story' }
@@ -79,8 +79,11 @@ export function muteEvents<T>(fn: () => T): T {
   }
 }
 
-export function log(state: GameState, text: string, kind: LogEntry['kind'] = 'info', toast = false): void {
-  state.log.push({ t: state.time, text, kind });
-  if (state.log.length > 80) state.log.splice(0, state.log.length - 80);
-  if (toast) emit({ type: 'toast', text, kind });
+/** So viele Meldungen behält das Nachrichtenblatt */
+export const LOG_MAX = 300;
+
+export function log(state: GameState, text: string, kind: LogEntry['kind'] = 'info', toast = false, link?: LogLink): void {
+  state.log.push({ t: state.time, text, kind, ...(toast ? { toast } : {}), ...(link ? { link } : {}) });
+  if (state.log.length > LOG_MAX) state.log.splice(0, state.log.length - LOG_MAX);
+  if (toast) emit({ type: 'toast', text, kind, link });
 }

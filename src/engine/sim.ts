@@ -45,8 +45,8 @@ function substep(state: GameState, dt: number): void {
   eventTimer -= dt;
   if (eventTimer <= 0) {
     eventTimer = (1.5 + rand(state) * 2) * 3600;
-    const text = marketEvent(state);
-    if (text) log(state, text, 'info', true);
+    const ev = marketEvent(state);
+    if (ev) log(state, ev.text, 'info', true, { kind: 'market', key: ev.sector });
   }
 }
 

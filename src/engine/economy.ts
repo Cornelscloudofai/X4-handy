@@ -3,8 +3,9 @@ import { MODULE_MAP, moduleDef } from '../data/modules';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { NPC_STATIONS, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
-import type { GameState, Market, NpcEco, Station, StorageType, TradeRule } from './types';
+import type { GameState, LedgerCat, LogLink, Market, NpcEco, Station, StorageType, TradeRule } from './types';
 import { clamp, emit, log, rand } from './util';
+import { book } from './ledger';
 
 const TYPES: StorageType[] = ['Container', 'Solid', 'Liquid'];
 
@@ -421,7 +422,7 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
     b.remaining = Math.max(0, b.remaining - dtWork * speed);
     left -= dtWork > 0 ? dtWork : left;
     if (lacking.length) {
-      if (st.waiting !== 'material') log(state, `${st.name}: ${moduleDef(b.def).name} wartet auf Baumaterial: ${lacking.map((id) => WARES[id].name).join(', ')}.`, 'warn');
+      if (st.waiting !== 'material') log(state, `${st.name}: ${moduleDef(b.def).name} wartet auf Baumaterial: ${lacking.map((id) => WARES[id].name).join(', ')}.`, 'warn', false, { kind: 'station', id: st.id });
       st.waiting = 'material';
       if (speed <= 0 || b.remaining <= 1e-6) return;
       continue;
@@ -431,7 +432,7 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
       const d = moduleDef(b.def);
       st.modules.push({ uid: state.nextId++, def: d.id, t: 0, running: false, stall: '', util: 0 });
       st.build = null;
-      log(state, `${st.name}: ${d.name} fertiggestellt.`, 'good', true);
+      log(state, `${st.name}: ${d.name} fertiggestellt.`, 'good', true, { kind: 'station', id: st.id });
       emit({ type: 'moduleDone', station: st.id, module: d.id });
     }
   }
@@ -553,19 +554,24 @@ export function marketTradeValue(state: GameState, key: string, id: string, amou
   return Math.abs(amount) * priceAt(id, m.stock / m.cap);
 }
 
-export function applyMarketTrade(state: GameState, key: string, id: string, amount: number): number {
+/** Wer handelt (fürs Kontobuch): z. B. Schiffsname, Kategorie und Verweis */
+export interface TradeWho { who: string; cat?: LedgerCat; link?: LogLink }
+
+export function applyMarketTrade(state: GameState, key: string, id: string, amount: number, who?: TradeWho): number {
   const value = marketTradeValue(state, key, id, amount);
   const m = state.markets[key]?.[id];
   if (!m) return 0;
   m.stock = clamp(m.stock + amount, 0, m.cap);
+  const place = marketInfo(key).name;
+  const text = `${amount > 0 ? 'Verkauf' : 'Einkauf'} ${WARES[id].name} ${amount > 0 ? '→' : '←'} ${place}${who ? ' · ' + who.who : ''}`;
   if (amount > 0) {
-    state.credits += value;
+    book(state, value, who?.cat ?? 'trade', text, who?.link ?? { kind: 'market', key }, amount);
     state.totals.sold += value;
     const f = sector(marketInfo(key).sector).faction;
     // Handel bringt etwas Ruf, aber nur bis Stufe 10 – darüber zählen Aufträge.
     if (state.rep[f] < 10) state.rep[f] = Math.min(10, state.rep[f] + value / 8_000_000);
   } else {
-    state.credits -= value;
+    book(state, -value, who?.cat ?? 'trade', text, who?.link ?? { kind: 'market', key }, -amount);
     state.totals.bought += value;
   }
   return value;
@@ -656,7 +662,7 @@ export function stepMarkets(state: GameState, dt: number): void {
 }
 
 /** Gelegentliche Nachfrageschwankungen */
-export function marketEvent(state: GameState): string | null {
+export function marketEvent(state: GameState): { text: string; sector: string } | null {
   const s = SECTORS[Math.floor(rand(state) * SECTORS.length)];
   if (!state.sectors.includes(s.id) && !s.links.some((l) => state.sectors.includes(l))) return null;
   const candidates = WARE_IDS.filter((id) => WARES[id].tier >= 1);
@@ -667,9 +673,10 @@ export function marketEvent(state: GameState): string | null {
   m.eq = clamp(m.eq + (up ? -0.25 : 0.25), 0.1, 0.9);
   // Neue Spiele: Grundwaren (Baumaterial) bleiben unangetastet – sonst könnte ein Ereignis jeden Bau blockieren
   if (!(state.start && up && ESSENTIAL_WARES.includes(id))) m.stock = clamp(m.stock + (up ? -0.25 : 0.2) * m.cap, 0, m.cap);
-  return up
+  const text = up
     ? `Nachfrage nach ${WARES[id].name} in ${s.name} steigt.`
     : `Überangebot an ${WARES[id].name} in ${s.name} – Preise fallen.`;
+  return { text, sector: s.id };
 }
 
 // ---------- Wertermittlung ----------

@@ -8,6 +8,7 @@ import { netWorth } from './stats';
 import { factoryUtil } from './npcEconomy';
 import { MODULES } from '../data/modules';
 import { vendorsFor } from '../data/vendors';
+import { book } from './ledger';
 
 export interface StoryMission {
   id: string;
@@ -458,7 +459,7 @@ export function stepStory(state: GameState): void {
   if (!m) return;
   if (missionComplete(state) && lastNotified !== state.story.index) {
     lastNotified = state.story.index;
-    log(state, `Ziel erreicht: ${m.title}. Belohnung abholen!`, 'good', true);
+    log(state, `Ziel erreicht: ${m.title}. Belohnung abholen!`, 'good', true, { kind: 'story' });
     emit({ type: 'story' });
   }
 }
@@ -466,7 +467,7 @@ export function stepStory(state: GameState): void {
 export function claimMission(state: GameState): { ok: boolean; msg: string } {
   const m = currentMission(state);
   if (!m || !missionComplete(state)) return { ok: false, msg: 'Ziel noch nicht erreicht.' };
-  state.credits += m.reward.credits;
+  book(state, m.reward.credits, 'reward', `Kapitel: ${m.title}`, { kind: 'story' });
   for (const [f, n] of Object.entries(m.reward.rep ?? {})) state.rep[f as FactionId] = Math.min(30, state.rep[f as FactionId] + (n ?? 0));
   for (const c of state.contracts) if (c.story && c.status === 'active') c.status = 'done';
   log(state, `Belohnung erhalten: ${m.reward.credits.toLocaleString('de-DE')} Cr.`, 'good');

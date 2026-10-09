@@ -8,6 +8,7 @@ import { endOf, recordFlow } from './flows';
 import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
 import type { GameState, NpcShip } from './types';
 import { emit, pick, rand, randRange, weightedPick } from './util';
+import { book } from './ledger';
 
 const NPC_CAPACITY = 6000; // m³, typischer M-Frachter
 
@@ -189,9 +190,9 @@ function npcTrade(state: GameState, n: NpcShip): void {
       const m = state.markets[key][n.ware];
       m.stock = Math.min(m.cap, m.stock + qty);
       value = qty * n.price;
-      state.credits += value;
+      book(state, value, 'station', `Verkaufsorder ${WARES[n.ware].name}: NPC-Händler kauft an ${st.name}`, { kind: 'station', id: st.id }, qty);
       state.totals.sold += value;
-    } else value = applyMarketTrade(state, key, n.ware, qty);
+    } else value = applyMarketTrade(state, key, n.ware, qty, { who: `NPC-Händler holt bei ${st.name}`, cat: 'station', link: { kind: 'station', id: st.id } });
     recordFlow(state, endOf(state, { kind: 'station', id: st.id }), marketEnd(state, key), n.ware, qty, 'npc');
     st.income += value;
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value });
@@ -207,7 +208,7 @@ function npcTrade(state: GameState, n: NpcShip): void {
     // Ein Preis für die ganze Ladung: der zugesagte bzw. der Preis beim Einkauf
     state.markets[key][n.ware].stock -= qty;
     const cost = qty * price;
-    state.credits -= cost;
+    book(state, -cost, 'station', `${n.price != null ? 'Kauforder' : 'Einkauf'} ${WARES[n.ware].name}: NPC-Händler liefert an ${st.name}`, { kind: 'station', id: st.id }, qty);
     state.totals.bought += cost;
     receiveWare(state, st, n.ware, qty, 'market');
     recordFlow(state, marketEnd(state, key), endOf(state, { kind: 'station', id: st.id }), n.ware, qty, 'npc');
@@ -228,7 +229,7 @@ function deliverHaul(state: GameState, n: NpcShip): void {
   const qty = Math.max(0, Math.min(n.amount, roomAt(st, n.ware, 'market'), state.credits / price));
   if (qty >= 1) {
     const cost = qty * price;
-    state.credits -= cost;
+    book(state, -cost, 'station', `Kauforder ${WARES[n.ware].name}: Fabrikfrachter liefert an ${st.name}`, { kind: 'station', id: st.id }, qty);
     state.totals.bought += cost;
     st.expenses += cost;
     receiveWare(state, st, n.ware, qty, 'market');
