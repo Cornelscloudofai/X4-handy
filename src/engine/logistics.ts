@@ -170,6 +170,9 @@ export function setFieldReserve(stationId: string, needs: Record<string, number>
 export function reserveFor(st: Station, wareId: string, limit: number): number {
   const set = st.reserve?.[wareId];
   const field = fieldReserve.get(st.id)?.[wareId] ?? 0;
+  // Verkaufsorder: Bestand bis zum eingestellten Anteil bleibt im Lager
+  const rule = tradeRule(st, wareId);
+  if (rule.sell && rule.keep != null) return Math.max(limit * rule.keep, field, pendingNeeds(st)[wareId] ?? 0);
   if (set !== undefined) return Math.max(set, field);
   const yard = (pendingNeeds(st)[wareId] ?? 0) + field;
   return Math.max(yard, consumesWare(st, wareId) ? limit * 0.4 : 0);

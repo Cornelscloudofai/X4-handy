@@ -86,4 +86,20 @@ describe('Wirtschaftszweige und Schürfrechte', () => {
     st.inventory.hullparts = limit * 0.6;
     expect(wanted(s, st, 'hullparts')).toBe(0);
   });
+  it('Kauf- und Verkaufsorder laufen parallel – fremde Schiffe handeln an der Station, ohne eigenes Schiff', () => {
+    const s = newGame(5, 'mining');
+    s.credits = 5_000_000;
+    s.ships = [];
+    const st = s.stations[0];
+    const limit = wareLimit(st, 'energycells');
+    st.inventory.energycells = limit * 0.9;
+    // Verkauf ab 12 Cr, 20 % behalten; zugleich Kauf bis 11 Cr, füllen bis 50 %
+    setTradeRule(s, st.id, 'energycells', { buy: true, price: 11, fill: 0.5, sell: true, sellPrice: 12, keep: 0.2 });
+    const income0 = st.income;
+    step(s, 4 * 3600);
+    // Verkauft wurde zum Mindestpreis an der Station – ohne eigenes Schiff
+    expect(st.income - income0).toBeGreaterThan(0);
+    expect(st.inventory.energycells ?? 0).toBeLessThan(limit * 0.9);
+    expect(st.inventory.energycells ?? 0).toBeGreaterThanOrEqual(limit * 0.2 - 1);
+  }, 60000);
 });

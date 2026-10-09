@@ -1,4 +1,4 @@
-// Handy-Test der Kauforder: Station → Lager → „Ware einkaufen …“ – Preis und Füllstand, kein eigenes Schiff nötig
+// Handy-Test der Kauf- und Verkaufsorder: Station → Lager → „Ware einkaufen/verkaufen …“ – Preis und Füllstand, kein eigenes Schiff nötig
 // node scripts/buyorder-shot.mjs <outdir>
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
@@ -28,9 +28,20 @@ await page.waitForTimeout(200);
 await page.screenshot({ path: `${out}/buyorder-2-fill.png` });
 await page.click('#modal [data-act="buy-order-set"]');
 await page.waitForTimeout(300);
-const rule = await page.evaluate(() => { const s = window.__game.state; return s.stations[0].trade.energycells; });
 await page.screenshot({ path: `${out}/buyorder-3-set.png` });
-const report = { noShipNeeded, rule, errors };
+// Verkaufsorder für dieselbe Ware – läuft parallel zur Kauforder, ebenfalls ohne Schiff
+await page.click('#panel [data-act="sell-open"][data-ware="energycells"]');
+await page.waitForTimeout(400);
+const sellNoShip = await page.evaluate(() => !document.querySelector('#modal [data-act="sell-ship"]') && !!document.querySelector('#modal [data-act="sell-order-set"]'));
+await page.$eval('#sellOrderPrice', (el) => { el.value = '16'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+await page.waitForTimeout(200);
+await page.screenshot({ path: `${out}/buyorder-4-sell.png` });
+await page.click('#modal [data-act="sell-order-set"]');
+await page.waitForTimeout(300);
+await page.screenshot({ path: `${out}/buyorder-5-both.png` });
+const rule = await page.evaluate(() => { const s = window.__game.state; return s.stations[0].trade.energycells; });
+const report = { noShipNeeded, sellNoShip, rule, errors };
 console.log(JSON.stringify(report, null, 1));
 await browser.close();
-if (!noShipNeeded || !rule?.buy || rule.price == null || Math.abs(rule.fill - 0.5) > 1e-6 || errors.length) { console.error('Fehlgeschlagen'); process.exit(1); }
+const ok = noShipNeeded && sellNoShip && rule?.buy && rule.price != null && Math.abs(rule.fill - 0.5) < 1e-6 && rule.sell && rule.sellPrice === 16 && !errors.length;
+if (!ok) { console.error('Fehlgeschlagen'); process.exit(1); }

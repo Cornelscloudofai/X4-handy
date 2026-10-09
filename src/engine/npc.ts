@@ -93,8 +93,11 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
       const have = held ? 0 : surplus(state, st, id) - contractNeed(state, id);
       // Verkauf an den bestzahlenden Markt im Sektor (Handelsposten oder NPC-Station)
       const sink = npcSink(state, sectorId, id);
-      const sell = dock && sink ? Math.min(have, units, sink.room) : 0;
-      if (sink && sell >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'buyer', amount: sell, market: sink.key }, w: sell * sink.price });
+      // Verkaufsorder: Händler kaufen nur, wenn sie die Ware anderswo mindestens zum Mindestpreis loswerden
+      const ask = tradeRule(st, id).sellPrice;
+      const sell = dock && sink && (ask == null || sink.price >= ask) ? Math.min(have, units, sink.room) : 0;
+      const sellBonus = ask != null && sink ? 1 + (sink.price - ask) / w.price.avg * 4 : 1;
+      if (sink && sell >= Math.min(units * 0.25, 200)) offers.push({ item: { st: st.id, ware: id, kind: 'buyer', amount: sell, market: sink.key, price: ask }, w: sell * sink.price * sellBonus });
       const want = wanted(state, st, id, false, true);
       const bRoom = buildRoom(st, id, undefined, true);
       const need = dock ? want : Math.min(want, bRoom);
@@ -176,10 +179,19 @@ function npcTrade(state: GameState, n: NpcShip): void {
     // Inzwischen braucht eine Station der Lieferreihenfolge die Ware: der Händler zieht ohne Kauf weiter
     if (st.prioBeforeNpc && prioNeeds(state, st, n.ware, NPC_CAPACITY / WARES[n.ware].volume)) return;
     const key = n.market && state.markets[n.market]?.[n.ware] ? n.market : n.sector;
+    // Verkaufsorder: Der Händler zahlt den Mindestpreis der Station – sofern er beim Abnehmer nicht weniger bekommt
+    if (n.price != null && marketPrice(state, key, n.ware) < n.price) return;
     const qty = Math.min(n.amount, sellableStock(st, n.ware), marketRoom(state, key, n.ware) + (key === n.sector ? n.amount * 0.1 : 0));
     if (qty < 1) return;
     addWare(st, n.ware, -qty);
-    const value = applyMarketTrade(state, key, n.ware, qty);
+    let value: number;
+    if (n.price != null) {
+      const m = state.markets[key][n.ware];
+      m.stock = Math.min(m.cap, m.stock + qty);
+      value = qty * n.price;
+      state.credits += value;
+      state.totals.sold += value;
+    } else value = applyMarketTrade(state, key, n.ware, qty);
     recordFlow(state, endOf(state, { kind: 'station', id: st.id }), marketEnd(state, key), n.ware, qty, 'npc');
     st.income += value;
     emit({ type: 'sale', station: st.id, sector: st.sector, x: st.x, z: st.z, value });

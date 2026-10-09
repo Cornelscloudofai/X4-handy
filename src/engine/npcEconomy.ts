@@ -5,10 +5,11 @@
 import { FACTIONS, NPC_MAP, NPC_STATIONS, SECTORS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
 import { baseDemand, hasDockFor, marketPrice, marketRoom, npcStoreCaps, tradeRule } from './economy';
-import { dockPoint, wanted } from './logistics';
+import { dockPoint, sellableStock, wanted } from './logistics';
+import { endOf, recordFlow } from './flows';
 import { makeNpc } from './npc';
 import type { GameState, Market, NpcEco, NpcStationDef, Station } from './types';
-import { log, rand } from './util';
+import { emit, log, rand } from './util';
 
 /** Anteil des Vorproduktbedarfs (bei voller Produktion), den die Fraktion mit eigenen Frachtern heranschafft */
 export const SELF_SHARE = 0.35;
@@ -182,6 +183,24 @@ function haul(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
     if (pick) {
       const [id, budget] = pick;
       const load = haulLoad(m, id);
+      // Eigene Station mit Verkaufsorder, die nicht mehr verlangt als der Handelsposten: dort kauft der Frachter direkt
+      const room0 = m[id] ? m[id].cap - m[id].stock : 0;
+      const offer = bestSellOrder(state, n.sector, id, Math.min(load * 0.4, room0));
+      if (offer && room0 >= load * 0.4 && offer.price <= marketPrice(state, n.sector, id)) {
+        const amount = Math.min(budget, load, room0, sellableStock(offer.st, id));
+        offer.st.inventory[id] -= amount;
+        const value = amount * offer.price;
+        state.credits += value;
+        state.totals.sold += value;
+        offer.st.income += value;
+        eco.supply[id] = budget - amount;
+        const npc = makeNpc(state, { sector: n.sector, kind: 'haul', tx: n.x, tz: n.z, station: n.id, ware: id, amount, home: n.id });
+        npc.x = offer.st.x; npc.z = offer.st.z;
+        state.npcs.push(npc);
+        recordFlow(state, endOf(state, { kind: 'station', id: offer.st.id }), endOf(state, { kind: 'market', sector: n.sector, market: n.id }), id, amount, 'npc');
+        emit({ type: 'sale', station: offer.st.id, sector: offer.st.sector, x: offer.st.x, z: offer.st.z, value });
+        return;
+      }
       // Bezug vom eigenen Handelsposten oder – wenn dort zu wenig liegt – von einem Nachbarsektor
       // (so kommen z. B. Siliziumscheiben aus Zhin zum Elektronikwerk in Tharka's Cascade)
       const room = m[id] ? m[id].cap - m[id].stock : 0;
@@ -247,6 +266,18 @@ function haul(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
       }
     }
   }
+}
+
+/** Eigene Station im Sektor mit der günstigsten Verkaufsorder für die Ware (braucht Dock und Vorrat über dem Behalten-Anteil) */
+export function bestSellOrder(state: GameState, sec: string, id: string, min: number): { st: Station; price: number } | null {
+  let best: { st: Station; price: number } | null = null;
+  for (const st of state.stations) {
+    if (st.sector !== sec || !hasDockFor(st, 'M')) continue;
+    const rule = tradeRule(st, id);
+    if (!rule.sell || rule.sellPrice == null || sellableStock(st, id) < Math.max(1, min)) continue;
+    if (!best || rule.sellPrice < best.price) best = { st, price: rule.sellPrice };
+  }
+  return best;
 }
 
 /** Eigene Station im Sektor mit der höchsten Kauforder für die Ware (braucht Dock und Bedarf) */

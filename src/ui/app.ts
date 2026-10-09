@@ -105,7 +105,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-order-price', 'sell-order-keep', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -603,7 +603,25 @@ function onClick(e: MouseEvent): void {
       case 'storage-open': ui.modal = { type: 'storage', station: d.st!, ware: d.ware!, back: ui.modal?.type === 'courier' ? ui.modal : undefined }; refresh(); break;
       case 'modal-back': ui.modal = ui.modal?.type === 'storage' ? ui.modal.back ?? null : null; refresh(); break;
       case 'storage-auto': (d.k === 'share' ? A.setStorageShare : A.setReserve)(state, d.st!, d.ware!, null); refresh(); break;
-      case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'sell') ui.modal.ship = d.ship; refresh(); break;
+      case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'sell') { ui.modal.ship = d.ship; ui.modal.mode = 'ship'; } refresh(); break;
+      case 'sell-mode': if (ui.modal?.type === 'sell') { ui.modal = { ...ui.modal, mode: d.mode === 'ship' ? 'ship' : 'order' }; refresh(); } break;
+      case 'sell-order-set': {
+        const m = ui.modal;
+        if (m?.type !== 'sell') break;
+        A.setTradeRule(state, m.station, m.ware, { sell: true, sellPrice: m.price, keep: m.keep });
+        ui.modal = null;
+        result({ ok: true, msg: `Verkaufsorder: ${WARES[m.ware].name} ab ${Math.round(m.price).toLocaleString('de-DE')} Cr, ${Math.round(m.keep * 100)} % bleiben im Lager.` });
+        break;
+      }
+      case 'sell-order-off': {
+        const m = ui.modal;
+        if (m?.type !== 'sell') break;
+        const st = stationById(state, m.station);
+        if (st?.trade[m.ware]) { delete st.trade[m.ware].sellPrice; delete st.trade[m.ware].keep; }
+        ui.modal = null;
+        result({ ok: true, msg: `Verkaufsorder für ${WARES[m.ware].name} aufgehoben.` });
+        break;
+      }
       case 'buy-open': ui.modal = defaultBuyModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'buy') { ui.modal.ship = d.ship; ui.modal.mode = 'ship'; } refresh(); break;
       case 'buy-mode': if (ui.modal?.type === 'buy') { ui.modal = { ...ui.modal, mode: d.mode === 'ship' ? 'ship' : 'order' }; refresh(); } break;
       case 'buy-order-set': {
@@ -1230,6 +1248,17 @@ function onChange(e: Event): void {
   }
   if (field === 'buy-amount' && ui.modal?.type === 'buy') {
     ui.modal = { ...ui.modal, amount: Math.floor(Number(el.value)) };
+    refresh();
+    return;
+  }
+  if ((field === 'sell-order-price' || field === 'sell-order-keep') && ui.modal?.type === 'sell') {
+    ui.modal = field === 'sell-order-price' ? { ...ui.modal, price: Number(el.value) } : { ...ui.modal, keep: Number(el.value) / 100 };
+    refresh();
+    return;
+  }
+  if (field === 'sell-ware' && ui.modal?.type === 'sell') {
+    const mode = ui.modal.mode;
+    ui.modal = { ...defaultSellModal(state, ui.modal.station, el.value), mode };
     refresh();
     return;
   }

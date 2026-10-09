@@ -722,14 +722,15 @@ function stationStorage(state: GameState, st: Station): string {
     const reserve = reserveFor(st, id, limit);
     const spark = sparkline(state, { key: H.stock(st.id, id), title: `${w.name} im Lager`, sub: st.name, color: w.color, kind: 'level', unit: 'units' });
     return `<div class="row" data-key="${id}">${wareTile(id)}<div class="grow"><div class="title-line"><div class="title two-lines" style="font-weight:500">${esc(w.name)}</div>${spark}</div>
-      <div class="sub wrap">${tw(have, 'amount')} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}${rule.buy && rule.price != null ? ` · Kauforder ${fmtCr(rule.price)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
-      <div class="row-links"><button class="linkish" ${act('storage-open', { st: st.id, ware: id })}>Lager einstellen</button>${have >= 1 && w.storage === 'Container' ? `<button class="linkish" ${act('sell-open', { st: st.id, ware: id })}>Verkaufen …</button>` : ''}${w.storage === 'Container' ? `<button class="linkish" ${act('buy-open', { st: st.id, ware: id })}>Einkaufen …</button>` : ''}</div></div>
+      <div class="sub wrap">${tw(have, 'amount')} / ${fmtAmount(limit)} · ${Math.round(share.share * 100)} %${share.auto ? ' auto' : ''}${reserve ? ` · Reserve ${fmtAmount(reserve)}` : ''}${rule.buy && rule.price != null ? ` · Kauf bis ${fmtCr(rule.price)}` : ''}${rule.sell && rule.sellPrice != null ? ` · Verkauf ab ${fmtCr(rule.sellPrice)}` : ''}</div>${bar(limit ? have / limit : 0, w.storage === 'Liquid' ? 'blue' : w.storage === 'Solid' ? 'solid' : '')}
+      <div class="row-links"><button class="linkish" ${act('storage-open', { st: st.id, ware: id })}>Lager einstellen</button>${w.storage === 'Container' ? `<button class="linkish" ${act('sell-open', { st: st.id, ware: id })}>Verkaufen …</button>` : ''}${w.storage === 'Container' ? `<button class="linkish" ${act('buy-open', { st: st.id, ware: id })}>Einkaufen …</button>` : ''}</div></div>
       <div class="toggle"><button class="buy ${rule.buy ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'buy' })} aria-pressed="${rule.buy}">Kauf</button><button class="sell ${rule.sell ? 'on' : ''}" ${act('trade-toggle', { st: st.id, ware: id, k: 'sell' })} aria-pressed="${rule.sell}">Verkauf</button></div></div>`;
   }).join('');
   return `<p class="lead">Kauf: Händler und deine Transporter liefern an. Verkauf: Überschüsse werden abgegeben, die Reserve bleibt für die eigene Produktion.</p>
     ${deliveryPrioBox(state, st)}
     <div class="section"><h3>Waren im Lager ${helpBtn('storage')}</h3><div class="box rows">${rows || '<div class="empty">Das Lager ist leer.</div>'}</div>
-      <button class="btn small block" style="margin-top:8px" ${act('buy-open', { st: st.id, ware: '' })}>${icon('trader', 16)}Ware einkaufen …</button></div>
+      <div class="card-actions" style="margin-top:8px"><button class="btn small" ${act('buy-open', { st: st.id, ware: '' })}>${icon('trader', 16)}Ware einkaufen …</button><button class="btn small" ${act('sell-open', { st: st.id, ware: 'energycells' })}>${icon('market', 16)}Ware verkaufen …</button></div>
+      <p class="small muted" style="margin:6px 0 0">Kauf- und Verkaufsorder einer Ware können gleichzeitig laufen – günstig einkaufen, teurer verkaufen: deine Station wird zum Handelsplatz.</p></div>
     <p class="small muted">Ohne Einstellung teilen sich alle Waren einer Lagerart den Platz gleichmäßig („auto“). Eingestellte Anteile gehen vor, der Rest wird verteilt.</p>`;
 }
 

@@ -1,8 +1,10 @@
 // Verkaufsdialog: Käufer für eine Ladung vergleichen und gezielt einen auswählen
-import { FACTIONS, SECTOR_MAP } from '../data/sectors';
+import { FACTIONS, NPC_MAP, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
-import { WARES } from '../data/wares';
-import { hasDockFor, wareLimit } from '../engine/economy';
+import { WARES, WARE_IDS } from '../data/wares';
+import { npcSink } from '../engine/npc';
+import { knows, seenPrice, seenRoom } from '../engine/intel';
+import { hasDockFor, tradeRule, wareLimit } from '../engine/economy';
 import { reserveFor, stationById } from '../engine/logistics';
 import { offerBadges, saleAdvice, saleContext, saleOffers, sortOffers, type SaleOffer, type SalePriority } from '../engine/sales';
 import type { GameState, ShipClassDef } from '../engine/types';
@@ -20,6 +22,11 @@ export interface SellModal {
   prio: SalePriority;
   picked: string;
   repeat: boolean;
+  /** order = Verkaufsorder an der Station (fremde Schiffe kaufen), ship = mit eigenem Schiff liefern */
+  mode: 'order' | 'ship';
+  /** Entwurf der Verkaufsorder: Mindestpreis je Einheit und Anteil der Lagergrenze, der bleibt */
+  price: number;
+  keep: number;
 }
 
 const act = (a: string, data: Record<string, string | number> = {}) =>
@@ -41,7 +48,15 @@ export function defaultSellModal(state: GameState, stationId: string, ware: stri
   const ship = ships[0]?.id ?? 'cls:boa';
   const cls = shipClass(state, ship);
   const stock = stationById(state, stationId)?.inventory[ware] ?? 0;
-  return { type: 'sell', station: stationId, ware, ship, amount: Math.floor(Math.min(stock, cls.capacity / WARES[ware].volume)), prio: 'perHour', picked: '', repeat: false };
+  const st = stationById(state, stationId);
+  const rule = st ? tradeRule(st, ware) : null;
+  const best = st ? npcSink(state, st.sector, ware)?.price : undefined;
+  // Vorschlag ohne bestehende Verkaufsorder: knapp unter dem besten Abnehmer im Sektor, sonst der Durchschnittspreis
+  const price = Math.round(rule?.sellPrice ?? Math.max(WARES[ware].price.min, best != null ? best * 0.95 : WARES[ware].price.avg));
+  return {
+    type: 'sell', station: stationId, ware, ship, amount: Math.floor(Math.min(stock, cls.capacity / WARES[ware].volume)), prio: 'perHour', picked: '', repeat: false,
+    mode: 'order', price, keep: rule?.keep ?? 0.2,
+  };
 }
 
 export function shipClass(state: GameState, ship: string): ShipClassDef {
@@ -50,7 +65,57 @@ export function shipClass(state: GameState, ship: string): ShipClassDef {
   return s ? SHIP_MAP[s.cls] : SHIP_MAP.boa;
 }
 
+/** Abnehmer im Sektor der Station (Handelsposten und NPC-Stationen, die die Ware ankaufen), bester Preis zuerst */
+function sectorBuyers(state: GameState, sec: string, ware: string): { key: string; name: string; price: number; room: number; npc: boolean }[] {
+  const out: { key: string; name: string; price: number; room: number; npc: boolean }[] = [];
+  for (const k of [sec, ...sector(sec).npcStations.filter((n) => n.buys.includes(ware)).map((n) => n.id)]) {
+    if (!state.markets[k]?.[ware] || !knows(state, k)) continue;
+    const price = seenPrice(state, k, ware), room = seenRoom(state, k, ware);
+    if (price == null) continue;
+    out.push({ key: k, name: marketInfo(k).name, price, room: room ?? 0, npc: !!NPC_MAP[k] });
+  }
+  return out.sort((a, b) => b.price - a.price);
+}
+
+/** Verkaufsorder: Mindestpreis und Bestand, der bleibt – fremde Händler und Fabrikfrachter kaufen an der Station, kein eigenes Schiff nötig */
+function orderHtml(state: GameState, m: SellModal): { title: string; eyebrow: string; body: string; foot: string } {
+  const st = stationById(state, m.station)!;
+  const w = WARES[m.ware];
+  const rule = tradeRule(st, m.ware);
+  const limit = wareLimit(st, m.ware);
+  const have = st.inventory[m.ware] ?? 0;
+  const keep = limit * m.keep;
+  const buyers = sectorBuyers(state, st.sector, m.ware);
+  const ok = buyers.filter((b) => b.price >= m.price);
+  const choices = WARE_IDS.filter((id) => WARES[id].storage === 'Container').sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
+  const list = buyers.length
+    ? `<div class="box rows">${buyers.map((b) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(b.name)}</div><div class="sub">${b.npc ? 'NPC-Station' : 'Handelsposten'} · Platz ${fmtAmount(b.room)}</div></div><div class="right"><b class="num ${b.price >= m.price ? 'pos' : 'neg'}">${fmtInt(b.price)} Cr</b><div class="small muted">${b.price >= m.price ? 'Händler kaufen' : 'zahlt zu wenig'}</div></div></div>`).join('')}</div>`
+    : '<div class="box empty">Im Sektor der Station kauft gerade niemand diese Ware – Händler kommen erst, wenn es einen Abnehmer gibt.</div>';
+  const buyRule = rule.buy && rule.price != null ? `<p class="small" style="margin:6px 0 0">Kauforder läuft parallel: einkaufen bis ${fmtCr(rule.price)}, füllen bis ${Math.round((rule.fill ?? 0.95) * 100)} %${rule.price >= m.price ? ' <span class="warn-text">– Kaufpreis liegt nicht unter dem Verkaufspreis, das bringt keinen Gewinn.</span>' : ` – Spanne ${fmtCr(m.price - rule.price)} je Einheit.`}</p>` : '';
+  const body = `
+    <div class="field" style="margin-bottom:10px"><label>Ware</label><select data-change="sell-ware">${choices.map((id) => `<option value="${id}" ${id === m.ware ? 'selected' : ''}>${esc(WARES[id].name)}</option>`).join('')}</select></div>
+    <p class="lead" style="margin:0 0 10px">Du legst nur Mindestpreis und Restbestand fest – fremde Händler und die Frachter der NPC-Fabriken kaufen direkt an deiner Station. Das Geld kommt bei Abholung.</p>
+    <div class="kv sell-ctx">
+      <div><small>Im Lager</small><b>${fmtAmount(have)}</b></div>
+      <div><small>Lagergrenze</small><b>${fmtAmount(limit)}</b></div>
+      <div><small>Ø Preis</small><b>${fmtInt(w.price.avg)} Cr</b></div>
+    </div>
+    <div class="field" style="margin-top:14px"><label for="sellOrderPrice">Mindestpreis · <b>${fmtInt(m.price)} Cr</b> je Einheit</label>
+      <input type="range" id="sellOrderPrice" min="${w.price.min}" max="${w.price.max}" step="1" value="${m.price}" data-change="sell-order-price">
+      <div class="small muted" style="display:flex;justify-content:space-between"><span>${fmtCr(w.price.min)}</span><span>Ø ${fmtCr(w.price.avg)}</span><span>${fmtCr(w.price.max)}</span></div></div>
+    <div class="field" style="margin-top:14px"><label for="sellOrderKeep">Behalten · <b>${Math.round(m.keep * 100)} %</b> der Lagergrenze = ${fmtAmount(keep)} Einheiten</label>
+      <input type="range" id="sellOrderKeep" min="0" max="95" step="5" value="${Math.round(m.keep * 100)}" data-change="sell-order-keep">
+      <p class="small muted" style="margin:4px 0 0">${have > keep ? `Zum Verkauf stehen ${fmtAmount(have - keep)} Einheiten, mindestens ${fmtCr((have - keep) * m.price)}.` : 'Der Bestand liegt unter dieser Grenze – verkauft wird, sobald mehr im Lager ist.'}${hasDockFor(st, 'M') ? '' : ' <span class="warn-text">Die Station hat kein S/M-Dock – fremde Händler können nicht anlegen.</span>'}</p>
+      ${buyRule}</div>
+    <div class="section"><h3>Abnehmer im Sektor · ${ok.length} von ${buyers.length} zahlen mindestens diesen Preis</h3>${list}</div>
+    <p class="small muted" style="margin:6px 0 0">Händler kaufen bei dir, wenn sie die Ware anderswo mindestens zu deinem Preis loswerden – je größer ihre Spanne, desto lieber. NPC-Fabriken holen ihre Vorprodukte direkt bei dir, wenn du nicht mehr verlangst als der Handelsposten. <button class="linkish" ${act('sell-mode', { mode: 'ship' })}>Stattdessen mit eigenem Schiff liefern …</button></p>`;
+  const foot = `<div class="sell-foot"><div class="small">${rule.sell && rule.sellPrice != null ? `Aktuell: ab ${fmtCr(rule.sellPrice)}, behalten ${Math.round((rule.keep ?? 0) * 100)} %` : 'Noch keine Verkaufsorder für diese Ware.'}</div>
+    <div class="card-actions">${rule.sellPrice != null ? `<button class="btn" ${act('sell-order-off')}>Verkaufsorder aufheben</button>` : `<button class="btn" ${act('modal-close')}>Abbrechen</button>`}<button class="btn primary" ${act('sell-order-set')}>${icon('check', 18)}Verkaufsorder setzen</button></div></div>`;
+  return { title: `${w.name} verkaufen`, eyebrow: st.name, body, foot };
+}
+
 export function sellModalHtml(state: GameState, m: SellModal): { title: string; eyebrow: string; body: string; foot: string } {
+  if (m.mode !== 'ship') return orderHtml(state, m);
   const st = stationById(state, m.station)!;
   const w = WARES[m.ware];
   const cls = shipClass(state, m.ship);
@@ -107,6 +172,7 @@ export function sellModalHtml(state: GameState, m: SellModal): { title: string; 
   const pickedOffer = offers.find((o) => o.id === m.picked);
   const dockOk = !realShip || hasDockFor(st, cls.size);
   const body = `
+    <p class="small muted" style="margin:0 0 8px"><button class="linkish" ${act('sell-mode', { mode: 'order' })}>← Zurück zur Verkaufsorder (ohne eigenes Schiff)</button></p>
     <div class="kv sell-ctx">
       <div><small>Im Lager</small><b>${fmtAmount(ctx.stock)}</b></div>
       <div><small>Überschuss</small><b>${ctx.netPerHour > 0 ? '+' + fmtAmount(ctx.netPerHour) + '/h' : '–'}</b></div>

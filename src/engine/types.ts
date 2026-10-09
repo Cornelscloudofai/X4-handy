@@ -153,6 +153,10 @@ export interface TradeRule {
   price?: number;
   /** Kauforder: Lager dieser Ware bis zu diesem Anteil der Lagergrenze füllen (0..1; ohne Angabe fast voll) */
   fill?: number;
+  /** Verkaufsorder: Mindestpreis je Einheit – NPC-Händler und Fabrikfrachter kaufen dann direkt an der Station */
+  sellPrice?: number;
+  /** Verkaufsorder: diesen Anteil der Lagergrenze behalten (0..1) */
+  keep?: number;
 }
 
 export interface Station {
