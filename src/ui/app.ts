@@ -37,6 +37,7 @@ import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { buyOffers, defaultBuyModal } from './buyView';
 import { deliveryShips, deliverySources } from './deliveryView';
+import { marketEndpoint, tradeShips } from './tradeView';
 import { saleOffers } from '../engine/sales';
 import { SPEEDS, saveBgMode, saveIconStyle, saveLayers, saveLabelDensity, saveMotionSetting, savePlan, ui, type Modal, type Panel, type PanelType } from './uistate';
 import { computePlan, producible } from '../engine/planner';
@@ -100,7 +101,7 @@ export function start(): void {
   document.addEventListener('change', onChange);
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -601,6 +602,27 @@ function onClick(e: MouseEvent): void {
       case 'sell-open': ui.modal = defaultSellModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'sell') ui.modal.ship = d.ship; refresh(); break;
       case 'buy-open': ui.modal = defaultBuyModal(state, d.st!, d.ware!); if (d.ship && ui.modal.type === 'buy') ui.modal.ship = d.ship; refresh(); break;
       case 'order-del': result(A.removeOrder(state, d.id!, Number(d.i))); break;
+      case 'trade-open': ui.modal = { type: 'trade', ware: d.ware!, from: d.from!, mode: 'buy', minPct: 10, onLow: 'pause' }; refresh(); break;
+      case 'trade-mode': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, mode: d.mode === 'route' ? 'route' : 'buy' }; refresh(); } break;
+      case 'trade-ship': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, ship: d.id, amount: undefined }; refresh(); } break;
+      case 'trade-amount': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, amount: Math.floor(Number(d.v)) }; refresh(); } break;
+      case 'trade-to': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, to: d.k }; refresh(); } break;
+      case 'trade-low': if (ui.modal?.type === 'trade') { ui.modal = { ...ui.modal, onLow: d.v === 'end' ? 'end' : 'pause' }; refresh(); } break;
+      case 'trade-buy': case 'trade-route': {
+        const m = ui.modal;
+        if (m?.type !== 'trade') break;
+        const ship = tradeShips(state, m.ware).find((s) => s.id === m.ship) ?? tradeShips(state, m.ware)[0];
+        if (!ship) { toast('Kein passender Transporter.', 'warn'); break; }
+        const r = a === 'trade-buy'
+          ? A.holdBuyOrder(state, ship.id, m.ware, marketEndpoint(m.from), Number(d.amount))
+          : d.to ? A.setTradeRoute(state, ship.id, { from: marketEndpoint(m.from), to: marketEndpoint(d.to), ware: m.ware, minMargin: m.minPct / 100, onLow: m.onLow }) : { ok: false, msg: 'Wähle einen Käufer.' };
+        if (r.ok) ui.modal = null;
+        result(r);
+        break;
+      }
+      case 'route-margin-off': { const sh = state.ships.find((x) => x.id === d.id); if (sh?.route) { delete sh.route.minMargin; delete sh.route.onLow; } refresh(); break; }
+      case 'hold-sell-modal': ui.modal = { type: 'holdSell', ship: d.id! }; refresh(); break;
+      case 'hold-sell': { const r = A.holdSellOrder(state, d.id!, marketEndpoint(d.k!)); if (r.ok) ui.modal = null; result(r); break; }
       case 'order-up': result(A.moveOrderUp(state, d.id!, Number(d.i))); break;
       case 'order-cancel': result(A.cancelJob(state, d.id!)); break;
       case 'buy-ship': if (ui.modal?.type === 'buy') { const cls = shipClass(state, d.id!); ui.modal = { ...ui.modal, ship: d.id!, amount: Math.min(ui.modal.amount || Infinity, cls.capacity / WARES[ui.modal.ware].volume) }; refresh(); } break;
@@ -1128,6 +1150,16 @@ function onChange(e: Event): void {
   }
   if (field === 'sell-amount' && ui.modal?.type === 'sell') {
     ui.modal = { ...ui.modal, amount: Math.floor(Number(el.value)) };
+    refresh();
+    return;
+  }
+  if (field === 'trade-amount' && ui.modal?.type === 'trade') {
+    ui.modal = { ...ui.modal, amount: Math.floor(Number(el.value)) };
+    refresh();
+    return;
+  }
+  if (field === 'trade-margin' && ui.modal?.type === 'trade') {
+    ui.modal = { ...ui.modal, minPct: Math.round(Number(el.value)) };
     refresh();
     return;
   }

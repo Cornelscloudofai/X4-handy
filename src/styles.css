@@ -220,6 +220,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 .pos { color: var(--green); }
 .neg { color: #ff8a95; }
 .warn-text { color: var(--amber); }
+.teal-text { color: var(--teal); }
 
 .ware-dot { display: inline-block; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); flex: none; }
 .ware-tile { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); color: var(--c); font-family: var(--font-display); font-weight: 700; font-size: 13px; }

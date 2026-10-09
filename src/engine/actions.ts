@@ -5,11 +5,11 @@ import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
 import { BUILD_STORAGE_COST, addBuildStore, defaultTradeRule, hasDockFor, moveBuildStock } from './economy';
 import { spawnCourier } from './npc';
-import { courierTrip } from './fleet';
+import { courierTrip, expectedCargo } from './fleet';
 import { knownSectors, sellableStock, stationById } from './logistics';
 import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendors';
 import { newModule, newShip, newStation } from './state';
-import type { FactionId, GameState, RouteOrder, TradeEndpoint, TradeRule } from './types';
+import type { FactionId, GameState, RouteOrder, Ship, TradeEndpoint, TradeJob, TradeRule } from './types';
 import { log } from './util';
 import { acceptContract, isDelivery } from './contracts';
 
@@ -388,6 +388,59 @@ export function courierOrder(state: GameState, shipId: string, contractId: numbe
   s.phase = 'idle';
   s.path = [];
   return ok(`${s.name} fliegt los: ${Math.round(job.amount).toLocaleString('de-DE')} ${WARES[c.ware].name} holen.`);
+}
+
+/** Befehl einreihen: sofort starten, wenn das Schiff frei ist, sonst hinten anstellen */
+function enqueue(s: Ship, job: TradeJob): boolean {
+  const busy = !!s.job || !!s.cargo || s.phase === 'toTarget' || s.phase === 'docking' || !!s.orders?.length;
+  s.orders = [...(s.orders ?? []), job];
+  if (!busy) { s.phase = 'idle'; s.path = []; }
+  return busy;
+}
+
+/**
+ * Einmaliger Kauf in den Laderaum: Das Schiff kauft beim Verkäufer und wartet dann mit der Ladung auf den nächsten Befehl
+ * (z. B. „Laderaum verkaufen“). Der Laderaum muss am Ende der Warteschlange leer sein.
+ */
+export function holdBuyOrder(state: GameState, shipId: string, ware: string, from: TradeEndpoint, amount: number): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Schiff nicht gefunden.');
+  const cls = SHIP_MAP[s.cls];
+  if (cls.role !== 'trader') return fail('Nur Transporter können einkaufen.');
+  if (WARES[ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
+  if (from.kind !== 'market') return fail('Gekauft wird an Märkten.');
+  if (expectedCargo(s)) return fail('Der Laderaum ist nach den geplanten Befehlen noch belegt – zuerst „Laderaum verkaufen“ einreihen.');
+  const n = Math.floor(Math.min(amount, cls.capacity / WARES[ware].volume));
+  if (n < 1) return fail('Keine Menge gewählt.');
+  const busy = enqueue(s, { ware, amount: n, from, to: from, stage: 'pickup', hold: true });
+  return ok(busy ? `${s.name} kauft nach den laufenden Befehlen ${n.toLocaleString('de-DE')} ${WARES[ware].name}.` : `${s.name} fliegt los: ${n.toLocaleString('de-DE')} ${WARES[ware].name} kaufen.`);
+}
+
+/** Laderaum verkaufen: die Ladung, die am Ende der Warteschlange an Bord sein wird, zu einem Käufer bringen */
+export function holdSellOrder(state: GameState, shipId: string, to: TradeEndpoint): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Schiff nicht gefunden.');
+  const cargo = expectedCargo(s);
+  if (!cargo) return fail('Der Laderaum ist leer – es gibt nichts zu verkaufen.');
+  if (to.kind === 'station') {
+    const st = stationById(state, to.id);
+    if (!st || !hasDockFor(st, SHIP_MAP[s.cls].size)) return fail('Die Station hat kein passendes Dock.');
+  }
+  const busy = enqueue(s, { ware: cargo.ware, amount: cargo.amount, from: to, to, stage: 'deliver', fromHold: true });
+  return ok(busy ? `${s.name} verkauft die Ladung nach den laufenden Befehlen.` : `${s.name} bringt die Ladung zum Käufer.`);
+}
+
+/** Handelsroute zwischen zwei Märkten mit Gewinnschwelle einrichten */
+export function setTradeRoute(state: GameState, shipId: string, route: RouteOrder): Result {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s) return fail('Schiff nicht gefunden.');
+  const cls = SHIP_MAP[s.cls];
+  if (cls.role !== 'trader') return fail('Nur Transporter fliegen Handelsrouten.');
+  if (WARES[route.ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
+  s.mode = 'route';
+  s.route = { ...route };
+  log(state, `${s.name}: Handelsroute ${WARES[route.ware].name} eingerichtet.`, 'info');
+  return ok(`${s.name} fliegt jetzt die Handelsroute${route.minMargin != null ? ` (${route.onLow === 'end' ? 'endet' : 'pausiert'} unter ${Math.round(route.minMargin * 100)} % Gewinn)` : ''}.`);
 }
 
 /** Warteschlange: Befehl an Stelle i streichen */

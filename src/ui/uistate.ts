@@ -2,6 +2,7 @@ import { defaultPlan, type PlanSettings } from '../engine/planner';
 import type { SellModal } from './sellView';
 import type { BuyModal } from './buyView';
 import type { DeliveryModal } from './deliveryView';
+import type { HoldSellModal, TradeModal } from './tradeView';
 import type { ChartSpec } from './charts';
 
 export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc' | 'npcst';
@@ -38,6 +39,8 @@ export type Modal =
   | { type: 'planBuild' }
   | { type: 'planDiagram' }
   | SellModal
+  | TradeModal
+  | HoldSellModal
   | BuyModal;
 
 export interface UIState {

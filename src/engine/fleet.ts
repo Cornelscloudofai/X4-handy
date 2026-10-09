@@ -11,7 +11,7 @@ import {
 } from './logistics';
 import { contractDeliver, isDelivery, wareSellers } from './contracts';
 import { endOf, fieldEnd, recordFlow, stationEnd } from './flows';
-import type { Contract, GameState, RestAction, RestCase, Ship, ShipClassDef, Station, TradeEndpoint, TradeJob } from './types';
+import type { Contract, GameState, RouteOrder, RestAction, RestCase, Ship, ShipClassDef, Station, TradeEndpoint, TradeJob } from './types';
 import { emit, log, rand } from './util';
 
 /** Neue Spiele (mit Startwahl): langsamerer Abbau, damit Bergbau und Handel am Anfang ähnlich viel einbringen */
@@ -668,14 +668,51 @@ export function inTransitForContract(state: GameState, contractId: number): numb
   return n;
 }
 
+/**
+ * Ladung am Ende der Warteschlange: was nach allen erteilten Befehlen an Bord sein wird
+ * (einmalige Käufe füllen den Laderaum, „Laderaum verkaufen“ leert ihn, normale Fahrten enden leer).
+ */
+export function expectedCargo(s: Ship): { ware: string; amount: number } | null {
+  let cargo = s.cargo ? { ...s.cargo } : null;
+  if (s.job?.hold && !s.cargo) cargo = { ware: s.job.ware, amount: s.job.amount };
+  if (s.job?.fromHold) cargo = null;
+  for (const o of s.orders ?? []) {
+    if (o.hold) cargo = { ware: o.ware, amount: o.amount };
+    else if (o.fromHold) cargo = null;
+  }
+  return cargo;
+}
+
 /** Angenommener, noch offener Auftrag mit diesem Lieferziel (Marktschlüssel) und dieser Ware */
 export function openContractAt(state: GameState, key: string, ware: string): Contract | undefined {
   return state.contracts.find((c) => c.status === 'active' && c.ware === ware && !c.story && (c.market ?? c.sector) === key && c.delivered < c.amount - 0.5);
 }
 
+/** Gewinn einer Handelsroute zwischen zwei Märkten: (Verkaufspreis − Einkaufspreis) / Einkaufspreis; null bei eigenen Stationen */
+export function routeMargin(state: GameState, r: RouteOrder): number | null {
+  if (r.from.kind !== 'market' || r.to.kind !== 'market') return null;
+  const buy = marketPrice(state, marketKey(r.from), r.ware);
+  const sell = marketPrice(state, marketKey(r.to), r.ware);
+  return buy > 0 ? (sell - buy) / buy : null;
+}
+
 function routeJob(state: GameState, s: Ship): TradeJob | null {
   const r = s.route;
+  s.routeNote = undefined;
   if (!r) return null;
+  // Gewinnschwelle: unter dem Mindestgewinn pausieren oder die Route beenden
+  const margin = r.minMargin != null ? routeMargin(state, r) : null;
+  if (margin != null && margin < r.minMargin!) {
+    const pct = (x: number) => `${Math.round(x * 100)} %`;
+    if (r.onLow === 'end') {
+      log(state, `${s.name}: Handelsroute ${WARES[r.ware].name} beendet – Gewinn ${pct(margin)} unter ${pct(r.minMargin!)}.`, 'warn', true);
+      s.route = null;
+      s.mode = 'auto';
+      return null;
+    }
+    s.routeNote = `Route pausiert: Gewinn ${pct(margin)} unter ${pct(r.minMargin!)}`;
+    return null;
+  }
   const units = unitsFor(s, r.ware);
   let have: number;
   if (r.from.kind === 'station') {
@@ -711,6 +748,23 @@ function stepTrader(state: GameState, s: Ship, dt: number): void {
     case 'idle': {
       if (s.cargo && s.job) { startLeg(state, s); return; }
       if (s.cargo && !s.job) {
+        // „Laderaum verkaufen“ als nächster Befehl: die Ladung an Bord dorthin bringen
+        const next = s.orders?.[0];
+        if (next?.fromHold) {
+          s.orders!.shift();
+          s.job = { ...next, ware: s.cargo.ware, amount: s.cargo.amount, stage: 'deliver' };
+          startLeg(state, s);
+          return;
+        }
+        // Ladung aus einem einmaligen Kauf: wartet auf Befehl
+        if (s.holdCargo) {
+          s.status = next
+            ? `Laderaum voll (${WARES[s.cargo.ware].name}) – zuerst „Laderaum verkaufen“ einreihen`
+            : `Wartet mit ${Math.round(s.cargo.amount).toLocaleString('de-DE')} ${WARES[s.cargo.ware].name} auf Befehl`;
+          s.phase = 'waiting';
+          s.timer = 5;
+          return;
+        }
         // Restladung am nächsten Markt verkaufen
         s.job = { ware: s.cargo.ware, amount: s.cargo.amount, from: { kind: 'market', sector: s.sector }, to: { kind: 'market', sector: s.sector }, stage: 'deliver' };
         startLeg(state, s);
@@ -721,7 +775,7 @@ function stepTrader(state: GameState, s: Ship, dt: number): void {
       if (order) { s.job = order; startLeg(state, s); return; }
       const job = s.mode === 'route' ? routeJob(state, s) : findTradeJob(state, s);
       if (!job) {
-        s.status = s.mode === 'route' ? 'Route wartet auf Ware oder Platz' : home && !hasDockFor(home, cls.size) ? (cls.size === 'L' ? 'Heimat hat keinen Pier' : 'Heimat hat kein Dock') : 'Sucht Handelsgelegenheit';
+        s.status = s.mode === 'route' ? (s.routeNote ?? 'Route wartet auf Ware oder Platz') : home && !hasDockFor(home, cls.size) ? (cls.size === 'L' ? 'Heimat hat keinen Pier' : 'Heimat hat kein Dock') : 'Sucht Handelsgelegenheit';
         s.phase = 'waiting';
         s.timer = 25;
         if (home && (s.sector !== home.sector || Math.hypot(s.x - home.x, s.z - home.z) > 10)) goTo(s, home, s.id), (s.phase = 'waiting');
@@ -793,6 +847,14 @@ function doTrade(state: GameState, s: Ship): void {
     if (n < 1) { s.job = null; s.phase = 'idle'; return; }
     s.cargo = { ware: job.ware, amount: n };
     job.amount = n;
+    if (job.hold) {
+      // Einmaliger Kauf: Ladung behalten, auf den nächsten Befehl warten
+      s.holdCargo = true;
+      s.job = null;
+      s.phase = 'idle';
+      s.trips++;
+      return;
+    }
     job.stage = 'deliver';
     startLeg(state, s);
     return;
@@ -842,7 +904,7 @@ function doTrade(state: GameState, s: Ship): void {
     }
   }
   s.trips++;
-  if (s.cargo.amount < 0.5) s.cargo = null;
+  if (s.cargo.amount < 0.5) { s.cargo = null; s.holdCargo = false; }
   if (s.cargo) {
     // Nicht alles abgesetzt: Rest beim nächsten Leerlauf am Markt verkaufen
     log(state, `${s.name}: ${fmtN(s.cargo.amount)} ${w.name} konnten nicht abgeliefert werden.`, 'warn');

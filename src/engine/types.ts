@@ -221,12 +221,24 @@ export interface TradeJob {
   to: TradeEndpoint;
   stage: 'pickup' | 'deliver';
   contract?: number;
+  /** Einmaliger Kauf in den Laderaum: Nach dem Einkauf wartet das Schiff mit der Ladung auf den nächsten Befehl */
+  hold?: boolean;
+  /** Laderaum verkaufen: liefert die Ladung an Bord (beim Start der Fahrt) an `to` */
+  fromHold?: boolean;
 }
 
 /** market: Handelsposten eines Sektors (market fehlt) oder eine NPC-Käuferstation (market = deren ID) */
 export type TradeEndpoint = { kind: 'station'; id: string } | { kind: 'market'; sector: string; market?: string };
 
-export interface RouteOrder { from: TradeEndpoint; to: TradeEndpoint; ware: string }
+export interface RouteOrder {
+  from: TradeEndpoint;
+  to: TradeEndpoint;
+  ware: string;
+  /** Handelsroute zwischen Märkten: Mindestgewinn (Anteil am Einkaufspreis, z. B. 0,1 = 10 %) */
+  minMargin?: number;
+  /** Fällt der Gewinn darunter: pausieren (wartet, bis es sich wieder lohnt) oder beenden */
+  onLow?: 'pause' | 'end';
+}
 
 export type RestAction = 'auto' | 'topup' | 'sell' | 'wait';
 
@@ -280,6 +292,10 @@ export interface Ship {
   job: TradeJob | null;
   /** Vom Spieler erteilte Einzelaufträge, werden vor dem Autohandel abgearbeitet */
   orders?: TradeJob[];
+  /** Ladung aus einem einmaligen Kauf: nicht automatisch verkaufen, auf Befehl warten */
+  holdCargo?: boolean;
+  /** Anzeige, warum die Handelsroute gerade ruht (z. B. Gewinn unter der Schwelle) */
+  routeNote?: string;
   status: string;
   trips: number;
   earned: number;
