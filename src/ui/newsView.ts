@@ -7,6 +7,7 @@ import type { GameState, LedgerCat, LedgerEntry, LogEntry, LogLink } from '../en
 import { esc } from './dom';
 import { fmtAmount, fmtClock, fmtCr } from './format';
 import { icon } from './icons';
+import { helpBtn } from './help';
 
 const act = (a: string, data: Record<string, string | number> = {}) =>
   `data-act="${a}"` + Object.entries(data).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
@@ -107,7 +108,7 @@ export function newsBody(state: GameState, filter: NewsFilter, seenBefore: numbe
       <div class="grow"><div class="sub wrap ${cls}" style="${e.kind === 'info' ? 'color:var(--text)' : ''}">${isNew ? '<b class="pill amber" style="padding:0 5px;font-size:10px;margin-right:4px">NEU</b>' : ''}${esc(e.text)}</div>
       ${btns ? `<div class="row-links">${btns}</div>` : ''}</div></div>`;
   }).join('');
-  return `<div class="pills" style="margin-bottom:10px">${chips}</div>
+  return `<div class="pills" style="margin-bottom:10px">${chips}${helpBtn('news')}</div>
     <div class="box rows">${rows || '<div class="empty">Keine Meldungen in dieser Auswahl.</div>'}</div>
     <p class="small muted" style="margin:8px 0 0">Die letzten ${state.log.length} Meldungen. „Wichtig“ sind die, die unten eingeblendet wurden.</p>`;
 }
@@ -145,7 +146,7 @@ export function ledgerBody(state: GameState, filter: LedgerFilter): string {
       <div><small>Ausgänge 24 h</small><b class="neg">−${fmtCr(Math.abs(day.out))}</b></div>
     </div>
     ${cats.length ? `<div class="section"><h3>Nach Art · 24 h</h3><div class="box rows">${cats.map(([c, v]) => `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${LEDGER_LABEL[c]}</div></div><div class="right"><b class="num ${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '+' : '−'}${fmtCr(Math.abs(v))}</b></div></div>`).join('')}</div></div>` : ''}
-    <div class="section"><h3>Buchungen</h3><div class="pills" style="margin-bottom:10px">${chips}</div>
+    <div class="section"><h3>Buchungen ${helpBtn('news')}</h3><div class="pills" style="margin-bottom:10px">${chips}</div>
       <div class="box rows">${rows || '<div class="empty">Noch keine Buchungen.</div>'}</div>
       <p class="small muted" style="margin:8px 0 0">Gleiche Buchungen kurz hintereinander (z. B. mehrere Lieferungen eines NPC-Händlers) sind zusammengefasst.</p></div>`;
 }

@@ -11,6 +11,7 @@ import type { GameState, ShipClassDef } from '../engine/types';
 import { esc } from './dom';
 import { fmtAmount, fmtCr, fmtDur, fmtInt } from './format';
 import { icon } from './icons';
+import { helpBtn } from './help';
 
 export interface SellModal {
   type: 'sell';
@@ -107,7 +108,7 @@ function orderHtml(state: GameState, m: SellModal): { title: string; eyebrow: st
       <input type="range" id="sellOrderKeep" min="0" max="95" step="5" value="${Math.round(m.keep * 100)}" data-change="sell-order-keep">
       <p class="small muted" style="margin:4px 0 0">${have > keep ? `Zum Verkauf stehen ${fmtAmount(have - keep)} Einheiten, mindestens ${fmtCr((have - keep) * m.price)}.` : 'Der Bestand liegt unter dieser Grenze – verkauft wird, sobald mehr im Lager ist.'}${hasDockFor(st, 'M') ? '' : ' <span class="warn-text">Die Station hat kein S/M-Dock – fremde Händler können nicht anlegen.</span>'}</p>
       ${buyRule}</div>
-    <div class="section"><h3>Abnehmer im Sektor · ${ok.length} von ${buyers.length} zahlen mindestens diesen Preis</h3>${list}</div>
+    <div class="section"><h3>Abnehmer im Sektor · ${ok.length} von ${buyers.length} zahlen mindestens diesen Preis ${helpBtn('orders')}</h3>${list}</div>
     <p class="small muted" style="margin:6px 0 0">Händler kaufen bei dir, wenn sie die Ware anderswo mindestens zu deinem Preis loswerden – je größer ihre Spanne, desto lieber. NPC-Fabriken holen ihre Vorprodukte direkt bei dir, wenn du nicht mehr verlangst als der Handelsposten. <button class="linkish" ${act('sell-mode', { mode: 'ship' })}>Stattdessen mit eigenem Schiff liefern …</button></p>`;
   const foot = `<div class="sell-foot"><div class="small">${rule.sell && rule.sellPrice != null ? `Aktuell: ab ${fmtCr(rule.sellPrice)}, behalten ${Math.round((rule.keep ?? 0) * 100)} %` : 'Noch keine Verkaufsorder für diese Ware.'}</div>
     <div class="card-actions">${rule.sellPrice != null ? `<button class="btn" ${act('sell-order-off')}>Verkaufsorder aufheben</button>` : `<button class="btn" ${act('modal-close')}>Abbrechen</button>`}<button class="btn primary" ${act('sell-order-set')}>${icon('check', 18)}Verkaufsorder setzen</button></div></div>`;

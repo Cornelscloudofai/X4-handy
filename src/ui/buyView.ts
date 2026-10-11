@@ -11,6 +11,7 @@ import { esc } from './dom';
 import { fmtAmount, fmtCr, fmtDur, fmtInt } from './format';
 import { icon } from './icons';
 import { sellShips, shipClass } from './sellView';
+import { helpBtn } from './help';
 
 export interface BuyModal {
   type: 'buy';
@@ -100,7 +101,7 @@ function orderHtml(state: GameState, m: BuyModal): { title: string; eyebrow: str
       <input type="range" id="buyOrderFill" min="5" max="100" step="5" value="${Math.round(m.fill * 100)}" data-change="buy-order-fill">
       <p class="small muted" style="margin:4px 0 0">${have >= target ? 'Das Lager ist schon so voll – geliefert wird erst, wenn der Bestand darunter fällt.' : `Es fehlen ${fmtAmount(target - have)} Einheiten, höchstens ${fmtCr((target - have) * m.price)}.`}${hasDockFor(st, 'M') ? '' : ' <span class="warn-text">Die Station hat kein S/M-Dock – Händler liefern nur ans Baulager.</span>'}</p></div>
     ${rule.sell && rule.sellPrice != null ? `<p class="small" style="margin:6px 0 0">Verkaufsorder läuft parallel: verkaufen ab ${fmtCr(rule.sellPrice)}, ${Math.round((rule.keep ?? 0) * 100)} % bleiben${m.price >= rule.sellPrice ? ' <span class="warn-text">– Einkaufspreis liegt nicht unter dem Verkaufspreis, das bringt keinen Gewinn.</span>' : ` – Spanne ${fmtCr(rule.sellPrice - m.price)} je Einheit.`}</p>` : ''}
-    <div class="section"><h3>Anbieter im Sektor · ${ok.length} von ${local.length} liefern zu diesem Preis</h3>${sellers}</div>
+    <div class="section"><h3>Anbieter im Sektor · ${ok.length} von ${local.length} liefern zu diesem Preis ${helpBtn('orders')}</h3>${sellers}</div>
     <p class="small muted" style="margin:6px 0 0">Je höher dein Gebot über dem Einkaufspreis der Händler liegt, desto lieber kommen sie. <button class="linkish" ${act('buy-mode', { mode: 'ship' })}>Stattdessen mit eigenem Schiff abholen …</button></p>`;
   const foot = `<div class="sell-foot"><div class="small">${rule.buy && rule.price != null ? `Aktuell: bis ${fmtCr(rule.price)}, füllen bis ${Math.round((rule.fill ?? 0.95) * 100)} %` : 'Noch keine Kauforder für diese Ware.'}</div>
     <div class="card-actions">${rule.price != null ? `<button class="btn" ${act('buy-order-off')}>Kauforder aufheben</button>` : `<button class="btn" ${act('modal-close')}>Abbrechen</button>`}<button class="btn primary" ${act('buy-order-set')}>${icon('check', 18)}Kauforder setzen</button></div></div>`;

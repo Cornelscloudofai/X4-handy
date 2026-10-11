@@ -8,6 +8,7 @@ import { inTransitForContract } from '../engine/fleet';
 import type { GameState } from '../engine/types';
 import { esc } from './dom';
 import type { UIState } from './uistate';
+import { unreadNews } from './newsView';
 
 export interface CoachStep {
   id: string;
@@ -71,8 +72,47 @@ function deliveryStep(state: GameState, ui: UIState, chapter: boolean): CoachSte
 }
 
 export function coachStep(state: GameState, ui: UIState): CoachStep | null {
+  if (state.help?.coachOff || !state.stations[0] || ui.view === 'galaxy' || ui.placing || ui.modal?.type === 'help') return null;
+  return chapterStep(state, ui) ?? tipStep(state, ui);
+}
+
+/**
+ * Einmalige Tipps zu den Systemen, die man sonst leicht übersieht (Orders, Schürfrechte, Wirtschaftszweige, Konto,
+ * Nachrichten). Jeder erscheint höchstens einmal – dort, wo er gebraucht wird – und verschwindet mit „Weiter“.
+ */
+function tipStep(state: GameState, ui: UIState): CoachStep | null {
+  const tip = (id: string, sel: string | null, text: string): CoachStep | null => (coachSeen(state, id) ? null : { id, sel, text, next: true });
+  const m = ui.modal;
+  if (m?.type === 'buy' && m.mode === 'order') return tip('tip-order-buy', '#modal #buyOrderPrice', 'Kauforder: Du legst nur Höchstpreis und Füllstand fest – fremde Händler und Fabrikfrachter liefern an, ganz ohne eigenes Schiff. Je besser dein Gebot, desto öfter kommen sie.');
+  if (m?.type === 'sell' && m.mode === 'order') return tip('tip-order-sell', '#modal #sellOrderPrice', 'Verkaufsorder: Mindestpreis und Restbestand festlegen – fremde Händler kaufen direkt an deiner Station. Mit einer Kauforder derselben Ware wird deine Station zum Handelsplatz.');
+  if (m) return null;
+  const p = ui.panel;
+  if (p?.type === 'sector' && state.start && !state.sectors.includes(p.id ?? '')) return tip('tip-rights', '#panel .section.rights h3', 'Abbauen darfst du hier erst mit Schürfrecht: Grundrohstoffe ab Ruf 2, Nividium mit mehr Ruf. Ruf bringen Kapitel, Aufträge und Handel mit der Fraktion.');
+  if (p?.type === 'ledger') return tip('tip-ledger-panel', null, 'Das Kontobuch: oben die Summen der letzten Stunde und des Tages, darunter jede Buchung mit Grund. Antippen springt zum Schiff, zur Station oder zum Auftrag.');
+  if (p?.type === 'news') return tip('tip-news-panel', null, 'Hier landen alle Meldungen. „Jetzt kaufen …“ öffnet ein Sonderangebot direkt, „Annehmen …“ einen Lieferauftrag; „NEU“ markiert, was seit dem letzten Blick dazukam.');
+  if (p) return null;
+  const mission = currentMission(state)?.id;
+  if (mission === 'm-buyers') {
+    const t = tip('tip-economy', null, 'Erz geht an die Metallhütte (daraus werden Hüllenteile), Silizium an das Siliziumwerk (Grundstoff für Claytronik). Welchen Zweig du versorgst, entscheidest du: Flotte → dein Miner → Rohstoff fest einstellen.');
+    if (t) return t;
+  }
+  if (state.start === 'trading' && coachSeen(state, 'dl-done')) {
+    const t = tip('tip-two-ships', '#nav [data-tab="fleet"]', 'Zwei Tuatara: Der erste handelt Energiezellen im Sektorhandel, der zweite ist frei – für Lieferaufträge, Einkäufe oder eine eigene Route. In der Flotte gibst du ihm Befehle.');
+    if (t) return t;
+  }
+  if (state.story.index >= 1 && (state.ledger?.length ?? 0) >= 5) {
+    const t = tip('tip-ledger', '#hud [data-act="open-ledger"]', 'Tippe auf dein Guthaben: Das Kontobuch zeigt jede Ein- und Ausgabe mit Grund.');
+    if (t) return t;
+  }
+  if (state.story.index >= 1 && unreadNews(state) >= 3) {
+    const t = tip('tip-news', '#hud [data-act="open-news"]', 'Meldungen verschwinden unten schnell – hier im Nachrichtenblatt kannst du alles nachlesen und direkt hinspringen, z. B. zu einem Sonderangebot.');
+    if (t) return t;
+  }
+  return null;
+}
+
+function chapterStep(state: GameState, ui: UIState): CoachStep | null {
   const st0 = state.stations[0];
-  if (state.help?.coachOff || !st0 || ui.view === 'galaxy' || ui.placing || ui.modal?.type === 'help') return null;
   const m = currentMission(state);
   if (!m) return null;
   // Belohnung abholen hat Vorrang – in den ersten Kapiteln mit Hinweis

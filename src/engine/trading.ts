@@ -127,7 +127,7 @@ export function stepOpportunities(state: GameState, dt: number): void {
   const w = WARES[o.ware];
   const mins = Math.round((o.until - state.time) / 60);
   const name = marketInfo(o.key).name;
-  log(state, `Sonderangebot: ${name} räumt ${mins} min lang ${w.name} für ${Math.round(o.mult * 100)} % des Preises (bis ${Math.round(o.left).toLocaleString('de-DE')} Einheiten) – antippen zum Kaufen.`, 'good', true, { kind: 'opp', id: o.id, key: o.key, ware: o.ware });
+  log(state, `Sonderangebot: ${name} räumt ${mins} min lang ${w.name} für ${Math.round(o.mult * 100)} % des Preises (bis ${Math.round(o.left).toLocaleString('de-DE')} Einheiten) – kaufen über das Nachrichtenblatt (i) oder Handel → Sonderangebote.`, 'good', true, { kind: 'opp', id: o.id, key: o.key, ware: o.ware });
 }
 
 function containerWare(id: string): boolean {

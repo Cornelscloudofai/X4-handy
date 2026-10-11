@@ -96,10 +96,74 @@ export const HELP: HelpTopic[] = [
     ].join(''),
   },
   {
-    id: 'market', title: 'Märkte und Preise', icon: 'market', short: 'Wie Angebot und Nachfrage die Preise bewegen',
+    id: 'market', title: 'Märkte und Preise', icon: 'market', short: 'Wie Lagerstand den Preis macht – und warum große Ladungen lohnen',
     body: [
-      p('Jeder Handelsposten hat für jede Ware einen Bestand. Wenig Bestand heißt hoher Preis, viel Bestand niedriger – innerhalb der echten X4-Preisspanne. Bestände kehren über einige Stunden zum Normalwert zurück.'),
-      p('Spezialisierte NPC-Stationen (Werften, Wachstationen, Fabriken) kaufen bestimmte Waren in begrenzter Menge. Im Verkaufsdialog einer Ware siehst du alle Käufer mit Preis, Abnahme und Ertrag pro Stunde.'),
+      p('Der Preis einer Ware hängt am Lagerstand der Station: bis 10 % Füllung gilt der <b>Höchstpreis</b>, bei 50 % der <b>Durchschnittspreis</b>, ab 90 % der <b>Tiefstpreis</b> – dazwischen gleitend.'),
+      ul([
+        '<b>Ein Preis je Ladung:</b> Eine Fuhre wird ganz zum Preis bei Abschluss gehandelt. Erst die nächste Ladung sieht den neuen Lagerstand – große Laderäume handeln so länger zum guten Preis.',
+        '<b>NPC-Stationen mit S-Lager:</b> Fabriken, Werften und Wachposten haben kleine Lager. Sie füllen und leeren sich schnell, die Preise schwanken stark – gute Gelegenheiten für schnelle Händler.',
+        '<b>Handelsposten:</b> Große Lager, ruhige Preise. Fabrikwaren wachsen dort nicht von selbst nach – Nachschub kommt nur von Fabriken und Spielern.',
+        '<b>Marktwissen:</b> Live siehst du Preise nur in Quadranten mit eigener Station oder Satellit. Sonst gilt die letzte Momentaufnahme eines vorbeifliegenden oder angedockten Schiffs.',
+      ]),
+    ].join(''),
+  },
+  {
+    id: 'orders', title: 'Kauf- und Verkaufsorder', icon: 'wallet', short: 'Handeln an der eigenen Station – ganz ohne eigenes Schiff',
+    body: [
+      p('An jeder Station mit S/M-Dock kannst du für eine Ware Orders setzen (Station → Lager → „Ware einkaufen …“ bzw. „Ware verkaufen …“). Fremde Schiffe erledigen den Transport, bezahlt wird bei Übergabe.'),
+      ul([
+        '<b>Kauforder:</b> Höchstpreis und Füllstand (Anteil der Lagergrenze). NPC-Händler liefern, solange sie die Ware im Sektor höchstens zu deinem Preis bekommen; NPC-Fabriken bringen ihre Produkte direkt, wenn du mehr bietest als der Handelsposten.',
+        '<b>Verkaufsorder:</b> Mindestpreis und Anteil, der im Lager bleibt. Händler kaufen bei dir, wenn sie die Ware anderswo mindestens zu diesem Preis loswerden; NPC-Fabriken holen Vorprodukte direkt, wenn du nicht teurer bist als der Handelsposten.',
+        '<b>Beides zugleich:</b> Kauf- und Verkaufsorder derselben Ware laufen parallel – günstig einkaufen, teurer verkaufen: deine Station wird zum Handelsplatz.',
+        '<b>Je besser dein Preis, desto häufiger kommen Händler.</b> Deine eigenen Stationstransporter handeln davon unabhängig zu den Preisen der fremden Stationen.',
+        '<b>Mit eigenem Schiff:</b> In beiden Dialogen bleibt „Stattdessen mit eigenem Schiff …“ – dann wählst du Schiff, Menge und Handelspartner selbst.',
+      ]),
+    ].join(''),
+  },
+  {
+    id: 'economy', title: 'Wirtschaftszweige und Fabriken', icon: 'factory', short: 'Wem du lieferst, dessen Zweig wächst',
+    body: [
+      p('NPC-Fabriken arbeiten nach den X4-Rezepten. Fehlt ein Vorprodukt, steht das Modul still. Sie holen sich nur etwa ein Drittel ihres Bedarfs selbst – den Rest müssen andere liefern, vor allem du.'),
+      ul([
+        '<b>Zwei Zweige in Zhin:</b> Die <b>Metallhütte</b> macht aus Erz Veredelte Metalle und Hüllenteile, das <b>Siliziumwerk</b> aus Silizium Siliziumscheiben – der Grundstoff für Mikrochips und Claytronik im Tharka-Elektronikwerk (Cascade).',
+        '<b>Wachstum:</b> Läuft eine Fabrik gut (ab 70 % Auslastung), baut sie Module an. Ihre Produkte werden reichlicher und günstiger.',
+        '<b>Nur Überschüsse:</b> Fabriken behalten Zwischenprodukte, die sie selbst weiterverarbeiten, und geben nur ab, was darüber liegt.',
+        '<b>Auslastung ansehen:</b> Tippe eine NPC-Fabrik auf der Karte an – du siehst Module, Vorräte, was fehlt und was sie herstellt.',
+      ]),
+    ].join(''),
+  },
+  {
+    id: 'rights', title: 'Schürfrechte', icon: 'lock', short: 'Wo deine Miner abbauen dürfen',
+    body: [
+      p('In Sektoren mit deiner Baulizenz (auch im Heimatsektor) sind Grundrohstoffe frei. Anderswo braucht es das Schürfrecht der Fraktion – im Sektorpanel unter „Schürfrechte“.'),
+      ul([
+        '<b>Grundrohstoffe</b> (Erz, Silizium, Eis, Gas): Ruf 2 + 50.000 Cr je Sektor.',
+        '<b>Nividium:</b> Tkr Ruf 5 + 500.000 Cr, Tharka\'s Ravine Ruf 10 + 1,5 Mio Cr – setzt das Grundrecht voraus. Im Startsektor gibt es kein Nividium.',
+        '<b>Ruf</b> gibt es für Kapitel, Lieferaufträge und Handel mit der Fraktion – wer ihre Wirtschaft versorgt, darf auch ihr Nividium abbauen.',
+        'Ohne Recht nehmen Miner dort keinen Befehl an.',
+      ]),
+    ].join(''),
+  },
+  {
+    id: 'ships', title: 'Freie Schiffe und Sektorhandel', icon: 'trader', short: 'Stationshändler, freie Händler und Miner',
+    body: [
+      ul([
+        '<b>Stationshändler:</b> Einer Station zugeordnete Transporter kaufen, was sie braucht, und verkaufen ihre Überschüsse – Reichweite nach Pilotenrang (ab drei Sternen auch Nachbarsektoren).',
+        '<b>Freie Transporter:</b> Ohne Station. Sektorhandel mit einer Ware in einem Sektor: beim günstigsten bekannten Verkäufer kaufen, an den Bestbietenden verkaufen. Angenommene Lieferaufträge erledigen sie zuerst.',
+        '<b>Eine Ware je Schiff:</b> Für eine zweite Ware brauchst du ein zweites Schiff – oder du änderst den Befehl selbst. Feste Routen und Einzelbefehle gehen jederzeit zusätzlich.',
+        '<b>Mindestgewinn:</b> Automatische Fahrten müssen sich lohnen – S 500 Cr, M 2.000 Cr, L 5.000 Cr je Fahrt.',
+        '<b>Freie Miner:</b> Sektorbefehl für einen Rohstoff; verkauft wird an den Bestbietenden oder einen fest eingestellten Abnehmer.',
+      ]),
+    ].join(''),
+  },
+  {
+    id: 'news', title: 'Konto und Nachrichten', icon: 'info', short: 'Wohin das Geld geht – und was passiert ist',
+    body: [
+      ul([
+        '<b>Kontobuch:</b> Tippe oben auf dein Guthaben. Du siehst jede Buchung mit Grund (Handel, Orders an der Station, Aufträge, Bau, Schiffe, Belohnungen), Summen der letzten Stunde und 24 Stunden und eine Aufteilung nach Art. Jede Buchung springt zum Schiff, zur Station oder zum Auftrag.',
+        '<b>Nachrichtenblatt:</b> Der Knopf mit dem „i“ neben dem Menü sammelt alle Meldungen – auch die, die unten zu schnell verschwunden sind. Die Zahl zeigt neue wichtige Meldungen.',
+        '<b>Direkt handeln:</b> Aus einer Meldung springst du hin – ein Sonderangebot öffnet gleich den Kaufdialog, ein Auftragsangebot den Annehmen-Dialog.',
+      ]),
     ].join(''),
   },
 ];

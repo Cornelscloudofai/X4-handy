@@ -278,7 +278,7 @@ function mineRightsBox(state: GameState, id: string): string {
     const block = mineRightBlock(state, id, k);
     return `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${name}</div><div class="sub">Ruf ${t.rep} bei ${esc(FACTIONS[s.faction].short)} · ${fmtCr(t.cost)}${block ? ` · <span class="neg">${esc(block)}</span>` : ''}</div></div><button class="btn small ${block ? 'disabled' : 'amber'}" ${act('buy-mine-right', { sec: id, kind: k })}>Erwerben</button></div>`;
   }).join('');
-  return `<div class="section"><h3>Schürfrechte</h3><div class="box rows">${rows}</div><p class="small" style="margin:6px 0 0;color:var(--text-2)">Ruf gibt es für Lieferungen und Aufträge der Fraktion – wer ihre Wirtschaft versorgt, darf auch ihr Nividium abbauen.</p></div>`;
+  return `<div class="section rights"><h3>Schürfrechte ${helpBtn('rights')}</h3><div class="box rows">${rows}</div><p class="small" style="margin:6px 0 0;color:var(--text-2)">Ruf gibt es für Lieferungen und Aufträge der Fraktion – wer ihre Wirtschaft versorgt, darf auch ihr Nividium abbauen.</p></div>`;
 }
 
 function fieldUpBox(state: GameState, f: FieldDef): string {
@@ -335,7 +335,7 @@ function npcCard(state: GameState, id: string): string {
   // NPC-Fabrik: echte Produktion – Produkte mit Bestand und Preis, Module und Auslastung
   const made = eco ? Object.entries(eco.prod).map(([w, k]) => `<div class="row" style="padding:7px 10px">${wareMark(w, 9)}<div class="grow"><div class="title" style="font-weight:500;font-size:14px">${esc(WARES[w].name)}</div><div class="sub wrap">${k} Module · ${pct(eco.util[w] ?? 0)} ausgelastet · ${fmtAmount(seenStock(state, id, w) ?? 0)} auf Lager</div></div><div class="right"><b>${fmtInt(seenPrice(state, id, w) ?? 0)} Cr</b></div></div>`).join('') : '';
   return cardShell(icon('market', 24), n.name, `${NPC_KIND[n.kind]} · ${esc(SECTOR_MAP[n.sector].name)}${eco ? '' : ' · kauft an'} ${intelTag(state, id)}`, `
-    ${eco ? `<div class="small muted" style="margin:0 0 6px">Stellt her und verkauft</div><div class="box rows npc-buys" style="margin-bottom:10px">${made}</div><div class="small muted" style="margin:0 0 6px">Kauft an (Vorprodukte)</div>` : ''}
+    ${eco ? `<div class="small muted" style="margin:0 0 6px">Stellt her und verkauft ${helpBtn('economy')}</div><div class="box rows npc-buys" style="margin-bottom:10px">${made}</div><div class="small muted" style="margin:0 0 6px">Kauft an (Vorprodukte)</div>` : ''}
     <div class="box rows npc-buys">${rows}</div>
     <p class="small muted" style="margin:8px 0 0">${eco ? 'Produziert nach X4-Rezepten. Eigene Frachter bringen nur gut ein Drittel der Vorprodukte – der Rest muss geliefert werden. Gut ausgelastete Fabriken bauen langsam aus.' : 'Kleine Lager, meist gute Preise. Wer viel liefert, drückt den Preis – nach einigen Stunden ist wieder Bedarf da.'}</p>
     ${vendorsAt(n.sector, n.id).length ? `<div class="card-actions one" style="margin-top:10px">${vendorButton(state, n.sector, n.id)}</div>` : ''}`, true);
@@ -895,7 +895,7 @@ function freeOrders(state: GameState, s: Ship): string {
     const ware = o?.ware && wares.includes(o.ware) ? o.ware : wares[0] ?? '';
     const buyers = ware ? [sec, ...sector(sec).npcStations.filter((n) => n.buys.includes(ware)).map((n) => n.id)].filter((k) => state.markets[k]?.[ware] && knows(state, k)) : [];
     const toOpts = [{ v: '', label: 'Bestbietender im Sektor' }, ...buyers.map((k) => ({ v: k, label: marketInfo(k).name })), ...state.stations.map((st) => ({ v: 'st:' + st.id, label: `${st.name} (eigene Station)` }))];
-    return `<div class="section"><h3>Sektorbefehl: Abbau</h3><div class="form">
+    return `<div class="section"><h3>Sektorbefehl: Abbau ${helpBtn('ships')}</h3><div class="form">
       <div class="field"><label>Sektor</label>${sel('so-sector', sec, secOpts)}</div>
       <div class="field"><label>Rohstoff</label>${wares.length ? sel('so-ware', ware, wares.map((w) => ({ v: w, label: WARES[w].name }))) : '<p class="small muted" style="margin:0">Kein passendes Feld in diesem Sektor.</p>'}</div>
       <div class="field"><label>Abnehmer</label>${sel('so-to', o?.to ?? '', toOpts)}</div>
@@ -904,7 +904,7 @@ function freeOrders(state: GameState, s: Ship): string {
   }
   const wares = WARE_IDS.filter((id) => WARES[id].storage === c.storage).sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
   const ware = o?.ware ?? 'energycells';
-  return `${orderQueue(state, s)}<div class="section"><h3>Befehl</h3>
+  return `${orderQueue(state, s)}<div class="section"><h3>Befehl ${helpBtn('ships')}</h3>
     <div class="segment" style="margin-bottom:12px"><button class="${s.mode === 'auto' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'auto' })}>Sektorhandel</button><button class="${s.mode === 'route' ? 'on' : ''}" ${act('trader-mode', { id: s.id, mode: 'route' })}>Handelsroute</button></div>
     ${s.mode === 'auto' ? `<div class="form">
       <div class="field"><label>Sektor</label>${sel('so-sector', sec, secOpts)}</div>
