@@ -97,7 +97,7 @@ export function coachStep(state: GameState, ui: UIState): CoachStep | null {
     return buyShipStep(ui, 'fleet2', 'tuatara', 'Zeit für ein zweites Schiff. Öffne die Flotte.', 'Der Tuatara ist ein kleiner Transporter – günstig und genau richtig für Lieferaufträge. Kaufen.');
   }
   if (m.id === 't-fleet') {
-    return buyShipStep(ui, 'fleet2', 'alligator_min', 'Zeit für ein zweites Schiff. Öffne die Flotte.', 'Der Alligator fördert Erz und Silizium und verkauft es selbst an die NPC-Fabriken. Kaufen.');
+    return buyShipStep(ui, 'fleet2', 'alligator_min', 'Zeit für ein drittes Schiff. Öffne die Flotte.', 'Der Alligator fördert Erz und Silizium und verkauft es selbst an die NPC-Fabriken. Kaufen.');
   }
   if (m.id === 'refinery') {
     const queued = st0.queue.some((q) => q.def === 'prod_refinedmetals') || st0.build?.def === 'prod_refinedmetals';

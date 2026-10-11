@@ -545,6 +545,23 @@ export function marketStock(state: GameState, key: string, id: string): number {
   return state.markets[key]?.[id]?.stock ?? 0;
 }
 
+/** NPC-Fabriken behalten Vorprodukte für so viele Zyklen ihrer eigenen Module */
+export const FACTORY_RESERVE_CYCLES = 3;
+
+/** Bestand, den eine NPC-Fabrik für die eigene Weiterverarbeitung behält (z. B. Mikrochips für Claytronik) */
+export function factoryReserve(state: GameState, key: string, id: string): number {
+  const eco = state.npcEco?.[key];
+  if (!eco) return 0;
+  let r = 0;
+  for (const [p, n] of Object.entries(eco.prod)) for (const i of WARES[p].inputs) if (i.ware === id) r += i.amount * n * FACTORY_RESERVE_CYCLES;
+  return r;
+}
+
+/** Was ein Markt verkauft: Handelsposten alles, NPC-Fabriken nur den Überschuss über ihrem eigenen Bedarf */
+export function buyableStock(state: GameState, key: string, id: string): number {
+  return Math.max(0, marketStock(state, key, id) - factoryReserve(state, key, id));
+}
+
 /** Wert eines Handels (positive Menge: Spieler verkauft an den Markt). Preis gemittelt über die Bestandsänderung. */
 export function marketTradeValue(state: GameState, key: string, id: string, amount: number): number {
   const m = state.markets[key]?.[id];

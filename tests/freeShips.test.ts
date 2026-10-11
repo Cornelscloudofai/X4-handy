@@ -16,7 +16,7 @@ describe('Freie Schiffe', () => {
     step(s, 120);
     expect(sh.status).toContain('Frei');
     const t = deserialize(serialize(s));
-    expect(t.ships.length).toBe(1);
+    expect(t.ships.length).toBe(2); // Handelsstart: zwei Tuatara
     expect(t.ships[0].home).toBe('');
     // Wieder einer Station zuordnen
     expect(setShipHome(s, sh.id, s.stations[0].id).ok).toBe(true);

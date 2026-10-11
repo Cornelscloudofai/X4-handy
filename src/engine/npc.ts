@@ -2,7 +2,7 @@
 // Hintergrundverkehr belebt die Sektoren.
 import { NPC_MAP, SECTOR_MAP, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { BUILD_TOLERANCE, spendable, addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, marketStock, receiveWare, roomAt, stationWares, tradeRule } from './economy';
+import { BUILD_TOLERANCE, spendable, addWare, applyMarketTrade, buildRoom, hasDockFor, marketPrice, marketRoom, receiveWare, roomAt, stationWares, tradeRule, buyableStock } from './economy';
 import { contractDeliver } from './contracts';
 import { endOf, recordFlow } from './flows';
 import { dockPoint, prioNeeds, sellableStock, stationById, surplus, wanted } from './logistics';
@@ -25,7 +25,7 @@ function marketEnd(state: GameState, key: string) {
 export function npcSource(state: GameState, sec: string, id: string): { key: string; price: number; stock: number } | null {
   let best: { key: string; price: number; stock: number } | null = null;
   for (const k of [sec, ...sector(sec).npcStations.filter((n) => n.makes?.includes(id)).map((n) => n.id)]) {
-    const stock = marketStock(state, k, id);
+    const stock = buyableStock(state, k, id);
     if (stock < 1) continue;
     const price = marketPrice(state, k, id);
     if (!best || price < best.price || (price === best.price && stock > best.stock)) best = { key: k, price, stock };
@@ -182,7 +182,8 @@ function npcTrade(state: GameState, n: NpcShip): void {
     const key = n.market && state.markets[n.market]?.[n.ware] ? n.market : n.sector;
     // Verkaufsorder: Der Händler zahlt den Mindestpreis der Station – sofern er beim Abnehmer nicht weniger bekommt
     if (n.price != null && marketPrice(state, key, n.ware) < n.price) return;
-    const qty = Math.min(n.amount, sellableStock(st, n.ware), marketRoom(state, key, n.ware) + (key === n.sector ? n.amount * 0.1 : 0));
+    // Nur, was wirklich frei ist: Ware, die ein eigener Transporter schon abholen will, bleibt liegen
+    const qty = Math.min(n.amount, sellableStock(st, n.ware), surplus(state, st, n.ware), marketRoom(state, key, n.ware) + (key === n.sector ? n.amount * 0.1 : 0));
     if (qty < 1) return;
     addWare(st, n.ware, -qty);
     let value: number;
@@ -203,7 +204,7 @@ function npcTrade(state: GameState, n: NpcShip): void {
     if (n.price != null && srcPrice > n.price) return;
     const price = n.price ?? srcPrice;
     const room = hasDockFor(st, 'M') ? roomAt(st, n.ware, 'market') : buildRoom(st, n.ware, undefined, true);
-    const qty = Math.min(n.amount, room, marketStock(state, key, n.ware), spendable(state, 20_000) / price);
+    const qty = Math.min(n.amount, room, buyableStock(state, key, n.ware), spendable(state, 20_000) / price);
     if (qty < 1) return;
     // Ein Preis für die ganze Ladung: der zugesagte bzw. der Preis beim Einkauf
     state.markets[key][n.ware].stock -= qty;

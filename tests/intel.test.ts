@@ -29,6 +29,7 @@ describe('Marktwissen', () => {
     expect(seenPrice(s, key, 'energycells')).toBe(before);
     const p = marketInfo(key);
     const q = quadrantOf(p.x, p.z);
+    s.credits = 100_000;
     const credits = s.credits;
     expect(deploySatellite(s, 'zhin', q).ok).toBe(true);
     expect(s.credits).toBe(credits - SAT_COST);

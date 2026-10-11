@@ -370,7 +370,7 @@ export const INTRO: Record<StartKind, StoryMission[]> = {
       id: 't-courier',
       title: 'Kurierdienst',
       about: 'Lieferaufträge entstehen dort, wo eine Station dringend Ware braucht: Ihr Lager ist fast leer, sie zahlt 30–50 % über ihrem ohnehin hohen Preis. Wo du einkaufst, entscheidest du – wer günstig kauft, verdient doppelt.',
-      story: 'Ein Tuatara, etwas Geld und ein offenes Ohr am Funk: Die Familien suchen zuverlässige Lieferanten.',
+      story: 'Zwei Tuatara, etwas Geld und ein offenes Ohr am Funk: Die Familien suchen zuverlässige Lieferanten.',
       goal: 'Erfülle einen Lieferauftrag',
       hint: 'Unter „Aufträge“ einen Lieferauftrag ansehen, Einkaufsort und Transporter wählen, losschicken. Der Lohn kommt mit der Lieferung.',
       progress: (s) => ({ cur: (s.totals.couriers ?? 0) - (s.story.base.couriers ?? 0), target: 1 }),
@@ -388,12 +388,12 @@ export const INTRO: Record<StartKind, StoryMission[]> = {
     },
     {
       id: 't-fleet',
-      title: 'Zweites Schiff',
+      title: 'Drittes Schiff',
       about: 'Ein Miner liefert Rohstoffe, die du nicht kaufen musst – die Grundlage für die erste eigene Fabrik.',
-      story: 'Ein zweites Schiff verdoppelt die Einnahmen. Ein weiterer Transporter oder ein Miner – du entscheidest.',
-      goal: 'Besitze 2 Schiffe',
+      story: 'Zwei Transporter laufen. Ein drittes Schiff bringt mehr: noch ein Transporter oder ein Miner – du entscheidest.',
+      goal: 'Besitze 3 Schiffe',
       hint: 'Flotte → „Schiff kaufen“.',
-      progress: (s) => ({ cur: s.ships.length, target: 2 }),
+      progress: (s) => ({ cur: s.ships.length, target: 3 }),
       reward: { credits: 30_000, rep: { frf: 1 } },
     },
   ],
@@ -441,6 +441,11 @@ export function missionComplete(state: GameState): boolean {
 
 let lastNotified = -1;
 let lastBuyable = -1;
+
+export function resetStoryNotes(): void {
+  lastNotified = -1;
+  lastBuyable = -1;
+}
 
 /** Meldet, wenn durch gestiegenen Ruf neue Baupläne kaufbar werden */
 function checkBlueprints(state: GameState): void {

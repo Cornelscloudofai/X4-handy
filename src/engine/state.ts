@@ -4,18 +4,21 @@ import { SECTOR_MAP } from '../data/sectors';
 import { SHIP_MAP, shipName } from '../data/ships';
 import { addBuildStore, initMarkets } from './economy';
 import { initNpcEconomy } from './npcEconomy';
-import { generateCourier } from './contracts';
-import { initIntel } from './intel';
-import { OLD_STORY_IDS, STORY, startMission, storyOf } from './story';
+
+import { initIntel, resetIntelCache } from './intel';
+import { resetSimTimers } from './sim';
+import { clearFieldReserve } from './logistics';
+import { generateCourier, setNetWorthCache } from './contracts';
+import { OLD_STORY_IDS, STORY, resetStoryNotes, startMission, storyOf } from './story';
 import type { GameState, ModuleInst, Ship, StartKind, Station } from './types';
 
 export const SAVE_VERSION = 2;
 export const SAVE_KEY = 'x4-sektorbau-save-v1';
 export const START_CREDITS = 2_500_000;
-/** Neuer Spielstart: kleine Station ohne Produktion, wenig Geld – Handel bekommt mehr Credits, Bergbau das teurere Schiff */
-export const START_KIT: Record<StartKind, { credits: number; ship: string }> = {
-  trading: { credits: 50_000, ship: 'tuatara' },
-  mining: { credits: 5_000, ship: 'tuatara_min' },
+/** Neuer Spielstart: kleine Station ohne Produktion, wenig Geld. Handel: zwei Transporter (einer im Sektorhandel, einer frei) */
+export const START_KIT: Record<StartKind, { credits: number; ships: string[] }> = {
+  trading: { credits: 30_000, ships: ['tuatara', 'tuatara'] },
+  mining: { credits: 5_000, ships: ['tuatara_min'] },
 };
 
 export function newModule(state: GameState, def: string): ModuleInst {
@@ -40,11 +43,21 @@ export function newShip(state: GameState, cls: string, home: Station, at?: { sec
   };
 }
 
+/** Zwischenspeicher und Zeitgeber der Engine leeren – ein neues oder geladenes Spiel erbt nichts vom vorigen */
+export function resetEngine(): void {
+  resetSimTimers();
+  resetIntelCache();
+  resetStoryNotes();
+  clearFieldReserve();
+  setNetWorthCache(0);
+}
+
 /**
  * Neues Spiel. Ohne Startart: klassischer Start mit fertiger Solarstation und 2,5 Mio Cr (Tests, alte Spielstände).
  * Mit Startart: Stationskern, S/M-Dock, Container- und Erzlager, ein Schiff und wenig Geld.
  */
 export function newGame(seed = Date.now() % 2147483647, start?: StartKind): GameState {
+  resetEngine();
   const state: GameState = {
     version: SAVE_VERSION, seed, time: 0, credits: START_CREDITS, stations: [], ships: [], npcs: [], markets: {},
     sectors: ['zhin'], blueprints: MODULES.filter((m) => m.starter).map((m) => m.id), rep: { frf: 0, zya: 0 },
@@ -61,11 +74,13 @@ export function newGame(seed = Date.now() % 2147483647, start?: StartKind): Game
     state.credits = START_KIT[start].credits;
     for (const def of ['core', 'dock_m', 'storage_container', 'storage_solid']) st.modules.push({ ...newModule(state, def), util: 1 });
     state.stations.push(st);
-    const ship = newShip(state, START_KIT[start].ship, st);
-    state.ships.push(ship);
-    // Handelsstart: Der Tuatara ist frei und handelt schon Energiezellen im Heimatsektor (Sektorhandel) – die Startstation
-    // produziert noch nichts, als Stationshändler hätte er nichts zu tun
-    if (start === 'trading') { ship.home = ''; ship.sectorOrder = { kind: 'trade', sector: st.sector, ware: 'energycells' }; }
+    for (const cls of START_KIT[start].ships) state.ships.push(newShip(state, cls, st));
+    // Handelsstart: Beide Tuatara sind frei – der erste handelt schon Energiezellen im Heimatsektor (Sektorhandel), der zweite
+    // wartet auf Befehle (Lieferaufträge, Einkäufe, Routen). Die Startstation produziert noch nichts.
+    if (start === 'trading') {
+      for (const s of state.ships) s.home = '';
+      state.ships[0].sectorOrder = { kind: 'trade', sector: st.sector, ware: 'energycells' };
+    }
     // Marktbericht der Familie: letzter bekannter Stand aller Stationen im Heimatsektor
     initIntel(state, st.sector);
     // Gleich zu Beginn ein passender Kurierauftrag, die nächsten folgen bald

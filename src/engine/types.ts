@@ -90,6 +90,8 @@ export interface NpcStationDef {
   buys: string[];
   /** Fabrik: Waren, die sie selbst herstellt (X4-Rezepte) und verkauft */
   makes?: string[];
+  /** Eigener Sammler der Fabrik: fördert diesen Rohstoff im Sektor und bringt ihn zur Station */
+  miner?: { ware: string };
   /** im Spiel von einer Fraktion gegründet (steht im Spielstand, nicht in den Sektordaten) */
   founded?: boolean;
 }
@@ -371,6 +373,8 @@ export interface NpcShip {
 
 /** Wirtschaft einer NPC-Fabrik */
 export interface NpcEco {
+  /** Eigener Sammler: Zeit seit der letzten Runde (s) */
+  minerT?: number;
   /** Produktionsmodule je Ware */
   prod: Record<string, number>;
   /** angefangene Modulzyklen je Ware */

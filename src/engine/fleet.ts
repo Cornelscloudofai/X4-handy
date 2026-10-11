@@ -4,7 +4,7 @@ import { NPC_MAP, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { MODULE_MAP } from '../data/modules';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
-import { BUILD_TOLERANCE, spendable, addWare, applyMarketTrade, buildDemand, buildRoom, receiveWare, roomAt, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, pendingNeeds, stationWares, wareLimit } from './economy';
+import { BUILD_TOLERANCE, spendable, addWare, applyMarketTrade, buildDemand, buildRoom, receiveWare, roomAt, freeUnits, hasDockFor, stationRates, storageCap, marketPrice, marketRoom, marketStock, marketTradeValue, pendingNeeds, stationWares, wareLimit, buyableStock, factoryReserve } from './economy';
 import {
   dockPoint, sellableStock, endpointName, endpointPlace, fieldById, fieldWare, incoming, knownSectors, marketKey, moveAlong, outgoing, planPath, reserveFor, stationById, surplus, travelDistance, wanted,
   type Place,
@@ -807,7 +807,9 @@ export function sectorTradeJob(state: GameState, s: Ship, sectorId: string, ware
   let seller: { key: string; price: number; stock: number } | null = null;
   for (const k of keys) {
     if (k !== sectorId && !NPC_MAP[k]?.makes?.includes(ware)) continue;
-    const price = seenPrice(state, k, ware), stock = seenStock(state, k, ware);
+    // NPC-Fabriken geben nur den Überschuss über ihrem eigenen Bedarf ab
+    const seen = seenStock(state, k, ware);
+    const price = seenPrice(state, k, ware), stock = seen == null ? null : Math.max(0, seen - factoryReserve(state, k, ware));
     if (price == null || stock == null || stock < 1) continue;
     if (!seller || price < seller.price) seller = { key: k, price, stock };
   }
@@ -823,9 +825,12 @@ export function sectorTradeJob(state: GameState, s: Ship, sectorId: string, ware
   if (!buyer) return null;
   // Gehandelt wird die ganze Ladung zum Preis bei Abschluss (ein Preis je Fuhre)
   const n = Math.min(units, seller.stock, buyer.room, spendable(state, 10_000) / seller.price);
-  if (n < 1 || n * (buyer.price - seller.price) < Math.max(2_000, n * w.price.avg * 0.04)) return null;
+  if (n < 1 || n * (buyer.price - seller.price) < Math.max(MIN_TRIP_PROFIT[SHIP_MAP[s.cls].size], n * w.price.avg * 0.04)) return null;
   return { ware, amount: n, from: marketEndpoint(seller.key), to: marketEndpoint(buyer.key), stage: 'pickup' };
 }
+
+/** Mindestgewinn je automatischer Fahrt nach Schiffsgröße – kleine Schiffe fahren auch für kleinere, echte Spannen */
+export const MIN_TRIP_PROFIT: Record<'S' | 'M' | 'L', number> = { S: 500, M: 2_000, L: 5_000 };
 
 /** Ab diesem Alter (s) schaut ein wartender Sektorhändler selbst nach, was sich an einem Markt getan hat */
 export const SCOUT_AGE = 15 * 60;
@@ -1081,7 +1086,7 @@ function tradeAtDock(state: GameState, s: Ship): void {
       const price = marketPrice(state, key, job.ware);
       // NPC-Käufer verkaufen nichts, NPC-Fabriken nur ihre eigenen Produkte
       const sells = !job.from.market || !!NPC_MAP[job.from.market]?.makes?.includes(job.ware);
-      n = !sells ? 0 : Math.min(job.amount, units, marketStock(state, key, job.ware), spendable(state, 10_000) / price);
+      n = !sells ? 0 : Math.min(job.amount, units, buyableStock(state, key, job.ware), spendable(state, 10_000) / price);
       if (n > 0) {
         let cost = applyMarketTrade(state, key, job.ware, -n, { who: s.name, link: { kind: 'ship', id: s.id } });
         // Angenommenes Sonderangebot: Rabatt auf die zugesagte Menge

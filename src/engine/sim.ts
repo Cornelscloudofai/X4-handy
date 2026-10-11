@@ -19,6 +19,12 @@ const MAX_STEP = 2; // Sekunden Spielzeit je Teilschritt
 let slowTimer = 0;
 let eventTimer = 3600;
 
+/** Neues oder geladenes Spiel: Zeitgeber zurücksetzen (sonst liefe ein neues Spiel mit dem Takt des vorigen) */
+export function resetSimTimers(): void {
+  slowTimer = 0;
+  eventTimer = 3600;
+}
+
 function substep(state: GameState, dt: number): void {
   state.time += dt;
   for (const st of state.stations) {

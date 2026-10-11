@@ -19,7 +19,7 @@ describe('Spielstart', () => {
       expect(s.start).toBe(kind);
       expect(s.credits).toBe(START_KIT[kind].credits);
       expect(s.stations[0].modules.map((m) => m.def).sort()).toEqual(['core', 'dock_m', 'storage_container', 'storage_solid']);
-      expect(s.ships.map((x) => x.cls)).toEqual([START_KIT[kind].ship]);
+      expect(s.ships.map((x) => x.cls)).toEqual(START_KIT[kind].ships);
       play(s, 2);
       const perHour = (s.credits - START_KIT[kind].credits) / 2;
       expect(perHour).toBeGreaterThan(40_000);

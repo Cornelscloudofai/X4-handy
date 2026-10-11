@@ -28,6 +28,10 @@ export function limited(state: GameState): boolean {
 
 let coverCache: { at: number; n: number; set: Set<string> } | null = null;
 
+export function resetIntelCache(): void {
+  coverCache = null;
+}
+
 /** Live abgedeckte Quadranten: eigene Stationen und Satelliten */
 export function coveredQuadrants(state: GameState): Set<string> {
   const n = state.stations.length * 1000 + (state.satellites?.length ?? 0);

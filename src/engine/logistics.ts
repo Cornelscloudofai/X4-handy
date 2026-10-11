@@ -162,6 +162,9 @@ export function fieldById(fieldId: string) {
 /** Reserve, die eine Station für die eigene Produktion zurückhält */
 /** Material für den nächsten Feldausbau, das im Lager einer Station bereitliegt (wird nicht verkauft) */
 const fieldReserve = new Map<string, Record<string, number>>();
+export function clearFieldReserve(): void {
+  fieldReserve.clear();
+}
 export function setFieldReserve(stationId: string, needs: Record<string, number> | null): void {
   if (needs) fieldReserve.set(stationId, needs);
   else fieldReserve.delete(stationId);

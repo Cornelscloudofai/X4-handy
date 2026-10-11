@@ -2,7 +2,7 @@
 import { NPC_MAP, marketInfo, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES, WARE_IDS } from '../data/wares';
-import { hasDockFor, marketPrice, roomAt, tradeRule, wareLimit } from '../engine/economy';
+import { factoryReserve, hasDockFor, marketPrice, roomAt, tradeRule, wareLimit } from '../engine/economy';
 import { npcSource } from '../engine/npc';
 import { knows, seenPrice, seenStock } from '../engine/intel';
 import { knownSectors, sectorDistanceHint, stationById, travelDistance } from '../engine/logistics';
@@ -41,7 +41,7 @@ export function buyOffers(state: GameState, stationId: string, ware: string, spe
     const keys = [sec, ...sector(sec).npcStations.filter((n) => n.makes?.includes(ware)).map((n) => n.id)];
     for (const key of keys) {
       if (!state.markets[key]?.[ware] || !knows(state, key)) continue;
-      const stock = seenStock(state, key, ware) ?? 0;
+      const stock = Math.max(0, (seenStock(state, key, ware) ?? 0) - factoryReserve(state, key, ware));
       if (stock < 1) continue;
       const p = marketInfo(key);
       out.push({

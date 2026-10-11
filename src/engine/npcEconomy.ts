@@ -4,7 +4,7 @@
 // zum Handelsposten.
 import { FACTIONS, NPC_MAP, NPC_STATIONS, SECTORS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, sector } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { baseDemand, hasDockFor, marketPrice, marketRoom, npcStoreCaps, tradeRule } from './economy';
+import { baseDemand, factoryReserve, hasDockFor, marketPrice, marketRoom, npcStoreCaps, tradeRule } from './economy';
 import { dockPoint, sellableStock, wanted } from './logistics';
 import { endOf, recordFlow } from './flows';
 import { makeNpc } from './npc';
@@ -124,6 +124,8 @@ export function initNpcEconomy(state: GameState): void {
     // Produkte, die die Fabrik laut Sektordaten nicht mehr herstellt (z. B. Siliziumscheiben, jetzt im Siliziumwerk), entfallen
     const eco = state.npcEco[n.id];
     for (const w of Object.keys(eco.prod)) if (!n.makes!.includes(w)) delete eco.prod[w];
+    // Neu hinzugekommene Produkte (z. B. Kühlmittel im Elektronikwerk) starten mit einem Modul
+    for (const w of n.makes!) eco.prod[w] ??= 1;
     ensureMarket(state, n);
   }
 }
@@ -159,6 +161,28 @@ function produce(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
     const k = Math.min(1, dt / 7200);
     eco.util[w] = Math.max(0, Math.min(1, (eco.util[w] ?? 0) + (done / Math.max(possible, 1e-9) - (eco.util[w] ?? 0)) * k));
   }
+}
+
+/** Eigener S-Sammler einer Fabrik: Ladung (m³) und Dauer einer Runde (s) – Feld anfliegen, sammeln, zurück */
+export const OWN_MINER_LOAD_M3 = 2000;
+export const OWN_MINER_TRIP = 9 * 60;
+
+/** Fabrik mit eigenem Sammler: bringt den Rohstoff aus einem Feld im Sektor, solange Platz im Lager ist */
+function ownMiner(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
+  if (!n.miner) return;
+  const w = WARES[n.miner.ware];
+  const m = state.markets[n.id];
+  const f = sector(n.sector).fields.find((x) => x.ware === w.id);
+  if (!w || !m?.[w.id] || !f) return;
+  eco.minerT = (eco.minerT ?? 0) + dt;
+  if (eco.minerT < OWN_MINER_TRIP) return;
+  if (state.npcs.some((x) => x.kind === 'haul' && x.home === n.id && x.ware === w.id && x.phase !== 'out')) return;
+  eco.minerT = 0;
+  const amount = Math.min(OWN_MINER_LOAD_M3 / w.volume, m[w.id].cap - m[w.id].stock);
+  if (amount < 1) return;
+  const npc = makeNpc(state, { sector: n.sector, kind: 'haul', tx: n.x, tz: n.z, station: n.id, ware: w.id, amount, home: n.id });
+  npc.x = f.x; npc.z = f.z;
+  state.npcs.push(npc);
 }
 
 /** Eigene Frachter: Vorprodukte vom Handelsposten holen, Produkte dorthin bringen – je Richtung höchstens einer unterwegs */
@@ -229,13 +253,15 @@ function haul(state: GameState, n: Factory, eco: NpcEco, dt: number): void {
   if (!inFlight(n.sector) && post) {
     // zuerst das Produkt mit dem vollsten Lager
     const full = (id: string) => (m[id] ? m[id].stock / m[id].cap : 0);
+    // Abgegeben wird nur der Überschuss: Zwischenprodukte, die die Fabrik selbst weiterverarbeitet, bleiben im Lager
+    const spare = (id: string) => Math.max(0, (m[id]?.stock ?? 0) - factoryReserve(state, n.id, id));
     const pick = Object.entries(eco.export)
-      .filter(([id, b]) => b >= haulLoad(m, id) * 0.4 && (m[id]?.stock ?? 0) >= haulLoad(m, id) * 0.4)
+      .filter(([id, b]) => b >= haulLoad(m, id) * 0.4 && spare(id) >= haulLoad(m, id) * 0.4)
       .sort((a, b) => full(b[0]) - full(a[0]))[0];
     if (pick) {
       const [id, budget] = pick;
       const load = haulLoad(m, id);
-      const amount = Math.min(budget, load, m[id]?.stock ?? 0);
+      const amount = Math.min(budget, load, spare(id));
       // Ziel: wer am meisten zahlt – eine eigene Station mit Kauforder über dem Preis des Handelspostens bekommt die Ladung direkt
       const order = bestBuyOrder(state, n.sector, id, amount * 0.5);
       if (amount >= load * 0.5 && order && order.price > marketPrice(state, n.sector, id)) {
@@ -381,6 +407,7 @@ export function stepNpcEconomy(state: GameState, dt: number): void {
     if (!eco) continue;
     produce(state, n, eco, dt);
     haul(state, n, eco, dt);
+    ownMiner(state, n, eco, dt);
     grow(state, n, eco);
   }
   found(state);

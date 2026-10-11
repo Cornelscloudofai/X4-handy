@@ -6,7 +6,8 @@ import { SECTOR_MAP, NPC_MAP } from '../src/data/sectors';
 import { buyMineRight, canMine, mineRightBlock } from '../src/engine/mineRights';
 import { npcSource } from '../src/engine/npc';
 import { wanted } from '../src/engine/logistics';
-import { wareLimit } from '../src/engine/economy';
+import { buyableStock, factoryReserve, wareLimit } from '../src/engine/economy';
+import { MIN_TRIP_PROFIT } from '../src/engine/fleet';
 import { START_KIT } from '../src/engine/state';
 
 describe('Wirtschaftszweige und Schürfrechte', () => {
@@ -101,5 +102,51 @@ describe('Wirtschaftszweige und Schürfrechte', () => {
     expect(st.income - income0).toBeGreaterThan(0);
     expect(st.inventory.energycells ?? 0).toBeLessThan(limit * 0.9);
     expect(st.inventory.energycells ?? 0).toBeGreaterThanOrEqual(limit * 0.2 - 1);
+  }, 60000);
+  it('NPC-Fabriken geben nur Überschüsse ab – Zwischenprodukte für die eigene Weiterverarbeitung bleiben', () => {
+    const s = newGame(5, 'mining');
+    const k = 'cascade-elektronik';
+    // Mikrochips braucht das Werk selbst (Claytronik, Hochleistungselektronik)
+    const keep = factoryReserve(s, k, 'microchips');
+    expect(keep).toBeGreaterThan(0);
+    s.markets[k].microchips.stock = keep * 0.9;
+    expect(buyableStock(s, k, 'microchips')).toBe(0);
+    s.markets[k].microchips.stock = keep + 100;
+    expect(buyableStock(s, k, 'microchips')).toBeCloseTo(100);
+    // Endprodukte ohne eigenen Verbrauch sind voll verkäuflich
+    expect(factoryReserve(s, k, 'claytronics')).toBe(0);
+    // Handelsposten behalten nichts zurück
+    expect(factoryReserve(s, 'cascade', 'microchips')).toBe(0);
+  });
+
+  it('Elektronikwerk stellt Kühlmittel vor Ort her, Helium bringt sein eigener S-Sammler', () => {
+    const s = newGame(5, 'mining');
+    const k = 'cascade-elektronik';
+    expect(s.npcEco![k].prod.superfluidcoolant).toBeGreaterThan(0);
+    expect(NPC_MAP[k].miner?.ware).toBe('helium');
+    s.markets[k].helium.stock = 0;
+    step(s, 3600);
+    expect(s.markets[k].helium.stock + s.markets[k].superfluidcoolant.stock).toBeGreaterThan(0);
+  }, 60000);
+
+  it('Mindestgewinn je automatischer Fahrt nach Schiffsgröße', () => {
+    expect(MIN_TRIP_PROFIT.S).toBeLessThan(MIN_TRIP_PROFIT.M);
+    expect(MIN_TRIP_PROFIT.M).toBeLessThan(MIN_TRIP_PROFIT.L);
+  });
+
+  it('Handelsstart: zwei Tuatara, 30.000 Cr – einer im Sektorhandel, einer frei', () => {
+    const s = newGame(5, 'trading');
+    expect(s.credits).toBe(30_000);
+    expect(s.ships.map((x) => x.cls)).toEqual(['tuatara', 'tuatara']);
+    expect(s.ships.every((x) => x.home === '')).toBe(true);
+    expect(s.ships[0].sectorOrder?.ware).toBe('energycells');
+    expect(s.ships[1].sectorOrder).toBeUndefined();
+  });
+
+  it('gleicher Startwert, gleicher Verlauf – auch wenn vorher ein anderes Spiel lief', () => {
+    const run = () => { const g = newGame(42, 'trading'); step(g, 3600); return Math.round(g.credits); };
+    const first = run();
+    const other = newGame(7, 'mining'); step(other, 2 * 3600);
+    expect(run()).toBe(first);
   }, 60000);
 });
