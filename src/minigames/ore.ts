@@ -1,7 +1,11 @@
 // Minispiel „Reiche Erzader“: Mit dem Bohrlaser den leuchtenden Adern eines Asteroiden folgen.
 // Weiches und hartes Gestein (dunkle, geriefte Zonen heizen stark), Kristallnester (nur mit kühlem Laser bergen,
-// sonst zerspringen sie), Gastaschen (explodieren). Wer eine Ader ohne Unterbrechung abfährt, baut die Kombo auf.
-// Kühlspülung per Taste. Ist ein Asteroid ausgebeutet, zerbricht er – darin wartet der nächste.
+// sonst zerspringen sie), Gastaschen (Druck steigt, wenn in der Nähe gebohrt wird; reißen Nachbartaschen mit).
+// Wer eine Ader ohne Unterbrechung abfährt, baut die Kombo auf. Kühlspülung per Taste.
+// Tiefe: Zwei Lasermodi (breit: schnell, heiß, reißt Gestein auf – fein: langsam, kühl, lässt Gastaschen ab),
+// Gesteinsspannung (Bohren im Gestein erzeugt Risse; bei 100 % stürzt der Asteroid ein und die Restladung ist weg),
+// Kernader (liegt frei, sobald die Hälfte der Deckadern abgebaut ist; zählt 2,5-fach), Heißlauf (ab 70 % Hitze
+// gibt es mehr Punkte – aber Kristalle zerspringen). Ist ein Asteroid ausgebeutet, zerbricht er – der nächste kommt.
 import { WARES } from '../data/wares';
 import { sfx } from '../ui/sound';
 import {
@@ -14,12 +18,24 @@ const DURATION = 45;
 const AIM_OFFSET = 56;
 /** Einheiten Rohstoff je Aderpunkt (für die Anzeige) */
 const UNITS_PER_POINT = 40;
+/** Kernader zählt mehrfach */
+const CORE_VALUE = 2.5;
+/** Ab dieser Hitze: Heißlauf (mehr Punkte) */
+const HOT_RUN = 70;
+
+type LaserMode = 'wide' | 'fine';
+/** Kennwerte der Lasermodi: Radius, Abbaurate, Hitze (Ader/Gestein), Spannung (Gestein), Druck auf Gastaschen */
+const MODES: Record<LaserMode, { name: string; rr: number; rate: number; heatVein: number; heatRock: number; stress: number; press: number }> = {
+  wide: { name: 'Breit', rr: 0.085, rate: 3.4, heatVein: 11, heatRock: 24, stress: 9, press: 0.4 },
+  fine: { name: 'Fein', rr: 0.05, rate: 2.1, heatVein: 6, heatRock: 13, stress: 3.5, press: 0.13 },
+};
 
 export const ORE_MUTATORS: Mutator[] = [
   { id: 'rich', name: 'Reiche Adern', desc: 'Mehr Adern, aber ein Viertel weniger Zeit', mult: 1.3 },
   { id: 'hot', name: 'Hitzewelle', desc: 'Der Laser kühlt nur halb so schnell ab', mult: 1.4 },
   { id: 'spin', name: 'Taumelnder Asteroid', desc: 'Der Asteroid dreht sich schnell', mult: 1.4 },
   { id: 'crystal', name: 'Kristallfeld', desc: 'Doppelt so viele Kristallnester', mult: 1.2 },
+  { id: 'brittle', name: 'Brüchiges Gestein', desc: 'Risse wachsen doppelt so schnell', mult: 1.35 },
 ];
 
 export const ORE_GOALS: GoalDef[] = [
@@ -29,10 +45,19 @@ export const ORE_GOALS: GoalDef[] = [
   { id: 'break', text: 'Einen Asteroiden ganz zerlegen' },
   { id: 'nopocket', text: 'Keine Gastasche treffen' },
   { id: 'noflush', text: 'Ohne Kühlspülung auskommen' },
+  { id: 'core', text: 'Eine Kernader ausbeuten' },
+  { id: 'vent', text: 'Eine Gastasche gefahrlos ablassen' },
+  { id: 'stable', text: 'Kein Einsturz' },
 ];
 
 interface VeinPt { x: number; y: number; a: number }
-interface Pocket { x: number; y: number; alive: boolean }
+interface Pocket {
+  x: number; y: number; alive: boolean;
+  /** Druck 0–1: bei 1 explodiert die Tasche von selbst */
+  press: number;
+  /** Fortschritt beim Ablassen (feiner Laser) */
+  vent: number;
+}
 interface Crystal { x: number; y: number; prog: number; state: 'ok' | 'got' | 'broken' }
 interface Zone { x: number; y: number; r: number }
 
@@ -40,7 +65,14 @@ export class OreGame implements MiniGame {
   readonly eyebrow = 'Bergbau';
   readonly title: string;
   readonly intro: string;
-  readonly controls = ['Finger halten und ziehen: Laser führen (trifft knapp über dem Finger)', 'Ader ohne Absetzen abfahren: Kombo steigt', 'Dunkles, gerieftes Gestein heizt stark; Kristalle nur mit kühlem Laser', 'Taste K: Kühlspülung'];
+  readonly controls = [
+    'Finger halten und ziehen: Laser führen (trifft knapp über dem Finger)',
+    'Ader ohne Absetzen abfahren: Kombo steigt',
+    'Taste B/F: Laser breit (schnell, heiß, reißt Gestein) oder fein (kühl, lässt Gastaschen ab)',
+    'Bohren im Gestein erzeugt Risse – bei voller Spannung stürzt der Asteroid ein',
+    'Die Hälfte der Adern abgebaut: Die Kernader liegt frei (2,5-fach)',
+    'Taste K: Kühlspülung',
+  ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
   private level: Level;
@@ -52,6 +84,21 @@ export class OreGame implements MiniGame {
   // Asteroid
   private shape: number[] = [];
   private veins: VeinPt[][] = [];
+  /** Kernader (erst sichtbar und abbaubar, wenn `coreOpen`) */
+  private core: VeinPt[] = [];
+  private coreOpen = false;
+  private coreTotal = 0;
+  private coresDone = 0;
+  /** Bruchlinien (lokale Punkte, vom Rand nach innen) */
+  private cracks: { x: number; y: number }[][] = [];
+  /** Gesteinsspannung 0–100 */
+  private stress = 0;
+  private collapses = 0;
+  private collapsing = false;
+  private tremorT = 0;
+  private mode: LaserMode = 'wide';
+  private vented = 0;
+  private hotRun = false;
   private pockets: Pocket[] = [];
   private crystals: Crystal[] = [];
   private zones: Zone[] = [];
@@ -112,8 +159,11 @@ export class OreGame implements MiniGame {
     this.flushes = this.level <= 2 ? 2 : 1;
     this.generate(cfg.seed);
     this.total = this.astTotal;
-    this.intro = `Ein Asteroid mit reichen ${name}-Adern. Fahre die leuchtenden Adern ab – ohne Absetzen steigt die Kombo. Hartes Gestein heizt den Laser stark auf. Kristallnester lassen sich nur mit kühlem Laser bergen.${this.pockets.length ? ' Rot pulsierende Gastaschen explodieren bei Beschuss.' : ''}`;
-    const pool = ORE_GOALS.filter((g) => this.pockets.length > 0 || g.id !== 'nopocket');
+    this.intro = `Ein Asteroid mit reichen ${name}-Adern. Fahre die leuchtenden Adern ab – ohne Absetzen steigt die Kombo. `
+      + 'Bohren im Gestein lässt Risse wachsen: Bei voller Spannung stürzt der Asteroid ein und die Restladung ist verloren. '
+      + 'Ist die Hälfte abgebaut, liegt die wertvolle Kernader frei. Kristalle nur mit kühlem Laser bergen – am besten fein.'
+      + (this.pockets.length ? ' Gastaschen stehen unter Druck, sobald nebenan gebohrt wird; mit feinem, kühlem Laser lassen sie sich gefahrlos ablassen.' : '');
+    const pool = ORE_GOALS.filter((g) => this.pockets.length > 0 || (g.id !== 'nopocket' && g.id !== 'vent'));
     this.goals = pickGoals(pool, rng(cfg.seed ^ 0x77));
   }
 
@@ -145,6 +195,37 @@ export class OreGame implements MiniGame {
       if (pts.length >= 5) this.veins.push(pts);
     }
     this.astTotal = this.veins.reduce((s, v) => s + v.length, 0);
+    // Kernader: tief innen, kurz, sehr reich – liegt erst frei, wenn die Hälfte der Deckadern abgebaut ist
+    this.core = [];
+    {
+      const a = r() * Math.PI * 2, d = r() * 0.15;
+      let x = Math.cos(a) * d, y = Math.sin(a) * d, dir = r() * Math.PI * 2;
+      const len = 7 + Math.floor(r() * 3);
+      for (let i = 0; i < len; i++) {
+        this.core.push({ x, y, a: 1 });
+        dir += (r() - 0.5) * 0.8;
+        x += Math.cos(dir) * 0.05;
+        y += Math.sin(dir) * 0.05;
+        if (Math.hypot(x, y) > 0.45) dir += Math.PI;
+      }
+    }
+    this.coreTotal = this.core.length;
+    this.coreOpen = false;
+    // Bruchlinien: wachsen mit der Spannung vom Rand nach innen
+    this.cracks = [];
+    for (let k = 0; k < 6; k++) {
+      const a0 = (k / 6) * Math.PI * 2 + r() * 0.8;
+      let x = Math.cos(a0) * this.radiusAt(a0) * 0.98, y = Math.sin(a0) * this.radiusAt(a0) * 0.98, dir = a0 + Math.PI + (r() - 0.5) * 0.6;
+      const pts = [{ x, y }];
+      for (let i = 0; i < 9; i++) {
+        dir += (r() - 0.5) * 0.9;
+        x += Math.cos(dir) * 0.07;
+        y += Math.sin(dir) * 0.07;
+        pts.push({ x, y });
+      }
+      this.cracks.push(pts);
+    }
+    this.stress = 0;
     // Harte Zonen
     this.zones = [];
     const zc = [1, 2, 3, 3, 4][L - 1];
@@ -159,7 +240,7 @@ export class OreGame implements MiniGame {
       const v = this.veins[k % this.veins.length];
       const p = v[Math.floor(r() * v.length)];
       const a2 = r() * Math.PI * 2;
-      this.pockets.push({ x: p.x + Math.cos(a2) * 0.11, y: p.y + Math.sin(a2) * 0.11, alive: true });
+      this.pockets.push({ x: p.x + Math.cos(a2) * 0.11, y: p.y + Math.sin(a2) * 0.11, alive: true, press: 0, vent: 0 });
     }
     // Kristallnester, gern in harten Zonen
     this.crystals = [];
@@ -204,6 +285,7 @@ export class OreGame implements MiniGame {
   }
 
   private get btn(): [number, number, number] { return [this.w - 46, this.h - 60, 26]; }
+  private get modeBtn(): [number, number, number] { return [this.w - 108, this.h - 60, 24]; }
 
   hud(): HudItem[] {
     const left = this.duration - this.time;
@@ -235,14 +317,23 @@ export class OreGame implements MiniGame {
 
   /** Für Tests: Ziel auf den ersten noch vollen Aderpunkt (Bildschirmkoordinaten des Fingers) */
   debugVeinTouch(): [number, number] | null {
-    for (const v of this.veins) for (const p of v) if (p.a > 0.5) { const [x, y] = this.toWorld(p.x, p.y); return [x, y + AIM_OFFSET]; }
-    for (const v of this.veins) for (const p of v) if (p.a > 0.05) { const [x, y] = this.toWorld(p.x, p.y); return [x, y + AIM_OFFSET]; }
+    const all = this.coreOpen ? [...this.veins, this.core] : this.veins;
+    for (const v of all) for (const p of v) if (p.a > 0.5) { const [x, y] = this.toWorld(p.x, p.y); return [x, y + AIM_OFFSET]; }
+    for (const v of all) for (const p of v) if (p.a > 0.05) { const [x, y] = this.toWorld(p.x, p.y); return [x, y + AIM_OFFSET]; }
     return null;
+  }
+
+  /** Für Tests: Fingerposition für einen lokalen Asteroidenpunkt */
+  debugTouchAt(lx: number, ly: number): [number, number] {
+    const [x, y] = this.toWorld(lx, ly);
+    return [x, y + AIM_OFFSET];
   }
 
   pointerDown(id: number, x: number, y: number): void {
     const [bx, by, br] = this.btn;
     if (Math.hypot(x - bx, y - by) < br + 10) { this.flush(); return; }
+    const [mx, my, mr] = this.modeBtn;
+    if (Math.hypot(x - mx, y - my) < mr + 8) { this.toggleMode(); return; }
     if (this.pid >= 0) return;
     this.pid = id;
     this.firing = true;
@@ -272,6 +363,15 @@ export class OreGame implements MiniGame {
     sfx.open();
   }
 
+  /** Laser umschalten: breit ↔ fein */
+  toggleMode(): void {
+    if (this.endT >= 0) return;
+    this.mode = this.mode === 'wide' ? 'fine' : 'wide';
+    const [mx, my] = this.modeBtn;
+    this.floats.add(mx, my - 34, `Laser ${MODES[this.mode].name}`, '#ffd27a', 13);
+    sfx.open();
+  }
+
   private endStreak(): void {
     this.streak = 0;
     this.score.reset();
@@ -291,48 +391,67 @@ export class OreGame implements MiniGame {
     this.rot += this.spin * dt;
     for (const b of this.burns) b.t += dt;
     if (this.breakT >= 0) {
-      // Zerbrechen: kurze Pause, dann der nächste Asteroid
+      // Zerbrechen bzw. Einsturz: kurze Pause, dann der nächste Asteroid
       this.breakT += dt;
-      if (this.breakT > 1.1) { this.breakT = -1; this.generate(this.seed + 101 * (this.asteroids + 1)); }
+      if (this.breakT > (this.collapsing ? 2 : 1.1)) {
+        this.breakT = -1;
+        this.collapsing = false;
+        this.generate(this.seed + 101 * (this.asteroids + this.collapses + 1));
+        // Finger noch auf dem Schirm: gleich weiterbohren
+        this.firing = this.pid >= 0;
+      }
       this.cool(dt);
       if (this.time >= this.duration) this.endT = 0;
       return;
     }
+    const m = MODES[this.mode];
     const active = this.firing && !this.overheated;
+    const brittle = this.mutator?.id === 'brittle' ? 2 : 1;
     this.hit = 'space';
+    this.hotRun = false;
+    let lx = 0, ly = 0;
     if (active) {
-      const [lx, ly] = this.toLocal(...this.aim);
+      [lx, ly] = this.toLocal(...this.aim);
       const inside = Math.hypot(lx, ly) <= this.radiusAt(Math.atan2(ly, lx));
       this.hardHere = inside ? this.hardness(lx, ly) : 0;
       if (inside) {
         this.hit = 'rock';
-        const rr = 0.075;
+        this.hotRun = this.heat >= HOT_RUN;
+        const take1 = (v: VeinPt[]): number => {
+          let took = 0;
+          for (const p of v) {
+            if (p.a <= 0) continue;
+            const d = Math.hypot(p.x - lx, p.y - ly);
+            if (d >= m.rr) continue;
+            const take = Math.min(p.a, m.rate * dt * (1 - d / m.rr) * (1 - this.hardHere * 0.35));
+            p.a -= take;
+            took += take;
+          }
+          return took;
+        };
         let took = 0;
-        for (const v of this.veins) for (const p of v) {
-          if (p.a <= 0) continue;
-          const d = Math.hypot(p.x - lx, p.y - ly);
-          if (d >= rr) continue;
-          const take = Math.min(p.a, 3.2 * dt * (1 - d / rr) * (1 - this.hardHere * 0.35));
-          p.a -= take;
-          took += take;
-        }
-        if (took > 0.002) this.hit = 'vein';
-        this.mined += took;
-        this.chunkAcc += took;
+        for (const v of this.veins) took += take1(v);
+        const coreTook = this.coreOpen ? take1(this.core) : 0;
+        if (took + coreTook > 0.002) this.hit = 'vein';
+        const value = took + coreTook * CORE_VALUE;
+        this.mined += value;
+        this.chunkAcc += value;
         const [hx, hy] = this.aim;
         if (this.hit === 'vein') {
           this.streak += dt;
           this.offVein = 0;
           const c = Math.min(4, 1 + Math.floor(this.streak / 1.2) * 0.5);
           if (c > this.score.combo) { this.score.combo = c; this.score.maxCombo = Math.max(this.score.maxCombo, c); this.floats.add(hx, hy - 20, `×${String(c).replace('.', ',')}`, '#ffd27a', 15); }
-          this.score.add(took * 120);
+          this.score.add(value * 120 * (this.hotRun ? 1.5 : 1));
           while (this.chunkAcc >= 0.12) {
             this.chunkAcc -= 0.12;
             const [sx, sy] = this.ship;
             const a = Math.random() * Math.PI * 2;
-            this.fx.add({ x: hx, y: hy, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 - 40, color: this.color, size: 2.2 + Math.random() * 1.6, kind: 'chunk', max: 3, vr: (Math.random() - 0.5) * 12, tx: sx, ty: sy - 10 });
+            this.fx.add({ x: hx, y: hy, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120 - 40, color: coreTook > took ? '#fff0b0' : this.color, size: 2.2 + Math.random() * 1.6, kind: 'chunk', max: 3, vr: (Math.random() - 0.5) * 12, tx: sx, ty: sy - 10 });
           }
           if (Math.random() < dt * 30) this.fx.add({ x: hx, y: hy, vx: (Math.random() - 0.5) * 220, vy: (Math.random() - 0.5) * 220, color: '#fff2c8', size: 1.6, kind: 'spark', max: 0.25 });
+          // auch die Ader selbst belastet das Gestein ein wenig
+          this.stress += m.stress * 0.12 * brittle * dt;
         } else {
           this.offVein += dt;
           if (this.offVein > 0.3 && this.streak > 0) this.endStreak();
@@ -343,27 +462,13 @@ export class OreGame implements MiniGame {
             this.burns.push({ x: lx, y: ly, t: 0 });
             if (this.burns.length > 260) this.burns.shift();
           }
+          // Gestein reißt: Spannung steigt, im harten Gestein deutlich mehr
+          this.stress += m.stress * (1 + this.hardHere * 1.5) * brittle * dt;
         }
         this.mineCrystals(lx, ly, dt);
-        for (const p of this.pockets) {
-          if (!p.alive || Math.hypot(p.x - lx, p.y - ly) > 0.075) continue;
-          p.alive = false;
-          this.pocketHits++;
-          const [px, py] = this.toWorld(p.x, p.y);
-          this.fx.burst(px, py, '#ff6a4a', 26, 300, 2.6, 'chunk', 0.9);
-          this.fx.burst(px, py, '#ffd0a0', 18, 380, 1.6, 'spark', 0.4);
-          this.fx.add({ x: px, y: py, color: '#ff8a5c', size: 10, kind: 'ring', max: 0.5 });
-          this.heat = Math.min(100, this.heat + 55);
-          this.lost += Math.min(this.mined - this.lost, this.total * 0.06);
-          this.score.points = Math.max(0, this.score.points - 200);
-          this.floats.add(px, py - 10, '−200', '#ff9aa4', 15);
-          this.endStreak();
-          this.shake = 0.45;
-          sfx.warn();
-          buzz(60);
-        }
+        this.pocketsUnderLaser(lx, ly, dt);
       }
-      const heatRate = this.hit === 'vein' ? 10 * (1 + this.hardHere * 0.8) : this.hit === 'rock' ? 22 + this.hardHere * 32 : 8;
+      const heatRate = this.hit === 'vein' ? m.heatVein * (1 + this.hardHere * 0.8) : this.hit === 'rock' ? m.heatRock + this.hardHere * m.heatRock * 1.4 : 8;
       this.heat += heatRate * dt;
       if (this.heat >= 100) {
         this.heat = 100;
@@ -374,15 +479,49 @@ export class OreGame implements MiniGame {
         buzz(30);
       }
     } else this.cool(dt);
-    // Ausgebeutet: Asteroid zerbricht
-    const left = this.veins.reduce((s, v) => s + v.reduce((q, p) => q + Math.max(0, p.a), 0), 0);
-    if (left < this.astTotal * 0.08) this.breakAsteroid();
+    // Druck in den Gastaschen baut sich langsam ab; volle Taschen explodieren von selbst
+    for (const p of this.pockets) {
+      if (!p.alive) continue;
+      if (p.press >= 1) { this.explode(p); continue; }
+      p.press = Math.max(0, p.press - 0.07 * dt);
+    }
+    // Gesteinsspannung: entspannt sich, wenn nicht gebohrt wird
+    this.stress = Math.max(0, this.stress - (active && this.hit !== 'space' ? 0.6 : 3.5) * dt);
+    if (this.stress >= 75) {
+      this.tremorT -= dt;
+      this.shake = Math.max(this.shake, 0.08 + (this.stress - 75) / 250);
+      if (this.tremorT <= 0) { this.tremorT = 1.4; sfx.warn(); buzz(15); this.floats.add(this.cx, this.cy - this.R - 6, 'Risse! Gestein entlasten', '#ffb547', 13); }
+    } else this.tremorT = 0;
+    if (this.stress >= 100) { this.collapse(); return; }
+    // Kernader freilegen
+    const leftNormal = this.veins.reduce((s, v) => s + v.reduce((q, p) => q + Math.max(0, p.a), 0), 0);
+    if (!this.coreOpen && leftNormal < this.astTotal * 0.5) {
+      this.coreOpen = true;
+      this.floats.add(this.cx, this.cy - 20, 'Kernader frei!', '#fff0b0', 18);
+      const [wx, wy] = this.toWorld(this.core[0].x, this.core[0].y);
+      this.fx.add({ x: wx, y: wy, color: '#fff0b0', size: 12, kind: 'ring', max: 0.8 });
+      sfx.coin();
+    }
+    const leftCore = this.core.reduce((q, p) => q + Math.max(0, p.a), 0);
+    if (this.coreOpen && this.coreTotal && leftCore < this.coreTotal * 0.15 && !this.core.every((p) => p.a < -1)) {
+      // Kernader ausgebeutet (einmal zählen: Punkte auf −2 setzen)
+      this.coresDone++;
+      for (const p of this.core) p.a = -2;
+      const p = this.score.add(500);
+      this.floats.add(this.cx, this.cy - 30, `Kernader ausgebeutet +${p}`, '#fff0b0', 16);
+      sfx.build();
+    }
+    // Ausgebeutet (Deckadern und Kern): Asteroid zerbricht
+    if (leftNormal < this.astTotal * 0.08 && this.core.every((p) => p.a < -1)) this.breakAsteroid();
     setGoal(this.goals, 'cool', this.overheats === 0);
     setGoal(this.goals, 'combo3', this.score.maxCombo >= 3);
     setGoal(this.goals, 'crystal2', this.gotCrystals >= 2);
     setGoal(this.goals, 'break', this.asteroids >= 1);
     setGoal(this.goals, 'nopocket', this.pocketHits === 0);
     setGoal(this.goals, 'noflush', this.flushesUsed === 0);
+    setGoal(this.goals, 'core', this.coresDone >= 1);
+    setGoal(this.goals, 'vent', this.vented >= 1);
+    setGoal(this.goals, 'stable', this.collapses === 0);
     if (this.time >= this.duration) {
       this.endT = 0;
       this.firing = false;
@@ -395,11 +534,65 @@ export class OreGame implements MiniGame {
     if (this.overheated && this.heat <= 30) this.overheated = false;
   }
 
+  /** Gastaschen unter und neben dem Laser: direkt getroffen ablassen (fein, kühl) oder explodieren; daneben steigt der Druck */
+  private pocketsUnderLaser(lx: number, ly: number, dt: number): void {
+    const m = MODES[this.mode];
+    for (const p of this.pockets) {
+      if (!p.alive) continue;
+      const d = Math.hypot(p.x - lx, p.y - ly);
+      if (d <= 0.075) {
+        if (this.mode === 'fine' && this.heat < 60) {
+          // kontrolliert ablassen
+          p.vent += dt / 0.8;
+          p.press = Math.max(0, p.press - dt);
+          const [px, py] = this.toWorld(p.x, p.y);
+          if (Math.random() < dt * 25) this.fx.add({ x: px, y: py, vx: (Math.random() - 0.5) * 90, vy: -40 - Math.random() * 60, color: '#ffb0a0', size: 2.4, max: 0.6 });
+          if (p.vent >= 1) {
+            p.alive = false;
+            this.vented++;
+            const pts = this.score.add(150);
+            this.floats.add(px, py - 12, `Abgelassen +${pts}`, '#7fd8ff', 14);
+            this.fx.add({ x: px, y: py, color: '#7fd8ff', size: 8, kind: 'ring', max: 0.5 });
+            sfx.open();
+          }
+        } else this.explode(p);
+      } else if (d <= 0.2) {
+        // Bohren in der Nähe setzt die Tasche unter Druck (Hitze verstärkt)
+        p.press += m.press * (1 - d / 0.2) * (0.6 + this.heat / 100) * dt;
+      }
+    }
+  }
+
+  private explode(p: Pocket): void {
+    if (!p.alive) return;
+    p.alive = false;
+    this.pocketHits++;
+    const [px, py] = this.toWorld(p.x, p.y);
+    this.fx.burst(px, py, '#ff6a4a', 26, 300, 2.6, 'chunk', 0.9);
+    this.fx.burst(px, py, '#ffd0a0', 18, 380, 1.6, 'spark', 0.4);
+    this.fx.add({ x: px, y: py, color: '#ff8a5c', size: 10, kind: 'ring', max: 0.5 });
+    this.heat = Math.min(100, this.heat + 45);
+    this.lost += Math.min(this.mined - this.lost, this.total * 0.05);
+    this.score.points = Math.max(0, this.score.points - 200);
+    this.floats.add(px, py - 10, '−200', '#ff9aa4', 15);
+    // Druckwelle: zerstört nahe Aderstücke, erschüttert das Gestein, setzt Nachbartaschen unter Druck
+    for (const v of [...this.veins, ...(this.coreOpen ? [this.core] : [])]) for (const q of v) {
+      if (q.a > 0 && Math.hypot(q.x - p.x, q.y - p.y) < 0.13) q.a *= 0.4;
+    }
+    this.stress += 22;
+    for (const o of this.pockets) if (o.alive && Math.hypot(o.x - p.x, o.y - p.y) < 0.32) o.press += 0.6;
+    this.endStreak();
+    this.shake = 0.45;
+    sfx.warn();
+    buzz(60);
+  }
+
   private mineCrystals(lx: number, ly: number, dt: number): void {
+    const fine = this.mode === 'fine';
     for (const c of this.crystals) {
       if (c.state !== 'ok' || Math.hypot(c.x - lx, c.y - ly) > 0.07) continue;
       const [px, py] = this.toWorld(c.x, c.y);
-      if (this.heat >= 40) {
+      if (this.heat >= (fine ? 55 : 40)) {
         // zu heiß: Kristall zerspringt
         c.state = 'broken';
         this.fx.burst(px, py, '#9ff3ff', 18, 220, 1.8, 'chunk', 0.7);
@@ -407,7 +600,7 @@ export class OreGame implements MiniGame {
         sfx.warn();
         continue;
       }
-      c.prog += dt * 1.1;
+      c.prog += dt * (fine ? 1.4 : 0.6);
       if (Math.random() < dt * 20) this.fx.add({ x: px, y: py, vx: (Math.random() - 0.5) * 120, vy: (Math.random() - 0.5) * 120, color: '#9ff3ff', size: 1.4, kind: 'spark', max: 0.3 });
       if (c.prog >= 1) {
         c.state = 'got';
@@ -425,7 +618,6 @@ export class OreGame implements MiniGame {
     this.asteroids++;
     this.breakT = 0;
     this.firing = false;
-    this.pid = -1;
     const p = this.score.add(800);
     this.floats.add(this.cx, this.cy, `Zerlegt! +${p}`, '#ffd27a', 20);
     for (let k = 0; k < 60; k++) {
@@ -437,20 +629,43 @@ export class OreGame implements MiniGame {
     buzz(80);
   }
 
+  /** Einsturz: Gestein gibt nach, die restlichen Adern sind verschüttet; ein Teil der Ladung geht verloren */
+  private collapse(): void {
+    this.collapses++;
+    this.collapsing = true;
+    this.breakT = 0;
+    this.firing = false;
+    this.stress = 0;
+    this.endStreak();
+    this.lost += Math.min(this.mined - this.lost, this.total * 0.08);
+    this.score.points = Math.max(0, this.score.points - 400);
+    this.floats.add(this.cx, this.cy, 'Einsturz! −400', '#ff9aa4', 20);
+    for (let k = 0; k < 90; k++) {
+      const a = Math.random() * Math.PI * 2, d = Math.random() * this.R;
+      this.fx.add({ x: this.cx + Math.cos(a) * d, y: this.cy + Math.sin(a) * d, vx: Math.cos(a) * (40 + Math.random() * 120), vy: Math.sin(a) * (40 + Math.random() * 120) + 40, color: k % 4 ? '#5a4e44' : '#ff8a4a', size: 3 + Math.random() * 6, kind: 'chunk', max: 1.6, vr: (Math.random() - 0.5) * 6 });
+    }
+    this.shake = 0.9;
+    sfx.warn();
+    buzz(120);
+  }
+
   private finish(): GameResult {
     const f = this.fraction();
-    const stars = starsFor(f, 0.4, 0.7, 1.05);
+    const stars = starsFor(f, 0.5, 1, 1.6);
     return {
       success: stars > 0,
       stars,
       score: Math.round(f * 100),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),
-      headline: this.asteroids ? `${this.asteroids + 1}. Asteroid angebohrt` : stars === 3 ? 'Ader ausgebeutet' : stars > 0 ? 'Gute Ausbeute' : 'Zu wenig abgebaut',
+      headline: this.asteroids ? `${this.asteroids + 1}. Asteroid angebohrt` : this.collapses && !stars ? 'Eingestürzt' : stars === 3 ? 'Ader ausgebeutet' : stars > 0 ? 'Gute Ausbeute' : 'Zu wenig abgebaut',
       lines: [
         ['Ausbeute', `${Math.round(f * 100)} %`],
         [WARES[this.ware]?.name ?? 'Erz', `${Math.round(Math.max(0, this.mined - this.lost) * UNITS_PER_POINT).toLocaleString('de-DE')} Einheiten`],
         ['Kristalle', `${this.gotCrystals}`],
+        ...(this.coresDone ? [['Kernadern', `${this.coresDone}`] as [string, string]] : []),
+        ...(this.vented ? [['Gastaschen abgelassen', `${this.vented}`] as [string, string]] : []),
+        ...(this.collapses ? [['Einstürze', `${this.collapses}`] as [string, string]] : []),
         ['Beste Kombo', `×${String(this.score.maxCombo).replace('.', ',')}`],
         ...(this.asteroids ? [['Asteroiden zerlegt', `${this.asteroids}`] as [string, string]] : []),
       ],
@@ -572,7 +787,9 @@ export class OreGame implements MiniGame {
         ctx.arc(b.x * R, b.y * R, R * 0.022, 0, Math.PI * 2);
         ctx.fill();
       }
+      this.drawCracks(ctx, t);
       this.drawVeins(ctx, t);
+      this.drawCore(ctx, t);
       this.drawCrystals(ctx, t);
       this.drawPockets(ctx, t);
       ctx.restore();
@@ -593,6 +810,72 @@ export class OreGame implements MiniGame {
     this.drawHeat(ctx, t);
     const [bx, by, br] = this.btn;
     drawButton(ctx, bx, by, br, this.flushes > 0 ? 1 : 0, '#7fd8ff', 'K', t, this.flushes);
+    const [mx, my, mr] = this.modeBtn;
+    drawButton(ctx, mx, my, mr, 1, this.mode === 'fine' ? '#9ff3ff' : '#ffb547', this.mode === 'fine' ? 'F' : 'B', t);
+    ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(169,195,198,0.85)';
+    ctx.fillText(`LASER ${MODES[this.mode].name.toUpperCase()}`, mx, my + mr + 14);
+  }
+
+  /** Bruchlinien: wachsen mit der Spannung vom Rand nach innen, glühen kurz vor dem Einsturz */
+  private drawCracks(ctx: CanvasRenderingContext2D, t: number): void {
+    const f = clamp((this.stress - 20) / 80, 0, 1);
+    if (f <= 0) return;
+    const R = this.R;
+    const glow = this.stress >= 75 ? 0.5 + 0.5 * Math.sin(t * 14) : 0;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const c of this.cracks) {
+      const n = f * (c.length - 1);
+      ctx.beginPath();
+      ctx.moveTo(c[0].x * R, c[0].y * R);
+      for (let i = 1; i <= Math.ceil(n); i++) {
+        const k = Math.min(1, n - (i - 1));
+        const a = c[i - 1], b = c[i];
+        ctx.lineTo((a.x + (b.x - a.x) * k) * R, (a.y + (b.y - a.y) * k) * R);
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.lineWidth = 2.6;
+      ctx.stroke();
+      ctx.strokeStyle = glow > 0 ? rgba('#ff8a4a', 0.35 + 0.5 * glow) : 'rgba(255,200,150,0.18)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Kernader: vorher nur ein schwaches Schimmern in der Tiefe, danach hell und dick */
+  private drawCore(ctx: CanvasRenderingContext2D, t: number): void {
+    const R = this.R, v = this.core;
+    if (!v.length) return;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (!this.coreOpen) {
+      const c = v[Math.floor(v.length / 2)];
+      const gr = ctx.createRadialGradient(c.x * R, c.y * R, 0, c.x * R, c.y * R, R * 0.28);
+      gr.addColorStop(0, rgba('#fff0b0', 0.07 + 0.04 * Math.sin(t * 2)));
+      gr.addColorStop(1, 'rgba(255,240,176,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(c.x * R, c.y * R, R * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    for (let i = 1; i < v.length; i++) {
+      const a = Math.min(v[i - 1].a, v[i].a);
+      if (a <= 0.02) continue;
+      ctx.beginPath();
+      ctx.moveTo(v[i - 1].x * R, v[i - 1].y * R);
+      ctx.lineTo(v[i].x * R, v[i].y * R);
+      ctx.strokeStyle = rgba('#fff0b0', (0.2 + 0.08 * Math.sin(t * 5 + i)) * a);
+      ctx.lineWidth = R * 0.1 * (0.5 + a * 0.5);
+      ctx.stroke();
+      ctx.strokeStyle = rgba('#fffbe8', 0.95 * a);
+      ctx.lineWidth = R * 0.03 * (0.4 + a * 0.6);
+      ctx.stroke();
+    }
   }
 
   private drawVeins(ctx: CanvasRenderingContext2D, t: number): void {
@@ -670,8 +953,9 @@ export class OreGame implements MiniGame {
     const R = this.R;
     for (const p of this.pockets) {
       if (!p.alive) continue;
-      const pulse = 0.5 + 0.5 * Math.sin(t * 4 + p.x * 9);
-      const gr = ctx.createRadialGradient(p.x * R, p.y * R, 0, p.x * R, p.y * R, R * 0.09);
+      const pr = clamp(p.press, 0, 1);
+      const pulse = 0.5 + 0.5 * Math.sin(t * (4 + pr * 14) + p.x * 9);
+      const gr = ctx.createRadialGradient(p.x * R, p.y * R, 0, p.x * R, p.y * R, R * (0.09 + pr * 0.04));
       gr.addColorStop(0, rgba('#ff5c4a', 0.75));
       gr.addColorStop(0.5, rgba('#ff3a2a', 0.25 + 0.2 * pulse));
       gr.addColorStop(1, 'rgba(255,40,30,0)');
@@ -684,6 +968,21 @@ export class OreGame implements MiniGame {
       ctx.beginPath();
       ctx.arc(p.x * R, p.y * R, R * (0.05 + 0.015 * pulse), 0, Math.PI * 2);
       ctx.stroke();
+      // Druckanzeige bzw. Ablass-Fortschritt
+      if (pr > 0.05) {
+        ctx.strokeStyle = pr > 0.7 ? rgba('#ff3a2a', 0.7 + 0.3 * pulse) : '#ffb547';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(p.x * R, p.y * R, R * 0.11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pr);
+        ctx.stroke();
+      }
+      if (p.vent > 0) {
+        ctx.strokeStyle = '#7fd8ff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x * R, p.y * R, R * 0.135, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, p.vent));
+        ctx.stroke();
+      }
     }
   }
 
@@ -695,7 +994,8 @@ export class OreGame implements MiniGame {
     if (active) {
       const nx = sx + Math.sin(ang) * 22, ny = sy - Math.cos(ang) * 22;
       const flick = 0.8 + 0.2 * Math.sin(t * 60);
-      const col = this.hit === 'vein' ? this.color : '#ff7a4a';
+      const col = this.hotRun && this.hit === 'vein' ? '#fff0b0' : this.hit === 'vein' ? this.color : '#ff7a4a';
+      const wm = this.mode === 'fine' ? 0.55 : 1;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.lineCap = 'round';
@@ -703,7 +1003,7 @@ export class OreGame implements MiniGame {
       ctx.moveTo(nx, ny);
       ctx.lineTo(ax, ay);
       ctx.strokeStyle = rgba(col, 0.18 * flick);
-      ctx.lineWidth = 9 + (this.score.combo - 1) * 3;
+      ctx.lineWidth = (9 + (this.score.combo - 1) * 3) * wm;
       ctx.stroke();
       ctx.strokeStyle = rgba(col, 0.6 * flick);
       ctx.lineWidth = 3;
@@ -712,13 +1012,14 @@ export class OreGame implements MiniGame {
       ctx.lineWidth = 1;
       ctx.stroke();
       if (this.hit !== 'space') {
-        const gr = ctx.createRadialGradient(ax, ay, 0, ax, ay, 22);
+        const fr = this.R * MODES[this.mode].rr * 1.1;
+        const gr = ctx.createRadialGradient(ax, ay, 0, ax, ay, fr);
         gr.addColorStop(0, rgba('#fff4d8', 0.9));
         gr.addColorStop(0.3, rgba(col, 0.5));
         gr.addColorStop(1, rgba(col, 0));
         ctx.fillStyle = gr;
         ctx.beginPath();
-        ctx.arc(ax, ay, 22, 0, Math.PI * 2);
+        ctx.arc(ax, ay, fr, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -760,15 +1061,27 @@ export class OreGame implements MiniGame {
     const col = this.overheated ? '#ff5c6c' : f > 0.7 ? '#ffb547' : '#3fe0c5';
     ctx.fillStyle = this.overheated && Math.sin(t * 12) > 0 ? 'rgba(255,92,108,0.5)' : col;
     ctx.fillRect(bx, y, W * f, H);
-    // Grenze für Kristalle
+    // Grenze für Kristalle (fein: höher) und Beginn des Heißlaufs
     ctx.fillStyle = '#9ff3ff';
-    ctx.fillRect(bx + W * 0.4 - 0.5, y - 3, 1.5, H + 6);
+    ctx.fillRect(bx + W * (this.mode === 'fine' ? 0.55 : 0.4) - 0.5, y - 3, 1.5, H + 6);
+    ctx.fillStyle = '#fff0b0';
+    ctx.fillRect(bx + W * HOT_RUN / 100 - 0.5, y - 3, 1.5, H + 6);
     ctx.strokeStyle = 'rgba(110,220,205,0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(bx + 0.5, y + 0.5, W - 1, H - 1);
     ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillStyle = this.overheated ? '#ff9aa4' : this.hardHere > 0.3 && this.firing ? '#ffb547' : 'rgba(169,195,198,0.85)';
-    ctx.fillText(this.overheated ? 'ÜBERHITZT – LOSLASSEN' : this.hardHere > 0.3 && this.firing ? 'HARTES GESTEIN' : 'LASERHITZE', bx, y - 6);
+    ctx.fillText(this.overheated ? 'ÜBERHITZT – LOSLASSEN' : this.hotRun && this.hit === 'vein' ? 'HEISSLAUF ×1,5' : this.hardHere > 0.3 && this.firing ? 'HARTES GESTEIN' : 'LASERHITZE', bx, y - 6);
+    // Gesteinsspannung
+    const y2 = y + 30, s = clamp(this.stress / 100, 0, 1);
+    ctx.fillStyle = 'rgba(14,30,44,0.85)';
+    ctx.fillRect(bx, y2, W, H);
+    ctx.fillStyle = s >= 0.75 ? (Math.sin(t * 14) > 0 ? '#ff5c6c' : '#ffb547') : s >= 0.5 ? '#ffb547' : '#a99a88';
+    ctx.fillRect(bx, y2, W * s, H);
+    ctx.strokeStyle = 'rgba(110,220,205,0.3)';
+    ctx.strokeRect(bx + 0.5, y2 + 0.5, W - 1, H - 1);
+    ctx.fillStyle = s >= 0.75 ? '#ff9aa4' : 'rgba(169,195,198,0.85)';
+    ctx.fillText(s >= 0.75 ? 'EINSTURZGEFAHR' : 'GESTEINSSPANNUNG', bx, y2 - 6);
   }
 }

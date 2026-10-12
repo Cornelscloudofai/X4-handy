@@ -169,6 +169,131 @@ describe('Bergbau (Erz)', () => {
     expect(r.stars).toBe(0);
     expect(r.success).toBe(false);
   });
+
+  type OreInt = {
+    heat: number; stress: number; collapses: number; lost: number; mined: number; vented: number; pocketHits: number; coreOpen: boolean; coresDone: number;
+    mode: 'wide' | 'fine'; aim: [number, number]; total: number; astTotal: number;
+    veins: { x: number; y: number; a: number }[][]; core: { x: number; y: number; a: number }[];
+    pockets: { x: number; y: number; alive: boolean; press: number; vent: number }[];
+    crystals: { x: number; y: number }[]; toLocal(x: number, y: number): [number, number];
+  };
+  const fresh = (level: Level, seed = 1234, mutator: string | null = null) => {
+    const g = new OreGame(cfg(level, seed, { mutator }));
+    g.resize(W, H);
+    return { g, a: g as unknown as OreInt };
+  };
+  /** Gesteinspunkt fern von Adern, Taschen und Kristallen */
+  function rockSpot(a: OreInt): [number, number] {
+    for (let r = 0.2; r < 0.7; r += 0.05) for (let k = 0; k < 24; k++) {
+      const x = Math.cos(k / 24 * Math.PI * 2) * r, y = Math.sin(k / 24 * Math.PI * 2) * r;
+      const far = (pts: { x: number; y: number }[], d: number) => pts.every((p) => Math.hypot(p.x - x, p.y - y) > d);
+      if (a.veins.every((v) => far(v, 0.15)) && far(a.core, 0.15) && far(a.pockets, 0.25) && far(a.crystals, 0.12)) return [x, y];
+    }
+    throw new Error('kein Gesteinspunkt');
+  }
+
+  it('Bohren im Gestein lässt die Spannung steigen – bis zum Einsturz', () => {
+    const { g, a } = fresh(3);
+    a.mined = 10; // etwas Ladung an Bord
+    const [x, y] = rockSpot(a);
+    g.pointerDown(1, ...g.debugTouchAt(x, y));
+    let t = 0;
+    while (a.collapses === 0 && t < 30) {
+      if (a.heat > 80) a.heat = 0; // Hitze ausblenden: hier geht es um die Spannung
+      g.pointerMove(1, ...g.debugTouchAt(x, y));
+      g.update(DT);
+      t += DT;
+    }
+    expect(a.collapses).toBe(1);
+    expect(a.lost).toBeGreaterThan(0);
+    expect(a.stress).toBe(0);
+    // Ohne Bohren entspannt sich das Gestein wieder
+    const b = fresh(3).a;
+    b.stress = 60;
+    for (let k = 0; k < 120; k++) (b as unknown as OreGame).update(DT);
+    expect(b.stress).toBeLessThan(60);
+  });
+
+  it('feiner, kühler Laser lässt Gastaschen ab; breiter Laser sprengt sie und setzt Nachbarn unter Druck', () => {
+    const { g, a } = fresh(4);
+    expect(a.pockets.length).toBeGreaterThan(1);
+    const p = a.pockets[0];
+    g.toggleMode();
+    expect(a.mode).toBe('fine');
+    g.pointerDown(1, ...g.debugTouchAt(p.x, p.y));
+    for (let k = 0; k < 90 && p.alive; k++) { a.heat = 0; g.pointerMove(1, ...g.debugTouchAt(p.x, p.y)); g.update(DT); }
+    g.pointerUp(1);
+    expect(p.alive).toBe(false);
+    expect(a.vented).toBeGreaterThanOrEqual(1);
+    expect(a.pocketHits).toBe(0);
+
+    const w = fresh(4);
+    const q = w.a.pockets[0];
+    const near = w.a.pockets.filter((o) => o !== q && Math.hypot(o.x - q.x, o.y - q.y) < 0.32);
+    w.g.pointerDown(1, ...w.g.debugTouchAt(q.x, q.y));
+    w.g.update(DT);
+    expect(q.alive).toBe(false);
+    expect(w.a.pocketHits).toBeGreaterThanOrEqual(1);
+    expect(w.a.stress).toBeGreaterThan(15);
+    for (const o of near) expect(!o.alive || o.press > 0.3).toBe(true);
+  });
+
+  it('Druck baut sich auf, wenn nebenan gebohrt wird; volle Taschen explodieren von selbst', () => {
+    const { g, a } = fresh(4);
+    const p = a.pockets[0];
+    p.press = 0.99;
+    a.pockets.forEach((o) => { if (o !== p) o.alive = false; });
+    // knapp daneben bohren
+    g.pointerDown(1, ...g.debugTouchAt(p.x + 0.12, p.y));
+    for (let k = 0; k < 30 && p.alive; k++) g.update(DT);
+    expect(p.alive).toBe(false);
+    expect(a.pocketHits).toBe(1);
+  });
+
+  it('Kernader liegt erst nach der Hälfte frei und zählt mehrfach', () => {
+    const { g, a } = fresh(1);
+    expect(a.coreOpen).toBe(false);
+    for (const v of a.veins) for (const p of v) p.a = 0.3;
+    g.update(DT);
+    expect(a.coreOpen).toBe(true);
+    const before = a.mined;
+    const c = a.core[0];
+    g.pointerDown(1, ...g.debugTouchAt(c.x, c.y));
+    for (let k = 0; k < 30; k++) { a.heat = 0; g.update(DT); }
+    expect(a.mined - before).toBeGreaterThan(1);
+  });
+
+  it('wer an Gastaschen fein bohrt, stürzt seltener ein', () => {
+    const go = (smart: boolean) => {
+      let col = 0, pts = 0;
+      for (const seed of [1234, 7, 99, 5]) {
+        const { g, a } = fresh(5, seed);
+        let holding = false;
+        let pos: [number, number] | null = null;
+        const r = run(g, () => {
+          const touch = g.debugVeinTouch();
+          if (a.heat > 90) g.flush();
+          if (smart) {
+            const [lx, ly] = a.toLocal(...a.aim);
+            const near = a.pockets.some((p) => p.alive && Math.hypot(p.x - lx, p.y - ly) < 0.22);
+            if (near !== (a.mode === 'fine')) g.toggleMode();
+          }
+          if (touch && a.heat < 85) {
+            pos ??= touch;
+            const dx = touch[0] - pos[0], dy = touch[1] - pos[1], d = Math.hypot(dx, dy), st = 500 * DT;
+            pos = d <= st ? touch : [pos[0] + (dx / d) * st, pos[1] + (dy / d) * st];
+            if (!holding) { g.pointerDown(1, ...pos); holding = true; } else g.pointerMove(1, ...pos);
+          } else if (holding) { g.pointerUp(1); holding = false; }
+        });
+        col += a.collapses;
+        pts += r.points;
+      }
+      return { col, pts };
+    };
+    const naive = go(false), smart = go(true);
+    expect(smart.col).toBeLessThan(naive.col);
+    expect(smart.col).toBeLessThanOrEqual(1);
+  });
 });
 
 describe('Gaswirbel', () => {

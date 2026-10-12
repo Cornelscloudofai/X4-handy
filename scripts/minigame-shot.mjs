@@ -91,6 +91,17 @@ await page.screenshot({ path: `${out}/mg-6-ore.png` });
 await page.mouse.up();
 const mined = await mg(() => window.__mg.game.mined);
 if (!(mined > 0.5)) fail(`Laser baut nichts ab (${mined})`);
+// Lasermodus umschalten (Taste B/F) und im Gestein bohren: Spannung steigt
+const mb = await mg(() => window.__mg.game.modeBtn);
+await page.mouse.click(mb[0], mb[1]);
+await page.waitForTimeout(100);
+if ((await mg(() => window.__mg.game.mode)) !== 'fine') fail('Lasermodus schaltet nicht um');
+const rock = await mg(() => { const g = window.__mg.game; const [x, y] = g.debugTouchAt(-0.95, 0); return [x, y]; });
+await page.mouse.move(rock[0], rock[1]);
+await page.mouse.down();
+await page.waitForTimeout(700);
+await page.mouse.up();
+await page.screenshot({ path: `${out}/mg-6b-ore-fine.png` });
 await page.click('#minigame [data-mg="pause"]');
 await page.click('#minigame [data-mg="abort"]');
 await page.waitForTimeout(300);
