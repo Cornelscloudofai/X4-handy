@@ -434,64 +434,77 @@ describe('Frachtraum', () => {
     return run(g, () => { if (auto) g.autopilot(); });
   }
 
-  it('mit Autopilot Sterne auf allen Stufen, ohne Stoß keine', () => {
+  it('mit Autopilot Sterne auf allen Stufen, ohne Schuss keine', () => {
     for (const level of [1, 2, 3, 4, 5] as const) expect(play(level, true).stars).toBeGreaterThanOrEqual(1);
     expect(play(1, true).stars).toBe(3);
     expect(play(1, false).stars).toBe(0);
-    for (const m of ['heavy', 'bouncy', 'drift', 'dark']) expect(play(2, true, 99, m).points).toBeGreaterThan(0);
+    for (const m of ['bouncy', 'drift', 'dark', 'weak']) expect(play(2, true, 99, m).points).toBeGreaterThan(0);
   });
 
-  type CBox = { x: number; y: number; vx: number; vy: number; mass: number; state: string; cw: number; ch: number; pushes: number; c0: number; r0: number; stop: number };
-  type CInt = { boxes: CBox[]; lost: number; time: number; step(h: number): void; capture(): void; comOffset(): number; swaps(): number; push(b: CBox, jx: number, jy: number): void; cols: number; rows: number };
-  const fresh = (level: Level = 1, mutator: string | null = null) => {
-    const g = new CargoGame(cfg(level, 99, { mutator }));
+  type CBox = { x: number; y: number; vx: number; vy: number; mass: number; state: string; cw: number; ch: number; shots: number; c0: number; r0: number; stop: number };
+  type CInt = {
+    boxes: CBox[]; lost: number; time: number; target: [number, number] | null; rows: number; cols: number;
+    step(h: number, t: number): void; comOffset(): number; swaps(): number; shoot(b: CBox, jx: number, jy: number): void;
+    predict(b: CBox, vx: number, vy: number, horizon: number): { pts: [number, number][]; caught: boolean };
+  };
+  const fresh = (level: Level = 1) => {
+    const g = new CargoGame(cfg(level, 99));
     g.resize(W, H);
     const a = g as unknown as CInt;
     for (const b of a.boxes) b.state = 'queue';
+    a.target = null;
     return { g, a };
   };
-  const place = (_a: CInt, b: CBox, x: number, y: number) => { b.state = 'float'; b.x = x; b.y = y; b.vx = 0; b.vy = 0; };
+  const place = (b: CBox, x: number, y: number) => { b.state = 'float'; b.x = x; b.y = y; b.vx = 0; b.vy = 0; };
+  const sim = (a: CInt, n: number) => { for (let k = 0; k < n; k++) a.step(1 / 120, k / 120); };
 
-  it('gleicher Stoß: v = J / m – der schwere Container kommt kaum in Fahrt', () => {
+  it('gleicher Schuss: v = J / m – der schwere Container kommt kaum in Fahrt', () => {
     const { a } = fresh();
     const [l, h] = a.boxes;
-    place(a, l, 1, 1); place(a, h, 3, 1);
+    place(l, 1, 1); place(h, 3, 1);
     l.mass = 1; h.mass = 5;
-    a.push(l, 2, 0); a.push(h, 2, 0);
+    a.shoot(l, 2, 0); a.shoot(h, 2, 0);
     expect(l.vx).toBeCloseTo(2);
     expect(h.vx).toBeCloseTo(0.4);
   });
 
-  it('keine Reibung: ein treibender Container behält sein Tempo', () => {
+  it('keine Reibung: ohne Magnetfeld fliegt ein Container gleichförmig weiter', () => {
     const { a } = fresh();
     const b = a.boxes[0];
-    place(a, b, 2, 1);
+    place(b, 2, 1);
     b.vy = 0.5;
-    for (let k = 0; k < 60; k++) a.step(1 / 60);
+    sim(a, 120);
     expect(b.vy).toBeCloseTo(0.5);
     expect(b.y).toBeCloseTo(1.5, 1);
   });
 
-  it('Stoß zweier Container erhält den Impuls', () => {
-    const { a } = fresh();
-    const [p, q] = a.boxes;
-    place(a, p, 1, 2); place(a, q, 2.2, 2);
-    p.mass = 4; q.mass = 1; p.vx = 1; q.vx = 0;
-    const before = p.mass * p.vx + q.mass * q.vx;
-    for (let k = 0; k < 30; k++) a.step(1 / 60);
-    const after = p.mass * p.vx + q.mass * q.vx;
-    expect(after).toBeCloseTo(before, 5);
-    expect(q.vx).toBeGreaterThan(p.vx); // der leichte fliegt weg
+  it('Magnetfeld am Ziel: langsam wird eingefangen, zu schnell fliegt durch', () => {
+    const go = (v: number) => {
+      const { a } = fresh();
+      const b = a.boxes[0];
+      b.cw = 1; b.ch = 1; b.mass = 1;
+      a.target = [1, 3];
+      place(b, 1.5, 1.2);
+      b.vy = v;
+      sim(a, 360);
+      return b.state;
+    };
+    expect(go(1.5)).toBe('clamped');
+    expect(go(7)).not.toBe('clamped');
   });
 
-  it('Magnetklammer fängt nur langsame Container', () => {
+  it('Bahnvorhersage stimmt mit der echten Bahn überein', () => {
     const { a } = fresh();
-    const [s, f] = a.boxes;
-    place(a, s, 0.55, 2.5); s.vx = 0.3; s.pushes = 1;
-    place(a, f, 2.5, 3.5); f.vx = 3; f.pushes = 1;
-    a.capture();
-    expect(s.state).toBe('clamped');
-    expect(f.state).toBe('float');
+    const b = a.boxes[0];
+    b.cw = 1; b.ch = 1; b.mass = 2;
+    a.target = [3, 4];
+    place(b, 0.6, 0.6);
+    const p = a.predict(b, 2.2, 1.1, 2);
+    b.vx = 2.2; b.vy = 1.1;
+    sim(a, 239);
+    const [px, py] = p.pts[p.pts.length - 1];
+    if (b.state === 'float') { expect(b.x).toBeCloseTo(px, 1); expect(b.y).toBeCloseTo(py, 1); }
+    else expect(p.caught).toBe(true);
   });
 
   it('Schwerpunkt seitlich und Umräumungen werden richtig gezählt', () => {
@@ -502,7 +515,6 @@ describe('Frachtraum', () => {
     expect(Math.abs(a.comOffset())).toBeLessThan(0.01);
     r.mass = 6;
     expect(a.comOffset()).toBeGreaterThan(10);
-    // C oben über A in derselben Spalte: eine Umräumung
     for (const [b, rr, st] of [[top, 1, 2], [low, 3, 0]] as const) { b.state = 'clamped'; b.cw = 1; b.c0 = 2; b.r0 = rr; b.x = 2.5; b.y = rr + 0.5; b.stop = st; }
     expect(a.swaps()).toBe(1);
   });
@@ -510,10 +522,10 @@ describe('Frachtraum', () => {
   it('unten offen: wer hinaustreibt, kostet Zeit und kommt zurück in die Warteschlange', () => {
     const { a } = fresh();
     const b = a.boxes[0];
-    place(a, b, 2, a.rows - 0.2);
+    place(b, 2, a.rows - 0.2);
     b.vy = 2;
     const t0 = a.time;
-    for (let k = 0; k < 30; k++) a.step(1 / 60);
+    sim(a, 60);
     expect(a.lost).toBe(1);
     expect(b.state).toBe('queue');
     expect(a.time).toBeGreaterThan(t0 + 5);

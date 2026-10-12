@@ -147,7 +147,7 @@ await page.click('#modal [data-act="mg-play"][data-kind="cargo"]');
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(900);
-const cb = await mg(() => { const g = window.__mg.game; const b = g.floating[0]; return b ? g.toPx(b.x, b.y) : null; });
+const cb = await mg(() => { const g = window.__mg.game; const b = g.current; return b ? g.toPx(b.x, b.y) : null; });
 if (!cb) fail('Frachtraum: kein Container an der Luke');
 await page.mouse.move(cb[0], cb[1]);
 await page.mouse.down();
@@ -155,7 +155,7 @@ await page.mouse.move(cb[0] - 30, cb[1] + 80, { steps: 5 });
 await page.screenshot({ path: `${out}/mg-8b-cargo-aim.png` });
 await page.mouse.up();
 await page.waitForTimeout(700);
-const pushed = await mg(() => window.__mg.game.boxes.some((b) => b.pushes > 0 && Math.hypot(b.vx, b.vy) > 0.1 || b.state === 'clamped'));
+const pushed = await mg(() => window.__mg.game.boxes.some((b) => b.shots > 0));
 if (!pushed) fail('Frachtraum: Stoß wirkt nicht');
 for (let k = 0; k < 40; k++) { await mg(() => window.__mg.game.autopilot()); await page.waitForTimeout(60); }
 await page.screenshot({ path: `${out}/mg-8c-cargo.png` });
