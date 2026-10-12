@@ -1,75 +1,83 @@
-// Minispiel „Gaswirbel“: Gas sammeln und am Mutterschiff sichern.
-// Der Tank fasst nur begrenzt viel; erst am Mutterschiff entladene Ladung zählt voll.
-// Tiefe:
-// - Staudruck: Der Sammler schöpft im Flug – wer zügig durch eine Schwade zieht, sammelt bis fast dreimal so viel
-//   wie im Stillstand. Durchflüge statt Schweben.
-// - Reinheit: Trübe Fremdgasschwaden belegen Tankplatz und verdünnen die Ladung (Wert × Reinheit). Reine Ladungen
-//   (≥ 95 %) bringen 20 % mehr; volle und reine Tanks in Folge erhöhen die Kombo.
-// - Sturmzellen kündigen ihren Blitz an (Ring lädt sich auf). Wer im Ring ist, verliert die Hälfte der ungesicherten
-//   Ladung. Der Blitz lädt aber auch die Schwaden ringsum auf – aufgeladenes Gas zählt doppelt, solange es glüht.
-// - Andocken: Entladen nur bei langsamem Anflug ans Mutterschiff.
-// - Böen kündigen sich an und kehren den Wirbel kurz um, der Strudel in der Mitte zieht den Sammler an.
+// Minispiel „Gasströme“: Mit dem Sammeltrichter Gas aus ziehenden Strömen fangen und am Mutterschiff sichern.
+// Zwei Sticks: links fliegt der Sammler, rechts wird der Trichter vergrößert (nach oben) oder verkleinert (nach unten).
+// Ein großer Trichter fängt viel, zieht aber auch trübes Fremdgas und Funken an und macht den Sammler träge;
+// ein kleiner ist präzise und wendig. Fremdgas verdünnt die Ladung (Wert × Reinheit), Funken laden den Sammler auf –
+// bei voller Ladung schlägt die Spannung über und ein Teil des Tanks geht verloren. Goldene Ströme zählen dreifach.
+// Sturmzellen kündigen ihre Blitze mit einem Ring an. Gesichert wird beim langsamen Andocken am Mutterschiff;
+// volle, reine Tanks in Folge erhöhen die Kombo.
 import { WARES } from '../data/wares';
 import { sfx } from '../ui/sound';
 import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
 import {
-  buzz, clamp, drawButton, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
+  buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
   type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator,
 } from './common';
 
 const DURATION = 50;
 const UNITS = 50;
 /** Gesicherter Wert für 1/2/3 Sterne */
-const GOALS: Record<Level, [number, number, number]> = { 1: [10, 17, 25], 2: [10, 17, 26], 3: [10, 17, 26], 4: [10, 16, 25], 5: [9, 15, 24] };
-/** Staudruck: ab dieser Geschwindigkeit (px/s) volle Schöpfleistung */
-const RAM_SPEED = 210;
+const GOALS: Record<Level, [number, number, number]> = { 1: [14, 24, 34], 2: [12, 21, 30], 3: [10, 18, 26], 4: [9, 15, 22], 5: [8, 13, 20] };
 /** Andocken nur langsamer als (px/s) */
 const DOCK_SPEED = 120;
 /** Reinheit für eine „reine Ladung“ */
 const PURE = 0.95;
 const FOREIGN = '#8c9468';
+const GOLD = '#ffc860';
+const SPARK = '#e6dcff';
+/** Tankmenge je Flocke */
+const FLAKE = 0.042;
+/** Joystick: Ausschlag in Pixeln */
+const JOY_R = 64;
+/** Trichterradius (klein … groß) */
+const FUN_MIN = 12;
+const FUN_MAX = 72;
 
 export const GAS_MUTATORS: Mutator[] = [
-  { id: 'storm', name: 'Gewittersturm', desc: 'Zwei zusätzliche Sturmzellen', mult: 1.5 },
-  { id: 'gold', name: 'Goldrausch', desc: 'Goldene Schwaden viel häufiger', mult: 1.2 },
+  { id: 'storm', name: 'Gewittersturm', desc: 'Mehr Sturmzellen und Funken', mult: 1.5 },
+  { id: 'gold', name: 'Goldrausch', desc: 'Goldene Ströme viel häufiger', mult: 1.2 },
   { id: 'leak', name: 'Leckender Tank', desc: 'Ungesicherte Ladung entweicht langsam', mult: 1.4 },
-  { id: 'fast', name: 'Wirbelsturm', desc: 'Der Wirbel dreht viel schneller', mult: 1.4 },
+  { id: 'fast', name: 'Starke Strömung', desc: 'Die Ströme ziehen viel schneller', mult: 1.4 },
   { id: 'smog', name: 'Verschmutzter Nebel', desc: 'Doppelt so viel Fremdgas', mult: 1.3 },
 ];
 
 export const GAS_GOALS: GoalDef[] = [
-  { id: 'nohit', text: 'Kein Blitzeinschlag' },
-  { id: 'gold3', text: 'Drei goldene oder aufgeladene Schwaden anzapfen' },
+  { id: 'nohit', text: 'Kein Überschlag, kein Blitz' },
+  { id: 'gold3', text: 'Aus goldenen Strömen 30 Flocken fangen' },
   { id: 'full4', text: 'Viermal mit vollem Tank entladen' },
   { id: 'combo', text: 'Kombo ×2,5 (volle, reine Tanks in Folge)' },
   { id: 'nowaste', text: 'Am Ende nichts mehr ungesichert im Tank' },
-  { id: 'noboost', text: 'Ohne Schub auskommen' },
   { id: 'pure3', text: 'Drei reine Ladungen sichern' },
+  { id: 'nospark', text: 'Keinen einzigen Funken fangen' },
 ];
 
-interface Blob {
-  a: number; d: number; r0: number; amount: number; max: number; dens: number; ph: number; born: number;
-  /** goldene Schwade (zählt dreifach) */
-  gold: boolean;
+type Kind = 'gas' | 'gold' | 'foreign';
+type FlakeKind = 'gas' | 'gold' | 'foreign' | 'spark';
+
+/** Ein Gasstrom: Band entlang einer Kurve von Rand zu Rand, das Flocken mitführt */
+interface Stream {
+  kind: Kind;
+  /** Start, Kontrollpunkt, Ende (Bildschirmanteile 0–1 im Spielfeld) */
+  p: [number, number][];
+  /** Breite in Pixeln */
+  width: number;
+  /** Fließtempo (px/s) */
+  speed: number;
+  /** Flocken je Sekunde */
+  rate: number;
+  /** Anteil Funken */
+  sparks: number;
+  /** Ankündigung (s), dann Laufzeit (s) */
+  warn: number;
   life: number;
-  /** Fremdgas: belegt Platz, verdünnt die Ladung */
-  foreign: boolean;
-  /** Restzeit aufgeladen (Blitz): zählt doppelt */
-  charged: number;
-  /** Bildvariante */
-  v: number;
-  /** schon als Gold gezählt */
-  counted: boolean;
+  acc: number;
+  ph: number;
+  len: number;
 }
-interface Storm {
-  a: number; d: number; r: number; ph: number; drift: number;
-  state: 'idle' | 'charge' | 'strike';
-  t: number;
-  /** Blitzäste (nur Darstellung) */
-  bolts: [number, number][][];
-}
+interface Flake { s: Stream; u: number; off: number; kind: FlakeKind; size: number; rot: number; v: number; x: number; y: number }
+interface Storm { x: number; y: number; r: number; ph: number; state: 'idle' | 'charge' | 'strike'; t: number; bolts: [number, number][][] }
+interface Stick { id: number; ox: number; oy: number; kx: number; ky: number }
 
 let bgImg: HTMLImageElement | null = null;
 function background(): HTMLImageElement | null {
@@ -87,28 +95,30 @@ export class GasGame implements MiniGame {
   readonly title: string;
   readonly intro: string;
   readonly controls = [
-    'Finger halten und ziehen: der Sammler folgt',
-    'Zügig durch die Schwaden fliegen: Staudruck – im Stillstand sammelt man kaum',
-    'Trübes Fremdgas meiden: es verdünnt die Ladung',
-    'Leuchtender Ring: gleich schlägt ein Blitz ein – raus da! Danach glüht das Gas ringsum (×2)',
+    'Linker Daumen: Stick zum Fliegen (überall auf der linken Hälfte)',
+    'Rechter Daumen: nach oben Trichter größer, nach unten kleiner',
+    'Großer Trichter fängt viel – aber auch Fremdgas und Funken, und der Sammler wird träge',
+    'Funken laden auf: bei voller Ladung Überschlag. Leuchtender Ring: gleich schlägt ein Blitz ein',
     'Voller Tank? Langsam am Mutterschiff andocken',
-    'Taste S: kurzer Schub',
   ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
   private level: Level;
   private ware: string;
   private color: string;
-  private blobs: Blob[] = [];
+  private streams: Stream[] = [];
+  private flakes: Flake[] = [];
   private storms: Storm[] = [];
   private r: () => number;
   private score: Score;
   private time = 0;
-  /** Tank: Menge, Wert (gold dreifach, aufgeladen doppelt) und Fremdgasanteil */
+  /** Tank: Menge, Wert (gold dreifach) und Fremdgasanteil */
   private tank = 0;
   private tankValue = 0;
   private foreign = 0;
   private cap: number;
+  /** elektrische Ladung 0–1 (Funken) */
+  private charge = 0;
   private secured = 0;
   private fullUnloads = 0;
   private pureUnloads = 0;
@@ -116,46 +126,40 @@ export class GasGame implements MiniGame {
   private unloadStart = 0;
   private unloadForeign = 0;
   private dockWarn = 0;
-  private golds = 0;
-  private goldTimer = 14;
+  private goldFlakes = 0;
+  private sparksCaught = 0;
   private hits = 0;
-  private boosts = 0;
   private stun = 0;
   private shake = 0;
   private flash = 0;
-  private boostT = 0;
-  private boostCd = 0;
-  private gustT = 12;
-  private gust = 0;
-  private gustWarn = 0;
+  private nextGas = 0;
+  private nextForeign = 4;
+  private nextGold = 14;
   private x = 0;
   private y = 0;
   private vx = 0;
   private vy = 0;
-  private heading = -Math.PI / 2;
-  private target: [number, number] | null = null;
-  private pid = -1;
-  private sucking = 0;
-  /** Staudruck 0–1 (Anzeige) */
-  private ram = 0;
-  private wispAcc = 0;
-  private spinRate: number;
-  private swirl = 0;
-  private motherA = Math.PI * 0.5;
+  /** Trichtergröße 0–1 */
+  private funnel = 0.45;
+  private move: Stick | null = null;
+  private size: Stick | null = null;
+  /** Autopilot (Tests): Wunschrichtung und Trichterwunsch statt Sticks */
+  private auto: { mx: number; my: number; fs: number } | null = null;
+  private catching = 0;
+  private motherX = 0.5;
   private fx = new Particles();
   private floats = new Floaters();
   private stars = new Starfield(110, 23);
   private w = 1;
   private h = 1;
-  private cx = 0;
-  private cy = 0;
-  private S = 100;
-  /** Höhe/Breite des Wirbels (Hochformat: gestreckt) */
-  private ys = 0.82;
-  private art: { clouds: Record<string, HTMLCanvasElement[]>; swirl: HTMLCanvasElement; dark: HTMLCanvasElement } | null = null;
+  private art: { clouds: Record<string, HTMLCanvasElement[]>; dark: HTMLCanvasElement } | null = null;
   private bgCache: HTMLCanvasElement | null = null;
   private done: GameResult | null = null;
   private endT = -1;
+  private flow: number;
+  private sparkShare: number;
+  private gasCount: number;
+  private foreignCount: number;
 
   constructor(cfg: GameCfg) {
     const level = (this.level = cfg.level);
@@ -167,40 +171,81 @@ export class GasGame implements MiniGame {
     const name = WARES[this.ware]?.name ?? 'Gas';
     this.title = name;
     this.cap = level >= 3 ? 4.5 : 5;
-    const sc = [0, 2, 3, 4, 5][level - 1] + (this.mutator?.id === 'storm' ? 2 : 0);
-    const fc = [0, 2, 3, 3, 4][level - 1] * (this.mutator?.id === 'smog' ? 2 : 1) + (this.mutator?.id === 'smog' && level === 1 ? 2 : 0);
-    this.intro = `In diesem Wirbel ballt sich ${name}. Zieh zügig durch die Schwaden – der Staudruck füllt den Tank – und dock langsam am Mutterschiff an: nur gesicherte Ladung zählt voll.`
-      + (fc ? ' Trübes Fremdgas verdünnt die Ladung.' : '')
-      + (sc ? ' Sturmzellen kündigen ihre Blitze mit einem Ring an; was der Blitz trifft, glüht danach und zählt doppelt.' : '');
-    this.spinRate = [0.18, 0.24, 0.3, 0.34, 0.38][level - 1] * (this.mutator?.id === 'fast' ? 1.6 : 1);
-    for (let i = 0; i < 9; i++) this.blobs.push(this.newBlob(true));
-    for (let i = 0; i < fc; i++) this.blobs.push(this.newBlob(true, false, true));
-    for (let i = 0; i < sc; i++) {
-      this.storms.push({ a: (i / sc) * Math.PI * 2 + this.r(), d: 0.3 + this.r() * 0.5, r: 0.12 + this.r() * 0.05, ph: this.r() * 6, drift: level >= 4 ? 0.08 : 0, state: 'idle', t: 2 + this.r() * 4, bolts: [] });
-    }
-    const pool = GAS_GOALS.filter((g) => (sc > 0 || g.id !== 'nohit') && (fc > 0 || g.id !== 'pure3'));
+    const m = this.mutator?.id;
+    this.flow = [70, 80, 90, 100, 112][level - 1] * (m === 'fast' ? 1.5 : 1);
+    this.sparkShare = [0, 0.02, 0.03, 0.04, 0.05][level - 1] + (m === 'storm' ? 0.03 : 0);
+    this.gasCount = level >= 3 ? 3 : 2;
+    this.foreignCount = [0, 1, 1, 2, 2][level - 1] * (m === 'smog' ? 2 : 1) + (m === 'smog' && level === 1 ? 1 : 0);
+    const sc = [0, 0, 1, 2, 3][level - 1] + (m === 'storm' ? 2 : 0);
+    for (let i = 0; i < sc; i++) this.storms.push({ x: 0.2 + this.r() * 0.6, y: 0.15 + this.r() * 0.5, r: 0.11 + this.r() * 0.04, ph: this.r() * 6, state: 'idle', t: 3 + this.r() * 4, bolts: [] });
+    this.intro = `In diesem Nebel ziehen Ströme aus ${name}. Fang sie mit dem Sammeltrichter ein und dock langsam am Mutterschiff an – nur gesicherte Ladung zählt voll. `
+      + 'Links fliegst du, rechts stellst du die Trichtergröße ein: groß fängt viel, klein ist präzise.'
+      + (this.foreignCount ? ' Trübes Fremdgas verdünnt die Ladung.' : '')
+      + (this.sparkShare ? ' Funken laden den Sammler auf – zu viele, und die Spannung schlägt über.' : '')
+      + (sc ? ' Sturmzellen kündigen ihre Blitze mit einem Ring an.' : '');
+    const pool = GAS_GOALS.filter((g) => (sc > 0 || this.sparkShare > 0 || g.id !== 'nohit') && (this.foreignCount > 0 || g.id !== 'pure3') && (this.sparkShare > 0 || g.id !== 'nospark'));
     this.goals = pickGoals(pool, rng(cfg.seed ^ 0x77));
   }
 
-  private newBlob(initial: boolean, gold = false, foreign = false): Blob {
+  // ---------- Spielfeld ----------
+
+  /** Spielfeld: unter der Titelleiste bis zum unteren Rand */
+  private get field(): [number, number, number, number] {
+    return [0, TOP + 8, this.w, this.h - TOP - 8];
+  }
+
+  private fp(u: number, v: number): [number, number] {
+    const [fx, fy, fw, fh] = this.field;
+    return [fx + u * fw, fy + v * fh];
+  }
+
+  private get mother(): [number, number] {
+    return this.fp(this.motherX, 0.86);
+  }
+
+  /** Punkt auf einem Strom (u 0–1 entlang, off −1…1 quer), mit langsamem Schwingen */
+  private streamPoint(s: Stream, u: number, off: number): [number, number] {
+    const [a, b, c] = s.p;
+    const sway = Math.sin(this.time * 0.25 + s.ph) * 0.12;
+    const bx = b[0] + sway, by = b[1] + Math.cos(this.time * 0.2 + s.ph) * 0.06;
+    const k = 1 - u;
+    const x = k * k * a[0] + 2 * k * u * bx + u * u * c[0];
+    const y = k * k * a[1] + 2 * k * u * by + u * u * c[1];
+    // Normale aus der Ableitung
+    const dx = 2 * k * (bx - a[0]) + 2 * u * (c[0] - bx), dy = 2 * k * (by - a[1]) + 2 * u * (c[1] - by);
+    const [px, py] = this.fp(x, y);
+    const [, , fw, fh] = this.field;
+    const l = Math.hypot(dx * fw, dy * fh) || 1;
+    return [px - ((dy * fh) / l) * off * s.width * 0.5, py + ((dx * fw) / l) * off * s.width * 0.5];
+  }
+
+  private newStream(kind: Kind): Stream {
     const r = this.r;
-    const max = gold ? 1.2 : 1.5 + r() * 2.5;
-    return {
-      a: r() * Math.PI * 2, d: initial ? 0.2 + r() * 0.7 : gold ? 0.3 + r() * 0.5 : 0.75 + r() * 0.2,
-      r0: gold ? 0.09 : (foreign ? 0.13 : 0.11) + max * 0.025, amount: max, max, dens: gold ? 1.6 : 0.75 + r() * 0.6, ph: r() * 6,
-      born: initial ? -9 : this.time, gold, life: gold ? 8 : Infinity, foreign, charged: 0, v: Math.floor(r() * 4), counted: false,
+    // Einstieg an einem Rand, Ausstieg am gegenüberliegenden
+    const side = Math.floor(r() * 3);
+    let a: [number, number], c: [number, number];
+    if (side === 0) { a = [-0.08, 0.05 + r() * 0.65]; c = [1.08, 0.05 + r() * 0.65]; }
+    else if (side === 1) { a = [1.08, 0.05 + r() * 0.65]; c = [-0.08, 0.05 + r() * 0.65]; }
+    else { a = [0.15 + r() * 0.7, -0.06]; c = [0.15 + r() * 0.7, 0.78]; }
+    const b: [number, number] = [0.2 + r() * 0.6, 0.15 + r() * 0.5];
+    const s: Stream = {
+      kind, p: [a, b, c],
+      width: kind === 'gold' ? 34 + r() * 14 : kind === 'foreign' ? 60 + r() * 40 : 46 + r() * 40,
+      speed: this.flow * (0.8 + r() * 0.4), rate: kind === 'gold' ? 10 : kind === 'foreign' ? 13 : 14 + r() * 6,
+      sparks: kind === 'gas' ? this.sparkShare : 0, warn: 1.6, life: kind === 'gold' ? 7 : 10 + r() * 6, acc: 0, ph: r() * 6, len: 1,
     };
+    let len = 0, [px, py] = this.streamPoint(s, 0, 0);
+    for (let i = 1; i <= 16; i++) { const [qx, qy] = this.streamPoint(s, i / 16, 0); len += Math.hypot(qx - px, qy - py); px = qx; py = qy; }
+    s.len = Math.max(100, len);
+    return s;
   }
 
   resize(w: number, h: number): void {
     this.w = w;
     this.h = h;
     this.stars.resize(w, h);
-    this.cx = w / 2;
-    this.cy = TOP + (h - TOP) / 2;
-    this.S = Math.min(w, h - TOP) / 2 - 8;
-    this.ys = clamp((h - TOP - 30) / (2 * this.S), 0.82, 1.75);
-    if (!this.x) { const [mx, my] = this.mother; this.x = mx; this.y = my - 60; }
+    this.bgCache = null;
+    if (!this.x) { const [mx, my] = this.mother; this.x = mx; this.y = my - 90; }
   }
 
   hud(): HudItem[] {
@@ -215,100 +260,107 @@ export class GasGame implements MiniGame {
   points(): number { return this.score.points; }
   combo(): number { return this.score.combo; }
 
-  private pos(a: number, d: number): [number, number] {
-    return [this.cx + Math.cos(a) * d * this.S, this.cy + Math.sin(a) * d * this.S * this.ys];
-  }
-
-  private get mother(): [number, number] {
-    return this.pos(this.motherA, 0.93);
-  }
-
-  private blobRadius(b: Blob): number {
-    return (b.r0 * (0.45 + 0.55 * Math.sqrt(b.amount / b.max))) * this.S;
-  }
-
-  private strikeR(s: Storm): number { return s.r * this.S * 1.7; }
-
-  /** Reinheit der Tankladung */
   private purity(): number {
     return this.tank > 0.001 ? clamp(1 - this.foreign / this.tank, 0, 1) : 1;
   }
 
-  private get btn(): [number, number, number] { return [this.w - 46, this.h - 54, 26]; }
+  private funnelR(): number { return FUN_MIN + (FUN_MAX - FUN_MIN) * this.funnel; }
 
-  /** Wert einer Schwade für den Autopiloten (Fremdgas: nichts) */
-  private blobWorth(b: Blob): number {
-    if (b.foreign || b.amount < 0.2) return 0;
-    let s = b.amount * b.dens * (b.gold || b.charged > 0 ? 3 : 1);
-    const [bx, by] = this.pos(b.a, b.d);
-    for (const o of this.blobs) if (o.foreign && Math.hypot(...sub(this.pos(o.a, o.d), [bx, by])) < this.blobRadius(o) + this.blobRadius(b)) s *= 0.4;
-    for (const st of this.storms) if (st.state !== 'idle' && Math.hypot(...sub(this.pos(st.a, st.d), [bx, by])) < this.strikeR(st) * 1.2) s *= 0.1;
-    return s;
+  private strikeR(s: Storm): number { return s.r * this.w * 1.25; }
+
+  private stormPos(s: Storm): [number, number] {
+    return this.fp(s.x + Math.sin(this.time * 0.15 + s.ph) * 0.05, s.y + Math.cos(this.time * 0.12 + s.ph) * 0.04);
   }
 
-  /** Für Tests und Autopilot: Mitte der ergiebigsten Schwade */
+  /** Für Tests und Autopilot: ergiebigste Stelle (Raster 40 px: gute Flocken minus Fremdgas und Funken, gewichtet nach Nähe) */
   debugBestBlob(): [number, number] | null {
-    let best: Blob | null = null, bs = 0;
-    for (const b of this.blobs) {
-      const [bx, by] = this.pos(b.a, b.d);
-      const s = this.blobWorth(b) / (1 + Math.hypot(bx - this.x, by - this.y) / 150);
-      if (s > bs) { bs = s; best = b; }
+    const C = 40, cells = new Map<number, { v: number; x: number; y: number; n: number }>();
+    for (const f of this.flakes) {
+      if (f.x < 0 || f.y < 0 || f.x > this.w || f.y > this.h) continue;
+      const key = Math.floor(f.x / C) * 1000 + Math.floor(f.y / C);
+      const c = cells.get(key) ?? { v: 0, x: 0, y: 0, n: 0 };
+      c.v += f.kind === 'gold' ? 3 : f.kind === 'gas' ? 1 : f.kind === 'spark' ? -3 : -1.5;
+      if (f.kind === 'gas' || f.kind === 'gold') { c.x += f.x; c.y += f.y; c.n++; }
+      cells.set(key, c);
     }
-    return best ? this.pos(best.a, best.d) : null;
+    let best: [number, number] | null = null, bs = 0;
+    for (const [key, c] of cells) {
+      if (!c.n) continue;
+      let v = 0;
+      const cx = Math.floor(key / 1000), cy = key % 1000;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) v += cells.get((cx + dx) * 1000 + cy + dy)?.v ?? 0;
+      const x = c.x / c.n, y = c.y / c.n;
+      const sc = v / (1 + Math.hypot(x - this.x, y - this.y) / 160);
+      if (sc > bs) { bs = sc; best = [x, y]; }
+    }
+    return best;
   }
 
   pointerDown(id: number, x: number, y: number): void {
-    const [bx, by, br] = this.btn;
-    if (Math.hypot(x - bx, y - by) < br + 10) { this.doBoost(); return; }
-    if (this.pid >= 0) return;
-    this.pid = id;
-    this.target = [x, y];
+    if (y < TOP) return;
+    if (x < this.w / 2) { if (!this.move) this.move = { id, ox: x, oy: y, kx: 0, ky: 0 }; }
+    else if (!this.size) this.size = { id, ox: x, oy: y, kx: 0, ky: 0 };
   }
 
   pointerMove(id: number, x: number, y: number): void {
-    if (id === this.pid) this.target = [x, y];
+    const j = this.move?.id === id ? this.move : this.size?.id === id ? this.size : null;
+    if (!j) return;
+    let dx = x - j.ox, dy = y - j.oy;
+    const d = Math.hypot(dx, dy);
+    if (d > JOY_R) {
+      // Basis wandert mit, damit man nie am Anschlag hängt
+      j.ox += (dx / d) * (d - JOY_R);
+      j.oy += (dy / d) * (d - JOY_R);
+      dx = (dx / d) * JOY_R;
+      dy = (dy / d) * JOY_R;
+    }
+    j.kx = dx / JOY_R;
+    j.ky = dy / JOY_R;
   }
 
   pointerUp(id: number): void {
-    if (id !== this.pid) return;
-    this.pid = -1;
-    this.target = null;
+    if (this.move?.id === id) this.move = null;
+    if (this.size?.id === id) this.size = null;
   }
 
-  private doBoost(): void {
-    if (this.boostCd > 0 || this.endT >= 0) return;
-    this.boostT = 1;
-    this.boostCd = 6;
-    this.boosts++;
-    sfx.tap();
-  }
-
-  /** Nur für Tests: Autopilot (Durchflüge durch gute Schwaden, Blitzen ausweichen, langsam andocken) */
+  /** Nur für Tests: Autopilot (gute Stellen anfliegen, Trichter nach Lage, Blitzen ausweichen, langsam andocken) */
   autopilot(): void {
     const left = DURATION - this.time;
-    // drohendem Blitz ausweichen
+    const steer = (tx: number, ty: number, slow = false) => {
+      const dx = tx - this.x, dy = ty - this.y, d = Math.hypot(dx, dy);
+      const k = Math.min(1, d / (slow ? 120 : 60));
+      this.auto = { mx: d > 1 ? (dx / d) * k : 0, my: d > 1 ? (dy / d) * k : 0, fs: this.auto?.fs ?? 0.5 };
+    };
     for (const s of this.storms) {
       if (s.state !== 'charge') continue;
-      const [sx, sy] = this.pos(s.a, s.d);
+      const [sx, sy] = this.stormPos(s);
       const d = Math.hypot(this.x - sx, this.y - sy);
-      if (d < this.strikeR(s) * 1.25) {
-        const k = (this.strikeR(s) * 1.6) / Math.max(1, d);
-        this.target = [sx + (this.x - sx) * k, sy + (this.y - sy) * k];
-        return;
-      }
+      if (d < this.strikeR(s) * 1.25) { const k = (this.strikeR(s) * 1.6) / Math.max(1, d); steer(sx + (this.x - sx) * k, sy + (this.y - sy) * k); return; }
     }
-    if (this.tank >= this.cap * 0.95 || (left < 9 && this.tank > 0.3) || this.unloading) {
+    if (this.tank >= this.cap * 0.95 || (left < 8 && this.tank > 0.3) || this.unloading) {
       const [mx, my] = this.mother;
-      const d = Math.hypot(mx - this.x, my - this.y);
-      this.target = [mx, my];
-      if (d > 220) this.doBoost();
+      steer(mx, my, true);
+      this.auto!.fs = 0;
       return;
     }
     const b = this.debugBestBlob();
-    if (!b) { this.target = null; return; }
-    // durch die Schwade hindurch zielen
-    const dx = b[0] - this.x, dy = b[1] - this.y, d = Math.hypot(dx, dy) || 1;
-    this.target = [b[0] + (dx / d) * 70, b[1] + (dy / d) * 70];
+    if (b) steer(b[0], b[1]); else this.auto = { mx: 0, my: 0, fs: 0.5 };
+    // Funken in der Nähe: zur Seite ausweichen
+    for (const f of this.flakes) {
+      if (f.kind !== 'spark') continue;
+      const dx = this.x - f.x, dy = this.y - f.y, d = Math.hypot(dx, dy);
+      if (d < 70 && d > 0.1) { this.auto!.mx += (dx / d) * (1 - d / 70) * 1.5; this.auto!.my += (dy / d) * (1 - d / 70) * 1.5; }
+    }
+    const l = Math.hypot(this.auto!.mx, this.auto!.my);
+    if (l > 1) { this.auto!.mx /= l; this.auto!.my /= l; }
+    // Trichter: klein, wenn Funken oder Fremdgas nahe sind, sonst groß
+    let bad = 0;
+    for (const f of this.flakes) {
+      if (f.kind !== 'spark' && f.kind !== 'foreign') continue;
+      const d = Math.hypot(f.x - this.x, f.y - this.y);
+      if (d < FUN_MAX + 20) bad += f.kind === 'spark' ? 3 : 1;
+    }
+    this.auto!.fs = bad > 2 ? 0 : bad > 0 ? 0.35 : 0.85;
   }
 
   update(dt: number): void {
@@ -327,87 +379,24 @@ export class GasGame implements MiniGame {
     this.time += dt;
     this.score.update(dt);
     this.stun = Math.max(0, this.stun - dt);
-    this.boostT = Math.max(0, this.boostT - dt);
-    this.boostCd = Math.max(0, this.boostCd - dt);
     this.dockWarn = Math.max(0, this.dockWarn - dt);
-    // Böen: angekündigt, dann kehrt der Wirbel kurz um
-    this.gustT -= dt;
-    if (this.gustT <= 1.5 && this.gustWarn <= 0 && this.gust <= 0) { this.gustWarn = 1.5; this.floats.add(this.w / 2, TOP + 70, 'Böe naht!', '#9fd8ff', 16); }
-    if (this.gustWarn > 0) { this.gustWarn -= dt; if (this.gustWarn <= 0) { this.gust = 3.5; this.gustT = 12 + this.r() * 5; } }
-    this.gust = Math.max(0, this.gust - dt);
-    const dir = this.gust > 0 ? -1.4 : 1;
-    this.swirl += this.spinRate * dir * dt;
-    for (const b of this.blobs) {
-      b.a += ((this.spinRate * dir) / (0.35 + b.d)) * dt;
-      b.d += Math.sin(this.time * 0.6 + b.ph) * 0.02 * dt;
-      if (b.gold) b.life -= dt;
-      b.charged = Math.max(0, b.charged - dt);
-    }
-    for (const s of this.storms) { s.a += ((this.spinRate * 0.8 * dir) / (0.35 + s.d)) * dt; s.d = clamp(s.d + Math.sin(this.time * 0.5 + s.ph) * s.drift * dt, 0.2, 0.85); }
-    this.motherA += 0.05 * dt;
-    // Goldene Schwaden (selten; bei Goldrausch häufig)
-    this.goldTimer -= dt;
-    if (this.goldTimer <= 0) { this.blobs.push(this.newBlob(false, true)); this.goldTimer = this.mutator?.id === 'gold' ? 4 + this.r() * 3 : 15 + this.r() * 6; }
-    // Steuerung: der Sammler fliegt zum Finger, mit Trägheit
-    const maxV = 250 * (this.boostT > 0 ? 2 : 1);
-    let dvx = 0, dvy = 0;
-    if (this.target && !this.stun) {
-      const dx = this.target[0] - this.x, dy = this.target[1] - this.y;
-      const dist = Math.hypot(dx, dy);
-      const v = Math.min(maxV, dist * 3.2 * (this.boostT > 0 ? 2 : 1));
-      if (dist > 1) { dvx = (dx / dist) * v; dvy = (dy / dist) * v; }
-    }
-    // Strudel in der Mitte zieht an
-    const cdx = this.cx - this.x, cdy = (this.cy - this.y) / this.ys, cd = Math.hypot(cdx, cdy) / this.S;
-    if (cd < 0.22 && cd > 0.001) { const pull = (1 - cd / 0.22) * 170; dvx += (cdx / (cd * this.S)) * pull; dvy += (cdy / (cd * this.S)) * pull * this.ys; }
-    const k = Math.min(1, dt * (this.stun ? 0.8 : 4));
-    this.vx += (dvx - this.vx) * k;
-    this.vy += (dvy - this.vy) * k;
-    this.x = clamp(this.x + this.vx * dt, 14, this.w - 14);
-    this.y = clamp(this.y + this.vy * dt, TOP + 10, this.h - 14);
-    const speed = Math.hypot(this.vx, this.vy);
-    if (speed > 20) {
-      const want = Math.atan2(this.vy, this.vx);
-      let da = want - this.heading;
-      while (da > Math.PI) da -= Math.PI * 2;
-      while (da < -Math.PI) da += Math.PI * 2;
-      this.heading += da * Math.min(1, dt * 8);
-    }
-    if (this.boostT > 0 && Math.random() < 0.8) {
-      const bx = this.x - Math.cos(this.heading) * 26, by = this.y - Math.sin(this.heading) * 26;
-      this.fx.add({ x: bx, y: by, vx: -this.vx * 0.3, vy: -this.vy * 0.3, color: '#9ffff0', size: 1.8, max: 0.35 });
-    }
-    // Sammeln mit Staudruck, solange Platz im Tank ist
-    this.sucking = 0;
-    this.ram = clamp(speed / RAM_SPEED, 0, 1);
-    const ram = 0.35 + 0.65 * this.ram;
-    if (!this.stun && this.tank < this.cap) {
-      for (const b of this.blobs) {
-        if (b.amount <= 0) continue;
-        const [bx, by] = this.pos(b.a, b.d);
-        const rr = this.blobRadius(b);
-        const d = Math.hypot(bx - this.x, by - this.y);
-        if (d > rr) continue;
-        const rate = 0.95 * b.dens * (1 - (d / rr) * 0.55) * ram;
-        const take = Math.min(b.amount, rate * dt, this.cap - this.tank);
-        if (take <= 0) continue;
-        b.amount -= take;
-        this.tank += take;
-        const triple = b.gold || b.charged > 0;
-        if (b.foreign) this.foreign += take;
-        else this.tankValue += take * (b.gold ? 3 : b.charged > 0 ? 2 : 1);
-        this.sucking += rate;
-        if (triple && !b.counted && b.max - b.amount > 0.6) { b.counted = true; this.golds++; this.floats.add(bx, by, b.gold ? 'Gold ×3' : 'Aufgeladen ×2', '#ffd27a', 15); sfx.coin(); }
-        this.wispAcc += take;
-        while (this.wispAcc > 0.04) {
-          this.wispAcc -= 0.04;
-          const a = Math.random() * Math.PI * 2, dd = rr * (0.4 + Math.random() * 0.6);
-          const col = b.foreign ? FOREIGN : triple ? '#ffd27a' : this.color;
-          this.fx.add({ x: this.x + Math.cos(a) * dd, y: this.y + Math.sin(a) * dd, vx: -Math.sin(a) * 90, vy: Math.cos(a) * 90, color: col, size: 1.6 + Math.random(), max: 1.2, tx: this.x, ty: this.y });
-        }
-        if (this.tank >= this.cap - 0.001) { this.floats.add(this.x, this.y - 30, 'Tank voll', '#ffb547', 13); sfx.warn(); }
-      }
-    }
+    this.charge = Math.max(0, this.charge - 0.08 * dt);
+    this.motherX = 0.5 + Math.sin(this.time * 0.12) * 0.24;
+    this.updateStreams(dt);
+    // Trichtergröße: rechter Stick nach oben = größer, nach unten = kleiner (bleibt beim Loslassen)
+    const fs = this.auto ? this.auto.fs : null;
+    if (fs != null) this.funnel += clamp(fs - this.funnel, -1.2 * dt, 1.2 * dt);
+    else if (this.size) this.funnel = clamp(this.funnel - this.size.ky * 1.1 * dt, 0, 1);
+    // Fliegen: linker Stick, Trägheit; großer Trichter macht träge
+    const maxV = 270 * (1 - 0.45 * this.funnel);
+    const mx = this.auto ? this.auto.mx : this.move?.kx ?? 0, my = this.auto ? this.auto.my : this.move?.ky ?? 0;
+    const k = Math.min(1, dt * (this.stun ? 0.6 : 3.2));
+    this.vx += ((this.stun ? 0 : mx * maxV) - this.vx) * k;
+    this.vy += ((this.stun ? 0 : my * maxV) - this.vy) * k;
+    const [, fy, fw, fh] = this.field;
+    this.x = clamp(this.x + this.vx * dt, 18, fw - 18);
+    this.y = clamp(this.y + this.vy * dt, fy + 18, fy + fh - 18);
+    this.catch(dt);
     if (this.mutator?.id === 'leak' && this.tank > 0) {
       const l = Math.min(this.tank, this.tank * 0.035 * dt), f = l / this.tank;
       this.tankValue -= this.tankValue * f;
@@ -415,71 +404,132 @@ export class GasGame implements MiniGame {
       this.tank -= l;
     }
     for (const p of this.fx.list) if (p.tx != null) { p.tx = this.x; p.ty = this.y; }
-    for (let i = 0; i < this.blobs.length; i++) {
-      const b = this.blobs[i];
-      if (b.amount <= 0.05 || b.life <= 0) {
-        if (b.gold) { this.blobs.splice(i, 1); i--; } else this.blobs[i] = this.newBlob(false, false, b.foreign);
-      }
-    }
     this.updateMother(dt);
     this.updateStorms(dt);
     setGoal(this.goals, 'nohit', this.hits === 0);
-    setGoal(this.goals, 'gold3', this.golds >= 3);
+    setGoal(this.goals, 'gold3', this.goldFlakes >= 30);
     setGoal(this.goals, 'full4', this.fullUnloads >= 4);
     setGoal(this.goals, 'combo', this.score.maxCombo >= 2.5);
-    setGoal(this.goals, 'noboost', this.boosts === 0);
     setGoal(this.goals, 'nowaste', this.tank < 0.05 && this.secured > 0);
     setGoal(this.goals, 'pure3', this.pureUnloads >= 3);
+    setGoal(this.goals, 'nospark', this.sparksCaught === 0);
     if (this.time >= DURATION) this.endT = 0;
   }
 
-  /** Sturmzellen: Ruhe → Aufladen (Ring) → Blitz (trifft alles im Ring, lädt Gas auf) */
+  /** Ströme anlegen, Flocken ausstoßen und fließen lassen */
+  private updateStreams(dt: number): void {
+    const live = (k: Kind) => this.streams.filter((s) => s.kind === k && s.life > 0).length;
+    this.nextGas -= dt;
+    if (live('gas') < this.gasCount && this.nextGas <= 0) { this.streams.push(this.newStream('gas')); this.nextGas = 1.5 + this.r() * 2; }
+    this.nextForeign -= dt;
+    if (live('foreign') < this.foreignCount && this.nextForeign <= 0) { this.streams.push(this.newStream('foreign')); this.nextForeign = 3 + this.r() * 3; }
+    this.nextGold -= dt;
+    if (this.nextGold <= 0) { this.streams.push(this.newStream('gold')); this.nextGold = this.mutator?.id === 'gold' ? 7 + this.r() * 4 : 16 + this.r() * 6; }
+    for (const s of this.streams) {
+      if (s.warn > 0) { s.warn -= dt; continue; }
+      s.life -= dt;
+      if (s.life <= 0) continue;
+      s.acc += s.rate * dt;
+      while (s.acc >= 1) {
+        s.acc -= 1;
+        const kind: FlakeKind = s.kind === 'gas' && this.r() < s.sparks ? 'spark' : s.kind;
+        const off = this.r() + this.r() - 1;
+        this.flakes.push({ s, u: 0, off, kind, size: kind === 'spark' ? 4 : 18 + this.r() * 18, rot: this.r() * 6, v: Math.floor(this.r() * 4), x: 0, y: 0 });
+      }
+    }
+    for (const f of this.flakes) {
+      f.u += (f.s.speed * dt) / f.s.len * (f.kind === 'spark' ? 1.3 : 1);
+      f.rot += dt * 0.4;
+      [f.x, f.y] = this.streamPoint(f.s, f.u, f.off);
+    }
+    this.flakes = this.flakes.filter((f) => f.u < 1);
+    this.streams = this.streams.filter((s) => s.life > 0 || s.warn > 0 || this.flakes.some((f) => f.s === s));
+  }
+
+  /** Trichter: alles im Radius wird eingesogen (solange Platz ist) */
+  private catch(dt: number): void {
+    this.catching = Math.max(0, this.catching - dt * 3);
+    if (this.stun) return;
+    const R = this.funnelR();
+    const keep: Flake[] = [];
+    for (const f of this.flakes) {
+      const d = Math.hypot(f.x - this.x, f.y - this.y);
+      if (d > R + (f.kind === 'spark' ? 2 : f.size * 0.25) || (f.kind !== 'spark' && this.tank >= this.cap)) { keep.push(f); continue; }
+      if (f.kind === 'spark') {
+        this.sparksCaught++;
+        this.charge += 0.15;
+        this.fx.burst(f.x, f.y, SPARK, 6, 120, 1.2, 'spark', 0.25);
+        sfx.tap();
+        if (this.charge >= 1) this.overload();
+        continue;
+      }
+      const amt = Math.min(FLAKE, this.cap - this.tank);
+      this.tank += amt;
+      if (f.kind === 'foreign') this.foreign += amt;
+      else this.tankValue += amt * (f.kind === 'gold' ? 3 : 1);
+      if (f.kind === 'gold') this.goldFlakes++;
+      this.catching = 1;
+      this.fx.add({ x: f.x, y: f.y, vx: (f.x - this.x) * -0.5, vy: (f.y - this.y) * -0.5, color: f.kind === 'foreign' ? FOREIGN : f.kind === 'gold' ? GOLD : this.color, size: 2 + Math.random() * 1.5, max: 1, tx: this.x, ty: this.y });
+      if (this.tank >= this.cap - 0.001) { this.floats.add(this.x, this.y - 40, 'Tank voll', '#ffb547', 13); sfx.warn(); }
+    }
+    this.flakes = keep;
+    void dt;
+  }
+
+  /** Überschlag: zu viel Ladung – ein Teil des Tanks geht verloren, kurz gelähmt */
+  private overload(): void {
+    this.charge = 0;
+    this.hits++;
+    this.loseCargo(0.4);
+    this.stun = 1;
+    this.flash = 0.8;
+    this.shake = 0.4;
+    this.fx.burst(this.x, this.y, SPARK, 26, 280, 1.6, 'spark', 0.5);
+    this.floats.add(this.x, this.y - 44, 'Überschlag!', '#d9c2ff', 15);
+    sfx.warn();
+    buzz(60);
+  }
+
+  private loseCargo(f: number): void {
+    const loss = this.tank * f;
+    this.tankValue *= 1 - f;
+    this.foreign *= 1 - f;
+    this.tank -= loss;
+    this.score.reset();
+    if (loss > 0.1) this.floats.add(this.x, this.y - 26, `−${Math.round(loss * UNITS)}`, '#ff9aa4', 15);
+  }
+
+  /** Sturmzellen: Ruhe → Aufladen (Ring) → Blitz (trifft alles im Ring, wirft Funken aus) */
   private updateStorms(dt: number): void {
     const charge = [1.5, 1.4, 1.3, 1.15, 1.05][this.level - 1];
     for (const s of this.storms) {
       s.t -= dt;
       if (s.state === 'idle' && s.t <= 0) { s.state = 'charge'; s.t = charge; }
       else if (s.state === 'charge' && s.t <= 0) { s.state = 'strike'; s.t = 0.35; this.strike(s); }
-      else if (s.state === 'strike' && s.t <= 0) { s.state = 'idle'; s.t = 2.5 + this.r() * 2.5; s.bolts = []; }
+      else if (s.state === 'strike' && s.t <= 0) { s.state = 'idle'; s.t = 3 + this.r() * 3; s.bolts = []; }
     }
   }
 
   private strike(s: Storm): void {
-    const [sx, sy] = this.pos(s.a, s.d);
+    const [sx, sy] = this.stormPos(s);
     const R = this.strikeR(s);
     s.bolts = [];
-    // Blitzäste zu den Schwaden im Ring (sie werden aufgeladen) und ins Leere
-    for (const b of this.blobs) {
-      if (b.foreign || b.amount <= 0.1) continue;
-      const [bx, by] = this.pos(b.a, b.d);
-      if (Math.hypot(bx - sx, by - sy) > R * 1.15) continue;
-      if (b.charged <= 0) this.floats.add(bx, by - 16, 'Aufgeladen!', '#ffe08a', 13);
-      b.charged = 5;
-      b.counted = false;
-      s.bolts.push(bolt(sx, sy, bx, by, this.r));
-    }
-    for (let k = s.bolts.length; k < 3; k++) {
+    for (let k = 0; k < 4; k++) {
       const a = this.r() * Math.PI * 2, d = R * (0.5 + this.r() * 0.5);
       s.bolts.push(bolt(sx, sy, sx + Math.cos(a) * d, sy + Math.sin(a) * d, this.r));
     }
     const dShip = Math.hypot(this.x - sx, this.y - sy);
     if (dShip <= R) {
       s.bolts.push(bolt(sx, sy, this.x, this.y, this.r));
-      this.stun = 1.2;
       this.hits++;
-      const f = 0.5;
-      const loss = this.tank * f;
-      this.tankValue *= 1 - f;
-      this.foreign *= 1 - f;
-      this.tank -= loss;
-      this.score.reset();
+      this.loseCargo(0.5);
+      this.charge = 0;
+      this.stun = 1.2;
       this.shake = 0.5;
       this.flash = 1;
-      this.vx = ((this.x - sx) / Math.max(1, dShip)) * 260;
-      this.vy = ((this.y - sy) / Math.max(1, dShip)) * 260;
-      this.fx.burst(this.x, this.y, '#d9c2ff', 24, 300, 1.6, 'spark', 0.45);
-      this.fx.burst(this.x, this.y, this.color, 16, 140, 2.2, 'dot', 0.8);
-      if (loss > 0.1) this.floats.add(this.x, this.y - 26, `−${Math.round(loss * UNITS)}`, '#ff9aa4', 15);
+      this.vx = ((this.x - sx) / Math.max(1, dShip)) * 220;
+      this.vy = ((this.y - sy) / Math.max(1, dShip)) * 220;
+      this.fx.burst(this.x, this.y, SPARK, 24, 300, 1.6, 'spark', 0.45);
       sfx.warn();
       buzz(60);
     } else {
@@ -490,11 +540,12 @@ export class GasGame implements MiniGame {
 
   private updateMother(dt: number): void {
     const [mx, my] = this.mother;
-    const near = Math.hypot(mx - this.x, my - this.y) < 46;
+    const near = Math.hypot(mx - this.x, my - this.y) < 50;
     const speed = Math.hypot(this.vx, this.vy);
+    if (near) this.charge = Math.max(0, this.charge - dt * 0.5);
     if (near && this.tank > 0.01) {
       if (!this.unloading && speed > DOCK_SPEED) {
-        if (this.dockWarn <= 0) { this.floats.add(mx, my - 54, 'Langsamer andocken!', '#ffb547', 14); this.dockWarn = 1.5; }
+        if (this.dockWarn <= 0) { this.floats.add(mx, my - 58, 'Langsamer andocken!', '#ffb547', 14); this.dockWarn = 1.5; }
         return;
       }
       if (!this.unloading) { this.unloading = true; this.unloadStart = this.tank; this.unloadForeign = this.foreign; }
@@ -521,11 +572,11 @@ export class GasGame implements MiniGame {
         // Restmengen zählen nicht als Ladung
         if (this.unloadStart < this.cap * 0.3) return;
         if (pure) this.pureUnloads++;
-        this.floats.add(mx, my - 40, pure ? 'Rein gesichert +20 %' : `Gesichert (Reinheit ${Math.round(pureStart * 100)} %)`, pure ? '#6be38f' : '#c8d0a0', 14);
+        this.floats.add(mx, my - 44, pure ? 'Rein gesichert +20 %' : `Gesichert (Reinheit ${Math.round(pureStart * 100)} %)`, pure ? '#6be38f' : '#c8d0a0', 14);
         sfx.coin();
-        // Volle, reine Ladung: Kombo steigt (hält bis zur nächsten, Blitz und trübe Ladung setzen zurück)
-        if (full && pure) { this.fullUnloads++; this.score.bump(0.5, 30); this.floats.add(mx, my - 60, `Volle Ladung ×${String(this.score.combo).replace('.', ',')}`, '#ffd27a', 15); }
-        else if (full) { this.fullUnloads++; if (!pure) this.score.reset(); }
+        // Volle, reine Ladung: Kombo steigt (hält bis zur nächsten; Überschlag, Blitz und trübe Ladung setzen zurück)
+        if (full && pure) { this.fullUnloads++; this.score.bump(0.5, 30); this.floats.add(mx, my - 64, `Volle Ladung ×${String(this.score.combo).replace('.', ',')}`, '#ffd27a', 15); }
+        else if (full) { this.fullUnloads++; this.score.reset(); }
       }
     } else if (!near) this.unloading = false;
   }
@@ -549,8 +600,8 @@ export class GasGame implements MiniGame {
         ...(this.tank > 0.05 ? [['Im Tank (halb gewertet)', `${Math.round(this.tankValue * UNITS).toLocaleString('de-DE')}`] as [string, string]] : []),
         ['Volle Ladungen', `${this.fullUnloads}`],
         ['Reine Ladungen', `${this.pureUnloads}`],
-        ['Gold/aufgeladen', `${this.golds}`],
-        ...(this.storms.length ? [['Blitzeinschläge', `${this.hits}`] as [string, string]] : []),
+        ['Goldene Flocken', `${this.goldFlakes}`],
+        ...(this.sparkShare || this.storms.length ? [['Überschläge und Blitze', `${this.hits}`] as [string, string]] : []),
       ],
     };
   }
@@ -570,10 +621,7 @@ export class GasGame implements MiniGame {
 
   // ---------- Darstellung ----------
 
-  /**
-   * Bilder einmal berechnen: Wolken aus fraktalem Rauschen (vier Formen je Gasart, weich auslaufend),
-   * ein Wirbelschleier (Rauschen in Polarkoordinaten verdreht) und dunkle Sturmwolken.
-   */
+  /** Wolkenbilder aus fraktalem Rauschen (vier Formen je Gasart, weich auslaufend), einmal berechnet */
   private makeArt(): void {
     const dpr = Math.min(3, globalThis.devicePixelRatio || 1);
     const N = perlin(4711);
@@ -599,32 +647,10 @@ export class GasGame implements MiniGame {
       g.putImageData(img, 0, 0);
       return c;
     };
-    const size = Math.round(Math.min(384, 128 * dpr));
+    const size = Math.round(Math.min(256, 96 * dpr));
     const set = (col: string, dark = false) => [0, 1, 2, 3].map((k) => cloud(k + (dark ? 11 : 0), size, col, dark));
-    // Wirbelschleier
-    const ss = Math.round(Math.min(900, this.S * 2 * Math.min(dpr, 1.5)));
-    const sw = document.createElement('canvas');
-    sw.width = sw.height = ss;
-    const sg = sw.getContext('2d')!;
-    const si = sg.createImageData(ss, ss);
-    const n = parseInt(this.color.slice(1), 16), cr = (n >> 16) & 255, cg = (n >> 8) & 255, cb = n & 255;
-    for (let y = 0; y < ss; y++) for (let x = 0; x < ss; x++) {
-      const u = (x / ss) * 2 - 1, v = (y / ss) * 2 - 1;
-      const d = Math.hypot(u, v);
-      if (d >= 1) continue;
-      // Spirale: Winkel mit dem Abstand verdrehen
-      const a = Math.atan2(v, u) + d * 5.5;
-      const arms = 0.5 + 0.5 * Math.cos(a * 3);
-      const f = fbm(N, Math.cos(a) * d * 3 + 20, Math.sin(a) * d * 3 - 9, 4);
-      const k = clamp(arms * 0.7 + (f - 0.4) * 1.2, 0, 1) * (1 - d) ** 0.8 * Math.min(1, d * 4);
-      const j = (y * ss + x) * 4;
-      si.data[j] = cr; si.data[j + 1] = cg; si.data[j + 2] = cb;
-      si.data[j + 3] = k * 150;
-    }
-    sg.putImageData(si, 0, 0);
     this.art = {
-      clouds: { gas: set(this.color), gold: set('#ffc860'), foreign: set(FOREIGN), storm: set('#7a4dff', true) },
-      swirl: sw,
+      clouds: { gas: set(this.color), gold: set(GOLD), foreign: set(FOREIGN), storm: set('#7a4dff', true) },
       dark: cloud(23, size, '#000000', true),
     };
   }
@@ -640,18 +666,16 @@ export class GasGame implements MiniGame {
       c.height = H;
       const g = c.getContext('2d')!;
       g.scale(dpr, dpr);
-      // Wirbelmitte des Bildes (etwa 51 %/47 %) auf die Spielmitte legen
-      const s = Math.max(this.w / img.naturalWidth, this.h / img.naturalHeight) * 1.12;
+      const s = Math.max(this.w / img.naturalWidth, this.h / img.naturalHeight);
       const iw = img.naturalWidth * s, ih = img.naturalHeight * s;
       g.imageSmoothingEnabled = true;
       g.imageSmoothingQuality = 'high';
-      const ox = clamp(this.cx - iw * 0.51, this.w - iw, 0), oy = clamp(this.cy - ih * 0.47, this.h - ih, 0);
-      g.drawImage(img, ox, oy, iw, ih);
-      g.fillStyle = 'rgba(3,4,12,0.7)';
+      g.drawImage(img, (this.w - iw) / 2, (this.h - ih) / 2, iw, ih);
+      g.fillStyle = 'rgba(3,4,12,0.68)';
       g.fillRect(0, 0, this.w, this.h);
-      const v = g.createRadialGradient(this.cx, this.cy, this.S * 0.6, this.cx, this.cy, Math.max(this.w, this.h) * 0.8);
+      const v = g.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.3, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.8);
       v.addColorStop(0, 'rgba(0,0,0,0)');
-      v.addColorStop(1, 'rgba(0,0,0,0.6)');
+      v.addColorStop(1, 'rgba(0,0,0,0.55)');
       g.fillStyle = v;
       g.fillRect(0, 0, this.w, this.h);
       this.bgCache = c;
@@ -663,44 +687,9 @@ export class GasGame implements MiniGame {
     const t = now / 1000;
     this.drawBackground(ctx);
     if (!this.art) this.makeArt();
-    const art = this.art!;
     ctx.save();
     if (this.shake > 0 && !document.documentElement.classList.contains('calm')) ctx.translate((Math.random() - 0.5) * 9 * this.shake, (Math.random() - 0.5) * 9 * this.shake);
-    // Wirbelschleier: zwei Lagen, verschieden schnell
-    ctx.save();
-    ctx.translate(this.cx, this.cy);
-    ctx.scale(1, this.ys);
-    ctx.globalCompositeOperation = 'lighter';
-    for (const [k, sp, al] of [[1, 0.6, 0.4], [1.15, 0.35, 0.22]] as const) {
-      ctx.save();
-      ctx.rotate(-this.swirl * sp);
-      ctx.globalAlpha = al * (this.gust > 0 ? 1.3 : 1);
-      const s = this.S * k;
-      ctx.drawImage(art.swirl, -s, -s, s * 2, s * 2);
-      ctx.restore();
-    }
-    // Strudel in der Mitte
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, this.S * 0.24);
-    g.addColorStop(0, rgba('#ffffff', 0.35));
-    g.addColorStop(0.25, rgba(this.color, 0.25));
-    g.addColorStop(1, rgba(this.color, 0));
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, this.S * 0.24, 0, Math.PI * 2);
-    ctx.fill();
-    for (let k = 0; k < 4; k++) {
-      ctx.strokeStyle = rgba(this.color, 0.1 + k * 0.05);
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      const a0 = -this.swirl * (2 + k);
-      ctx.arc(0, 0, this.S * (0.21 - k * 0.045), a0, a0 + 3.6);
-      ctx.stroke();
-    }
-    ctx.restore();
-    // Böe: Windschlieren
-    if (this.gust > 0 || this.gustWarn > 0) this.drawGust(ctx, t);
-    this.drawBlobs(ctx, t);
+    this.drawStreams(ctx, t);
     this.drawStorms(ctx, t);
     this.drawMother(ctx, t);
     this.fx.draw(ctx);
@@ -714,113 +703,113 @@ export class GasGame implements MiniGame {
       ctx.fillRect(0, 0, this.w, this.h);
       ctx.restore();
     }
-    if (this.target && this.endT < 0) {
-      ctx.strokeStyle = 'rgba(110,220,205,0.35)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(this.target[0], this.target[1], 14, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    this.drawGauges(ctx, t);
-    const [bx, by, br] = this.btn;
-    drawButton(ctx, bx, by, br, 1 - this.boostCd / 6, '#5ff0d8', 'S', t);
+    this.drawSticks(ctx);
   }
 
-  private drawGust(ctx: CanvasRenderingContext2D, t: number): void {
-    const warn = this.gust <= 0;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = rgba('#bfe8ff', warn ? 0.08 + 0.06 * Math.sin(t * 10) : 0.16);
-    ctx.lineWidth = 1.2;
-    ctx.lineCap = 'round';
-    for (let k = 0; k < 14; k++) {
-      const d = 0.25 + ((k * 0.37) % 0.7);
-      const a = -this.swirl * 1.8 + k * 0.9 + t * (warn ? 0.2 : -1.2);
-      ctx.beginPath();
-      for (let s = 0; s <= 8; s++) {
-        const aa = a + s * 0.06 * (warn ? 1 : -1);
-        const [x, y] = this.pos(aa, d);
-        s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  private drawBlobs(ctx: CanvasRenderingContext2D, t: number): void {
+  private drawStreams(ctx: CanvasRenderingContext2D, t: number): void {
     const art = this.art!;
-    for (const b of this.blobs) {
-      const [bx, by] = this.pos(b.a, b.d);
-      const rr = this.blobRadius(b);
-      const fade = Math.min(1, (this.time - b.born) / 1.5, b.gold ? b.life / 1.5 : 1);
-      if (fade <= 0) continue;
-      const triple = b.gold || b.charged > 0;
-      const set = b.foreign ? art.clouds.foreign : triple ? art.clouds.gold : art.clouds.gas;
-      ctx.save();
-      ctx.translate(bx, by);
-      if (b.foreign) {
-        // trübes Fremdgas: deckend, schmutzig
-        ctx.globalCompositeOperation = 'source-over';
-        for (let k = 0; k < 3; k++) {
-          ctx.save();
-          ctx.rotate(b.ph + k * 2.1 + t * 0.12 * (k % 2 ? 1 : -1));
-          const s = rr * (k === 0 ? 3 : 2.3);
-          ctx.globalAlpha = fade * (k === 0 ? 0.7 : 0.5);
-          ctx.drawImage(set[(b.v + k) % 4], -s / 2, -s / 2, s, s);
-          ctx.restore();
-        }
-        // schmutzig-dunkler Kern
-        ctx.globalAlpha = fade * 0.5;
-        ctx.drawImage(art.dark, -rr * 0.9, -rr * 0.9, rr * 1.8, rr * 1.8);
-      } else {
-        // leuchtendes Gas: drei Lagen, gegenläufig drehend
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = fade * 0.55;
-        ctx.drawImage(art.dark, -rr * 1.6, -rr * 1.6, rr * 3.2, rr * 3.2);
+    // Strombett: breites, schwaches Leuchten entlang der Kurve; Ankündigung am Einstieg
+    for (const s of this.streams) {
+      const col = s.kind === 'foreign' ? FOREIGN : s.kind === 'gold' ? GOLD : this.color;
+      if (s.warn > 0) {
+        const [x, y] = this.streamPoint(s, 0.04, 0);
+        const [x2, y2] = this.streamPoint(s, 0.12, 0);
+        const a = Math.atan2(y2 - y, x2 - x);
+        const p = 0.5 + 0.5 * Math.sin(t * 10);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(a);
         ctx.globalCompositeOperation = 'lighter';
-        for (let k = 0; k < 3; k++) {
-          ctx.save();
-          ctx.rotate(b.ph + k * 2.1 + t * (0.15 + k * 0.08) * (k % 2 ? 1 : -1));
-          const s = rr * (k === 0 ? 3.1 : 2.3 - k * 0.2);
-          const pulse = triple ? 0.85 + 0.15 * Math.sin(t * 7 + k) : 1;
-          ctx.globalAlpha = fade * (0.5 + 0.3 * b.dens) * (k === 0 ? 0.85 : 0.7) * pulse;
-          ctx.drawImage(set[(b.v + k) % 4], -s / 2, -s / 2, s, s);
-          ctx.restore();
-        }
-        // dichter Kern
-        const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, rr * 0.6);
-        cg.addColorStop(0, rgba(triple ? '#fff4c8' : '#ffffff', 0.18 * b.dens * fade));
-        cg.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = cg;
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, s.width);
+        g.addColorStop(0, rgba(col, 0.35 * p + 0.15));
+        g.addColorStop(1, rgba(col, 0));
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(0, 0, rr * 0.6, 0, Math.PI * 2);
+        ctx.arc(0, 0, s.width, 0, Math.PI * 2);
         ctx.fill();
-        // aufgeladen: knisternde Funken
-        if (triple && Math.random() < 0.5) {
-          ctx.strokeStyle = rgba('#fff0b0', 0.8);
-          ctx.lineWidth = 1;
+        ctx.fillStyle = rgba(col, 0.9);
+        for (let k = 0; k < 3; k++) {
+          const ox = 12 + k * 12 + ((t * 30) % 12);
           ctx.beginPath();
-          let x = (Math.random() - 0.5) * rr, y = (Math.random() - 0.5) * rr;
-          ctx.moveTo(x, y);
-          for (let s = 0; s < 3; s++) { x += (Math.random() - 0.5) * rr * 0.4; y += (Math.random() - 0.5) * rr * 0.4; ctx.lineTo(x, y); }
-          ctx.stroke();
+          ctx.moveTo(ox + 7, 0); ctx.lineTo(ox, -6); ctx.lineTo(ox + 2, 0); ctx.lineTo(ox, 6);
+          ctx.closePath();
+          ctx.fill();
         }
+        ctx.restore();
+        continue;
+      }
+      const fade = clamp(Math.min(s.life, 1.5) / 1.5, 0.15, 1);
+      ctx.save();
+      ctx.globalCompositeOperation = s.kind === 'foreign' ? 'source-over' : 'lighter';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i++) {
+        const [x, y] = this.streamPoint(s, i / 24, 0);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.035) * fade);
+      ctx.lineWidth = s.width;
+      ctx.stroke();
+      ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.05) * fade);
+      ctx.lineWidth = s.width * 0.35;
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Flocken: Fremdgas trüb und deckend, Gas leuchtend
+    ctx.save();
+    for (const f of this.flakes) {
+      if (f.kind === 'spark') continue;
+      const edge = Math.min(1, f.u * 8, (1 - f.u) * 8);
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.rot);
+      const s = f.size * 2.2;
+      if (f.kind === 'foreign') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.55 * edge;
+        ctx.drawImage(art.clouds.foreign[f.v], -s / 2, -s / 2, s, s);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = (f.kind === 'gold' ? 0.7 : 0.5) * edge;
+        ctx.drawImage((f.kind === 'gold' ? art.clouds.gold : art.clouds.gas)[f.v], -s / 2, -s / 2, s, s);
       }
       ctx.restore();
     }
+    // Funken: knisternde Lichtpunkte
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of this.flakes) {
+      if (f.kind !== 'spark') continue;
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 10);
+      g.addColorStop(0, rgba('#ffffff', 0.95));
+      g.addColorStop(0.3, rgba(SPARK, 0.6));
+      g.addColorStop(1, rgba('#9a7aff', 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      if (Math.random() < 0.5) {
+        ctx.strokeStyle = rgba(SPARK, 0.9);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        let x = f.x, y = f.y;
+        ctx.moveTo(x, y);
+        for (let k = 0; k < 3; k++) { x += (Math.random() - 0.5) * 14; y += (Math.random() - 0.5) * 14; ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   private drawStorms(ctx: CanvasRenderingContext2D, t: number): void {
     const art = this.art!;
     for (const s of this.storms) {
-      const [sx, sy] = this.pos(s.a, s.d);
-      const rr = s.r * this.S;
+      const [sx, sy] = this.stormPos(s);
+      const rr = s.r * this.w * 0.7;
       const R = this.strikeR(s);
       const charge = s.state === 'charge' ? 1 - s.t / [1.5, 1.4, 1.3, 1.15, 1.05][this.level - 1] : s.state === 'strike' ? 1 : 0;
       ctx.save();
       ctx.translate(sx, sy);
-      // dunkle Gewitterwolke
       for (let k = 0; k < 3; k++) {
         ctx.save();
         ctx.rotate(s.ph + k * 2 + t * 0.2 * (k % 2 ? 1 : -1));
@@ -829,7 +818,6 @@ export class GasGame implements MiniGame {
         ctx.drawImage(art.clouds.storm[k], -sz / 2, -sz / 2, sz, sz);
         ctx.restore();
       }
-      // inneres Wetterleuchten, beim Aufladen immer heller
       ctx.globalCompositeOperation = 'lighter';
       const flick = Math.random() < 0.15 + charge * 0.6 ? 1 : 0.3;
       const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, rr * 1.2);
@@ -840,7 +828,6 @@ export class GasGame implements MiniGame {
       ctx.arc(0, 0, rr * 1.2, 0, Math.PI * 2);
       ctx.fill();
       if (s.state === 'charge') {
-        // Warnring: zeigt, wo der Blitz einschlägt; füllt sich bis zum Einschlag
         ctx.strokeStyle = rgba('#e6d4ff', 0.25 + 0.5 * charge);
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 6]);
@@ -861,15 +848,12 @@ export class GasGame implements MiniGame {
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
         ctx.fill();
-        // kriechende Entladungen am Rand der Wolke
         if (Math.random() < 0.3 + charge * 0.6) {
           const a = Math.random() * Math.PI * 2;
-          const p = bolt(Math.cos(a) * rr * 0.4, Math.sin(a) * rr * 0.4, Math.cos(a) * rr * (1 + charge), Math.sin(a) * rr * (1 + charge), Math.random);
-          strokeBolt(ctx, p, 0.6 + charge * 0.4, 1);
+          strokeBolt(ctx, bolt(Math.cos(a) * rr * 0.4, Math.sin(a) * rr * 0.4, Math.cos(a) * rr * (1 + charge), Math.sin(a) * rr * (1 + charge), Math.random), 0.6 + charge * 0.4, 1);
         }
       }
       ctx.restore();
-      // Blitz
       if (s.state === 'strike') {
         const k = s.t / 0.35;
         ctx.save();
@@ -890,7 +874,6 @@ export class GasGame implements MiniGame {
   private drawMother(ctx: CanvasRenderingContext2D, t: number): void {
     const [mx, my] = this.mother;
     const full = this.tank >= this.cap * 0.9;
-    // Hinweislinie bei vollem Tank
     if (full && !this.unloading) {
       ctx.strokeStyle = rgba('#6be38f', 0.25 + 0.2 * Math.sin(t * 6));
       ctx.setLineDash([4, 8]);
@@ -901,7 +884,6 @@ export class GasGame implements MiniGame {
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    // Andockring
     ctx.save();
     ctx.translate(mx, my);
     ctx.globalCompositeOperation = 'lighter';
@@ -909,15 +891,14 @@ export class GasGame implements MiniGame {
     ctx.strokeStyle = rgba('#6be38f', ok ? 0.85 : 0.35 + 0.15 * Math.sin(t * 3));
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, 0, 46, t * 0.8, t * 0.8 + Math.PI * 1.6);
+    ctx.arc(0, 0, 50, t * 0.8, t * 0.8 + Math.PI * 1.6);
     ctx.stroke();
     ctx.strokeStyle = rgba('#6be38f', 0.25);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(0, 0, 52, -t * 0.5, -t * 0.5 + Math.PI * 0.8);
+    ctx.arc(0, 0, 56, -t * 0.5, -t * 0.5 + Math.PI * 0.8);
     ctx.stroke();
     if (ok) {
-      // Übertragungsstrahl
       const g = ctx.createLinearGradient(this.x - mx, this.y - my, 0, 0);
       g.addColorStop(0, rgba(this.color, 0.6));
       g.addColorStop(1, rgba(this.color, 0.1));
@@ -929,7 +910,9 @@ export class GasGame implements MiniGame {
       ctx.stroke();
     }
     ctx.globalCompositeOperation = 'source-over';
-    ctx.rotate(this.motherA + Math.PI);
+    // fliegt quer: Bug in Fahrtrichtung
+    const dir = Math.cos(this.time * 0.12) >= 0 ? 1 : -1;
+    ctx.rotate((dir * Math.PI) / 2);
     const sp = mapShipSprite('wyvern_gas');
     if (sp) {
       const S = 104;
@@ -948,9 +931,8 @@ export class GasGame implements MiniGame {
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(sp.img, -S / 2, -S / 2, S, S);
     } else {
-      ctx.rotate(-Math.PI / 2);
       ctx.beginPath();
-      ctx.moveTo(-26, -10); ctx.lineTo(26, -10); ctx.lineTo(30, 0); ctx.lineTo(26, 10); ctx.lineTo(-26, 10); ctx.lineTo(-30, 0);
+      ctx.moveTo(-10, -26); ctx.lineTo(10, -26); ctx.lineTo(10, 26); ctx.lineTo(-10, 26);
       ctx.closePath();
       ctx.fillStyle = '#0d1e2a';
       ctx.fill();
@@ -959,51 +941,82 @@ export class GasGame implements MiniGame {
       ctx.stroke();
     }
     ctx.restore();
-    // Leuchtfeuer
-    ctx.fillStyle = Math.sin(t * 4) > 0 ? '#6be38f' : 'rgba(107,227,143,0.3)';
-    ctx.beginPath();
-    ctx.arc(mx, my - 50, 2.5, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   private drawShip(ctx: CanvasRenderingContext2D, t: number): void {
+    const R = this.funnelR();
+    const stun = this.stun > 0;
     ctx.save();
     ctx.translate(this.x, this.y);
-    const stun = this.stun > 0;
-    // Schöpfkegel vor dem Bug
-    if (this.sucking > 0 && !stun) {
-      ctx.save();
-      ctx.rotate(this.heading);
-      ctx.globalCompositeOperation = 'lighter';
-      const L = 30 + 26 * this.ram;
-      const g = ctx.createRadialGradient(18, 0, 0, 18, 0, L);
-      g.addColorStop(0, rgba(this.color, 0.45));
-      g.addColorStop(1, rgba(this.color, 0));
-      ctx.fillStyle = g;
+    // Sammeltrichter: Sogfeld mit wirbelndem Rand, beim Fangen heller
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(0, 0, R * 0.2, 0, 0, R);
+    g.addColorStop(0, rgba(this.color, 0.04 + 0.12 * this.catching));
+    g.addColorStop(0.85, rgba(this.color, 0.1 + 0.12 * this.catching));
+    g.addColorStop(1, rgba(this.color, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = rgba(this.color, 0.5 + 0.3 * this.catching);
+    ctx.lineWidth = 1.5;
+    for (let k = 0; k < 3; k++) {
+      const a0 = -t * (2.5 - this.funnel) + k * 2.09;
       ctx.beginPath();
-      ctx.moveTo(14, 0);
-      ctx.arc(14, 0, L, -0.55, 0.55);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      ctx.arc(0, 0, R, a0, a0 + 1.2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.6, -a0 * 1.3, -a0 * 1.3 + 0.8);
+      ctx.stroke();
     }
-    ctx.rotate(this.heading + Math.PI / 2);
+    ctx.restore();
+    // Ladungsring (Funken): violett, flackert kurz vor dem Überschlag
+    if (this.charge > 0.02) {
+      ctx.strokeStyle = rgba(SPARK, this.charge > 0.75 && Math.sin(t * 20) > 0 ? 1 : 0.7);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, R + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.charge);
+      ctx.stroke();
+    }
+    // Tankring
+    const f = clamp(this.tank / this.cap, 0, 1), pur = this.purity();
+    const TR = 30, a0 = -Math.PI / 2;
+    ctx.strokeStyle = 'rgba(8,18,28,0.75)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, TR, 0, Math.PI * 2);
+    ctx.stroke();
+    const good = f * pur;
+    ctx.strokeStyle = f >= 0.99 ? (Math.sin(t * 8) > 0 ? '#ffb547' : this.color) : this.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, TR, a0, a0 + Math.PI * 2 * good);
+    ctx.stroke();
+    if (f - good > 0.002) {
+      ctx.strokeStyle = FOREIGN;
+      ctx.beginPath();
+      ctx.arc(0, 0, TR, a0 + Math.PI * 2 * good, a0 + Math.PI * 2 * f);
+      ctx.stroke();
+    }
+    // Sammler: leicht in Flugrichtung geneigt
+    ctx.rotate(clamp(this.vx / 400, -0.4, 0.4));
     const sp = mapShipSprite('alligator_gas');
     if (sp) {
-      const S = 66;
+      const S = 50;
       if (!stun) {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
+        const thrust = clamp(Math.hypot(this.vx, this.vy) / 200, 0.3, 1);
         for (const ex of sp.engines.xs) {
-          const fx = ex * S, fy = sp.engines.y * S, fl = (this.boostT > 0 ? 18 : 8) + Math.random() * 5;
-          const g = ctx.createLinearGradient(fx, fy, fx, fy + fl);
-          g.addColorStop(0, rgba('#fff0d0', 0.9));
-          g.addColorStop(0.3, rgba(this.boostT > 0 ? '#9ffff0' : sp.engines.color, 0.7));
-          g.addColorStop(1, rgba(sp.engines.color, 0));
-          ctx.fillStyle = g;
+          const fx = ex * S, fy = sp.engines.y * S, fl = 5 + 9 * thrust + Math.random() * 4;
+          const eg = ctx.createLinearGradient(fx, fy, fx, fy + fl);
+          eg.addColorStop(0, rgba('#fff0d0', 0.9));
+          eg.addColorStop(0.3, rgba(sp.engines.color, 0.7));
+          eg.addColorStop(1, rgba(sp.engines.color, 0));
+          ctx.fillStyle = eg;
           ctx.beginPath();
-          ctx.moveTo(fx - 3.5, fy);
-          ctx.lineTo(fx + 3.5, fy);
+          ctx.moveTo(fx - 3, fy);
+          ctx.lineTo(fx + 3, fy);
           ctx.lineTo(fx, fy + fl);
           ctx.closePath();
           ctx.fill();
@@ -1013,10 +1026,8 @@ export class GasGame implements MiniGame {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(sp.img, -S / 2, -S / 2, S, S);
-      // Tanks leuchten mit der Füllung
       ctx.globalCompositeOperation = 'lighter';
-      const f = clamp(this.tank / this.cap, 0, 1);
-      ctx.fillStyle = rgba(this.purity() >= PURE ? this.color : FOREIGN, 0.15 + 0.45 * f);
+      ctx.fillStyle = rgba(pur >= PURE ? this.color : FOREIGN, 0.15 + 0.45 * f);
       for (const [x, y] of [[-0.14, -0.02], [0.14, -0.02], [-0.14, 0.17], [0.14, 0.17]]) {
         ctx.beginPath();
         ctx.arc(x * S, y * S, S * 0.055, 0, Math.PI * 2);
@@ -1029,77 +1040,79 @@ export class GasGame implements MiniGame {
         ctx.fill();
       }
     } else {
-      const col = stun && Math.sin(t * 30) > 0 ? '#c9a6ff' : '#ffc45e';
       ctx.beginPath();
       ctx.moveTo(-9, -16); ctx.lineTo(9, -16); ctx.lineTo(13, -6); ctx.lineTo(13, 12); ctx.lineTo(6, 18); ctx.lineTo(-6, 18); ctx.lineTo(-13, 12); ctx.lineTo(-13, -6);
       ctx.closePath();
       ctx.fillStyle = '#0d1e2a';
       ctx.fill();
-      ctx.strokeStyle = col;
+      ctx.strokeStyle = stun && Math.sin(t * 30) > 0 ? '#c9a6ff' : '#ffc45e';
       ctx.lineWidth = 1.6;
       ctx.stroke();
     }
     ctx.restore();
+    // Reinheit unter dem Sammler
+    if (this.tank > 0.05 && pur < 0.999 && this.endT < 0) {
+      ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = pur < PURE ? '#d8dca0' : '#9fe8c0';
+      ctx.fillText(`Reinheit ${Math.round(pur * 100)} %`, this.x, this.y + Math.max(R, TR) + 16);
+    }
   }
 
-  /** Anzeige am Sammler: Tankring (Fremdgas trüb am Ende), innen der Staudruck, darunter die Reinheit */
-  private drawGauges(ctx: CanvasRenderingContext2D, t: number): void {
-    if (this.endT >= 0) return;
-    const f = clamp(this.tank / this.cap, 0, 1), pur = this.purity();
-    const R = 40, a0 = -Math.PI / 2;
+  /** Sticks: links Flugstick, rechts Trichterregler (nur hoch/runter) mit Größenanzeige */
+  private drawSticks(ctx: CanvasRenderingContext2D): void {
     ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.lineCap = 'butt';
-    ctx.strokeStyle = 'rgba(8,18,28,0.75)';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(0, 0, R, 0, Math.PI * 2);
-    ctx.stroke();
-    const good = f * pur, bad = f - good;
-    ctx.strokeStyle = f >= 0.99 ? (Math.sin(t * 8) > 0 ? '#ffb547' : this.color) : this.color;
-    ctx.beginPath();
-    ctx.arc(0, 0, R, a0, a0 + Math.PI * 2 * good);
-    ctx.stroke();
-    if (bad > 0.002) {
-      ctx.strokeStyle = FOREIGN;
-      ctx.beginPath();
-      ctx.arc(0, 0, R, a0 + Math.PI * 2 * good, a0 + Math.PI * 2 * f);
-      ctx.stroke();
-    }
-    // Marke: ab hier gilt der Tank als voll (Kombo)
-    const am = a0 + Math.PI * 2 * 0.9;
-    ctx.strokeStyle = '#9ff3ff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(am) * (R - 4), Math.sin(am) * (R - 4));
-    ctx.lineTo(Math.cos(am) * (R + 4), Math.sin(am) * (R + 4));
-    ctx.stroke();
-    // Staudruck: innerer Bogen, hell bei voller Fahrt
-    if (this.sucking > 0 || this.ram > 0.05) {
-      ctx.strokeStyle = rgba(this.ram > 0.85 ? '#fff0b0' : '#7fe8ff', this.sucking > 0 ? 0.85 : 0.35);
+    const m = this.move;
+    if (m) {
+      ctx.strokeStyle = 'rgba(63,224,197,0.35)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, R - 6, Math.PI / 2 + Math.PI * 0.35, Math.PI / 2 + Math.PI * 0.35 + Math.PI * 1.3 * this.ram);
+      ctx.arc(m.ox, m.oy, JOY_R, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.fillStyle = 'rgba(63,224,197,0.35)';
+      ctx.beginPath();
+      ctx.arc(m.ox + m.kx * JOY_R, m.oy + m.ky * JOY_R, 20, 0, Math.PI * 2);
+      ctx.fill();
     }
+    const s = this.size;
+    if (s) {
+      ctx.strokeStyle = 'rgba(255,200,96,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(s.ox, s.oy - JOY_R);
+      ctx.lineTo(s.ox, s.oy + JOY_R);
+      ctx.stroke();
+      ctx.font = '700 14px "Chakra Petch", Barlow, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,200,96,0.7)';
+      ctx.fillText('+', s.ox, s.oy - JOY_R - 8);
+      ctx.fillText('−', s.ox, s.oy + JOY_R + 18);
+      ctx.fillStyle = 'rgba(255,200,96,0.4)';
+      ctx.beginPath();
+      ctx.arc(s.ox, s.oy + s.ky * JOY_R, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Trichtergröße (immer sichtbar, unten rechts)
+    const bx = this.w - 26, by = this.h - 30, H = 120;
+    ctx.fillStyle = 'rgba(8,18,28,0.75)';
+    ctx.fillRect(bx - 4, by - H, 8, H);
+    const g = ctx.createLinearGradient(0, by, 0, by - H);
+    g.addColorStop(0, '#3fe0c5');
+    g.addColorStop(1, '#ffc860');
+    ctx.fillStyle = g;
+    ctx.fillRect(bx - 4, by - H * this.funnel, 8, H * this.funnel);
+    ctx.strokeStyle = 'rgba(110,220,205,0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx - 4.5, by - H - 0.5, 9, H + 1);
     ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
-    ctx.textAlign = 'center';
-    if (this.tank > 0.05 && pur < 0.999) {
-      ctx.fillStyle = pur < PURE ? '#d8dca0' : '#9fe8c0';
-      ctx.fillText(`Reinheit ${Math.round(pur * 100)} %`, 0, R + 14);
-    } else if (this.sucking > 0) {
-      ctx.fillStyle = '#9ffff0';
-      ctx.fillText(`Staudruck ×${(0.35 + 0.65 * this.ram).toFixed(1).replace('.', ',')}`, 0, R + 14);
-    }
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(169,195,198,0.85)';
+    ctx.fillText('TRICHTER', bx + 6, by - H - 8);
     ctx.restore();
   }
 }
 
-function sub(a: [number, number], b: [number, number]): [number, number] {
-  return [a[0] - b[0], a[1] - b[1]];
-}
-
-/** Gezackter Blitz von A nach B (Mittelpunktverschiebung) mit kleinen Seitenästen */
+/** Gezackter Blitz von A nach B (Mittelpunktverschiebung) */
 function bolt(ax: number, ay: number, bx: number, by: number, r: () => number): [number, number][] {
   let pts: [number, number][] = [[ax, ay], [bx, by]];
   let amp = Math.hypot(bx - ax, by - ay) * 0.22;

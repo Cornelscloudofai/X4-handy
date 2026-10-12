@@ -27,7 +27,7 @@ export interface MiniOpts {
 export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: string; chain?: string; endless?: string }> = {
   pipes: { name: 'Störung beheben', sub: 'Rohr-Puzzle: Leitungen drehen, bis alle Module versorgt sind', icon: 'wrench', chain: 'Leitungskette: Netz um Netz gegen die Uhr' },
   ore: { name: 'Reiche Erzader', sub: 'Bergbau: Mit dem Laser den Adern folgen, ohne zu überhitzen', icon: 'miner' },
-  gas: { name: 'Gaswirbel', sub: 'Gas sammeln und am Mutterschiff sichern', icon: 'miner' },
+  gas: { name: 'Gasströme', sub: 'Mit dem Sammeltrichter Gas fangen und am Mutterschiff sichern', icon: 'miner' },
   pirates: { name: 'Piratenangriff', sub: 'Kampf: Den Frachter bis zum Sprungtor beschützen', icon: 'warn', endless: 'Endloser Geleitschutz: Wie viele Wellen hältst du?' },
   xenon: { name: 'Xenon-Schwarm', sub: 'Kampf: Xenon greifen in Schwärmen an', icon: 'target', endless: 'Endlose Xenon-Abwehr: Wie viele Wellen hältst du?' },
 };

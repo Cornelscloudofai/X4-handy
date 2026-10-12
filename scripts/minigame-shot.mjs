@@ -112,15 +112,30 @@ await page.click('#minigame [data-mg="quit"]');
 await page.click('#modal [data-act="mg-play"][data-kind="gas"]');
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
-await page.mouse.move(width / 2, 600);
+await page.waitForTimeout(200);
+// linker Stick: Sammler fliegt nach rechts
+const gx0 = await mg(() => window.__mg.game.x);
+await page.mouse.move(90, 640);
 await page.mouse.down();
-for (let k = 0; k < 25; k++) {
-  const b = await mg(() => window.__mg.game.debugBestBlob());
-  if (b) await page.mouse.move(b[0], b[1], { steps: 3 });
+await page.mouse.move(150, 640, { steps: 4 });
+await page.waitForTimeout(600);
+await page.mouse.up();
+const gx1 = await mg(() => window.__mg.game.x);
+if (!(gx1 > gx0 + 20)) fail(`Linker Stick bewegt den Sammler nicht (${gx0} → ${gx1})`);
+// rechter Stick: Trichter vergrößern
+const fu0 = await mg(() => window.__mg.game.funnel);
+await page.mouse.move(width - 90, 640);
+await page.mouse.down();
+await page.mouse.move(width - 90, 580, { steps: 4 });
+await page.waitForTimeout(500);
+await page.mouse.up();
+const fu1 = await mg(() => window.__mg.game.funnel);
+if (!(fu1 > fu0 + 0.1)) fail(`Rechter Stick ändert den Trichter nicht (${fu0} → ${fu1})`);
+for (let k = 0; k < 40; k++) {
+  await mg(() => window.__mg.game.autopilot());
   await page.waitForTimeout(80);
 }
 await page.screenshot({ path: `${out}/mg-8-gas.png` });
-await page.mouse.up();
 const got = await mg(() => window.__mg.game.tank + window.__mg.game.secured);
 if (!(got > 0.3)) fail(`Sammler sammelt nichts (${got})`);
 await page.click('#minigame [data-mg="pause"]');
