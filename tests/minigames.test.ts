@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bits, consumers, generate, par, power, rotCW, rotate, turnsTo } from '../src/minigames/pipesLogic';
 import { GasGame } from '../src/minigames/gas';
 import { CargoGame } from '../src/minigames/cargo';
+import { HighwayGame } from '../src/minigames/highway';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
@@ -516,6 +517,71 @@ describe('Frachtraum', () => {
     expect(a.lost).toBe(1);
     expect(b.state).toBe('queue');
     expect(a.time).toBeGreaterThan(t0 + 5);
+  });
+});
+
+describe('Superhighway', () => {
+  function play(level: Level, auto: boolean, seed = 99, mutator: string | null = null): GameResult {
+    const g = new HighwayGame(cfg(level, seed, { mutator }));
+    g.resize(W, H);
+    return run(g, () => { if (auto) g.autopilot(); });
+  }
+
+  it('mit Autopilot Sterne, ohne Steuern keine (Ausfahrt verpasst, Kollisionen)', () => {
+    for (const level of [1, 2, 3] as const) expect(play(level, true).stars).toBeGreaterThanOrEqual(1);
+    expect(play(1, true).stars).toBeGreaterThanOrEqual(2);
+    expect(play(1, false).stars).toBe(0);
+    for (const m of ['dense', 'lowfuel', 'ion', 'heavy']) expect(play(2, true, 99, m).points).toBeGreaterThan(0);
+  });
+
+  type HInt = { me: { x: number; vx: number; vy: number; y: number; mass: number }; traffic: unknown[]; fuel: number; touches: Map<number, number>; field(x: number): number; stopPoint(): number };
+  const fresh = (mutator: string | null = null) => {
+    const g = new HighwayGame(cfg(1, 99, { mutator }));
+    g.resize(W, H);
+    const a = g as unknown as HInt;
+    a.traffic.length = 0;
+    return { g, a };
+  };
+
+  it('Feldprofil: in der Mitte am schnellsten', () => {
+    const { a } = fresh();
+    expect(a.field(2.5)).toBeGreaterThan(a.field(1.5));
+    expect(a.field(1.5)).toBeGreaterThan(a.field(0.5));
+    expect(a.field(0.5)).toBeCloseTo(a.field(4.5));
+  });
+
+  it('quer keine Reibung: nach dem Schub driftet das Schiff weiter, Gegenschub stoppt es', () => {
+    const { g, a } = fresh();
+    g.pointerDown(1, W - 40, 600); // rechts
+    for (let k = 0; k < 15; k++) g.update(DT);
+    g.pointerUp(1);
+    const v = a.me.vx;
+    expect(v).toBeGreaterThan(0.4);
+    for (let k = 0; k < 30; k++) g.update(DT);
+    expect(a.me.vx).toBeCloseTo(v, 5); // treibt ungebremst weiter
+    // Haltepunkt: v² / 2a voraus
+    const stop = a.stopPoint();
+    g.pointerDown(2, 40, 600); // links = Gegenschub
+    let k = 0;
+    while (a.me.vx > 0 && k++ < 120) g.update(DT);
+    g.pointerUp(2);
+    expect(Math.abs(a.me.x - stop)).toBeLessThan(0.08);
+  });
+
+  it('beide Daumen bremsen nach vorn und kosten Δv; schwere Ladung halbiert den Seitenschub', () => {
+    const { g, a } = fresh();
+    const v0 = a.me.vy, f0 = a.fuel;
+    g.pointerDown(1, 40, 600); g.pointerDown(2, W - 40, 600);
+    for (let k = 0; k < 20; k++) g.update(DT);
+    expect(a.me.vy).toBeLessThan(v0 - 40);
+    expect(a.fuel).toBeLessThan(f0);
+    const lat = (m: string | null) => {
+      const h = fresh(m);
+      h.g.pointerDown(1, W - 40, 600);
+      for (let k = 0; k < 20; k++) h.g.update(DT);
+      return h.a.me.vx;
+    };
+    expect(lat('heavy')).toBeCloseTo(lat(null) / 2, 2);
   });
 });
 

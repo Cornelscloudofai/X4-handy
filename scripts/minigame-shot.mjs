@@ -16,7 +16,7 @@ await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
-if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 6) fail('Minispiel-Liste unvollständig');
+if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 7) fail('Minispiel-Liste unvollständig');
 // Ausrüstung: Schiff und Waffe wählen, Auswahl erscheint im Menü; danach zurück zur Grundausstattung
 await page.click('#modal [data-act="loadout-open"]');
 await page.waitForTimeout(300);
@@ -159,6 +159,25 @@ const pushed = await mg(() => window.__mg.game.boxes.some((b) => b.pushes > 0 &&
 if (!pushed) fail('Frachtraum: Stoß wirkt nicht');
 for (let k = 0; k < 40; k++) { await mg(() => window.__mg.game.autopilot()); await page.waitForTimeout(60); }
 await page.screenshot({ path: `${out}/mg-8c-cargo.png` });
+await page.click('#minigame [data-mg="pause"]');
+await page.click('#minigame [data-mg="abort"]');
+await page.click('#minigame [data-mg="quit"]');
+
+// --- Superhighway ---
+await page.click('#modal [data-act="mg-play"][data-kind="highway"]');
+await page.waitForTimeout(300);
+await page.click('#minigame [data-mg="start"]');
+await page.waitForTimeout(300);
+const hx0 = await mg(() => window.__mg.game.me.x);
+await page.mouse.move(width - 40, 700);
+await page.mouse.down();
+await page.waitForTimeout(400);
+await page.mouse.up();
+await page.waitForTimeout(500);
+const hv = await mg(() => window.__mg.game.me);
+if (!(hv.x > hx0 + 0.1 && hv.vx > 0.2)) fail(`Highway: Seitenschub wirkt nicht (${hx0} → ${hv.x}, v ${hv.vx})`);
+for (let k = 0; k < 40; k++) { await mg(() => window.__mg.game.autopilot()); await page.waitForTimeout(60); }
+await page.screenshot({ path: `${out}/mg-8d-highway.png` });
 await page.click('#minigame [data-mg="pause"]');
 await page.click('#minigame [data-mg="abort"]');
 await page.click('#minigame [data-mg="quit"]');
