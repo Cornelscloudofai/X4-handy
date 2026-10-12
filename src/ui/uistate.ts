@@ -25,7 +25,7 @@ export type Modal =
   | { type: 'wareIcons' }
   | { type: 'shipArt' }
   | { type: 'loadout' }
-  | { type: 'minigames'; level: 1 | 2 | 3 | 4 | 5; gear: 1 | 2 | 3 }
+  | { type: 'minigames'; level: 1 | 2 | 3 | 4 | 5; gear: 1 | 2 | 3; tab?: 'games' | 'daily' | 'combat' }
   | { type: 'chart'; spec: ChartSpec; hours: number }
   | { type: 'alerts' }
   | { type: 'export' }

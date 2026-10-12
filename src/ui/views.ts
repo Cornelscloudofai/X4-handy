@@ -1230,50 +1230,101 @@ function sectorPanel(state: GameState, id: string, p: Panel): string {
 
 // ---- Mehr ----
 
+/** Menüpunkte der Übersicht „Mehr“: je eine Kachel, die ein Untermenü öffnet */
+const MORE_SUBS: { id: string; title: string; icon: string; sub: string }[] = [
+  { id: 'company', title: 'Unternehmen', icon: 'chart', sub: 'Kennzahlen, Verlauf, Ereignisse' },
+  { id: 'games', title: 'Minispiele', icon: 'game', sub: 'Acht Spiele, Rekorde, Tagesaufgaben' },
+  { id: 'help', title: 'Hilfe & Tipps', icon: 'help', sub: 'Erste Schritte und Erklärungen' },
+  { id: 'settings', title: 'Einstellungen', icon: 'gear', sub: 'Karte, Darstellung, Ton' },
+  { id: 'save', title: 'Spielstand', icon: 'save', sub: 'Sichern, laden, neu beginnen' },
+  { id: 'about', title: 'Über das Spiel', icon: 'info', sub: 'Daten und Quellen' },
+];
+
+/** Zeile mit Schalter */
+function toggleRow(title: string, sub: string, on: boolean, label: string, action: string, args: Record<string, string> = {}): string {
+  return `<div class="row"><div class="grow"><div class="title" style="font-weight:500">${esc(title)}</div><div class="sub wrap">${sub}</div></div>
+      <div class="toggle"><button class="plain ${on ? 'on' : ''}" ${act(action, args)}>${esc(label)}</button></div></div>`;
+}
+
+function linkRow(ic: string, title: string, sub: string, action: string, args: Record<string, string> = {}, cls = ''): string {
+  return `<div class="row tap" ${act(action, args)}>${icon(ic, 20, cls)}<div class="grow"><div class="title ${cls}" style="font-weight:500">${esc(title)}</div><div class="sub wrap">${sub}</div></div>${icon('chev', 20, 'chev')}</div>`;
+}
+
 function morePanel(state: GameState, ui: UIState): string {
-  const worth = netWorth(state);
-  const logRows = [...state.log].reverse().slice(0, 8).map((l) => `<div class="row"><span class="small muted num" style="flex:none;width:74px">${fmtClock(l.t).replace('Tag ', 'T')}</span><div class="grow"><div class="sub wrap ${l.kind === 'good' ? 'pos' : l.kind === 'bad' ? 'neg' : l.kind === 'warn' ? 'warn-text' : ''}" style="${l.kind === 'info' ? 'color:var(--text-2)' : ''}">${esc(l.text)}</div></div></div>`).join('');
-  return sheet('Leitstand', 'Mehr', `
-    <div class="section"><h3>Unternehmen</h3><div class="kv">
-      <div><small>Unternehmenswert</small><b>${tw(worth, 'cr')}</b></div><div><small>Spielzeit</small><b style="font-size:15px">${fmtClock(state.time)}</b></div>
-      <div><small>Verkäufe gesamt</small><b class="pos">${fmtCr(state.totals.sold)}</b></div><div><small>Einkäufe gesamt</small><b>${fmtCr(state.totals.bought)}</b></div>
-      <div><small>Stationen</small><b>${state.stations.length}</b></div><div><small>Schiffe</small><b>${state.ships.length}</b></div>
-    </div></div>
-    ${trendSection([
-      trendCell(state, { key: H.worth, title: 'Unternehmenswert', color: '#ffd36b', kind: 'level', unit: 'cr' }),
-      trendCell(state, { key: H.credits, title: 'Guthaben', color: '#3fe0c5', kind: 'level', unit: 'cr' }),
-    ])}
-    <div class="section"><div class="box rows">${blueprintEntry(state)}</div></div>
-    <div class="section"><h3>Spielstand</h3><div class="box rows">
-      <div class="row">${icon('save', 20)}<div class="grow"><div class="title" style="font-weight:500">Automatisch gespeichert</div><div class="sub wrap">${esc(ui.saveStatus || 'Auf diesem Gerät')}</div></div></div>
-      <div class="row tap" ${act('export')}>${icon('box', 20)}<div class="grow"><div class="title" style="font-weight:500">Spielstand sichern</div><div class="sub">Als Text kopieren</div></div>${icon('chev', 20, 'chev')}</div>
-      <div class="row tap" ${act('import-modal')}>${icon('down', 20)}<div class="grow"><div class="title" style="font-weight:500">Spielstand laden</div><div class="sub">Gesicherten Text einfügen</div></div>${icon('chev', 20, 'chev')}</div>
-      <div class="row tap" ${act('ask-newgame')}>${icon('trash', 20, 'neg')}<div class="grow"><div class="title neg" style="font-weight:500">Neues Spiel</div><div class="sub">Löscht den aktuellen Spielstand</div></div></div>
-    </div></div>
-    <div class="section"><h3>Hilfe</h3>${helpList()}
-      <div class="box rows" style="margin-top:8px"><div class="row tap" ${act('coach-restart')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">Erste Schritte zeigen</div><div class="sub wrap">${state.help?.coachOff ? 'Ausgeblendet – hier wieder einschalten' : 'Geführte Hinweise für den Einstieg'}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
-    <div class="section"><h3>Einstellungen</h3><div class="box rows"><div class="row"><div class="grow"><div class="title" style="font-weight:500">Handelsrouten auf der Karte</div><div class="sub">Flugwege und feste Versorgungsrouten deiner Schiffe</div></div>
-      <div class="toggle"><button class="plain ${ui.routes ? 'on' : ''}" ${act('layer-toggle', { layer: 'routes' })}>${ui.routes ? 'An' : 'Aus'}</button></div></div>
-      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Warenflüsse auf der Karte</div><div class="sub">Gelieferte Mengen pro Stunde zwischen Stationen, Märkten und Feldern</div></div>
-      <div class="toggle"><button class="plain ${ui.flows ? 'on' : ''}" ${act('layer-toggle', { layer: 'flows' })}>${ui.flows ? 'An' : 'Aus'}</button></div></div>
-      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Beschriftung auf der Karte</div>
-        <div class="sub">${ui.labelDensity <= 20 ? 'Wenig – Namen erst beim Heranzoomen' : ui.labelDensity >= 80 ? 'Viel – fast alles schon von Weitem' : 'Mittel – Wichtiges zuerst, Rest beim Zoomen'}</div>
-        <div class="range-row"><span class="small muted">wenig</span><input type="range" min="0" max="100" step="5" value="${ui.labelDensity}" data-change="label-density" aria-label="Beschriftungsdichte"><span class="small muted">viel</span></div></div></div>
-      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Sektor-Hintergrund</div><div class="sub">${ui.bgMode === 'image' ? 'Bilder – gemalte Weltraum-Hintergründe mit Tiefenwirkung' : 'Erzeugt – marmorierte Nebel und Galaxien je Sektor'}</div></div>
-      <div class="toggle"><button class="plain on" ${act('bg-toggle')}>${ui.bgMode === 'image' ? 'Bilder' : 'Erzeugt'}</button></div></div>
-      ${ui.bgMode === 'image' ? (() => { const info = bgImageInfo(sectorImageId(ui.sector)); return `<div class="row"><div class="grow"><div class="title" style="font-weight:500">Bild für ${esc(SECTOR_MAP[ui.sector]?.name ?? '')}</div><div class="sub">${info ? `${esc(info.name)} · ${info.index + 1} von ${BG_IMAGES.length}` : '–'}</div></div>
-      <div class="stepper"><button class="btn" ${act('bg-prev')} aria-label="Vorheriges Bild">‹</button><button class="btn" ${act('bg-next')} aria-label="Nächstes Bild">›</button></div></div>`; })() : ''}
-      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Warensymbole</div><div class="sub">${ui.iconStyle === 'glow' ? 'Leuchtend – gefüllt mit Glühen' : 'Linie – nur Umrisse'} · <a class="link" ${act('ware-icons')}>alle ansehen</a></div></div>
-      <div class="toggle"><button class="plain on" ${act('icon-style', { style: ui.iconStyle === 'glow' ? 'line' : 'glow' })}>${ui.iconStyle === 'glow' ? 'Leuchtend' : 'Linie'}</button></div></div>
-      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Animationen und Effekte</div><div class="sub">Funken, Triebwerke, driftende Nebel</div></div>
-      <div class="toggle"><button class="plain ${ui.reducedMotion ? '' : 'on'}" ${act('motion-toggle')}>${ui.reducedMotion ? 'Reduziert' : 'Voll'}</button></div></div>
-      <div class="row tap" ${act('minigames')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Minispiele (Vorschau)</div><div class="sub wrap">Rohr-Puzzle, Bergbau, Gas sammeln und Kampf ausprobieren</div></div>${icon('chev', 20, 'chev')}</div>
-      <div class="row"><div class="grow"><div class="title" style="font-weight:500">Ton</div><div class="sub">Klänge bei Bau, Verkauf und Erfolgen</div></div>
-      <div class="toggle"><button class="plain ${soundEnabled() ? 'on' : ''}" ${act('sound-toggle')}>${soundEnabled() ? 'An' : 'Aus'}</button></div></div></div></div>
-    <div class="section"><h3>Ereignisse</h3><div class="box rows">${logRows}</div>
-      <div class="card-actions" style="margin-top:8px"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Alle Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>
-    <div class="section"><h3>Daten & Quellen</h3><div class="box" style="padding:14px"><p class="small" style="margin:0 0 8px;color:var(--text-2)">Rezepte, Preisspannen, Warenvolumen und Lagerarten aus dem Community-Datensatz X4Foundations_FactoryStationsTracker. Baumaterialien, Bauzeiten und Kapazitäten der Module (auch Lager S/M/L und Schiffsfertigung) sowie Schiffsdaten (Rumpf, Ausrüstung, Schub, Frachtraum) aus crissian/x4.</p>
-      <p class="small muted" style="margin:0">Spielwerte: Abbauraten, Schiffsbauzeiten, Kartenlage der Felder, die Nachbarsektoren sowie der Nividium-Preis. Belegschaft und Kampf sind nicht Teil dieses Spiels. X4: Foundations ist ein Spiel von Egosoft; dies ist ein inoffizielles Fanprojekt.</p></div></div>`);
+  const tab = ui.panel?.tab;
+  const sub = MORE_SUBS.find((m) => m.id === tab);
+  if (!sub) {
+    // Übersicht: Kurzbilanz und Kacheln
+    const tiles = MORE_SUBS.map((m) => `<button class="menu-tile" ${m.id === 'games' ? act('minigames') : act('more-sub', { tab: m.id })} data-key="more-${m.id}">
+        <span class="menu-tile-ic">${icon(m.icon, 26)}</span><span class="menu-tile-title">${esc(m.title)}</span><span class="menu-tile-sub">${esc(m.sub)}</span></button>`).join('');
+    return sheet('Leitstand', 'Mehr', `
+      <div class="section"><div class="kv">
+        <div><small>Unternehmenswert</small><b>${tw(netWorth(state), 'cr')}</b></div><div><small>Spielzeit</small><b style="font-size:15px">${fmtClock(state.time)}</b></div>
+      </div></div>
+      <div class="section"><div class="menu-grid">${tiles}</div></div>
+      <div class="section"><div class="card-actions"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>`);
+  }
+  const page = (body: string) => sheet(sub.title, 'Mehr', body, { back: true });
+  switch (sub.id) {
+    case 'company': {
+      const logRows = [...state.log].reverse().slice(0, 8).map((l) => `<div class="row"><span class="small muted num" style="flex:none;width:74px">${fmtClock(l.t).replace('Tag ', 'T')}</span><div class="grow"><div class="sub wrap ${l.kind === 'good' ? 'pos' : l.kind === 'bad' ? 'neg' : l.kind === 'warn' ? 'warn-text' : ''}" style="${l.kind === 'info' ? 'color:var(--text-2)' : ''}">${esc(l.text)}</div></div></div>`).join('');
+      return page(`
+        <div class="section"><h3>Kennzahlen</h3><div class="kv">
+          <div><small>Unternehmenswert</small><b>${tw(netWorth(state), 'cr')}</b></div><div><small>Spielzeit</small><b style="font-size:15px">${fmtClock(state.time)}</b></div>
+          <div><small>Verkäufe gesamt</small><b class="pos">${fmtCr(state.totals.sold)}</b></div><div><small>Einkäufe gesamt</small><b>${fmtCr(state.totals.bought)}</b></div>
+          <div><small>Stationen</small><b>${state.stations.length}</b></div><div><small>Schiffe</small><b>${state.ships.length}</b></div>
+        </div></div>
+        ${trendSection([
+          trendCell(state, { key: H.worth, title: 'Unternehmenswert', color: '#ffd36b', kind: 'level', unit: 'cr' }),
+          trendCell(state, { key: H.credits, title: 'Guthaben', color: '#3fe0c5', kind: 'level', unit: 'cr' }),
+        ])}
+        <div class="section"><div class="box rows">${blueprintEntry(state)}</div></div>
+        <div class="section"><h3>Ereignisse</h3><div class="box rows">${logRows}</div>
+          <div class="card-actions" style="margin-top:8px"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Alle Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>`);
+    }
+    case 'help':
+      return page(`
+        <div class="section"><h3>Einstieg</h3><div class="box rows">
+          ${linkRow('target', 'Erste Schritte zeigen', state.help?.coachOff ? 'Ausgeblendet – hier wieder einschalten' : 'Geführte Hinweise für den Einstieg', 'coach-restart')}
+        </div></div>
+        <div class="section"><h3>Themen</h3>${helpList()}</div>`);
+    case 'settings': {
+      const info = ui.bgMode === 'image' ? bgImageInfo(sectorImageId(ui.sector)) : null;
+      return page(`
+        <div class="section"><h3>Karte</h3><div class="box rows">
+          ${toggleRow('Handelsrouten', 'Flugwege und feste Versorgungsrouten deiner Schiffe', ui.routes, ui.routes ? 'An' : 'Aus', 'layer-toggle', { layer: 'routes' })}
+          ${toggleRow('Warenflüsse', 'Gelieferte Mengen pro Stunde zwischen Stationen, Märkten und Feldern', ui.flows, ui.flows ? 'An' : 'Aus', 'layer-toggle', { layer: 'flows' })}
+          <div class="row"><div class="grow"><div class="title" style="font-weight:500">Beschriftung</div>
+            <div class="sub">${ui.labelDensity <= 20 ? 'Wenig – Namen erst beim Heranzoomen' : ui.labelDensity >= 80 ? 'Viel – fast alles schon von Weitem' : 'Mittel – Wichtiges zuerst, Rest beim Zoomen'}</div>
+            <div class="range-row"><span class="small muted">wenig</span><input type="range" min="0" max="100" step="5" value="${ui.labelDensity}" data-change="label-density" aria-label="Beschriftungsdichte"><span class="small muted">viel</span></div></div></div>
+        </div></div>
+        <div class="section"><h3>Darstellung</h3><div class="box rows">
+          ${toggleRow('Sektor-Hintergrund', ui.bgMode === 'image' ? 'Bilder – gemalte Weltraum-Hintergründe mit Tiefenwirkung' : 'Erzeugt – marmorierte Nebel und Galaxien je Sektor', true, ui.bgMode === 'image' ? 'Bilder' : 'Erzeugt', 'bg-toggle')}
+          ${ui.bgMode === 'image' ? `<div class="row"><div class="grow"><div class="title" style="font-weight:500">Bild für ${esc(SECTOR_MAP[ui.sector]?.name ?? '')}</div><div class="sub">${info ? `${esc(info.name)} · ${info.index + 1} von ${BG_IMAGES.length}` : '–'}</div></div>
+          <div class="stepper"><button class="btn" ${act('bg-prev')} aria-label="Vorheriges Bild">‹</button><button class="btn" ${act('bg-next')} aria-label="Nächstes Bild">›</button></div></div>` : ''}
+          <div class="row"><div class="grow"><div class="title" style="font-weight:500">Warensymbole</div><div class="sub">${ui.iconStyle === 'glow' ? 'Leuchtend – gefüllt mit Glühen' : 'Linie – nur Umrisse'} · <a class="link" ${act('ware-icons')}>alle ansehen</a></div></div>
+          <div class="toggle"><button class="plain on" ${act('icon-style', { style: ui.iconStyle === 'glow' ? 'line' : 'glow' })}>${ui.iconStyle === 'glow' ? 'Leuchtend' : 'Linie'}</button></div></div>
+          ${toggleRow('Animationen und Effekte', 'Funken, Triebwerke, driftende Nebel', !ui.reducedMotion, ui.reducedMotion ? 'Reduziert' : 'Voll', 'motion-toggle')}
+        </div></div>
+        <div class="section"><h3>Ton</h3><div class="box rows">
+          ${toggleRow('Klänge', 'Bei Bau, Verkauf und Erfolgen', soundEnabled(), soundEnabled() ? 'An' : 'Aus', 'sound-toggle')}
+        </div></div>`);
+    }
+    case 'save':
+      return page(`
+        <div class="section"><div class="box rows">
+          <div class="row">${icon('save', 20)}<div class="grow"><div class="title" style="font-weight:500">Automatisch gespeichert</div><div class="sub wrap">${esc(ui.saveStatus || 'Auf diesem Gerät')}</div></div></div>
+          ${linkRow('box', 'Spielstand sichern', 'Als Text kopieren', 'export')}
+          ${linkRow('down', 'Spielstand laden', 'Gesicherten Text einfügen', 'import-modal')}
+        </div></div>
+        <div class="section"><h3>Neu beginnen</h3><div class="box rows">
+          <div class="row tap" ${act('ask-newgame')}>${icon('trash', 20, 'neg')}<div class="grow"><div class="title neg" style="font-weight:500">Neues Spiel</div><div class="sub">Löscht den aktuellen Spielstand</div></div></div>
+        </div></div>`);
+    default:
+      return page(`
+        <div class="section"><h3>Daten & Quellen</h3><div class="box" style="padding:14px"><p class="small" style="margin:0 0 8px;color:var(--text-2)">Rezepte, Preisspannen, Warenvolumen und Lagerarten aus dem Community-Datensatz X4Foundations_FactoryStationsTracker. Baumaterialien, Bauzeiten und Kapazitäten der Module (auch Lager S/M/L und Schiffsfertigung) sowie Schiffsdaten (Rumpf, Ausrüstung, Schub, Frachtraum) aus crissian/x4.</p>
+          <p class="small muted" style="margin:0">Spielwerte: Abbauraten, Schiffsbauzeiten, Kartenlage der Felder, die Nachbarsektoren sowie der Nividium-Preis. Belegschaft und Kampf sind nicht Teil dieses Spiels. X4: Foundations ist ein Spiel von Egosoft; dies ist ein inoffizielles Fanprojekt.</p></div></div>`);
+  }
 }
 
 // ---------- Dialoge ----------
@@ -1333,16 +1384,19 @@ export function modalHtml(state: GameState, ui: UIState): string {
         const bp = mgBestPoints(k, mode);
         return `<div class="row tap" ${act('mg-mode', { kind: k, mode })}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[0])}</div><div class="sub wrap">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[1]?.trim() ?? '')}${bp ? ` · Rekord ${pts(bp)}` : ''}</div></div>${icon('play', 18, 'chev')}</div>`;
       }).join('');
-      const body = `<p class="lead">Zum Ausprobieren. Jede zweite Runde bringt eine Besonderheit mit mehr Punkten; Nebenziele geben Abzeichen. Mit Sternen schaltest du je Spiel Stufe 4 und 5 frei.</p>
+      const tab = m.tab ?? 'games';
+      const tabs = `<div class="segment mg-tabs">${([['games', 'Spiele'], ['daily', 'Täglich'], ['combat', 'Kampf']] as const).map(([id, l]) => `<button class="${tab === id ? 'on' : ''}" ${act('mg-tab', { tab: id })}>${l}</button>`).join('')}</div>`;
+      const gamesTab = `<p class="lead">Zum Ausprobieren. Jede zweite Runde bringt eine Besonderheit mit mehr Punkten; Nebenziele geben Abzeichen. Mit Sternen schaltest du je Spiel Stufe 4 und 5 frei.</p>
         <div class="section"><h3>Schwierigkeit</h3><div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${m.level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div></div>
-        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>
-        <div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
-        <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>
-        <div class="section"><h3>Kampf: dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SHIPS[loadout().ship].name)} – ${esc(SHIPS[loadout().ship].role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
-        <div class="section"><h3>Kampf-Steuerung</h3><div class="segment">${(['eins', 'zwei'] as const).map((c) => `<button class="${controlMode() === c ? 'on' : ''}" ${act('mg-controls', { mode: c })}>${c === 'eins' ? 'Ein Stick + Feuertaste' : 'Zwei Sticks'}</button>`).join('')}</div>
+        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>`;
+      const dailyTab = `<div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
+        <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>`;
+      const combatTab = `<div class="section"><h3>Dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SHIPS[loadout().ship].name)} – ${esc(SHIPS[loadout().ship].role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
+        <div class="section"><h3>Steuerung</h3><div class="segment">${(['eins', 'zwei'] as const).map((c) => `<button class="${controlMode() === c ? 'on' : ''}" ${act('mg-controls', { mode: c })}>${c === 'eins' ? 'Ein Stick + Feuertaste' : 'Zwei Sticks'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zielen; über den Ring hinaus wird gefeuert (mit kurzem Vibrieren).'}</p></div>
-        <div class="section"><h3>Kampf-Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
+        <div class="section"><h3>Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
+      const body = tabs + (tab === 'daily' ? dailyTab : tab === 'combat' ? combatTab : gamesTab);
       return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');
     }
     case 'loadout': {
@@ -1383,7 +1437,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <div class="section"><h3>Schild</h3>${choice('shield', lo.shield, SHIELD_IDS, SHIELDS)}</div>
         <div class="section"><h3>Darstellung</h3><div class="segment">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
         <div class="box rows" style="margin-top:10px"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Grafikvergleich der Jäger</div><div class="sub">KI-Bild, gerendert und gezeichnet nebeneinander</div></div>${icon('chev', 20, 'chev')}</div></div></div>`;
-      return modalShell('Dein Schiff', body, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Kampf-Ausrüstung');
+      return modalShell('Dein Schiff', body, `<button class="btn" ${act('mg-back')}>Zurück</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Kampf-Ausrüstung');
     }
     case 'shipArt': {
       // Vergleich der Darstellungen des eigenen Jägers: KI-Bild, vorab gerendert (3D), gezeichnet
@@ -1402,7 +1456,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const body = `<p class="lead">Dein Jäger im Kampf-Minispiel. Wähle Bauart und Darstellung; unten rechts jeweils in Spielgröße.</p>
         ${section('split')}${section('argon')}
         <div class="section"><h3>Bisherige Grafik</h3><div class="art-grid">${card(null, 'vector', 'Gezeichnet', 'Live per Code – Neon-Stil', fighterVectorUrl())}</div></div>`;
-      return modalShell('Dein Jäger', body, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Grafik-Vergleich');
+      return modalShell('Dein Jäger', body, `<button class="btn" ${act('mg-back')}>Zurück</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Grafik-Vergleich');
     }
     case 'alerts': {
       const alerts = allAlerts(state);

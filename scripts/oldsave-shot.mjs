@@ -35,6 +35,7 @@ for (const f of files) {
     for (const st of s.stations) for (const tab of ['overview', 'modules', 'storage', 'ships', 'yard']) { g.openPanel('station', st.id, tab); g.refresh(); await wait(); seen.push(`${st.name}/${tab}:${document.querySelector('#panel')?.textContent?.length ?? 0}`); }
     for (const sh of s.ships.slice(0, 4)) { g.openPanel('ship', sh.id); g.refresh(); await wait(); }
     for (const p of ['stations', 'fleet', 'missions', 'market', 'planner', 'blueprints', 'more']) { g.openPanel(p); g.refresh(); await wait(); seen.push(p); }
+    for (const tab of ['company', 'help', 'settings', 'save', 'about']) { g.openPanel('more', undefined, tab); g.refresh(); await wait(); seen.push(`more/${tab}:${document.querySelector('#panel')?.textContent?.length ?? 0}`); }
     g.step(1800); g.openPanel('station', s.stations[0].id, 'modules'); g.refresh(); await wait();
     return seen.length;
   });

@@ -17,6 +17,12 @@ await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: 
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
 if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 8) fail('Minispiel-Liste unvollständig');
+// Reiter: Täglich und Kampf
+await page.click('#modal [data-act="mg-tab"][data-tab="daily"]');
+await page.waitForTimeout(200);
+if ((await page.locator('#modal [data-act="mg-daily"]').count()) !== 8) fail('Reiter „Täglich“: Tagesaufgaben fehlen');
+await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+await page.waitForTimeout(200);
 // Ausrüstung: Schiff und Waffe wählen, Auswahl erscheint im Menü; danach zurück zur Grundausstattung
 await page.click('#modal [data-act="loadout-open"]');
 await page.waitForTimeout(300);
@@ -27,9 +33,11 @@ await page.screenshot({ path: `${out}/mg-0-loadout.png` });
 if (!(await page.locator('#modal [data-key="turret"]').count())) fail('Cobra: keine Türme wählbar');
 await page.click('#modal [data-act="loadout-set"][data-value="mamba"]');
 await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="puls"]');
-await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
+await page.click('#modal [data-act="mg-back"]');
 await page.waitForTimeout(200);
-if (!(await page.locator('#modal [data-act="loadout-open"]').innerText()).includes('Mamba')) fail('Schiffswahl erscheint nicht im Menü');
+if (!(await page.locator('#modal [data-act="loadout-open"]').innerText()).includes('Mamba')) fail('Schiffswahl erscheint nicht im Menü (Zurück → Reiter Kampf)');
+await page.click('#modal [data-act="mg-tab"][data-tab="games"]');
+await page.waitForTimeout(200);
 
 const phase = () => page.evaluate(() => window.__mg?.phase ?? null);
 const mg = (fn, arg) => page.evaluate(fn, arg);
@@ -243,6 +251,8 @@ for (const kind of ['pirates', 'xenon']) {
   await page.click('#minigame [data-mg="quit"]');
 }
 // Tagesaufgabe und Endlos-Modus: Einführung mit Besonderheit und Nebenzielen
+await page.click('#modal [data-act="mg-tab"][data-tab="daily"]');
+await page.waitForTimeout(200);
 await page.click('#modal [data-act="mg-daily"][data-kind="ore"]');
 await page.waitForTimeout(300);
 if (!(await page.locator('#minigame .mg-mut-box').count())) fail('Tagesaufgabe ohne Besonderheit');
@@ -259,6 +269,8 @@ await page.click('#minigame [data-mg="abort"]');
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-14-endless-result.png` });
 await page.click('#minigame [data-mg="quit"]');
+await page.click('#modal [data-act="mg-tab"][data-tab="games"]');
+await page.waitForTimeout(200);
 await page.click('#modal [data-act="mg-level"][data-level="5"]');
 await page.waitForTimeout(200);
 if (!(await page.locator('#modal .mg-lock').count())) fail('Stufe 5 nicht gesperrt');

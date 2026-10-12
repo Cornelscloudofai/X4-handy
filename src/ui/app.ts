@@ -467,6 +467,9 @@ function onLongPress(sx: number, sy: number): void {
 
 // ---------- Zurück-Taste (Android) und Escape ----------
 
+/** Minispiel-Menü, aus dem Schiffswahl oder Grafikvergleich geöffnet wurden (dorthin führt „Zurück“) */
+let lastMg: Extract<NonNullable<typeof ui.modal>, { type: 'minigames' }> | null = null;
+
 /** Schließt die oberste Ebene. false = nichts mehr offen */
 function goBack(): boolean {
   if (minigameBack()) return true;
@@ -474,6 +477,7 @@ function goBack(): boolean {
     if (ui.modal.type === 'welcome') return true;
     if (ui.modal.type === 'planPick' && ui.modal.back) { ui.modal = { type: 'planDiagram' }; needFit = true; }
     else if (ui.modal.type === 'storage' && ui.modal.back) ui.modal = ui.modal.back;
+    else if ((ui.modal.type === 'loadout' || ui.modal.type === 'shipArt') && lastMg) ui.modal = lastMg;
     else ui.modal = null;
   } else if (ui.placing) ui.placing = null;
   else if (ui.panel) ui.panel = ui.panel.back ?? null;
@@ -866,8 +870,9 @@ function onClick(e: MouseEvent): void {
       case 'icon-style': ui.iconStyle = d.style === 'line' ? 'line' : 'glow'; saveIconStyle(ui.iconStyle); setWareIconStyle(ui.iconStyle); refresh(); break;
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
-      case 'ship-art-open': ui.modal = { type: 'shipArt' }; refresh(); break;
-      case 'loadout-open': ui.modal = { type: 'loadout' }; refresh(); break;
+      case 'ship-art-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
+      case 'loadout-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'loadout' }; refresh(); break;
+      case 'mg-back': ui.modal = lastMg ?? { type: 'minigames', level: 1, gear: 1, tab: 'combat' }; refresh(); break;
       case 'mg-controls': {
         setControlMode(d.mode as ControlMode);
         refresh();
@@ -889,6 +894,8 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'ship-art-try': openMinigame('pirates', { level: 1, mutator: null }, () => refresh(), true); break;
+      case 'more-sub': openPanel('more', undefined, d.tab, true); break;
+      case 'mg-tab': if (ui.modal?.type === 'minigames') { ui.modal.tab = d.tab as 'games' | 'daily' | 'combat'; refresh(); } break;
       case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
       case 'mg-gear': if (ui.modal?.type === 'minigames') { ui.modal.gear = Number(d.gear) as 1 | 2 | 3; refresh(); } break;
       case 'mg-play': case 'mg-daily': case 'mg-mode': {

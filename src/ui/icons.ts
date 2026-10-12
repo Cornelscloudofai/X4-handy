@@ -42,6 +42,10 @@ const P: Record<string, string> = {
   save: '<path d="M5 4.5h11l3.5 3.5V19.5H5z"/><path d="M8 4.5v5h7v-5M8 19.5v-5.5h8v5.5"/>',
   gift: '<rect x="4" y="9" width="16" height="11" rx="1"/><path d="M4 13h16M12 9v11M12 9c-2-4-6-4-6-1.5S12 9 12 9s6-1 6-3.5-4-2.5-6 3.5"/>',
   energy: '<path d="M13 3 5.5 13.5H12L11 21l7.5-10.5H12z"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5"/><circle cx="12" cy="12" r="6.2"/>',
+  help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.6M12 16.6v.3"/>',
+  game: '<path d="M7 8.5h10a4 4 0 0 1 4 4.4l-.4 3.4a2.4 2.4 0 0 1-4.3 1.2L15 15.5H9l-1.3 2a2.4 2.4 0 0 1-4.3-1.2L3 12.9a4 4 0 0 1 4-4.4z"/><path d="M8 11v3M6.5 12.5h3M15.5 12h.01M17.5 13.5h.01"/>',
+  chart: '<path d="M4 20V4M4 20h16"/><path d="m7 15 4-4 3 3 5-6"/>',
 };
 
 export function icon(name: keyof typeof P | string, size = 20, cls = ''): string {

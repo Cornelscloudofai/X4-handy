@@ -755,3 +755,17 @@ button.chip.credits { cursor: pointer; color: inherit; font: inherit; }
 .news-row.new { background: rgba(255, 184, 77, 0.06); }
 .news-row .row-links .linkish, .row .row-links .linkish .ic { white-space: nowrap; }
 .news-row .row-links .linkish { display: inline-flex; align-items: center; gap: 3px; }
+
+/* Menü „Mehr“: Kacheln für die Untermenüs */
+.menu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.menu-tile { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 112px; padding: 14px 14px 12px; text-align: left;
+  border-radius: var(--r); border: 1px solid var(--line); color: var(--text);
+  background: radial-gradient(120% 90% at 0% 0%, rgba(63, 224, 197, 0.13), rgba(63, 224, 197, 0) 60%), var(--panel-2);
+  transition: border-color 0.15s, transform 0.1s; }
+.menu-tile:active { transform: scale(0.98); border-color: var(--line-2); }
+.menu-tile-ic { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 4px; border-radius: 12px; color: var(--teal);
+  background: rgba(63, 224, 197, 0.1); border: 1px solid var(--line-2); box-shadow: 0 0 18px -6px var(--teal-glow); }
+.menu-tile-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+.menu-tile-sub { font-size: 12.5px; line-height: 1.3; color: var(--muted); }
+.menu-tile[data-key="more-games"] .menu-tile-ic { color: var(--amber); background: rgba(255, 181, 71, 0.1); border-color: rgba(255, 181, 71, 0.35); box-shadow: 0 0 18px -6px var(--amber-glow); }
+.mg-tabs { margin-bottom: 14px; }
