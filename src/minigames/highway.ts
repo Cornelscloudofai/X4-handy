@@ -5,12 +5,15 @@
 // bis ein gleich starker Gegenschub es stoppt (Bremsweg v²/2a – ein Geisterbild zeigt, wo es stehen bliebe).
 // Beide Daumen zugleich: Gegenschub nach vorn. Jeder Schub kostet Δv (Treibstoff). Zusammenstöße erhalten den Impuls:
 // ein schwerer Frachter stößt den eigenen Frachter weg, ein leichter Kurier wird selbst weggestoßen.
+// Feldschatten: Hinter jedem Schiff ist der Strom gestört (wie die Nachlaufströmung hinter einem Körper in einer
+// Flüssigkeit) – dort fließt das Feld langsamer und verwirbelt. Feldverstärker (Ringe in einer Spur) geben einen
+// Tempostoß und laden Δv nach, wenn man genau durch die Mitte driftet. Ab Stufe 2 fädeln Schiffe aus Feldschleusen ein.
 // Am Ende die Ausfahrt auf der richtigen Seite treffen.
 import { sfx } from '../ui/sound';
 import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite, shipSprite, type FighterSprite } from '../render/shipArt';
 import {
-  buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, starsFor, Starfield, TOP,
+  buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, starsFor, TOP,
   type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator,
 } from './common';
 
@@ -26,6 +29,12 @@ const ACC_LAT = 2.4;
 const ACC_RETRO = 260;
 /** Strafzeit für die verpasste Ausfahrt (s) */
 const PEN_EXIT = 10;
+/** Feldverstärker: Tempostoß (px/s), Fangbreite (Spuren), Δv-Nachladung (Anteil) */
+const BOOST = 200;
+const GATE_R = 0.36;
+const GATE_FUEL = 0.15;
+/** Ab hier (Reststrecke) keine Verstärker und Einfädler mehr: Ausfahrt vorbereiten */
+const EXIT_ZONE = 3400;
 
 export const HIGHWAY_MUTATORS: Mutator[] = [
   { id: 'dense', name: 'Stoßzeit', desc: 'Doppelt so viel Verkehr', mult: 1.4 },
@@ -40,6 +49,7 @@ export const HIGHWAY_GOALS: GoalDef[] = [
   { id: 'exit', text: 'Die Ausfahrt treffen' },
   { id: 'noretro', text: 'Ohne Gegenschub nach vorn' },
   { id: 'fast', text: 'Zielzeit für drei Sterne' },
+  { id: 'gates', text: 'Vier Feldverstärker treffen' },
 ];
 
 interface Ship {
@@ -54,6 +64,14 @@ interface Ship {
   /** Spurwechsel: Zielspur und Blinkzeit */
   goal: number; blink: number;
   hit: number;
+  /** Kollisionswarnung (0 … 1) und Einfädeln aus der Feldschleuse */
+  warn: number;
+  merge?: boolean;
+}
+
+interface Gate {
+  /** Spurmitte und Strecke; Zustand 0 = voraus, 1 = getroffen, −1 = verfehlt; t = Zeit seit dem Durchflug */
+  x: number; y: number; state: 0 | 1 | -1; t: number;
 }
 
 let bgImg: HTMLImageElement | null = null;
@@ -107,18 +125,24 @@ export class HighwayGame implements MiniGame {
   /** Nachladen des Δv aus dem Feld (je Sekunde ohne Schub) */
   private regen: number;
   private autoLane = -1;
+  /** nur für Tests: Zielspur des Autopiloten */
+  autoTarget = LANES / 2;
   private crashes = 0;
+  private wakeNow = 0;
   private exitOk: boolean | null = null;
   private gust = 0;
   private gustT = 6;
   private nextSpawn = 0;
   private density: number;
+  private gates: Gate[] = [];
+  private gatesHit = 0;
+  private rampT: number;
   private touches = new Map<number, -1 | 1>();
   private auto: { l: boolean; r: boolean } | null = null;
   private thrust: { l: boolean; r: boolean; retro: boolean } = { l: false, r: false, retro: false };
   private fx = new Particles();
   private floats = new Floaters();
-  private stars = new Starfield(140, 41);
+  private stars: { x: number; y: number; z: number; b: number }[] = [];
   private streaks: { x: number; y: number; len: number }[] = [];
   private w = 1;
   private h = 1;
@@ -142,11 +166,23 @@ export class HighwayGame implements MiniGame {
     this.fuel0 = this.fuel = [30, 29, 28, 28, 28][L - 1] * (this.mutator?.id === 'lowfuel' ? 0.5 : 1);
     this.regen = [0.45, 0.4, 0.38, 0.36, 0.34][L - 1] * (this.mutator?.id === 'lowfuel' ? 0.5 : 1);
     this.density = [0.5, 0.62, 0.72, 0.82, 0.92][L - 1] * (this.mutator?.id === 'dense' ? 2 : 1);
-    this.me = { x: LANES / 2, y: 0, vx: 0, vy: V_MAX, mass: this.mutator?.id === 'heavy' ? 2 : 1, w: 0.42, l: 48, k: 1, sprite: 'tuatara', goal: 0, blink: 0, hit: 0 };
+    this.me = { x: LANES / 2, y: 0, vx: 0, vy: V_MAX, mass: this.mutator?.id === 'heavy' ? 2 : 1, w: 0.42, l: 48, k: 1, sprite: 'tuatara', goal: 0, blink: 0, hit: 0, warn: 0 };
     // Anfangsverkehr
     for (let y = 500; y < 2600; y += 260 / this.density) this.spawn(y);
+    // Feldverstärker: in unregelmäßigen Abständen, je in einer Spur
+    let lastLane = 2;
+    for (let y = 1500 + this.r() * 600; y < this.dist - EXIT_ZONE; y += 1500 + this.r() * 1300) {
+      let lane = Math.floor(this.r() * LANES);
+      if (lane === lastLane) lane = (lane + 1 + Math.floor(this.r() * (LANES - 1))) % LANES;
+      lastLane = lane;
+      this.gates.push({ x: lane + 0.5, y, state: 0, t: 0 });
+    }
+    this.rampT = 6 + this.r() * 4;
+    const sr = rng(cfg.seed ^ 0x51);
+    for (let k = 0; k < 150; k++) this.stars.push({ x: sr(), y: sr(), z: 0.15 + sr() * 0.85, b: 0.3 + sr() * 0.7 });
     this.intro = `Der Highway trägt dich zur Ausfahrt ${this.exitName} (${this.exitSide < 0 ? 'links' : 'rechts'}). In der Mitte fließt das Feld am schnellsten. `
-      + 'Quer zum Strom gibt es keine Reibung: Ein Seitenschub lässt dich driften, bis du genauso lange gegenschiebst. Weiche langsameren Frachtern aus und spar Δv – am Ende musst du die Ausfahrt treffen.'
+      + 'Quer zum Strom gibt es keine Reibung: Ein Seitenschub lässt dich driften, bis du genauso lange gegenschiebst. Weiche langsameren Frachtern aus – hinter ihnen ist das Feld gestört (Feldschatten). '
+      + 'Driftest du genau durch einen goldenen Feldverstärker, gibt es Tempo und Δv. Am Ende musst du die Ausfahrt treffen.'
       + (this.mutator?.id === 'ion' ? ' Ein Ionensturm schiebt dich mit seitlichen Böen.' : '');
     this.goals = pickGoals(HIGHWAY_GOALS, rng(cfg.seed ^ 0x77));
   }
@@ -164,17 +200,42 @@ export class HighwayGame implements MiniGame {
     const x = lane + 0.5;
     const k = t.k[0] + this.r() * (t.k[1] - t.k[0]);
     if (this.traffic.some((o) => Math.abs(o.x - x) < 0.8 && Math.abs(o.y - y) < 200)) return;
-    this.traffic.push({ x, y, vx: 0, vy: this.field(x) * k, mass: t.mass, w: t.w, l: t.l, k, sprite: t.sprite, goal: x, blink: 0, hit: 0 });
+    this.traffic.push({ x, y, vx: 0, vy: this.field(x) * k, mass: t.mass, w: t.w, l: t.l, k, sprite: t.sprite, goal: x, blink: 0, hit: 0, warn: 0 });
+  }
+
+  /** Einfädler: Schiff aus einer Feldschleuse in der Wand, blinkt und schiebt sich dann in die Randspur */
+  private ramp(): void {
+    const side = this.r() < 0.5 ? -1 : 1;
+    const t = TRAFFIC[Math.floor(this.r() * 3)];
+    const y = this.me.y + (this.shipY - TOP) * 0.85;
+    const goal = side < 0 ? 0.5 : LANES - 0.5;
+    if (this.traffic.some((o) => Math.abs(o.x - goal) < 0.8 && Math.abs(o.y - y) < 220)) return;
+    const k = 0.6 + this.r() * 0.15;
+    const x = side < 0 ? -0.6 : LANES + 0.6;
+    this.traffic.push({ x, y, vx: 0, vy: this.field(goal) * k, mass: t.mass, w: t.w, l: t.l, k, sprite: t.sprite, goal, blink: 1.6, hit: 0, warn: 0, merge: true });
+  }
+
+  /** Feldschatten an einer Stelle: Anteil, um den das Feld hinter Schiffen langsamer ist (0 … 0,35) */
+  wake(x: number, y: number): number {
+    let w = 0;
+    for (const o of this.traffic) {
+      if (o.merge) continue;
+      const dy = o.y - y, L = 200 + o.mass * 40;
+      if (dy < o.l * 0.3 || dy > L) continue;
+      const lat = Math.abs(o.x - x) / (o.w / 2 + 0.22);
+      if (lat >= 1) continue;
+      w = Math.max(w, (0.1 + 0.025 * o.mass) * (1 - dy / L) * (1 - lat * lat));
+    }
+    return Math.min(0.35, w);
   }
 
   resize(w: number, h: number): void {
     this.w = w;
     this.h = h;
-    this.stars.resize(w, h);
     this.bgCache = null;
     this.hw = w * 0.88;
     this.hx = (w - this.hw) / 2;
-    if (!this.streaks.length) for (let k = 0; k < 120; k++) this.streaks.push({ x: this.r() * LANES, y: this.r() * h, len: 10 + this.r() * 26 });
+    if (!this.streaks.length) for (let k = 0; k < 70; k++) this.streaks.push({ x: this.r() * LANES, y: this.r() * h, len: 6 + this.r() * 12 });
   }
 
   private get laneW(): number { return this.hw / LANES; }
@@ -228,17 +289,26 @@ export class HighwayGame implements MiniGame {
           if (Math.abs(o.x - x) < (o.w + me.w) / 2 + 0.15) s -= 900 * (1 - ahead / 900) + 200;
         }
         s -= Math.abs(x - me.x) * 60;
+        for (const gt of this.gates) {
+          const ahead = gt.y - me.y;
+          if (gt.state === 0 && gt.x === x && ahead > 250 && ahead < 1500) s += 380;
+        }
+        s -= this.wake(x, me.y + 60) * 800;
         if (lane === this.autoLane) s += 120; // Beharrung: nicht ständig umentscheiden
         if (s > bs) { bs = s; best = x; }
       }
       this.autoLane = Math.floor(best);
       target = best;
     }
+    this.autoTarget = target;
     const a = ACC_LAT / me.mass;
     const dx = target - me.x;
     const want = Math.sign(dx) * Math.min(1.3, Math.sqrt(2 * a * Math.abs(dx)) * 0.8);
     const ev = want - me.vx;
-    this.auto = { l: ev < -0.25, r: ev > 0.25 };
+    // kurz vor einem Feldverstärker in der Zielspur genauer steuern
+    const fine = this.gates.some((gt) => gt.state === 0 && gt.x === target && gt.y - me.y < 700 && gt.y > me.y);
+    const db = fine ? 0.1 : 0.25;
+    this.auto = { l: ev < -db, r: ev > db };
     // Hindernis direkt voraus in der eigenen Spur und zu nah: bremsen (beide)
     const block = this.traffic.some((o) => Math.abs(o.x - me.x) < (o.w + me.w) / 2 && o.y - me.y > 0 && o.y - me.y < 140 + (me.vy - o.vy) * 0.8);
     if (block && Math.abs(dx) < 0.3) this.auto = { l: true, r: true };
@@ -280,7 +350,11 @@ export class HighwayGame implements MiniGame {
     }
     // Längs: Kopplung an den Feldstrom (Science-Fiction-Teil)
     this.decouple = Math.max(0, this.decouple - dt);
-    me.vy += (this.field(me.x) * (this.decouple > 0 ? 0.55 : 1) - me.vy) * Math.min(1, COUPLE * dt * (this.decouple > 0 ? 2 : 1));
+    const wk = this.wake(me.x, me.y);
+    this.wakeNow = wk;
+    me.vy += (this.field(me.x) * (1 - wk) * (this.decouple > 0 ? 0.55 : 1) - me.vy) * Math.min(1, COUPLE * dt * (this.decouple > 0 ? 2 : 1));
+    // Verwirbelung im Feldschatten: seitliche Stöße
+    if (wk > 0) me.vx += Math.sin(this.time * 3.1 + me.y * 0.013) * wk * 2.2 * dt;
     me.x += me.vx * dt;
     me.y += me.vy * dt;
     // Feldwände: weich, aber fest (Abprall)
@@ -289,6 +363,8 @@ export class HighwayGame implements MiniGame {
     if (me.x + hw > LANES) { me.x = LANES - hw; if (me.vx > 0) { me.vx = -me.vx * 0.5; this.wall(); } }
     this.updateTraffic(dt);
     this.collide();
+    this.updateGates(dt);
+    this.warnings();
     me.hit = Math.max(0, me.hit - dt * 2);
     // Ausfahrt
     if (me.y >= this.dist) {
@@ -304,6 +380,7 @@ export class HighwayGame implements MiniGame {
     setGoal(this.goals, 'nocrash', this.crashes === 0);
     setGoal(this.goals, 'fuel', this.fuel > this.fuel0 / 2);
     setGoal(this.goals, 'noretro', !this.retroUsed);
+    setGoal(this.goals, 'gates', this.gatesHit >= 4);
     // Punkte: schnelle Fahrt in der Mitte
     this.score.points += Math.round((me.vy / V_MAX) * dt * 30 * this.score.mult);
   }
@@ -315,13 +392,59 @@ export class HighwayGame implements MiniGame {
     sfx.tap();
   }
 
+  /** Feldverstärker: genau durch die Mitte driften = Tempostoß und Δv */
+  private updateGates(dt: number): void {
+    const me = this.me;
+    for (const g of this.gates) {
+      if (g.state) { g.t += dt; continue; }
+      if (me.y < g.y) continue;
+      const px = this.sx(g.x), py = this.shipY;
+      if (Math.abs(me.x - g.x) < GATE_R) {
+        g.state = 1;
+        this.gatesHit++;
+        me.vy += BOOST;
+        this.fuel = Math.min(this.fuel0, this.fuel + this.fuel0 * GATE_FUEL);
+        this.score.bump(0.5, 1e9);
+        const p = this.score.add(150);
+        this.floats.add(px, py - 50, `Feldstoß +${p}`, '#ffd27a', 15);
+        this.fx.burst(px, py - 20, '#ffe2a0', 22, 260, 1.6, 'spark', 0.5);
+        this.fx.add({ x: px, y: py - 10, color: '#ffd27a', size: this.laneW * 0.5, kind: 'ring', max: 0.45 });
+        sfx.coin();
+        buzz(15);
+      } else {
+        g.state = -1;
+        this.floats.add(px, py - 40, 'verfehlt', 'rgba(255,210,122,0.6)', 12);
+      }
+    }
+  }
+
+  /** Kollisionswarnung: wer in den nächsten 1,4 s die eigene Bahn kreuzt (Relativbewegung), wird markiert */
+  private warnings(): void {
+    const me = this.me;
+    for (const o of this.traffic) {
+      o.warn = 0;
+      const dy = o.y - me.y - (o.l + me.l) / 2;
+      const rel = me.vy - o.vy;
+      if (dy < -me.l || rel <= 0) continue;
+      const t = Math.max(0, dy) / rel;
+      if (t > 1.4) continue;
+      const gap = Math.abs(me.x + me.vx * t - (o.x + o.vx * t));
+      if (gap < (o.w + me.w) / 2) o.warn = 1 - t / 1.4;
+    }
+  }
+
   private updateTraffic(dt: number): void {
     const me = this.me;
-    // neuer Verkehr vorn außerhalb des Bildes; Einfädler von der Seite
+    // neuer Verkehr vorn außerhalb des Bildes
     this.nextSpawn -= dt;
     if (this.nextSpawn <= 0) {
       this.spawn(me.y + this.shipY + 200 + this.r() * 300);
       this.nextSpawn = (0.9 + this.r() * 0.8) / this.density;
+    }
+    // Einfädler aus den Feldschleusen (ab Stufe 2)
+    if (this.level >= 2 && this.dist - me.y > EXIT_ZONE) {
+      this.rampT -= dt;
+      if (this.rampT <= 0) { this.ramp(); this.rampT = 14 - this.level * 1.6 + this.r() * 6; }
     }
     for (const o of this.traffic) {
       // Spurwechsel ankündigen (blinken) und dann mit Seitenschub fahren
@@ -339,7 +462,8 @@ export class HighwayGame implements MiniGame {
       o.vy += (this.field(o.x) * o.k - o.vy) * Math.min(1, dt * 0.8);
       o.x += o.vx * dt;
       o.y += o.vy * dt;
-      o.x = clamp(o.x, o.w / 2, LANES - o.w / 2);
+      if (o.merge) { if (o.x > o.w / 2 && o.x < LANES - o.w / 2) o.merge = false; }
+      else o.x = clamp(o.x, o.w / 2, LANES - o.w / 2);
       o.hit = Math.max(0, o.hit - dt * 2);
     }
     this.traffic = this.traffic.filter((o) => o.y > me.y - this.h * 0.5);
@@ -409,6 +533,7 @@ export class HighwayGame implements MiniGame {
         ['Reisezeit', `${total.toFixed(1).replace('.', ',')} s`],
         ['Ausfahrt', this.exitOk ? 'getroffen' : `verpasst (+${PEN_EXIT} s)`],
         ['Kollisionen', `${this.crashes}`],
+        ['Feldverstärker', `${this.gatesHit} / ${this.gates.length}`],
         ['Δv übrig', `${Math.round((this.fuel / this.fuel0) * 100)} %`],
       ],
     };
@@ -448,8 +573,23 @@ export class HighwayGame implements MiniGame {
       }
       ctx.drawImage(this.bgCache, 0, 0, this.w, this.h);
     } else ctx.fillStyle = '#03070d', ctx.fillRect(0, 0, this.w, this.h);
-    // Sterne mit Parallaxe (ziehen langsam vorbei)
-    this.stars.draw(ctx, this.me.y * 0.05, '#cfe4ff');
+    // Sterne mit Parallaxe; bei hohem Tempo ziehen sie zu Strichen (Bewegungsunschärfe)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    const v = this.me.vy / V_MAX;
+    for (const s of this.stars) {
+      const y = (((s.y * this.h + this.me.y * 0.06 * s.z) % this.h) + this.h) % this.h;
+      const x = s.x * this.w;
+      const len = 1 + s.z * s.z * 5 * v * v;
+      ctx.strokeStyle = rgba('#d6e8ff', s.b * (0.2 + s.z * 0.45));
+      ctx.lineWidth = 0.6 + s.z * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y - len);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   draw(ctx: CanvasRenderingContext2D, now: number): void {
@@ -462,7 +602,11 @@ export class HighwayGame implements MiniGame {
     ctx.beginPath();
     ctx.rect(0, TOP, this.w, this.h - TOP);
     ctx.clip();
+    this.drawStopLane(ctx);
+    this.drawWakes(ctx, t);
+    this.drawGates(ctx, t);
     this.drawExit(ctx, t);
+    this.drawRamps(ctx, t);
     for (const o of this.traffic) this.drawShip(ctx, o, t, false);
     this.drawGhost(ctx);
     this.drawShip(ctx, this.me, t, true);
@@ -502,8 +646,8 @@ export class HighwayGame implements MiniGame {
       const v = this.field(s.x) / V_MAX;
       const y = ((((s.y + scroll * v * 1.15) % H) + H) % H) + top;
       const x = this.sx(s.x);
-      ctx.strokeStyle = rgba('#8fe8ff', 0.1 + 0.25 * v);
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = rgba('#8fe8ff', 0.03 + 0.12 * v * v);
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x, y + s.len * v);
@@ -554,6 +698,144 @@ export class HighwayGame implements MiniGame {
     void t;
   }
 
+  /** Spur, in der das Schiff bei sofortigem Gegenschub zum Stehen käme */
+  private drawStopLane(ctx: CanvasRenderingContext2D): void {
+    if (Math.abs(this.me.vx) < 0.25 || this.endT >= 0) return;
+    const lane = clamp(Math.floor(this.stopPoint()), 0, LANES - 1);
+    const x = this.sx(lane);
+    const g = ctx.createLinearGradient(0, TOP, 0, this.h);
+    g.addColorStop(0, 'rgba(255,210,122,0)');
+    g.addColorStop(0.75, 'rgba(255,210,122,0.07)');
+    g.addColorStop(1, 'rgba(255,210,122,0.02)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, TOP, this.laneW, this.h - TOP);
+  }
+
+  /** Feldschatten: dunkle, verwirbelte Nachlaufzone hinter jedem Schiff */
+  private drawWakes(ctx: CanvasRenderingContext2D, t: number): void {
+    for (const o of this.traffic) {
+      if (o.merge) continue;
+      const y0 = this.sy(o.y) + o.l * 0.3, L = 200 + o.mass * 40;
+      if (y0 > this.h + 10 || y0 + L < TOP) continue;
+      const x = this.sx(o.x), hw = (o.w / 2 + 0.22) * this.laneW;
+      const depth = Math.min(0.35, 0.1 + 0.025 * o.mass);
+      const g = ctx.createLinearGradient(0, y0, 0, y0 + L);
+      g.addColorStop(0, `rgba(0,4,10,${(depth * 1.3).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(0,4,10,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(x - hw * 0.55, y0);
+      ctx.quadraticCurveTo(x - hw, y0 + L * 0.4, x - hw * 0.8, y0 + L);
+      ctx.lineTo(x + hw * 0.8, y0 + L);
+      ctx.quadraticCurveTo(x + hw, y0 + L * 0.4, x + hw * 0.55, y0);
+      ctx.closePath();
+      ctx.fill();
+      // Wirbel: abwechselnd links und rechts abgelöst (wie eine Wirbelstraße)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineWidth = 1.1;
+      for (let k = 0; k < 4; k++) {
+        const ph = (t * 0.9 + k / 4) % 1;
+        const yy = y0 + ph * L, side = k % 2 ? 1 : -1;
+        const rr = 5 + ph * hw * 0.45;
+        ctx.strokeStyle = rgba('#8fe8ff', 0.22 * (1 - ph) * (depth / 0.2));
+        ctx.beginPath();
+        const a0 = t * 4 * side + k;
+        ctx.arc(x + side * hw * 0.35, yy, rr, a0, a0 + 4.2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Feldverstärker: goldener Ring quer in einer Spur, Leuchtbahn davor */
+  private drawGates(ctx: CanvasRenderingContext2D, t: number): void {
+    const LW = this.laneW;
+    for (const g of this.gates) {
+      const y = this.sy(g.y);
+      if (y < TOP - 220 || y > this.h + 40) continue;
+      const x = this.sx(g.x);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      if (g.state === 0) {
+        // Leuchtbahn: zeigt, wo man hindurch muss
+        const lg = ctx.createLinearGradient(0, y, 0, y + 220);
+        lg.addColorStop(0, 'rgba(255,200,100,0.22)');
+        lg.addColorStop(1, 'rgba(255,200,100,0)');
+        ctx.fillStyle = lg;
+        ctx.fillRect(x - GATE_R * LW, y, GATE_R * 2 * LW, 220);
+        // Pfeile im Feld, laufen nach vorn
+        ctx.strokeStyle = 'rgba(255,220,140,0.55)';
+        ctx.lineWidth = 2;
+        for (let k = 0; k < 3; k++) {
+          const yy = y + 40 + ((k * 60 - t * 120) % 180 + 180) % 180;
+          ctx.globalAlpha = 1 - (yy - y) / 220;
+          ctx.beginPath();
+          ctx.moveTo(x - 9, yy + 6); ctx.lineTo(x, yy - 3); ctx.lineTo(x + 9, yy + 6);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+      const grow = g.state === 1 ? 1 + g.t * 2.5 : 1;
+      const a = g.state === 1 ? Math.max(0, 1 - g.t * 1.8) : g.state === -1 ? 0.25 : 0.85 + 0.15 * Math.sin(t * 5);
+      if (a > 0) {
+        const rx = LW * 0.46 * grow, ry = 10 * grow;
+        const glow = ctx.createRadialGradient(x, y, 0, x, y, rx * 1.2);
+        glow.addColorStop(0, rgba('#ffd27a', 0.3 * a));
+        glow.addColorStop(1, rgba('#ffd27a', 0));
+        ctx.fillStyle = glow;
+        ctx.fillRect(x - rx * 1.2, y - rx * 1.2, rx * 2.4, rx * 2.4);
+        for (const [w, c] of [[6, 0.25], [2.4, 0.9]] as const) {
+          ctx.strokeStyle = rgba(g.state === -1 ? '#a0a8b0' : '#ffd27a', c * a);
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        // Feldspulen am Ring
+        if (g.state === 0) for (const sd of [-1, 1]) {
+          ctx.fillStyle = rgba('#fff2d0', a);
+          ctx.beginPath();
+          ctx.arc(x + sd * rx, y, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Feldschleusen: Einfädler leuchten in der Wand auf, bevor sie hereinkommen */
+  private drawRamps(ctx: CanvasRenderingContext2D, t: number): void {
+    for (const o of this.traffic) {
+      if (!o.merge) continue;
+      const y = this.sy(o.y);
+      if (y < TOP - 60 || y > this.h + 60) continue;
+      const side = o.x < LANES / 2 ? -1 : 1;
+      const x = side < 0 ? this.hx : this.hx + this.hw;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const a = 0.5 + 0.5 * Math.sin(t * 10);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 46);
+      g.addColorStop(0, rgba('#ffb547', 0.55 * a + 0.2));
+      g.addColorStop(1, rgba('#ffb547', 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 46, y - 60, 92, 120);
+      ctx.strokeStyle = rgba('#ffd27a', 0.9);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x, y - o.l * 0.6);
+      ctx.lineTo(x, y + o.l * 0.6);
+      ctx.stroke();
+      ctx.restore();
+      if (o.blink > 0) {
+        ctx.font = '700 10px "Chakra Petch", Barlow, sans-serif';
+        ctx.textAlign = side < 0 ? 'left' : 'right';
+        ctx.fillStyle = '#ffd27a';
+        ctx.fillText(side < 0 ? 'EINFÄDLER →' : '← EINFÄDLER', x - side * 8, y - o.l * 0.6 - 6);
+      }
+    }
+  }
+
   /** Ausfahrt: seitliches Tor mit Schild; Hinweis rechtzeitig vorher */
   private drawExit(ctx: CanvasRenderingContext2D, t: number): void {
     const left = this.dist - this.me.y;
@@ -565,8 +847,28 @@ export class HighwayGame implements MiniGame {
       ctx.fillStyle = Math.sin(t * 6) > 0 || left > 1500 ? '#ffd27a' : 'rgba(255,210,122,0.5)';
       ctx.fillText(`${side < 0 ? '←' : ''} Ausfahrt ${this.exitName} in ${Math.max(0, Math.round(left / 100) / 10).toFixed(1).replace('.', ',')} km ${side > 0 ? '→' : ''}`, this.w / 2, TOP + 26);
     }
-    if (y < TOP - 60 || y > this.h + 60) return;
     const lx = side < 0 ? this.sx(0) : this.sx(LANES - 1);
+    // Leitpfeile in der Ausfahrtspur: werden mit der Nähe deutlicher
+    if (left < 3200 && left > -200) {
+      const a = clamp(1 - left / 3200, 0.15, 1);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = rgba('#6be38f', 0.05 * a);
+      ctx.fillRect(lx, TOP, this.laneW, Math.min(this.h, y) - TOP);
+      ctx.strokeStyle = rgba('#6be38f', 0.5 * a);
+      ctx.lineWidth = 2.5;
+      const cx = lx + this.laneW / 2;
+      for (let k = Math.floor((this.me.y - this.h) / 120); k < Math.ceil((this.me.y + this.h) / 120); k++) {
+        if (k * 120 > this.dist) break;
+        const yy = this.sy(k * 120);
+        if (yy < TOP || yy > this.h) continue;
+        ctx.beginPath();
+        ctx.moveTo(cx - 10 - side * 4, yy + 7); ctx.lineTo(cx + side * 4, yy - 4); ctx.lineTo(cx + 10 - side * 4, yy + 7);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (y < TOP - 60 || y > this.h + 60) return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const g = ctx.createLinearGradient(0, y - 40, 0, y + 40);
@@ -624,6 +926,29 @@ export class HighwayGame implements MiniGame {
     // leichte Neigung beim Driften (nur Optik)
     ctx.rotate(clamp(o.vx * 0.08, -0.25, 0.25));
     const sp = this.sprite(o.sprite);
+    // eigenes Schiff: Feldkopplungs-Ring darunter (blasser bei gestörter Kopplung)
+    if (me) {
+      ctx.save();
+      ctx.rotate(-clamp(o.vx * 0.08, -0.25, 0.25));
+      ctx.globalCompositeOperation = 'lighter';
+      const a = this.decouple > 0 ? 0.25 + 0.25 * Math.sin(t * 20) : 0.55;
+      const rg = ctx.createRadialGradient(0, 0, size * 0.2, 0, 0, size * 0.62);
+      rg.addColorStop(0, rgba('#7fe8ff', 0));
+      rg.addColorStop(0.8, rgba('#7fe8ff', a * 0.35));
+      rg.addColorStop(1, rgba('#7fe8ff', 0));
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, size * 0.62, size * 0.62, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = rgba('#bff4ff', a);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 5]);
+      ctx.lineDashOffset = -t * 30;
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.56, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     // Triebwerke: Feldschiffe laufen auf Sparflamme
     if (sp) {
       ctx.save();
@@ -655,6 +980,18 @@ export class HighwayGame implements MiniGame {
       ctx.arc(0, 0, size * 0.45, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
+    }
+    // Kollisionswarnung: rote Ecken, je dringender, desto kräftiger
+    if (!me && o.warn > 0) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = rgba('#ff6a6a', 0.35 + 0.6 * o.warn);
+      ctx.lineWidth = 2;
+      const bx = size * 0.42, by = size * 0.48, c = 8;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        ctx.beginPath();
+        ctx.moveTo(sx * bx, sy * (by - c)); ctx.lineTo(sx * bx, sy * by); ctx.lineTo(sx * (bx - c), sy * by);
+        ctx.stroke();
+      }
     }
     // Blinker vor dem Spurwechsel
     if (!me && o.blink > 0 && Math.sin(t * 14) > 0) {
@@ -708,6 +1045,25 @@ export class HighwayGame implements MiniGame {
     ctx.fillStyle = 'rgba(169,195,198,0.85)';
     ctx.fillText(`QUERDRIFT ${Math.abs(me.vx).toFixed(1).replace('.', ',')} Spuren/s`, cx, y + 6);
     ctx.fillText(`FELD ${(me.vy / 100).toFixed(1).replace('.', ',')} km/s · Δv ${Math.round((this.fuel / this.fuel0) * 100)} %`, cx, y + 36);
-    if (this.fuel <= 0 && Math.sin(t * 6) > 0) { ctx.fillStyle = '#ff9aa4'; ctx.fillText('KEIN Δv MEHR', cx, y - 8); }
+    ctx.fillStyle = this.thrust.retro ? '#bfefff' : 'rgba(169,195,198,0.55)';
+    ctx.fillText('beide Daumen = bremsen', cx, y + 50);
+    // Strömungsprofil (Parabel) mit eigener Lage; im Feldschatten gedämpft
+    const py = y - 16, ph = 22;
+    ctx.strokeStyle = 'rgba(127,216,255,0.6)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let k = 0; k <= 24; k++) {
+      const u = (k / 24) * LANES;
+      const px = cx - W / 2 + (k / 24) * W, pv = (this.field(u) - V_MIN * 0.8) / (V_MAX - V_MIN * 0.8);
+      if (k) ctx.lineTo(px, py - pv * ph); else ctx.moveTo(px, py - pv * ph);
+    }
+    ctx.stroke();
+    const mx = cx - W / 2 + (me.x / LANES) * W, mv = (me.vy - V_MIN * 0.8) / (V_MAX - V_MIN * 0.8);
+    ctx.fillStyle = this.wakeNow > 0.03 ? '#ff9aa4' : '#ffd27a';
+    ctx.beginPath();
+    ctx.arc(mx, py - clamp(mv, 0, 1.3) * ph, 3, 0, Math.PI * 2);
+    ctx.fill();
+    if (this.wakeNow > 0.03) { ctx.fillStyle = '#ff9aa4'; ctx.fillText(`FELDSCHATTEN −${Math.round(this.wakeNow * 100)} %`, cx, py - ph - 6); }
+    if (this.fuel <= 0 && Math.sin(t * 6) > 0) { ctx.fillStyle = '#ff9aa4'; ctx.fillText('KEIN Δv MEHR', cx, y - 58); }
   }
 }

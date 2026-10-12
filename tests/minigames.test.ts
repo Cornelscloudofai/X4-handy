@@ -595,6 +595,54 @@ describe('Superhighway', () => {
     };
     expect(lat('heavy')).toBeCloseTo(lat(null) / 2, 2);
   });
+
+  it('Feldverstärker: genau durch die Mitte gibt Tempo und Δv, daneben nichts', () => {
+    const pass = (dx: number) => {
+      const { g, a } = fresh();
+      const h = g as unknown as { gates: { x: number; y: number; state: number }[] };
+      a.fuel = 10;
+      h.gates.length = 0;
+      h.gates.push({ x: a.me.x + dx, y: a.me.y + 30, state: 0, t: 0 } as never);
+      const v0 = a.me.vy;
+      for (let k = 0; k < 6; k++) g.update(DT);
+      return { state: h.gates[0].state, dv: a.me.vy - v0, fuel: a.fuel };
+    };
+    const hit = pass(0), miss = pass(0.6);
+    expect(hit.state).toBe(1);
+    expect(hit.dv).toBeGreaterThan(150);
+    expect(hit.fuel).toBeGreaterThan(miss.fuel + 2);
+    expect(miss.state).toBe(-1);
+    expect(miss.dv).toBeLessThan(10);
+  });
+
+  it('Feldschatten: hinter einem Frachter fließt das Feld langsamer, daneben nicht', () => {
+    const { g, a } = fresh();
+    const h = g as unknown as { wake(x: number, y: number): number };
+    a.traffic.push({ x: 2.5, y: a.me.y + 120, vx: 0, vy: 520, mass: 9, w: 0.9, l: 104, k: 1, sprite: 'wyvern_min', goal: 2.5, blink: 0, hit: 0, warn: 0 });
+    expect(h.wake(2.5, a.me.y)).toBeGreaterThan(0.15);
+    expect(h.wake(4.5, a.me.y)).toBe(0);
+    expect(h.wake(2.5, a.me.y + 400)).toBe(0); // vor dem Frachter
+    // das eigene Schiff wird im Schatten langsamer als im freien Feld
+    for (let k = 0; k < 60; k++) g.update(DT);
+    expect((g as unknown as { crashes: number }).crashes).toBe(0);
+    expect(a.me.vy).toBeLessThan(a.field(a.me.x) * 0.92);
+  });
+
+  it('ab Stufe 2 fädeln Schiffe aus den Feldschleusen ein', () => {
+    const g = new HighwayGame(cfg(2, 99));
+    g.resize(W, H);
+    const h = g as unknown as { traffic: { merge?: boolean; x: number }[] };
+    let seen = false, inside = false;
+    for (let k = 0; k < 60 * 30 && !inside; k++) {
+      g.autopilot();
+      g.update(DT);
+      const m = h.traffic.find((o) => o.merge);
+      if (m) seen = true;
+      else if (seen) inside = true;
+    }
+    expect(seen).toBe(true);
+    expect(inside).toBe(true);
+  });
 });
 
 describe('Kampf', () => {
