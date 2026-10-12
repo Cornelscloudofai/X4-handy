@@ -12,6 +12,7 @@ import { HIGHWAY_GOALS, HIGHWAY_MUTATORS, HighwayGame } from './highway';
 import { ORBIT_GOALS, ORBIT_MUTATORS, OrbitGame } from './orbit';
 import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
 import { earnParts, partsFor } from './mods';
+import { artPic } from '../ui/menuArt';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, type RecordOutcome } from './records';
 
 export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon';
@@ -239,7 +240,7 @@ function setPhase(p: Phase): void {
   const mode = s.cfg.mode ?? 'normal';
   if (p === 'intro') {
     const rec = mode === 'daily' ? dailyBest(s.kind) : mode === 'normal' ? best(s.kind, s.cfg.level)?.points ?? null : bestPoints(s.kind, mode);
-    layer.innerHTML = `<div class="mg-card"><small class="eyebrow">${esc(g.eyebrow)}${MODE_LABEL[mode] ? ' · ' + MODE_LABEL[mode] : ''} · Stufe ${s.cfg.level}</small><h2>${esc(g.title)}</h2><p>${esc(g.intro)}</p>
+    layer.innerHTML = `<div class="mg-card">${artPic(s.kind, 'mg-intro-art')}<small class="eyebrow">${esc(g.eyebrow)}${MODE_LABEL[mode] ? ' · ' + MODE_LABEL[mode] : ''} · Stufe ${s.cfg.level}</small><h2>${esc(g.title)}</h2><p>${esc(g.intro)}</p>
       ${mutatorBox(g.mutator)}
       <ul class="mg-controls">${g.controls.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
       ${g.goals.length ? `<div class="mg-goals"><small>Nebenziele</small>${g.goals.map((q) => `<div class="${hasBadge(s.kind, q.id) ? 'has' : ''}"><i></i>${esc(q.text)}${hasBadge(s.kind, q.id) ? '<em>Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}

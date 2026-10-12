@@ -850,3 +850,39 @@ button.chip.credits { cursor: pointer; color: inherit; font: inherit; }
 .mod-qbtn:not(:disabled):active { transform: scale(0.97); }
 .mg-parts { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 2px 0 10px; font-size: 13px; color: var(--amber); }
 .mg-parts i { width: 10px; height: 10px; transform: rotate(45deg); background: var(--amber); box-shadow: 0 0 10px var(--amber-glow); }
+
+/* Bilder in Menüs: Hintergrundbild (--img) mit Abdunklung, davor Schiff/Objekt */
+.menu-tile.has-art { overflow: hidden; isolation: isolate; min-height: 128px; justify-content: flex-end;
+  background: linear-gradient(180deg, rgba(3, 8, 14, 0.15) 0%, rgba(3, 8, 14, 0.55) 45%, rgba(3, 8, 14, 0.94) 100%), var(--img) center / cover no-repeat, var(--panel-2); }
+.menu-tile.has-art .menu-tile-ic { position: absolute; top: 10px; left: 10px; width: 36px; height: 36px; margin: 0; backdrop-filter: blur(4px); background: rgba(3, 10, 16, 0.55); }
+.menu-tile-art { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.menu-tile-art img { position: absolute; right: -6%; top: 2%; width: 64%; max-height: 64%; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.7)); transform: rotate(-12deg); transition: transform 0.4s; }
+.menu-tile.has-art:active .menu-tile-art img { transform: rotate(-12deg) scale(1.06); }
+.menu-tile.has-art .menu-tile-title { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
+.menu-tile.has-art .menu-tile-sub { color: var(--text-2); }
+.menu-hero { position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 132px; padding: 14px 16px; border-radius: var(--r); border: 1px solid var(--line-2); overflow: hidden;
+  background: linear-gradient(90deg, rgba(3, 8, 14, 0.92) 0%, rgba(3, 8, 14, 0.55) 55%, rgba(3, 8, 14, 0.25) 100%), var(--img) 70% 40% / cover no-repeat; box-shadow: 0 10px 30px -18px var(--teal-glow); }
+.menu-hero small { display: block; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--teal); font-family: var(--font-display); }
+.menu-hero-txt b { display: block; font-family: var(--font-display); font-size: 26px; line-height: 1.1; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7); }
+.menu-hero-txt span { font-size: 12px; color: var(--text-2); }
+.menu-hero-side { text-align: right; }
+.menu-hero-side b { display: block; font-family: var(--font-display); font-size: 15px; }
+.menu-hero-side small:last-child { color: var(--text-2); letter-spacing: 0; text-transform: none; font-family: var(--font-body); margin-top: 2px; }
+.page-hero { position: relative; display: flex; align-items: flex-end; min-height: 96px; margin-bottom: 14px; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--line); overflow: hidden; isolation: isolate;
+  background: linear-gradient(90deg, rgba(3, 8, 14, 0.9) 0%, rgba(3, 8, 14, 0.45) 60%, rgba(3, 8, 14, 0.2) 100%), var(--img) center / cover no-repeat; }
+.page-hero b { display: block; font-family: var(--font-display); font-size: 18px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
+.page-hero span { font-size: 12.5px; color: var(--text-2); }
+.page-hero-art { position: absolute; inset: 0; z-index: -1; }
+.page-hero-art img { position: absolute; right: 4%; top: 50%; height: 110%; max-width: 46%; object-fit: contain; transform: translateY(-50%) rotate(-10deg); filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.7)); }
+.mg-row { gap: 12px; }
+.mg-thumb { position: relative; flex: none; width: 72px; height: 72px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line-2);
+  background: linear-gradient(180deg, rgba(3, 8, 14, 0) 40%, rgba(3, 8, 14, 0.6)), var(--img) center / cover no-repeat; box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.8); }
+.mg-thumb img { position: absolute; inset: 8%; width: 84%; height: 84%; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.7)); }
+.mg-row.small-thumb .mg-thumb { width: 48px; height: 48px; border-radius: 10px; }
+.mg-thumb.locked { filter: grayscale(0.9) brightness(0.55); }
+.mg-thumb.locked::after { content: '🔒'; position: absolute; right: 4px; bottom: 2px; font-size: 14px; filter: grayscale(1); }
+.menu-hero-txt b .num { font-size: inherit; }
+.mg-intro-art { position: relative; display: block; height: 118px; margin: -18px -18px 12px; border-radius: 18px 18px 0 0; overflow: hidden;
+  background: linear-gradient(180deg, rgba(11, 26, 40, 0) 45%, var(--panel-solid) 100%), var(--img) center / cover no-repeat; }
+.mg-intro-art img { position: absolute; left: 50%; top: 50%; height: 92%; max-width: 70%; object-fit: contain; transform: translate(-50%, -50%) rotate(-8deg); filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.75)); animation: lo-float-c 5s ease-in-out infinite; }
+@keyframes lo-float-c { 50% { transform: translate(-50%, -56%) rotate(-8deg); } }

@@ -5,6 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
+import { artPic, artStyle } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, gameRange, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
 
@@ -1256,16 +1257,17 @@ function morePanel(state: GameState, ui: UIState): string {
   const sub = MORE_SUBS.find((m) => m.id === tab);
   if (!sub) {
     // Übersicht: Kurzbilanz und Kacheln
-    const tiles = MORE_SUBS.map((m) => `<button class="menu-tile" ${m.id === 'games' ? act('minigames') : act('more-sub', { tab: m.id })} data-key="more-${m.id}">
-        <span class="menu-tile-ic">${icon(m.icon, 26)}</span><span class="menu-tile-title">${esc(m.title)}</span><span class="menu-tile-sub">${esc(m.sub)}</span></button>`).join('');
+    const tiles = MORE_SUBS.map((m) => `<button class="menu-tile has-art" style="${artStyle('more-' + m.id)}" ${m.id === 'games' ? act('minigames') : act('more-sub', { tab: m.id })} data-key="more-${m.id}">
+        ${artPic('more-' + m.id, 'menu-tile-art')}<span class="menu-tile-ic">${icon(m.icon, 24)}</span><span class="menu-tile-title">${esc(m.title)}</span><span class="menu-tile-sub">${esc(m.sub)}</span></button>`).join('');
     return sheet('Leitstand', 'Mehr', `
-      <div class="section"><div class="kv">
-        <div><small>Unternehmenswert</small><b>${tw(netWorth(state), 'cr')}</b></div><div><small>Spielzeit</small><b style="font-size:15px">${fmtClock(state.time)}</b></div>
+      <div class="section"><div class="menu-hero" style="${artStyle('hero')}">
+        <div class="menu-hero-txt"><small>Familie Zhin</small><b>${tw(netWorth(state), 'cr')}</b><span>Unternehmenswert</span></div>
+        <div class="menu-hero-side"><small>Spielzeit</small><b>${fmtClock(state.time)}</b><small>${state.stations.length} Stationen · ${state.ships.length} Schiffe</small></div>
       </div></div>
       <div class="section"><div class="menu-grid">${tiles}</div></div>
       <div class="section"><div class="card-actions"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>`);
   }
-  const page = (body: string) => sheet(sub.title, 'Mehr', body, { back: true });
+  const page = (body: string) => sheet(sub.title, 'Mehr', `<div class="page-hero" style="${artStyle('more-' + sub.id)}">${artPic('more-' + sub.id, 'page-hero-art')}<div><b>${esc(sub.title)}</b><span>${esc(sub.sub)}</span></div></div>` + body, { back: true });
   switch (sub.id) {
     case 'company': {
       const logRows = [...state.log].reverse().slice(0, 8).map((l) => `<div class="row"><span class="small muted num" style="flex:none;width:74px">${fmtClock(l.t).replace('Tag ', 'T')}</span><div class="grow"><div class="sub wrap ${l.kind === 'good' ? 'pos' : l.kind === 'bad' ? 'neg' : l.kind === 'warn' ? 'warn-text' : ''}" style="${l.kind === 'info' ? 'color:var(--text-2)' : ''}">${esc(l.text)}</div></div></div>`).join('');
@@ -1371,19 +1373,19 @@ export function modalHtml(state: GameState, ui: UIState): string {
         const b = mgBest(k, lvl);
         const info = `${b?.points ? `Rekord ${pts(b.points)} · ` : ''}★ ${totalStars(k)}/15 · Abzeichen ${badgeCount(k)}/${goalsOf(k).length}`;
         return open
-          ? `<div class="row tap" ${act('mg-play', { kind: k })}>${icon(MINI_INFO[k].icon, 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">${esc(MINI_INFO[k].sub)}</div><div class="sub">${info}</div></div>${b ? stars(b.stars) : ''}${icon('play', 18, 'chev')}</div>`
-          : `<div class="row mg-lock">${icon('lock', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">Stufe ${lvl} ab ${UNLOCK[lvl]} Sternen in diesem Spiel – noch ${UNLOCK[lvl] - totalStars(k)}</div></div></div>`;
+          ? `<div class="row tap mg-row" ${act('mg-play', { kind: k })}>${artPic(k, 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">${esc(MINI_INFO[k].sub)}</div><div class="sub">${info}</div></div>${b ? stars(b.stars) : ''}${icon('play', 18, 'chev')}</div>`
+          : `<div class="row mg-lock mg-row">${artPic(k, 'mg-thumb locked')}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">Stufe ${lvl} ab ${UNLOCK[lvl]} Sternen in diesem Spiel – noch ${UNLOCK[lvl] - totalStars(k)}</div></div></div>`;
       };
       const daily = MINI_KINDS.map((k) => {
         const o = dailyOpts(k);
         const mu = mutatorsOf(k).find((x) => x.id === o.mutator);
         const db = dailyBest(k);
-        return `<div class="row tap" ${act('mg-daily', { kind: k })}>${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub">${mu ? esc(mu.name) + ' · ' : ''}${db != null ? `heute ${pts(db)} Punkte` : 'heute noch nicht gespielt'}</div></div>${icon('play', 18, 'chev')}</div>`;
+        return `<div class="row tap mg-row small-thumb" ${act('mg-daily', { kind: k })}>${artPic(k, 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub">${mu ? esc(mu.name) + ' · ' : ''}${db != null ? `heute ${pts(db)} Punkte` : 'heute noch nicht gespielt'}</div></div>${icon('play', 18, 'chev')}</div>`;
       }).join('');
       const modes = MINI_KINDS.filter((k) => MINI_INFO[k].chain || MINI_INFO[k].endless).map((k) => {
         const mode = MINI_INFO[k].chain ? 'chain' : 'endless';
         const bp = mgBestPoints(k, mode);
-        return `<div class="row tap" ${act('mg-mode', { kind: k, mode })}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[0])}</div><div class="sub wrap">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[1]?.trim() ?? '')}${bp ? ` · Rekord ${pts(bp)}` : ''}</div></div>${icon('play', 18, 'chev')}</div>`;
+        return `<div class="row tap mg-row small-thumb" ${act('mg-mode', { kind: k, mode })}>${artPic(k, 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[0])}</div><div class="sub wrap">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[1]?.trim() ?? '')}${bp ? ` · Rekord ${pts(bp)}` : ''}</div></div>${icon('play', 18, 'chev')}</div>`;
       }).join('');
       const tab = m.tab ?? 'games';
       const tabs = `<div class="segment mg-tabs">${([['games', 'Spiele'], ['daily', 'Täglich'], ['combat', 'Kampf']] as const).map(([id, l]) => `<button class="${tab === id ? 'on' : ''}" ${act('mg-tab', { tab: id })}>${l}</button>`).join('')}</div>`;
@@ -1397,7 +1399,8 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zielen; über den Ring hinaus wird gefeuert (mit kurzem Vibrieren).'}</p></div>
         <div class="section"><h3>Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
-      const body = tabs + (tab === 'daily' ? dailyTab : tab === 'combat' ? combatTab : gamesTab);
+      const hero = `<div class="page-hero" style="${artStyle('more-games')}">${artPic('more-games', 'page-hero-art')}<div><b>${MINI_KINDS.length} Minispiele</b><span>★ ${MINI_KINDS.reduce((n, k) => n + totalStars(k), 0)} von ${MINI_KINDS.length * 15} · ${modState().parts} Modteile</span></div></div>`;
+      const body = hero + tabs + (tab === 'daily' ? dailyTab : tab === 'combat' ? combatTab : gamesTab);
       return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');
     }
     case 'loadout': {
