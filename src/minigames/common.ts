@@ -131,6 +131,10 @@ export interface Particle {
   /** Wird beim Erreichen des Ziels aufgerufen */
   onArrive?: () => void;
   drag: number;
+  /** Deckend statt leuchtend zeichnen (Gesteinsbrocken, Rauch) */
+  solid?: boolean;
+  /** Deckkraft-Faktor */
+  alpha?: number;
 }
 
 export class Particles {
@@ -181,7 +185,8 @@ export class Particles {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const p of this.list) {
-      const f = p.tx != null ? 1 : 1 - p.life / p.max;
+      const f = (p.tx != null ? 1 : 1 - p.life / p.max) * (p.alpha ?? 1);
+      ctx.globalCompositeOperation = p.solid ? 'source-over' : 'lighter';
       if (p.kind === 'ring') {
         ctx.strokeStyle = rgba(p.color, 0.6 * f);
         ctx.lineWidth = 2;

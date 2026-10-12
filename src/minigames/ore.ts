@@ -8,8 +8,11 @@
 // gibt es mehr Punkte – aber Kristalle zerspringen). Ist ein Asteroid ausgebeutet, zerbricht er – der nächste kommt.
 import { WARES } from '../data/wares';
 import { sfx } from '../ui/sound';
+import { BG_IMAGES } from '../render/bgImages';
+import { mapShipSprite } from '../render/shipArt';
+import { fbm, perlin } from '../render/noise';
 import {
-  buzz, clamp, drawButton, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
+  buzz, clamp, drawButton, roundRect, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
   type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator,
 } from './common';
 
@@ -60,6 +63,31 @@ interface Pocket {
 }
 interface Crystal { x: number; y: number; prog: number; state: 'ok' | 'got' | 'broken' }
 interface Zone { x: number; y: number; r: number }
+interface Frag { pts: [number, number][]; rim: [number, number]; x: number; y: number; vx: number; vy: number; a: number; vr: number; t: number; slow: boolean }
+/** Asteroidenbild: Umgebungslicht, vier gerichtete Lichtschichten (+x, +y, −x, −y), Umrissmaske und das Ergebnis */
+interface AstArt { R: number; dpr: number; ambient: HTMLCanvasElement; dirs: HTMLCanvasElement[]; mask: HTMLCanvasElement; comp: HTMLCanvasElement; light: number; path: Path2D }
+
+/** Sonnenlicht kommt von links oben (passend zum Hintergrundbild) */
+const SUN_ANGLE = Math.atan2(-0.78, -0.62);
+/** Gesteinsfarben je Rohstoff: dunkel, hell, harte Zonen */
+const ROCK: Record<string, [number[], number[], number[]]> = {
+  ore: [[52, 44, 38], [118, 102, 88], [40, 44, 54]],
+  silicon: [[50, 52, 56], [122, 124, 128], [38, 42, 56]],
+  ice: [[62, 72, 84], [138, 152, 166], [46, 58, 78]],
+  nividium: [[44, 38, 52], [104, 92, 118], [34, 32, 52]],
+};
+
+let bgImg: HTMLImageElement | null = null;
+/** Hintergrundbild (Asteroiden im Sonnenlicht), sobald geladen */
+function background(): HTMLImageElement | null {
+  if (typeof Image === 'undefined') return null;
+  if (!bgImg) {
+    bgImg = new Image();
+    bgImg.decoding = 'async';
+    bgImg.src = BG_IMAGES.find((b) => b.id === 'asteroiden-sonne')?.url ?? '';
+  }
+  return bgImg.complete && bgImg.naturalWidth ? bgImg : null;
+}
 
 export class OreGame implements MiniGame {
   readonly eyebrow = 'Bergbau';
@@ -139,8 +167,22 @@ export class OreGame implements MiniGame {
   private cx = 0;
   private cy = 0;
   private R = 100;
-  private sprite: HTMLCanvasElement | null = null;
-  private spriteKey = '';
+  /** Beleuchteter Asteroid (Schichten für wanderndes Sonnenlicht) */
+  private art: AstArt | null = null;
+  private artJob: Generator<void, void> | null = null;
+  private bgCache: HTMLCanvasElement | null = null;
+  /** Bruchstücke beim Zerbrechen/Einsturz */
+  private frags: Frag[] = [];
+  private fragImg: HTMLCanvasElement | null = null;
+  private fragRot = 0;
+  /** Heller Blitz (Explosion, Zerbrechen) */
+  private flash = 0;
+  private flashColor = '#ffffff';
+  /** Staubkörner im Vordergrund (Tiefe) */
+  private motes: { x: number; y: number; z: number; vx: number; vy: number }[] = [];
+  /** Aufleuchten der Kernader beim Freilegen */
+  private coreFlash = 0;
+  private shipAng = 0;
   private done: GameResult | null = null;
   private endT = -1;
 
@@ -256,7 +298,8 @@ export class OreGame implements MiniGame {
       this.craters.push({ x: Math.cos(a2) * d2, y: Math.sin(a2) * d2, r: 0.04 + r() * 0.1 });
     }
     this.burns = [];
-    this.sprite = null;
+    this.art = null;
+    this.artJob = null;
   }
 
   private radiusAt(a: number): number {
@@ -275,6 +318,10 @@ export class OreGame implements MiniGame {
     this.w = w;
     this.h = h;
     this.stars.resize(w, h);
+    if (!this.motes.length) {
+      const r = rng(5);
+      for (let k = 0; k < 36; k++) this.motes.push({ x: r() * w, y: r() * h, z: 0.3 + r() * 0.7, vx: -6 - r() * 8, vy: 10 + r() * 14 });
+    }
     this.R = Math.min(w * 0.42, (h - TOP - 190) * 0.5);
     this.cx = w / 2;
     this.cy = TOP + 20 + this.R * 1.08;
@@ -382,6 +429,16 @@ export class OreGame implements MiniGame {
     this.fx.update(dt);
     this.floats.update(dt);
     this.shake = Math.max(0, this.shake - dt);
+    this.flash = Math.max(0, this.flash - dt * 2.5);
+    this.coreFlash = Math.max(0, this.coreFlash - dt * 0.6);
+    for (const m of this.motes) {
+      m.x += m.vx * m.z * dt;
+      m.y += m.vy * m.z * dt;
+      if (m.x < -10) m.x += this.w + 20;
+      if (m.x > this.w + 10) m.x -= this.w + 20;
+      if (m.y > this.h + 10) m.y -= this.h + 20;
+    }
+    for (const f of this.frags) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.a += f.vr * dt; }
     if (this.endT >= 0) {
       this.endT += dt;
       if (this.endT > 1.2 && !this.fx.list.some((p) => p.tx != null)) this.done = this.finish();
@@ -393,10 +450,14 @@ export class OreGame implements MiniGame {
     if (this.breakT >= 0) {
       // Zerbrechen bzw. Einsturz: kurze Pause, dann der nächste Asteroid
       this.breakT += dt;
+      // Bild des nächsten Asteroiden noch in Arbeit: mit dem Einschweben warten
+      const from = this.collapsing ? 1.35 : 0.6;
+      if (this.artJob && this.breakT > from) this.breakT = from;
       if (this.breakT > (this.collapsing ? 2 : 1.1)) {
         this.breakT = -1;
         this.collapsing = false;
-        this.generate(this.seed + 101 * (this.asteroids + this.collapses + 1));
+        this.frags = [];
+        this.fragImg = null;
         // Finger noch auf dem Schirm: gleich weiterbohren
         this.firing = this.pid >= 0;
       }
@@ -479,6 +540,11 @@ export class OreGame implements MiniGame {
         buzz(30);
       }
     } else this.cool(dt);
+    // Überhitzt: Dampf am Emitter
+    if (this.overheated && Math.random() < dt * 18) {
+      const [sx, sy] = this.ship;
+      this.fx.add({ x: sx + (Math.random() - 0.5) * 16, y: sy - 30, vx: (Math.random() - 0.5) * 30, vy: -30 - Math.random() * 30, color: '#9aaab2', size: 3 + Math.random() * 3, kind: 'dot', max: 0.9, drag: 1, solid: true, alpha: 0.35 });
+    }
     // Druck in den Gastaschen baut sich langsam ab; volle Taschen explodieren von selbst
     for (const p of this.pockets) {
       if (!p.alive) continue;
@@ -491,6 +557,13 @@ export class OreGame implements MiniGame {
       this.tremorT -= dt;
       this.shake = Math.max(this.shake, 0.08 + (this.stress - 75) / 250);
       if (this.tremorT <= 0) { this.tremorT = 1.4; sfx.warn(); buzz(15); this.floats.add(this.cx, this.cy - this.R - 6, 'Risse! Gestein entlasten', '#ffb547', 13); }
+      // Staub rieselt aus den Rissen
+      if (Math.random() < dt * (this.stress - 70) * 0.6) {
+        const c = this.cracks[Math.floor(Math.random() * this.cracks.length)];
+        const q = c[Math.floor(Math.random() * Math.min(c.length, 1 + (c.length - 1) * (this.stress - 20) / 80))];
+        const [x, y] = this.toWorld(q.x, q.y);
+        this.fx.add({ x, y, vx: (Math.random() - 0.5) * 30, vy: 15 + Math.random() * 25, color: '#8a7a68', size: 2 + Math.random() * 3, kind: 'dot', max: 1.2, drag: 0.5, solid: true, alpha: 0.6 });
+      }
     } else this.tremorT = 0;
     if (this.stress >= 100) { this.collapse(); return; }
     // Kernader freilegen
@@ -500,6 +573,11 @@ export class OreGame implements MiniGame {
       this.floats.add(this.cx, this.cy - 20, 'Kernader frei!', '#fff0b0', 18);
       const [wx, wy] = this.toWorld(this.core[0].x, this.core[0].y);
       this.fx.add({ x: wx, y: wy, color: '#fff0b0', size: 12, kind: 'ring', max: 0.8 });
+      this.fx.add({ x: wx, y: wy, color: '#ffe08a', size: 26, kind: 'ring', max: 1.2 });
+      this.fx.burst(wx, wy, '#fff0b0', 30, 260, 2, 'spark', 0.7);
+      this.coreFlash = 1;
+      this.flash = 0.35;
+      this.flashColor = '#fff0b0';
       sfx.coin();
     }
     const leftCore = this.core.reduce((q, p) => q + Math.max(0, p.a), 0);
@@ -580,6 +658,10 @@ export class OreGame implements MiniGame {
       if (q.a > 0 && Math.hypot(q.x - p.x, q.y - p.y) < 0.13) q.a *= 0.4;
     }
     this.stress += 22;
+    this.flash = Math.max(this.flash, 0.45);
+    this.flashColor = '#ff8a5c';
+    this.fx.add({ x: px, y: py, color: '#ffd0a0', size: 22, kind: 'ring', max: 0.7 });
+    for (let k = 0; k < 14; k++) { const a = Math.random() * Math.PI * 2, v = 30 + Math.random() * 60; this.fx.add({ x: px, y: py, vx: Math.cos(a) * v, vy: Math.sin(a) * v, color: '#3a2c24', size: 6 + Math.random() * 7, kind: 'dot', max: 1.4 + Math.random(), drag: 0.8, solid: true, alpha: 0.45 }); }
     for (const o of this.pockets) if (o.alive && Math.hypot(o.x - p.x, o.y - p.y) < 0.32) o.press += 0.6;
     this.endStreak();
     this.shake = 0.45;
@@ -620,13 +702,44 @@ export class OreGame implements MiniGame {
     this.firing = false;
     const p = this.score.add(800);
     this.floats.add(this.cx, this.cy, `Zerlegt! +${p}`, '#ffd27a', 20);
+    this.shatter(false);
+    this.flash = 0.6;
+    this.flashColor = '#ffe6c0';
     for (let k = 0; k < 60; k++) {
       const a = Math.random() * Math.PI * 2, d = Math.random() * this.R;
-      this.fx.add({ x: this.cx + Math.cos(a) * d, y: this.cy + Math.sin(a) * d, vx: Math.cos(a) * (120 + Math.random() * 200), vy: Math.sin(a) * (120 + Math.random() * 200), color: k % 3 ? '#6a5e52' : this.color, size: 3 + Math.random() * 5, kind: 'chunk', max: 1.2, vr: (Math.random() - 0.5) * 8 });
+      this.fx.add({ x: this.cx + Math.cos(a) * d, y: this.cy + Math.sin(a) * d, vx: Math.cos(a) * (120 + Math.random() * 200), vy: Math.sin(a) * (120 + Math.random() * 200), color: k % 3 ? (k % 2 ? '#4a4038' : '#6a5e52') : this.color, size: 2 + Math.random() * 4, kind: 'chunk', max: 1.2, vr: (Math.random() - 0.5) * 8, solid: k % 3 !== 0 });
     }
     this.shake = 0.5;
     sfx.build();
     buzz(80);
+  }
+
+  /** Asteroid in Bruchstücke zerlegen (Bild des alten Asteroiden) und den nächsten schon erzeugen */
+  private shatter(collapse: boolean): void {
+    this.fragImg = this.art?.comp ?? null;
+    this.fragRot = this.rot;
+    this.frags = [];
+    const r = rng(this.seed ^ (this.asteroids * 977 + this.collapses * 131));
+    const n = collapse ? 11 : 8;
+    const cuts: number[] = [];
+    for (let k = 0; k < n; k++) cuts.push((k + 0.2 + r() * 0.6) / n * Math.PI * 2);
+    const ox = (r() - 0.5) * 0.2, oy = (r() - 0.5) * 0.2;
+    for (let k = 0; k < n; k++) {
+      const a0 = cuts[k], a1 = cuts[(k + 1) % n] + (k === n - 1 ? Math.PI * 2 : 0);
+      const pts: [number, number][] = [[ox, oy]];
+      // gezackte Bruchkante zur Mitte
+      const jag = (a: number): [number, number][] => [0.35, 0.7].map((f) => [Math.cos(a + (r() - 0.5) * 0.25) * f, Math.sin(a + (r() - 0.5) * 0.25) * f]);
+      const j0 = jag(a0), j1 = jag(a1).reverse();
+      pts.push(...j0);
+      const rim0 = pts.length;
+      for (let s = 0; s <= 6; s++) { const a = a0 + (a1 - a0) * (s / 6); const rr = this.radiusAt(a) * 1.04; pts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+      const rim1 = pts.length - 1;
+      pts.push(...j1);
+      const mid = (a0 + a1) / 2 + this.rot;
+      const v = collapse ? 25 + r() * 40 : 90 + r() * 140;
+      this.frags.push({ pts, rim: [rim0, rim1], x: 0, y: 0, vx: Math.cos(mid) * v, vy: Math.sin(mid) * v + (collapse ? 30 : 0), a: 0, vr: (r() - 0.5) * (collapse ? 0.8 : 2.4), t: 0, slow: collapse });
+    }
+    this.generate(this.seed + 101 * (this.asteroids + this.collapses + 1));
   }
 
   /** Einsturz: Gestein gibt nach, die restlichen Adern sind verschüttet; ein Teil der Ladung geht verloren */
@@ -640,9 +753,12 @@ export class OreGame implements MiniGame {
     this.lost += Math.min(this.mined - this.lost, this.total * 0.08);
     this.score.points = Math.max(0, this.score.points - 400);
     this.floats.add(this.cx, this.cy, 'Einsturz! −400', '#ff9aa4', 20);
+    this.shatter(true);
+    this.flash = 0.4;
+    this.flashColor = '#ff8a4a';
     for (let k = 0; k < 90; k++) {
       const a = Math.random() * Math.PI * 2, d = Math.random() * this.R;
-      this.fx.add({ x: this.cx + Math.cos(a) * d, y: this.cy + Math.sin(a) * d, vx: Math.cos(a) * (40 + Math.random() * 120), vy: Math.sin(a) * (40 + Math.random() * 120) + 40, color: k % 4 ? '#5a4e44' : '#ff8a4a', size: 3 + Math.random() * 6, kind: 'chunk', max: 1.6, vr: (Math.random() - 0.5) * 6 });
+      this.fx.add({ x: this.cx + Math.cos(a) * d, y: this.cy + Math.sin(a) * d, vx: Math.cos(a) * (40 + Math.random() * 120), vy: Math.sin(a) * (40 + Math.random() * 120) + 40, color: k % 4 ? (k % 2 ? '#3e352e' : '#5a4e44') : '#ff8a4a', size: 2 + Math.random() * 5, kind: 'chunk', max: 1.6, vr: (Math.random() - 0.5) * 6, solid: k % 4 !== 0 });
     }
     this.shake = 0.9;
     sfx.warn();
@@ -687,126 +803,217 @@ export class OreGame implements MiniGame {
 
   // ---------- Darstellung ----------
 
-  private makeSprite(): void {
-    const dpr = Math.min(2.5, globalThis.devicePixelRatio || 1);
+  /**
+   * Asteroid Bildpunkt für Bildpunkt berechnen: Höhenfeld (Kugel, Rauschen, Krater mit Wall) → Normalen →
+   * Umgebungslicht und vier gerichtete Lichtschichten. Beim Drehen werden die Schichten passend zum festen
+   * Sonnenstand gemischt – das Licht bleibt links oben, auch wenn sich der Asteroid dreht.
+   */
+  private *buildArt(): Generator<void, void> {
+    const dpr = Math.min(3, globalThis.devicePixelRatio || 1);
     const R = this.R;
-    const size = Math.ceil(R * 2.3 * dpr);
-    const c = document.createElement('canvas');
-    c.width = c.height = size;
-    const g = c.getContext('2d')!;
-    g.scale(dpr, dpr);
-    g.translate(R * 1.15, R * 1.15);
+    const S = Math.ceil(R * 2.3 * dpr);
+    const half = S / 2;
+    const unit = 1 / (R * dpr);
+    const N = perlin((this.seed ^ (this.asteroids * 7919 + this.collapses * 104729)) >>> 0);
+    const G = perlin((this.seed * 31 + 7) >>> 0);
+    const [dark, light, hard] = ROCK[this.ware] ?? ROCK.ore;
+    const H = new Float32Array(S * S);
+    const E = new Float32Array(S * S);
+    const A = new Float32Array(S * S * 3);
+    const O = new Float32Array(S * S);
+    const inside = new Uint8Array(S * S);
+    // Grobe Felder (Rauschen, Krater, Farbe) auf einem Raster alle C Bildpunkte – sie ändern sich langsam;
+    // fein (je Bildpunkt) nur Umriss, Kugelform und Körnung. Spart den Großteil der Rechenzeit.
+    const C = dpr >= 2.5 ? 4 : dpr >= 1.5 ? 3 : 2;
+    const GS = Math.ceil(S / C) + 2;
+    const CH = new Float32Array(GS * GS), CO = new Float32Array(GS * GS), CG = new Float32Array(GS * GS), CA = new Float32Array(GS * GS * 3);
+    for (let gy = 0; gy < GS; gy++) {
+      if (gy % 24 === 23) yield;
+      const y = (gy * C + 0.5 - half) * unit;
+      for (let gx = 0; gx < GS; gx++) {
+        const x = (gx * C + 0.5 - half) * unit;
+        if (x * x + y * y > 1.5625) continue;
+        const gi = gy * GS + gx;
+        const big = fbm(N, x * 2.1, y * 2.1, 5);
+        CG[gi] = G(x * 38, y * 38) * 0.6;
+        let h = (big - 0.5) * 0.3;
+        let ao = 1;
+        for (const c of this.craters) {
+          const ex = x - c.x, ey = y - c.y, lim = 1.8 * c.r;
+          if (ex * ex + ey * ey > lim * lim) continue;
+          const dd = Math.sqrt(ex * ex + ey * ey) / c.r;
+          // Schüssel mit weichem Wall (stetig, keine harte Kante)
+          const bowl = dd < 1 ? (1 - dd * dd) ** 2 : 0;
+          const rim = Math.exp(-(((dd - 1) / 0.28) ** 2));
+          h += c.r * (rim * 0.16 - bowl * 0.5);
+          ao -= bowl * 0.28;
+        }
+        CH[gi] = h;
+        CO[gi] = clamp(ao * (0.82 + (big - 0.5) * 0.9), 0.3, 1.05);
+        // Grundfarbe: dunkles und helles Gestein, harte Zonen kühl und gerieft
+        const m = clamp((fbm(N, x * 1.2 + 7.3, y * 1.2 - 2.1, 3) - 0.3) * 1.8, 0, 1);
+        let r = dark[0] + (light[0] - dark[0]) * m, g = dark[1] + (light[1] - dark[1]) * m, b = dark[2] + (light[2] - dark[2]) * m;
+        const hz = this.hardness(x, y);
+        if (hz > 0) {
+          const st = 0.7 + 0.3 * Math.sin((x * 0.7 + y * 0.7) * 95 + big * 9);
+          r += (hard[0] * st - r) * hz; g += (hard[1] * st - g) * hz; b += (hard[2] * st - b) * hz;
+        }
+        CA[gi * 3] = r; CA[gi * 3 + 1] = g; CA[gi * 3 + 2] = b;
+      }
+    }
+    for (let py = 0; py < S; py++) {
+      if (py % 48 === 47) yield;
+      const y = (py + 0.5 - half) * unit;
+      const fy = py / C, gy = Math.floor(fy), ty = fy - gy;
+      for (let px = 0; px < S; px++) {
+        const x = (px + 0.5 - half) * unit;
+        const d2 = x * x + y * y;
+        if (d2 > 1.44) continue;
+        const d = Math.sqrt(d2);
+        const rad = this.radiusAt(Math.atan2(y, x));
+        const e = (rad - d) / unit + 0.5;
+        if (e <= -1.5) continue;
+        const i = py * S + px;
+        inside[i] = 1;
+        E[i] = clamp(e, 0, 1);
+        const fx = px / C, gx = Math.floor(fx), tx = fx - gx;
+        const g00 = gy * GS + gx, g10 = g00 + 1, g01 = g00 + GS, g11 = g01 + 1;
+        const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
+        const q = Math.min(1, d / rad);
+        const grain = CG[g00] * w00 + CG[g10] * w10 + CG[g01] * w01 + CG[g11] * w11 + G(x * 95 + 3, y * 95) * 0.35;
+        H[i] = Math.sqrt(Math.max(0, 1 - q * q)) * 0.9 + CH[g00] * w00 + CH[g10] * w10 + CH[g01] * w01 + CH[g11] * w11 + grain * 0.004;
+        O[i] = CO[g00] * w00 + CO[g10] * w10 + CO[g01] * w01 + CO[g11] * w11;
+        // einzelne helle Körner
+        const sp = grain > 0.42 ? 1.35 : 1 + grain * 0.12;
+        for (let k = 0; k < 3; k++) A[i * 3 + k] = (CA[g00 * 3 + k] * w00 + CA[g10 * 3 + k] * w10 + CA[g01 * 3 + k] * w01 + CA[g11 * 3 + k] * w11) * sp;
+      }
+    }
+    const amb = new ImageData(S, S), mask = new ImageData(S, S);
+    const dirs = [0, 1, 2, 3].map(() => new ImageData(S, S));
+    const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1], LZ = 0.6, LN = 1 / Math.hypot(1, LZ);
+    for (let py = 1; py < S - 1; py++) {
+      if (py % 64 === 63) yield;
+      for (let px = 1; px < S - 1; px++) {
+        const i = py * S + px;
+        if (!inside[i]) continue;
+        const hx = (H[i + 1] - H[i - 1]) / (2 * unit), hy = (H[i + S] - H[i - S]) / (2 * unit);
+        const l = Math.sqrt(hx * hx + hy * hy + 1);
+        const nx = -hx / l, ny = -hy / l, nz = 1 / l;
+        const o = O[i], j = i * 4;
+        const ar = A[i * 3], ag = A[i * 3 + 1], ab = A[i * 3 + 2];
+        const k0 = (0.07 + 0.08 * nz) * o;
+        amb.data[j] = ar * k0 * 0.8; amb.data[j + 1] = ag * k0 * 0.9; amb.data[j + 2] = ab * k0 * 1.1; amb.data[j + 3] = 255;
+        for (let k = 0; k < 4; k++) {
+          const dot = Math.max(0, (nx * DX[k] + ny * DY[k] + nz * LZ) * LN);
+          const lit = dot * (0.85 + 0.15 * dot) * 1.25 * (0.55 + 0.45 * o);
+          const dd = dirs[k].data;
+          dd[j] = ar * lit * 1.08; dd[j + 1] = ag * lit * 0.95; dd[j + 2] = ab * lit * 0.8; dd[j + 3] = 255;
+        }
+        mask.data[j + 3] = E[i] * 255;
+      }
+    }
+    const put = (img: ImageData): HTMLCanvasElement => {
+      const c = document.createElement('canvas');
+      c.width = c.height = S;
+      c.getContext('2d')!.putImageData(img, 0, 0);
+      return c;
+    };
+    const comp = document.createElement('canvas');
+    comp.width = comp.height = S;
     const path = new Path2D();
     for (let k = 0; k <= 64; k++) {
       const a = (k / 64) * Math.PI * 2, r = this.shape[k % 64] * R;
       k ? path.lineTo(Math.cos(a) * r, Math.sin(a) * r) : path.moveTo(Math.cos(a) * r, Math.sin(a) * r);
     }
-    const grad = g.createRadialGradient(-R * 0.35, -R * 0.4, R * 0.1, 0, 0, R * 1.1);
-    grad.addColorStop(0, '#5a5048');
-    grad.addColorStop(0.55, '#2e2924');
-    grad.addColorStop(1, '#141210');
-    g.fillStyle = grad;
-    g.fill(path);
-    g.save();
-    g.clip(path);
-    // harte Zonen: dunkler, gerieft
-    for (const z of this.zones) {
-      const zg = g.createRadialGradient(z.x * R, z.y * R, 0, z.x * R, z.y * R, z.r * R);
-      zg.addColorStop(0, 'rgba(8,10,16,0.6)');
-      zg.addColorStop(0.65, 'rgba(8,10,16,0.45)');
-      zg.addColorStop(1, 'rgba(8,10,16,0)');
-      g.fillStyle = zg;
-      g.beginPath();
-      g.arc(z.x * R, z.y * R, z.r * R, 0, Math.PI * 2);
-      g.fill();
-      g.save();
-      g.beginPath();
-      g.arc(z.x * R, z.y * R, z.r * R * 0.8, 0, Math.PI * 2);
-      g.clip();
-      g.strokeStyle = 'rgba(140,160,190,0.12)';
-      g.lineWidth = 1;
-      for (let k = -8; k <= 8; k++) {
-        g.beginPath();
-        g.moveTo(z.x * R + k * R * 0.03 - R * 0.3, z.y * R - R * 0.3);
-        g.lineTo(z.x * R + k * R * 0.03 + R * 0.3, z.y * R + R * 0.3);
-        g.stroke();
-      }
-      g.restore();
+    this.art = { R, dpr, ambient: put(amb), dirs: dirs.map(put), mask: put(mask), comp, light: -1, path };
+  }
+
+  /** Asteroidenbild weiterrechnen: höchstens `budget` ms (Infinity: fertig rechnen) */
+  private pumpArt(budget: number): void {
+    if ((!this.art && !this.artJob) || (this.art && this.art.R !== this.R)) this.artJob = this.buildArt();
+    const t0 = performance.now();
+    while (this.artJob) {
+      if (this.artJob.next().done) this.artJob = null;
+      else if (performance.now() - t0 > budget) break;
     }
-    const r = rng(99);
-    for (let k = 0; k < 900; k++) {
-      const a = r() * Math.PI * 2, d = Math.sqrt(r()) * R;
-      g.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,240,220,0.06)';
-      g.fillRect(Math.cos(a) * d, Math.sin(a) * d, 1 + r() * 2, 1 + r() * 2);
-    }
-    for (const k of this.craters) {
-      const x = k.x * R, y = k.y * R, rr = k.r * R;
-      const cg = g.createRadialGradient(x + rr * 0.2, y + rr * 0.25, 0, x, y, rr);
-      cg.addColorStop(0, 'rgba(0,0,0,0.45)');
-      cg.addColorStop(0.8, 'rgba(0,0,0,0.25)');
-      cg.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = cg;
-      g.beginPath();
-      g.arc(x, y, rr, 0, Math.PI * 2);
-      g.fill();
-      g.strokeStyle = 'rgba(255,235,210,0.12)';
-      g.lineWidth = Math.max(1, rr * 0.12);
-      g.beginPath();
-      g.arc(x, y, rr * 0.92, Math.PI * 0.75, Math.PI * 1.6);
-      g.stroke();
-    }
-    const sh = g.createLinearGradient(-R, -R, R, R);
-    sh.addColorStop(0.45, 'rgba(0,0,0,0)');
-    sh.addColorStop(1, 'rgba(0,0,0,0.55)');
-    g.fillStyle = sh;
-    g.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4);
-    g.restore();
-    g.strokeStyle = 'rgba(255,230,200,0.18)';
-    g.lineWidth = 1.2;
-    g.stroke(path);
-    this.sprite = c;
-    this.spriteKey = `${R}`;
+  }
+
+  /** Lichtschichten passend zum Sonnenstand mischen (nur wenn sich der Winkel geändert hat) */
+  private composeArt(): void {
+    const a = this.art;
+    if (!a) return;
+    const TAU = Math.PI * 2;
+    const phi = (((SUN_ANGLE - this.rot) % TAU) + TAU) % TAU;
+    if (a.light >= 0 && Math.abs(phi - a.light) < 0.015) return;
+    a.light = phi;
+    const g = a.comp.getContext('2d')!;
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, a.comp.width, a.comp.height);
+    g.drawImage(a.ambient, 0, 0);
+    g.globalCompositeOperation = 'lighter';
+    const q = phi / (Math.PI / 2), k = Math.floor(q) % 4, f = q - Math.floor(q);
+    g.globalAlpha = Math.cos((f * Math.PI) / 2);
+    g.drawImage(a.dirs[k], 0, 0);
+    g.globalAlpha = Math.sin((f * Math.PI) / 2);
+    g.drawImage(a.dirs[(k + 1) % 4], 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'destination-in';
+    g.drawImage(a.mask, 0, 0);
+    g.globalCompositeOperation = 'source-over';
   }
 
   draw(ctx: CanvasRenderingContext2D, now: number): void {
     const t = now / 1000;
-    this.stars.draw(ctx, 0, '#ffe6c8');
-    if (!this.sprite || this.spriteKey !== `${this.R}`) this.makeSprite();
+    this.drawBackground(ctx);
+    // Erster Asteroid sofort, spätere stückweise während des Zerbrechens (kein Ruckeln)
+    this.pumpArt(this.breakT < 0 ? Infinity : 8);
     ctx.save();
     if (this.shake > 0 && !document.documentElement.classList.contains('calm')) ctx.translate((Math.random() - 0.5) * 10 * this.shake, (Math.random() - 0.5) * 10 * this.shake);
     const R = this.R;
     if (this.breakT < 0) {
+      this.composeArt();
       ctx.save();
       ctx.translate(this.cx, this.cy);
       ctx.rotate(this.rot);
-      ctx.drawImage(this.sprite!, -R * 1.15, -R * 1.15, R * 2.3, R * 2.3);
-      for (const b of this.burns) {
-        const hot = Math.max(0, 1 - b.t / 1.2);
-        ctx.fillStyle = hot > 0 ? rgba('#ff8a4a', 0.5 * hot) : 'rgba(10,8,6,0.35)';
-        ctx.beginPath();
-        ctx.arc(b.x * R, b.y * R, R * 0.022, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      this.drawShadowHalo(ctx);
+      ctx.drawImage(this.art!.comp, -R * 1.15, -R * 1.15, R * 2.3, R * 2.3);
+      this.drawVeinBeds(ctx);
+      this.drawBurns(ctx);
       this.drawCracks(ctx, t);
       this.drawVeins(ctx, t);
       this.drawCore(ctx, t);
       this.drawCrystals(ctx, t);
       this.drawPockets(ctx, t);
       ctx.restore();
-    } else if (this.breakT > 0.6) {
-      // neuer Asteroid schwebt ein
-      const a = (this.breakT - 0.6) / 0.5;
-      ctx.save();
-      ctx.globalAlpha = clamp(a, 0, 1);
-      ctx.translate(this.cx, this.cy);
-      ctx.scale(0.6 + 0.4 * a, 0.6 + 0.4 * a);
-      ctx.drawImage(this.sprite!, -R * 1.15, -R * 1.15, R * 2.3, R * 2.3);
-      ctx.restore();
+    } else {
+      this.drawFrags(ctx);
+      const from = this.collapsing ? 1.35 : 0.6, len = this.collapsing ? 0.65 : 0.5;
+      if (this.breakT > from && this.art) {
+        // neuer Asteroid schwebt ein
+        const a = clamp((this.breakT - from) / len, 0, 1);
+        this.composeArt();
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.translate(this.cx, this.cy);
+        ctx.scale(0.6 + 0.4 * a, 0.6 + 0.4 * a);
+        ctx.rotate(this.rot);
+        ctx.drawImage(this.art!.comp, -R * 1.15, -R * 1.15, R * 2.3, R * 2.3);
+        ctx.restore();
+      }
     }
     this.drawShipAndLaser(ctx, t);
     this.fx.draw(ctx);
+    this.drawMotes(ctx);
     this.floats.draw(ctx);
     ctx.restore();
+    if (this.flash > 0 && !document.documentElement.classList.contains('calm')) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = rgba(this.flashColor, this.flash * 0.3);
+      ctx.fillRect(0, 0, this.w, this.h);
+      ctx.restore();
+    }
     this.drawHeat(ctx, t);
     const [bx, by, br] = this.btn;
     drawButton(ctx, bx, by, br, this.flushes > 0 ? 1 : 0, '#7fd8ff', 'K', t, this.flushes);
@@ -818,12 +1025,193 @@ export class OreGame implements MiniGame {
     ctx.fillText(`LASER ${MODES[this.mode].name.toUpperCase()}`, mx, my + mr + 14);
   }
 
+  /** Hintergrundbild (Sonne links oben), abgedunkelt, mit leichter Drift und Vignette */
+  private drawBackground(ctx: CanvasRenderingContext2D): void {
+    const img = background();
+    if (!img) { this.stars.draw(ctx, 0, '#ffe6c8'); return; }
+    const dpr = Math.min(3, globalThis.devicePixelRatio || 1);
+    const W = Math.round(this.w * dpr), Hh = Math.round(this.h * dpr);
+    if (!this.bgCache || this.bgCache.width !== W || this.bgCache.height !== Hh) {
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = Hh;
+      const g = c.getContext('2d')!;
+      g.scale(dpr, dpr);
+      this.paintBackground(g, img);
+      this.bgCache = c;
+    }
+    ctx.drawImage(this.bgCache, 0, 0, this.w, this.h);
+  }
+
+  private paintBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement): void {
+    const s = Math.max(this.w / img.naturalWidth, this.h / img.naturalHeight);
+    const iw = img.naturalWidth * s, ih = img.naturalHeight * s;
+    const ox = (this.w - iw) / 2, oy = (this.h - ih) / 2;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, ox, oy, iw, ih);
+    ctx.fillStyle = 'rgba(2,5,10,0.52)';
+    ctx.fillRect(0, 0, this.w, this.h);
+    const v = ctx.createRadialGradient(this.cx, this.cy, this.R * 0.9, this.cx, this.cy, Math.max(this.w, this.h) * 0.85);
+    v.addColorStop(0, 'rgba(0,0,0,0)');
+    v.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, this.w, this.h);
+    ctx.restore();
+  }
+
+  private drawMotes(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    for (const m of this.motes) {
+      ctx.fillStyle = rgba('#ffe6c8', 0.08 + 0.22 * m.z);
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 0.5 + 1.4 * m.z, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Weicher Schatten hinter dem Asteroiden (hebt ihn vom Hintergrund ab) */
+  private drawShadowHalo(ctx: CanvasRenderingContext2D): void {
+    const R = this.R;
+    const g = ctx.createRadialGradient(0, 0, R * 0.8, 0, 0, R * 1.3);
+    g.addColorStop(0, 'rgba(0,0,0,0.55)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, R * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** Bruchstücke fliegen auseinander (Zerbrechen) bzw. sacken in sich zusammen (Einsturz) */
+  private drawFrags(ctx: CanvasRenderingContext2D): void {
+    const img = this.fragImg;
+    if (!img) return;
+    const R = this.R;
+    for (const f of this.frags) {
+      const life = f.slow ? 1.6 : 1.1;
+      const k = f.t / life;
+      if (k >= 1) continue;
+      ctx.save();
+      ctx.globalAlpha = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45;
+      ctx.translate(this.cx + f.x, this.cy + f.y);
+      ctx.rotate(this.fragRot + f.a);
+      if (f.slow) ctx.scale(1 - 0.3 * k, 1 - 0.3 * k);
+      const p = new Path2D();
+      f.pts.forEach(([x, y], i) => (i ? p.lineTo(x * R, y * R) : p.moveTo(x * R, y * R)));
+      p.closePath();
+      ctx.save();
+      ctx.clip(p);
+      ctx.drawImage(img, -R * 1.15, -R * 1.15, R * 2.3, R * 2.3);
+      ctx.restore();
+      // glühende Bruchkanten (nur innen, nicht am Außenrand)
+      const edge = new Path2D();
+      const [r0, r1] = f.rim;
+      for (let i = r1; i < f.pts.length + r0 + 1; i++) {
+        const [x, y] = f.pts[i % f.pts.length];
+        i === r1 ? edge.moveTo(x * R, y * R) : edge.lineTo(x * R, y * R);
+      }
+      const hot = Math.max(0, 1 - k * 1.6);
+      if (hot > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = rgba(f.slow ? '#ff5a2a' : '#ff9a40', 0.3 * hot);
+        ctx.lineWidth = 7;
+        ctx.stroke(edge);
+        ctx.strokeStyle = rgba('#ffe0a0', 0.85 * hot);
+        ctx.lineWidth = 1.6;
+        ctx.stroke(edge);
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Aderbett: Erz färbt das Gestein; abgebaute Stellen bleiben als dunkle Rinne zurück */
+  private drawVeinBeds(ctx: CanvasRenderingContext2D): void {
+    const R = this.R;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const all = this.coreOpen ? [...this.veins, this.core] : this.veins;
+    for (const v of all) {
+      ctx.beginPath();
+      v.forEach((p, i) => (i ? ctx.lineTo(p.x * R, p.y * R) : ctx.moveTo(p.x * R, p.y * R)));
+      ctx.strokeStyle = rgba(v === this.core ? '#c8a050' : this.color, 0.13);
+      ctx.lineWidth = R * 0.12;
+      ctx.stroke();
+    }
+    // Rinne: Licht fällt von der Sonne her auf die Kante
+    const c = Math.cos(SUN_ANGLE - this.rot), s = Math.sin(SUN_ANGLE - this.rot);
+    for (const v of all) {
+      for (const [i0, i1, a] of runs(v, true)) {
+        const cut = 1 - a;
+        if (cut < 0.05) continue;
+        const line = (ox: number, oy: number) => {
+          ctx.beginPath();
+          ctx.moveTo(v[i0].x * R + ox, v[i0].y * R + oy);
+          for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(v[i].x * R + ox, v[i].y * R + oy);
+        };
+        line(c * 1.5, s * 1.5);
+        ctx.strokeStyle = `rgba(255,220,180,${0.12 * cut})`;
+        ctx.lineWidth = R * 0.05 * cut;
+        ctx.stroke();
+        line(0, 0);
+        ctx.strokeStyle = `rgba(6,4,3,${0.8 * cut})`;
+        ctx.lineWidth = R * 0.05 * cut;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Brennspur des Lasers: weißglühend → orange → rot → verkohlt */
+  private drawBurns(ctx: CanvasRenderingContext2D): void {
+    const R = this.R, B = this.burns;
+    if (!B.length) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    const seg = (i: number) => {
+      ctx.beginPath();
+      const a = B[i - 1] && Math.hypot(B[i - 1].x - B[i].x, B[i - 1].y - B[i].y) < 0.06 ? B[i - 1] : B[i];
+      ctx.moveTo(a.x * R, a.y * R);
+      ctx.lineTo(B[i].x * R + 0.01, B[i].y * R);
+    };
+    const scorch = new Path2D();
+    for (let i = 0; i < B.length; i++) {
+      const join = i > 0 && Math.hypot(B[i - 1].x - B[i].x, B[i - 1].y - B[i].y) < 0.06;
+      if (join) scorch.lineTo(B[i].x * R, B[i].y * R);
+      else { scorch.moveTo(B[i].x * R, B[i].y * R); scorch.lineTo(B[i].x * R + 0.01, B[i].y * R); }
+    }
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(14,9,6,0.5)';
+    ctx.lineWidth = R * 0.036;
+    ctx.stroke(scorch);
+    ctx.strokeStyle = 'rgba(40,24,14,0.35)';
+    ctx.lineWidth = R * 0.06;
+    ctx.stroke(scorch);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < B.length; i++) {
+      const h = 1 - B[i].t / 1.6;
+      if (h <= 0) continue;
+      const col = h > 0.75 ? '#fff0c8' : h > 0.45 ? '#ffa040' : '#ff4a20';
+      seg(i);
+      ctx.strokeStyle = rgba(col, 0.22 * h);
+      ctx.lineWidth = R * 0.07 * (0.5 + 0.5 * h);
+      ctx.stroke();
+      ctx.strokeStyle = rgba(col, 0.85 * h);
+      ctx.lineWidth = R * 0.02 * (0.5 + 0.5 * h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   /** Bruchlinien: wachsen mit der Spannung vom Rand nach innen, glühen kurz vor dem Einsturz */
   private drawCracks(ctx: CanvasRenderingContext2D, t: number): void {
     const f = clamp((this.stress - 20) / 80, 0, 1);
     if (f <= 0) return;
     const R = this.R;
-    const glow = this.stress >= 75 ? 0.5 + 0.5 * Math.sin(t * 14) : 0;
+    const glow = this.stress >= 60 ? clamp((this.stress - 60) / 40, 0, 1) * (0.6 + 0.4 * Math.sin(t * 14)) : 0;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -836,113 +1224,214 @@ export class OreGame implements MiniGame {
         const a = c[i - 1], b = c[i];
         ctx.lineTo((a.x + (b.x - a.x) * k) * R, (a.y + (b.y - a.y) * k) * R);
       }
-      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-      ctx.lineWidth = 2.6;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.lineWidth = 3.2 + f * 2;
       ctx.stroke();
-      ctx.strokeStyle = glow > 0 ? rgba('#ff8a4a', 0.35 + 0.5 * glow) : 'rgba(255,200,150,0.18)';
+      ctx.strokeStyle = 'rgba(255,210,170,0.14)';
       ctx.lineWidth = 1;
+      ctx.stroke();
+      if (glow > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = rgba('#ff6a2a', 0.25 * glow);
+        ctx.lineWidth = 9;
+        ctx.stroke();
+        ctx.strokeStyle = rgba('#ffc070', 0.9 * glow);
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Kernader: vorher nur ein Schimmern in der Tiefe, danach golden mit Lichtstrahlen */
+  private drawCore(ctx: CanvasRenderingContext2D, t: number): void {
+    const R = this.R, v = this.core;
+    if (!v.length) return;
+    const c = v[Math.floor(v.length / 2)];
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (!this.coreOpen) {
+      const gr = ctx.createRadialGradient(c.x * R, c.y * R, 0, c.x * R, c.y * R, R * 0.3);
+      gr.addColorStop(0, rgba('#fff0b0', 0.08 + 0.05 * Math.sin(t * 2)));
+      gr.addColorStop(1, 'rgba(255,240,176,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(c.x * R, c.y * R, R * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+    const left = v.reduce((q, p) => q + Math.max(0, p.a), 0) / Math.max(1, this.coreTotal);
+    if (left > 0.02) {
+      // Lichtstrahlen
+      const L = R * (0.55 + 0.6 * this.coreFlash);
+      for (let k = 0; k < 10; k++) {
+        const a = k * 0.628 + t * 0.15 + Math.sin(t * 0.7 + k) * 0.1;
+        const w = 0.05 + 0.03 * Math.sin(t * 1.3 + k * 2);
+        const g = ctx.createLinearGradient(c.x * R, c.y * R, c.x * R + Math.cos(a) * L, c.y * R + Math.sin(a) * L);
+        g.addColorStop(0, rgba('#ffe8a0', (0.12 + 0.3 * this.coreFlash) * left));
+        g.addColorStop(1, 'rgba(255,232,160,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(c.x * R, c.y * R);
+        ctx.lineTo(c.x * R + Math.cos(a - w) * L, c.y * R + Math.sin(a - w) * L);
+        ctx.lineTo(c.x * R + Math.cos(a + w) * L, c.y * R + Math.sin(a + w) * L);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    for (const [i0, i1, a] of runs(v)) {
+      ctx.beginPath();
+      ctx.moveTo(v[i0].x * R, v[i0].y * R);
+      for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(v[i].x * R, v[i].y * R);
+      ctx.strokeStyle = rgba('#ffd870', (0.22 + 0.08 * Math.sin(t * 5)) * a);
+      ctx.lineWidth = R * 0.11 * (0.5 + a * 0.5);
+      ctx.stroke();
+      ctx.strokeStyle = rgba('#fff4c8', 0.95 * a);
+      ctx.lineWidth = R * 0.03 * (0.4 + a * 0.6);
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  /** Kernader: vorher nur ein schwaches Schimmern in der Tiefe, danach hell und dick */
-  private drawCore(ctx: CanvasRenderingContext2D, t: number): void {
-    const R = this.R, v = this.core;
-    if (!v.length) return;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    if (!this.coreOpen) {
-      const c = v[Math.floor(v.length / 2)];
-      const gr = ctx.createRadialGradient(c.x * R, c.y * R, 0, c.x * R, c.y * R, R * 0.28);
-      gr.addColorStop(0, rgba('#fff0b0', 0.07 + 0.04 * Math.sin(t * 2)));
-      gr.addColorStop(1, 'rgba(255,240,176,0)');
-      ctx.fillStyle = gr;
-      ctx.beginPath();
-      ctx.arc(c.x * R, c.y * R, R * 0.28, 0, Math.PI * 2);
-      ctx.fill();
-      return;
-    }
-    for (let i = 1; i < v.length; i++) {
-      const a = Math.min(v[i - 1].a, v[i].a);
-      if (a <= 0.02) continue;
-      ctx.beginPath();
-      ctx.moveTo(v[i - 1].x * R, v[i - 1].y * R);
-      ctx.lineTo(v[i].x * R, v[i].y * R);
-      ctx.strokeStyle = rgba('#fff0b0', (0.2 + 0.08 * Math.sin(t * 5 + i)) * a);
-      ctx.lineWidth = R * 0.1 * (0.5 + a * 0.5);
-      ctx.stroke();
-      ctx.strokeStyle = rgba('#fffbe8', 0.95 * a);
-      ctx.lineWidth = R * 0.03 * (0.4 + a * 0.6);
-      ctx.stroke();
-    }
-  }
-
   private drawVeins(ctx: CanvasRenderingContext2D, t: number): void {
     const R = this.R;
+    const bright = mixHex(this.color, '#ffffff', 0.55);
+    const deep = mixHex(this.color, '#000000', 0.35);
+    ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (const v of this.veins) {
+    this.veins.forEach((v, vi) => {
+      for (const [i0, i1, a] of runs(v)) {
+        ctx.beginPath();
+        ctx.moveTo(v[i0].x * R, v[i0].y * R);
+        for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(v[i].x * R, v[i].y * R);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = rgba(deep, 0.85 * a);
+        ctx.lineWidth = R * 0.034 * (0.5 + a * 0.5);
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = rgba(this.color, 0.16 * a);
+        ctx.lineWidth = R * 0.085 * (0.5 + a * 0.5);
+        ctx.stroke();
+        ctx.strokeStyle = rgba(this.color, 0.9 * a);
+        ctx.lineWidth = R * 0.017 * (0.4 + a * 0.6);
+        ctx.stroke();
+      }
+      // Lichtwelle entlang der Ader
+      ctx.globalCompositeOperation = 'lighter';
+      const wave = (t * 2.2 + vi * 1.9) % (v.length + 6) - 3;
       for (let i = 1; i < v.length; i++) {
         const a = Math.min(v[i - 1].a, v[i].a);
-        if (a <= 0.02) continue;
+        const sh = Math.max(0, 1 - Math.abs(i - 0.5 - wave) / 2.5);
+        if (a <= 0.02 || sh <= 0) continue;
         ctx.beginPath();
         ctx.moveTo(v[i - 1].x * R, v[i - 1].y * R);
         ctx.lineTo(v[i].x * R, v[i].y * R);
-        ctx.strokeStyle = rgba(this.color, 0.22 * a);
-        ctx.lineWidth = R * 0.07 * (0.5 + a * 0.5);
-        ctx.stroke();
-        ctx.strokeStyle = rgba(this.color, 0.85 * a);
-        ctx.lineWidth = R * 0.022 * (0.4 + a * 0.6);
+        ctx.strokeStyle = rgba(bright, 0.45 * sh * a);
+        ctx.lineWidth = R * 0.014;
         ctx.stroke();
       }
+      // Erzbrocken in der Ader
+      ctx.globalCompositeOperation = 'source-over';
       for (let i = 0; i < v.length; i++) {
         const p = v[i];
-        if (p.a < 0.4) continue;
-        const tw = Math.sin(t * 3 + i * 2.3 + p.x * 20);
-        if (tw < 0.85) continue;
-        ctx.fillStyle = rgba('#fff4d8', (tw - 0.85) * 6 * p.a);
+        if (p.a < 0.35 || (i + vi) % 3) continue;
+        const s = R * 0.013 * (0.6 + 0.4 * p.a);
+        ctx.save();
+        ctx.translate(p.x * R, p.y * R);
+        ctx.rotate(i * 1.7 + vi);
         ctx.beginPath();
-        ctx.arc(p.x * R, p.y * R, R * 0.016, 0, Math.PI * 2);
+        ctx.moveTo(s, 0); ctx.lineTo(s * 0.3, s * 0.9); ctx.lineTo(-s * 0.8, s * 0.5); ctx.lineTo(-s * 0.7, -s * 0.6); ctx.lineTo(s * 0.3, -s * 0.9);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(-s, -s, s, s);
+        g.addColorStop(0, bright);
+        g.addColorStop(1, this.color);
+        ctx.fillStyle = g;
+        ctx.globalAlpha = p.a;
         ctx.fill();
+        ctx.restore();
+        const tw = Math.sin(t * 3 + i * 2.3 + p.x * 20);
+        if (tw > 0.9) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          this.glint(ctx, p.x * R, p.y * R, R * 0.05 * (tw - 0.9) * 10 * p.a, '#fff4d8');
+          ctx.restore();
+        }
       }
-    }
+    });
+    ctx.restore();
+  }
+
+  /** Vierstrahliger Lichtfunke */
+  private glint(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, color: string): void {
+    if (s < 0.5) return;
+    ctx.fillStyle = rgba(color, 0.9);
+    ctx.beginPath();
+    ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.15, y - s * 0.15); ctx.lineTo(x + s, y); ctx.lineTo(x + s * 0.15, y + s * 0.15);
+    ctx.lineTo(x, y + s); ctx.lineTo(x - s * 0.15, y + s * 0.15); ctx.lineTo(x - s, y); ctx.lineTo(x - s * 0.15, y - s * 0.15);
+    ctx.closePath();
+    ctx.fill();
   }
 
   private drawCrystals(ctx: CanvasRenderingContext2D, t: number): void {
     const R = this.R;
+    const limit = this.mode === 'fine' ? 55 : 40;
     for (const c of this.crystals) {
       if (c.state !== 'ok') continue;
       ctx.save();
       ctx.translate(c.x * R, c.y * R);
-      const hot = this.heat >= 40;
-      // Kristallnest: mehrere Prismen
-      for (let k = 0; k < 4; k++) {
-        const a = k * 1.6 + c.x * 7;
+      // Leuchten im Gestein
+      ctx.globalCompositeOperation = 'lighter';
+      const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.11);
+      halo.addColorStop(0, rgba('#9ff3ff', 0.3 + 0.1 * Math.sin(t * 2 + c.x * 9)));
+      halo.addColorStop(1, 'rgba(159,243,255,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      // Prismen mit heller und dunkler Fläche
+      for (let k = 0; k < 5; k++) {
+        const a = k * 1.25 + c.x * 7 - 0.4;
+        const L = R * (0.045 + 0.022 * ((k * 37 + Math.floor(c.y * 100)) % 5) / 4), w = R * 0.017;
         ctx.save();
         ctx.rotate(a);
         ctx.beginPath();
-        ctx.moveTo(0, -R * 0.06); ctx.lineTo(R * 0.022, 0); ctx.lineTo(0, R * 0.02); ctx.lineTo(-R * 0.022, 0);
+        ctx.moveTo(0, -L); ctx.lineTo(-w, -L * 0.3); ctx.lineTo(-w * 0.7, w * 0.6); ctx.lineTo(0, w * 0.7);
         ctx.closePath();
-        ctx.fillStyle = rgba('#9ff3ff', 0.35 + 0.25 * Math.sin(t * 3 + k));
+        ctx.fillStyle = 'rgba(200,250,255,0.9)';
         ctx.fill();
-        ctx.strokeStyle = '#cffaff';
-        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, -L); ctx.lineTo(w, -L * 0.3); ctx.lineTo(w * 0.7, w * 0.6); ctx.lineTo(0, w * 0.7);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(40,150,190,0.92)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(0, -L); ctx.lineTo(-w, -L * 0.3); ctx.lineTo(-w * 0.7, w * 0.6); ctx.lineTo(w * 0.7, w * 0.6); ctx.lineTo(w, -L * 0.3);
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(230,255,255,0.75)';
+        ctx.lineWidth = 0.8;
         ctx.stroke();
+        const gl = Math.max(0, Math.sin(t * 1.7 + k * 1.9 + c.x * 10)) ** 14;
+        if (gl > 0.05) { ctx.globalCompositeOperation = 'lighter'; this.glint(ctx, 0, -L, R * 0.05 * gl, '#e8ffff'); }
         ctx.restore();
       }
       if (c.prog > 0) {
         ctx.strokeStyle = '#9ff3ff';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.arc(0, 0, R * 0.08, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * c.prog);
+        ctx.arc(0, 0, R * 0.09, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * c.prog);
         ctx.stroke();
       }
-      if (hot && this.firing) {
+      if (this.heat >= limit && this.firing) {
         ctx.strokeStyle = rgba('#ff5c6c', 0.4 + 0.3 * Math.sin(t * 10));
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.arc(0, 0, R * 0.09, 0, Math.PI * 2);
+        ctx.arc(0, 0, R * 0.1, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.restore();
@@ -955,72 +1444,184 @@ export class OreGame implements MiniGame {
       if (!p.alive) continue;
       const pr = clamp(p.press, 0, 1);
       const pulse = 0.5 + 0.5 * Math.sin(t * (4 + pr * 14) + p.x * 9);
-      const gr = ctx.createRadialGradient(p.x * R, p.y * R, 0, p.x * R, p.y * R, R * (0.09 + pr * 0.04));
-      gr.addColorStop(0, rgba('#ff5c4a', 0.75));
-      gr.addColorStop(0.5, rgba('#ff3a2a', 0.25 + 0.2 * pulse));
+      ctx.save();
+      ctx.translate(p.x * R, p.y * R);
+      ctx.rotate(p.x * 10);
+      // dunkle Kammer im Gestein
+      ctx.fillStyle = 'rgba(18,5,3,0.85)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R * (0.045 + pr * 0.01), R * 0.032, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      const rr = R * (0.085 + pr * 0.05);
+      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rr);
+      gr.addColorStop(0, rgba('#ff7a4a', 0.55 + 0.3 * pr));
+      gr.addColorStop(0.45, rgba('#ff3a2a', 0.2 + 0.25 * pulse * (0.4 + pr)));
       gr.addColorStop(1, 'rgba(255,40,30,0)');
       ctx.fillStyle = gr;
       ctx.beginPath();
-      ctx.arc(p.x * R, p.y * R, R * 0.09, 0, Math.PI * 2);
+      ctx.arc(0, 0, rr, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = rgba('#ff8a7a', 0.4 + 0.4 * pulse);
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.arc(p.x * R, p.y * R, R * (0.05 + 0.015 * pulse), 0, Math.PI * 2);
-      ctx.stroke();
+      // wirbelndes Gas
+      for (let k = 0; k < 3; k++) {
+        const a0 = t * (1.2 + pr * 6) * (k % 2 ? -1 : 1) + k * 2.1;
+        ctx.strokeStyle = rgba('#ffb08a', 0.35 + 0.3 * pr);
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.arc(0, 0, R * (0.026 + k * 0.012), a0, a0 + 1.6);
+        ctx.stroke();
+      }
+      // Haarrisse bei hohem Druck
+      if (pr > 0.4) {
+        const f = (pr - 0.4) / 0.6;
+        ctx.strokeStyle = rgba('#ffa060', 0.4 + 0.5 * f * pulse);
+        ctx.lineWidth = 1.2;
+        for (let k = 0; k < 7; k++) {
+          const a = k * 0.9 + p.y * 5;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * R * 0.045, Math.sin(a) * R * 0.045);
+          ctx.lineTo(Math.cos(a + 0.2) * R * (0.06 + 0.06 * f), Math.sin(a + 0.2) * R * (0.06 + 0.06 * f));
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+      ctx.save();
+      ctx.translate(p.x * R, p.y * R);
       // Druckanzeige bzw. Ablass-Fortschritt
       if (pr > 0.05) {
         ctx.strokeStyle = pr > 0.7 ? rgba('#ff3a2a', 0.7 + 0.3 * pulse) : '#ffb547';
         ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.arc(p.x * R, p.y * R, R * 0.11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pr);
+        ctx.arc(0, 0, R * 0.12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pr);
         ctx.stroke();
       }
       if (p.vent > 0) {
         ctx.strokeStyle = '#7fd8ff';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(p.x * R, p.y * R, R * 0.135, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, p.vent));
+        ctx.arc(0, 0, R * 0.145, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, p.vent));
         ctx.stroke();
       }
+      ctx.restore();
     }
+  }
+
+  /** Laserfarbe nach Hitze: kühl türkisweiß → weiß → bernstein → rot */
+  private laserColor(): string {
+    const h = this.heat / 100;
+    const stops: [number, string][] = [[0, '#8fe8ff'], [0.4, '#fff4e0'], [0.7, '#ffb547'], [1, '#ff4a3a']];
+    for (let i = 1; i < stops.length; i++) {
+      if (h <= stops[i][0]) return mixHex(stops[i - 1][1], stops[i][1], (h - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]));
+    }
+    return '#ff4a3a';
   }
 
   private drawShipAndLaser(ctx: CanvasRenderingContext2D, t: number): void {
     const [sx, sy] = this.ship;
     const [ax, ay] = this.aim;
     const active = this.firing && !this.overheated && this.endT < 0 && this.breakT < 0;
-    const ang = active ? Math.atan2(ay - sy, ax - sx) + Math.PI / 2 : 0;
+    const want = this.firing && this.breakT < 0 ? clamp(Math.atan2(ay - sy, ax - sx) + Math.PI / 2, -0.75, 0.75) : 0;
+    this.shipAng += (want - this.shipAng) * 0.2;
+    const ang = this.shipAng;
+    const sp = mapShipSprite('alligator_min');
+    const SH = 88;
+    const noseD = sp ? SH * 0.42 : 22;
+    const nx = sx + Math.sin(ang) * noseD, ny = sy - Math.cos(ang) * noseD;
+    const lc = this.laserColor();
+    const col = this.hit === 'vein' ? mixHex(this.color, lc, 0.35) : lc;
+    // Sammelstrahl: Brocken werden zum Schiff gezogen
+    const pulled = this.fx.list.filter((p) => p.tx != null).length;
+    if (active && pulled > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createLinearGradient(nx, ny, ax, ay);
+      g.addColorStop(0, rgba('#7fd8ff', 0.05 * Math.min(1, pulled / 8)));
+      g.addColorStop(1, 'rgba(127,216,255,0)');
+      ctx.fillStyle = g;
+      const px = -(ay - ny), py = ax - nx, pl = Math.hypot(px, py) || 1;
+      ctx.beginPath();
+      ctx.moveTo(nx + (px / pl) * 5, ny + (py / pl) * 5);
+      ctx.lineTo(ax + (px / pl) * 14, ay + (py / pl) * 14);
+      ctx.lineTo(ax - (px / pl) * 14, ay - (py / pl) * 14);
+      ctx.lineTo(nx - (px / pl) * 5, ny - (py / pl) * 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
     if (active) {
-      const nx = sx + Math.sin(ang) * 22, ny = sy - Math.cos(ang) * 22;
-      const flick = 0.8 + 0.2 * Math.sin(t * 60);
-      const col = this.hotRun && this.hit === 'vein' ? '#fff0b0' : this.hit === 'vein' ? this.color : '#ff7a4a';
-      const wm = this.mode === 'fine' ? 0.55 : 1;
+      const fine = this.mode === 'fine';
+      const flick = 0.85 + 0.15 * Math.sin(t * 60);
+      const dx = ax - nx, dy = ay - ny, len = Math.hypot(dx, dy) || 1, pxn = -dy / len, pyn = dx / len;
+      const beam = new Path2D();
+      for (let i = 0; i <= 12; i++) {
+        const f = i / 12, wob = i === 0 || i === 12 ? 0 : Math.sin(t * 50 + i * 1.7) * (fine ? 0.5 : 1.1);
+        const x = nx + dx * f + pxn * wob, y = ny + dy * f + pyn * wob;
+        i ? beam.lineTo(x, y) : beam.moveTo(x, y);
+      }
+      const wm = (fine ? 0.55 : 1) * (1 + (this.score.combo - 1) * 0.25);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(nx, ny);
-      ctx.lineTo(ax, ay);
-      ctx.strokeStyle = rgba(col, 0.18 * flick);
-      ctx.lineWidth = (9 + (this.score.combo - 1) * 3) * wm;
-      ctx.stroke();
-      ctx.strokeStyle = rgba(col, 0.6 * flick);
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.strokeStyle = rgba('#fff6e0', 0.9);
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      ctx.strokeStyle = rgba(col, 0.09 * flick);
+      ctx.lineWidth = 13 * wm;
+      ctx.stroke(beam);
+      ctx.strokeStyle = rgba(col, 0.45 * flick);
+      ctx.lineWidth = 5.5 * wm;
+      ctx.stroke(beam);
+      ctx.strokeStyle = rgba('#ffffff', 0.95);
+      ctx.lineWidth = 1.6 * Math.max(0.8, wm);
+      ctx.stroke(beam);
+      // Energiepulse entlang des Strahls
+      for (let k = 0; k < 3; k++) {
+        const f = (t * 2.2 + k / 3) % 1;
+        const x = nx + dx * f, y = ny + dy * f;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 7 * wm + 2);
+        g.addColorStop(0, rgba('#ffffff', 0.7));
+        g.addColorStop(1, rgba(col, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, 7 * wm + 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
       if (this.hit !== 'space') {
-        const fr = this.R * MODES[this.mode].rr * 1.1;
+        // Licht des Treffpunkts auf der Oberfläche
+        if (this.art) {
+          ctx.save();
+          ctx.translate(this.cx, this.cy);
+          ctx.rotate(this.rot);
+          ctx.clip(this.art.path);
+          ctx.rotate(-this.rot);
+          ctx.translate(-this.cx, -this.cy);
+          const lr = this.R * 0.45;
+          const sl = ctx.createRadialGradient(ax, ay, 0, ax, ay, lr);
+          sl.addColorStop(0, rgba(col, 0.28));
+          sl.addColorStop(1, rgba(col, 0));
+          ctx.fillStyle = sl;
+          ctx.fillRect(ax - lr, ay - lr, lr * 2, lr * 2);
+          ctx.restore();
+        }
+        const fr = this.R * MODES[this.mode].rr * 1.3 * (0.9 + 0.2 * Math.sin(t * 37));
         const gr = ctx.createRadialGradient(ax, ay, 0, ax, ay, fr);
-        gr.addColorStop(0, rgba('#fff4d8', 0.9));
-        gr.addColorStop(0.3, rgba(col, 0.5));
+        gr.addColorStop(0, rgba('#ffffff', 0.95));
+        gr.addColorStop(0.25, rgba(col, 0.6));
         gr.addColorStop(1, rgba(col, 0));
         ctx.fillStyle = gr;
         ctx.beginPath();
         ctx.arc(ax, ay, fr, 0, Math.PI * 2);
         ctx.fill();
+        // Lichtstreifen
+        for (const [lx, ly, l] of [[1, 0, fr * 2.2], [0, 1, fr * 1.2]] as const) {
+          const g = ctx.createLinearGradient(ax - lx * l, ay - ly * l, ax + lx * l, ay + ly * l);
+          g.addColorStop(0, rgba(col, 0));
+          g.addColorStop(0.5, rgba('#ffffff', 0.55));
+          g.addColorStop(1, rgba(col, 0));
+          ctx.strokeStyle = g;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(ax - lx * l, ay - ly * l);
+          ctx.lineTo(ax + lx * l, ay + ly * l);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     } else if (this.firing && this.overheated) {
@@ -1033,55 +1634,127 @@ export class OreGame implements MiniGame {
     ctx.save();
     ctx.translate(sx, sy);
     ctx.rotate(ang);
+    if (sp) {
+      // Triebwerksflammen
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const ex of sp.engines.xs) {
+        const fx = ex * SH, fy = sp.engines.y * SH, fl = 9 + Math.random() * 6;
+        const g = ctx.createLinearGradient(fx, fy, fx, fy + fl);
+        g.addColorStop(0, rgba('#fff0d0', 0.9));
+        g.addColorStop(0.3, rgba(sp.engines.color, 0.7));
+        g.addColorStop(1, rgba(sp.engines.color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(fx - 4, fy);
+        ctx.lineTo(fx + 4, fy);
+        ctx.lineTo(fx, fy + fl);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(sp.img, -SH / 2, -SH / 2, SH, SH);
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(0, -24); ctx.lineTo(12, -10); ctx.lineTo(16, 14); ctx.lineTo(6, 20); ctx.lineTo(-6, 20); ctx.lineTo(-16, 14); ctx.lineTo(-12, -10);
+      ctx.closePath();
+      ctx.fillStyle = '#0d1e2a';
+      ctx.fill();
+      ctx.strokeStyle = rgba('#ffc45e', 0.25);
+      ctx.lineWidth = 5;
+      ctx.stroke();
+      ctx.strokeStyle = '#ffc45e';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.fillStyle = rgba(this.color, 0.3 + 0.5 * clamp(pulled / 20, 0, 1));
+      ctx.fillRect(-7, -4, 14, 14);
+    }
+    // Emitter am Bug: glüht mit der Hitze
+    const eg = ctx.createRadialGradient(0, -noseD, 0, 0, -noseD, 9 + this.heat / 12);
+    eg.addColorStop(0, rgba(this.overheated ? '#ff5c4a' : lc, this.overheated ? 0.6 + 0.4 * Math.sin(t * 12) : active ? 0.9 : 0.25 + this.heat / 200));
+    eg.addColorStop(1, rgba(lc, 0));
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = eg;
     ctx.beginPath();
-    ctx.moveTo(0, -24); ctx.lineTo(12, -10); ctx.lineTo(16, 14); ctx.lineTo(6, 20); ctx.lineTo(-6, 20); ctx.lineTo(-16, 14); ctx.lineTo(-12, -10);
-    ctx.closePath();
-    ctx.fillStyle = '#0d1e2a';
+    ctx.arc(0, -noseD, 9 + this.heat / 12, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = rgba('#ffc45e', 0.25);
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    ctx.strokeStyle = '#ffc45e';
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-    ctx.fillStyle = rgba(this.color, 0.3 + 0.5 * clamp(this.fx.list.filter((p) => p.tx != null).length / 20, 0, 1));
-    ctx.fillRect(-7, -4, 14, 14);
-    ctx.fillStyle = rgba('#7fd8ff', 0.6 + 0.3 * Math.sin(t * 30));
-    ctx.fillRect(-9, 20, 5, 4 + Math.random() * 3);
-    ctx.fillRect(4, 20, 5, 4 + Math.random() * 3);
     ctx.restore();
+  }
+
+  /** Balken mit Verlauf, Teilstrichen und Marken */
+  private bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, f: number, c0: string, c1: string): void {
+    ctx.fillStyle = 'rgba(8,18,28,0.85)';
+    roundRect(ctx, x, y, w, h, h / 2);
+    ctx.fill();
+    if (f > 0) {
+      const g = ctx.createLinearGradient(x, 0, x + w, 0);
+      g.addColorStop(0, c0);
+      g.addColorStop(1, c1);
+      ctx.save();
+      roundRect(ctx, x, y, w, h, h / 2);
+      ctx.clip();
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w * clamp(f, 0, 1), h);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(x, y, w * clamp(f, 0, 1), h * 0.4);
+      ctx.restore();
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let k = 1; k < 10; k++) ctx.fillRect(x + (w * k) / 10, y + 1, 1, h - 2);
+    ctx.strokeStyle = 'rgba(110,220,205,0.3)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, h / 2);
+    ctx.stroke();
   }
 
   private drawHeat(ctx: CanvasRenderingContext2D, t: number): void {
     const [, sy] = this.ship;
-    const W = 90, H = 6, bx = 16, y = sy - 3;
+    const W = 100, H = 8, bx = 16, y = sy - 5;
     const f = this.heat / 100;
-    ctx.fillStyle = 'rgba(14,30,44,0.85)';
-    ctx.fillRect(bx, y, W, H);
-    const col = this.overheated ? '#ff5c6c' : f > 0.7 ? '#ffb547' : '#3fe0c5';
-    ctx.fillStyle = this.overheated && Math.sin(t * 12) > 0 ? 'rgba(255,92,108,0.5)' : col;
-    ctx.fillRect(bx, y, W * f, H);
+    const blink = Math.sin(t * 12) > 0;
+    if (this.overheated) this.bar(ctx, bx, y, W, H, f, blink ? '#ff5c6c' : '#802030', '#ff5c6c');
+    else this.bar(ctx, bx, y, W, H, f, '#3fe0c5', f > 0.7 ? '#ffb547' : mixHex('#3fe0c5', '#ffb547', f / 0.7));
     // Grenze für Kristalle (fein: höher) und Beginn des Heißlaufs
     ctx.fillStyle = '#9ff3ff';
-    ctx.fillRect(bx + W * (this.mode === 'fine' ? 0.55 : 0.4) - 0.5, y - 3, 1.5, H + 6);
+    ctx.fillRect(bx + W * (this.mode === 'fine' ? 0.55 : 0.4) - 0.75, y - 3, 1.5, H + 6);
     ctx.fillStyle = '#fff0b0';
-    ctx.fillRect(bx + W * HOT_RUN / 100 - 0.5, y - 3, 1.5, H + 6);
-    ctx.strokeStyle = 'rgba(110,220,205,0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 0.5, y + 0.5, W - 1, H - 1);
+    ctx.fillRect(bx + (W * HOT_RUN) / 100 - 0.75, y - 3, 1.5, H + 6);
     ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillStyle = this.overheated ? '#ff9aa4' : this.hardHere > 0.3 && this.firing ? '#ffb547' : 'rgba(169,195,198,0.85)';
+    ctx.fillStyle = this.overheated ? '#ff9aa4' : this.hotRun && this.hit === 'vein' ? '#fff0b0' : this.hardHere > 0.3 && this.firing ? '#ffb547' : 'rgba(169,195,198,0.85)';
     ctx.fillText(this.overheated ? 'ÜBERHITZT – LOSLASSEN' : this.hotRun && this.hit === 'vein' ? 'HEISSLAUF ×1,5' : this.hardHere > 0.3 && this.firing ? 'HARTES GESTEIN' : 'LASERHITZE', bx, y - 6);
     // Gesteinsspannung
-    const y2 = y + 30, s = clamp(this.stress / 100, 0, 1);
-    ctx.fillStyle = 'rgba(14,30,44,0.85)';
-    ctx.fillRect(bx, y2, W, H);
-    ctx.fillStyle = s >= 0.75 ? (Math.sin(t * 14) > 0 ? '#ff5c6c' : '#ffb547') : s >= 0.5 ? '#ffb547' : '#a99a88';
-    ctx.fillRect(bx, y2, W * s, H);
-    ctx.strokeStyle = 'rgba(110,220,205,0.3)';
-    ctx.strokeRect(bx + 0.5, y2 + 0.5, W - 1, H - 1);
+    const y2 = y + 32, s = clamp(this.stress / 100, 0, 1);
+    if (s >= 0.75) this.bar(ctx, bx, y2, W, H, s, '#ffb547', blink ? '#ff5c6c' : '#ff9a4a');
+    else this.bar(ctx, bx, y2, W, H, s, '#7a6e60', s >= 0.5 ? '#ffb547' : '#b8a690');
     ctx.fillStyle = s >= 0.75 ? '#ff9aa4' : 'rgba(169,195,198,0.85)';
     ctx.fillText(s >= 0.75 ? 'EINSTURZGEFAHR' : 'GESTEINSSPANNUNG', bx, y2 - 6);
   }
+}
+
+/**
+ * Aderabschnitte zu Läufen mit gleicher (gerundeter) Stärke zusammenfassen: [Start, Ende, Stärke].
+ * So entstehen an den Stößen keine hellen Perlen durch überlappende Linienenden.
+ */
+function runs(v: VeinPt[], all = false): [number, number, number][] {
+  const out: [number, number, number][] = [];
+  let start = -1, cur = 0;
+  for (let i = 1; i < v.length; i++) {
+    const a = Math.round(Math.max(0, Math.min(v[i - 1].a, v[i].a)) * 10) / 10;
+    const ok = all || a > 0.02;
+    if (start >= 0 && (!ok || a !== cur)) { out.push([start, i - 1, cur]); start = -1; }
+    if (ok && start < 0) { start = i - 1; cur = a; }
+  }
+  if (start >= 0) out.push([start, v.length - 1, cur]);
+  return out;
+}
+
+/** Zwei Hex-Farben mischen */
+function mixHex(a: string, b: string, f: number): string {
+  const p = parseInt(a.slice(1), 16), q = parseInt(b.slice(1), 16);
+  const k = clamp(f, 0, 1);
+  const ch = (s: number) => Math.round(((p >> s) & 255) + ((((q >> s) & 255) - ((p >> s) & 255)) * k));
+  return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
 }
