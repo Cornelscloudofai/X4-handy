@@ -26,6 +26,7 @@ import { initTween } from './tween';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
+import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
 import { loadout, setControlMode, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
@@ -872,6 +873,31 @@ function onClick(e: MouseEvent): void {
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
       case 'ship-art-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
       case 'loadout-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'loadout' }; refresh(); break;
+      case 'lo-tab': if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, tab: d.tab as 'ship' | 'gear' | 'mods' | 'art', slot: (d.slot as ModSlot) ?? ui.modal.slot }; refresh(); } break;
+      case 'mod-craft': {
+        if (ui.modal?.type !== 'loadout') break;
+        const mod = craft(d.id!, Number(d.q) as ModQuality);
+        if (!mod) { toast('Zu wenig Modteile', 'warn'); break; }
+        const slot = MODS[mod.id].slot;
+        ui.modal = { ...ui.modal, slot, fresh: slot, rollN: (ui.modal.rollN ?? 0) + 1 };
+        sfx.build();
+        refresh();
+        setTimeout(() => {
+          if (ui.modal?.type === 'loadout' && ui.modal.fresh === slot) {
+            ui.modal = { ...ui.modal, fresh: undefined };
+            toast(`${MODS[mod.id].name} (${QUALITY[mod.q].name}): ${fmtStat(MODS[mod.id].stat, mod.value)}${mod.roll > 0.85 ? ' – Spitzenwert!' : ''}`, mod.roll > 0.85 ? 'good' : 'info');
+            refresh();
+          }
+        }, 1700);
+        break;
+      }
+      case 'mod-remove': {
+        if (ui.modal?.type !== 'loadout') break;
+        const back = removeMod(d.slot as ModSlot);
+        toast(`Mod zerlegt${back ? `: +${back} Modteile` : ''}`, 'info');
+        refresh();
+        break;
+      }
       case 'mg-back': ui.modal = lastMg ?? { type: 'minigames', level: 1, gear: 1, tab: 'combat' }; refresh(); break;
       case 'mg-controls': {
         setControlMode(d.mode as ControlMode);

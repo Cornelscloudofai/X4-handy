@@ -11,6 +11,7 @@ import { CARGO_GOALS, CARGO_MUTATORS, CargoGame } from './cargo';
 import { HIGHWAY_GOALS, HIGHWAY_MUTATORS, HighwayGame } from './highway';
 import { ORBIT_GOALS, ORBIT_MUTATORS, OrbitGame } from './orbit';
 import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
+import { earnParts, partsFor } from './mods';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, type RecordOutcome } from './records';
 
 export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon';
@@ -97,6 +98,8 @@ interface Session {
   hudKey: string;
   subKey: string;
   result: GameResult | null;
+  /** gutgeschriebene Modteile dieser Runde */
+  parts?: number;
   outcome: RecordOutcome | null;
   onDone?: (r: GameResult | null) => void;
   /** Wiederholen erlaubt (Vorschau) */
@@ -207,6 +210,7 @@ function bindInput(s: Session): void {
 function finish(s: Session, r: GameResult): void {
   s.result = r;
   s.outcome = recordResult(s.kind, s.cfg.level, s.cfg.mode ?? 'normal', r);
+  s.parts = earnParts(partsFor(r.stars, s.cfg.mode ?? 'normal'));
   setPhase('end');
 }
 
@@ -251,6 +255,7 @@ function setPhase(p: Phase): void {
     layer.innerHTML = `<div class="mg-card end ${r.success ? 'win' : 'lose'}"><small class="eyebrow">${r.success ? 'Geschafft' : 'Nicht geschafft'}</small><h2>${esc(r.headline)}</h2>
       <div class="mg-stars">${[1, 2, 3].map((i) => `<span class="${i <= r.stars ? 'on' : ''}" style="--d:${i * 0.18}s">${STAR}</span>`).join('')}</div>
       <div class="mg-points"><b class="num">${fmtPts(r.points)}</b><span>Punkte</span>${o?.newRecord ? '<em>Neuer Rekord!</em>' : o?.previous ? `<small>Rekord ${fmtPts(o.previous)}</small>` : ''}</div>
+      ${s.parts ? `<div class="mg-parts"><i></i>+${s.parts} Modteil${s.parts > 1 ? 'e' : ''} für Schiffsmodifikationen</div>` : ''}
       <div class="mg-lines">${r.lines.map(([k, v]) => `<div><small>${esc(k)}</small><b class="num">${esc(v)}</b></div>`).join('')}</div>
       ${r.goals.length ? `<div class="mg-goals">${r.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}${o?.newBadges.includes(q.id) ? '<em>Neues Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
       <div class="mg-actions">${s.replay ? '<button class="btn ghost" data-mg="again">Nochmal</button>' : ''}<button class="btn primary" data-mg="quit">Fertig</button></div></div>`;

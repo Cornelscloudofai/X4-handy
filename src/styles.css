@@ -769,3 +769,84 @@ button.chip.credits { cursor: pointer; color: inherit; font: inherit; }
 .menu-tile-sub { font-size: 12.5px; line-height: 1.3; color: var(--muted); }
 .menu-tile[data-key="more-games"] .menu-tile-ic { color: var(--amber); background: rgba(255, 181, 71, 0.1); border-color: rgba(255, 181, 71, 0.35); box-shadow: 0 0 18px -6px var(--amber-glow); }
 .mg-tabs { margin-bottom: 14px; }
+
+/* Hangar „Dein Schiff“: Schiff mit Modplätzen, Netzdiagramm der Werte */
+.lo-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 14px; }
+.lo-hangar { position: relative; min-height: 196px; border-radius: var(--r); border: 1px solid var(--line); overflow: hidden;
+  background:
+    radial-gradient(60% 45% at 50% 46%, rgba(63, 224, 197, 0.22), rgba(63, 224, 197, 0) 70%),
+    repeating-linear-gradient(90deg, rgba(110, 220, 205, 0.07) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(0deg, rgba(110, 220, 205, 0.07) 0 1px, transparent 1px 22px),
+    linear-gradient(180deg, #06111c, #02060b); }
+.lo-hangar img { position: absolute; left: 50%; top: 47%; width: 62%; max-width: 150px; transform: translate(-50%, -50%); filter: drop-shadow(0 0 14px rgba(63, 224, 197, 0.35)); animation: lo-float 5s ease-in-out infinite; }
+@keyframes lo-float { 50% { transform: translate(-50%, -54%); } }
+.lo-hangar-name { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; line-height: 1.1; }
+.lo-hangar-name b { display: block; font-family: var(--font-display); font-size: 15px; }
+.lo-hangar-name small { font-size: 11px; color: var(--muted); }
+.lo-chip { position: absolute; display: flex; align-items: center; gap: 4px; max-width: 48%; padding: 3px 7px; border-radius: 999px; font-size: 10px; line-height: 1.2;
+  color: var(--muted); background: rgba(3, 9, 15, 0.8); border: 1px dashed rgba(110, 220, 205, 0.3); }
+.lo-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lo-chip.set { color: var(--text); border: 1px solid var(--q); box-shadow: 0 0 10px -3px var(--q); }
+.lo-chip.set .ic { color: var(--q); }
+.lo-chip-weapon { left: 6px; top: 6px; } .lo-chip-shield { right: 6px; top: 6px; }
+.lo-chip-engine { left: 6px; bottom: 42px; } .lo-chip-chassis { right: 6px; bottom: 42px; }
+.lo-radar-box { border-radius: var(--r); border: 1px solid var(--line); background: var(--panel-2); padding: 4px 4px 6px; display: flex; flex-direction: column; justify-content: center; }
+.lo-radar { width: 100%; height: auto; display: block; }
+.lo-radar text { font-size: 9.5px; fill: var(--text-2); font-family: var(--font-display); }
+.lo-radar .rd-grid { fill: none; stroke: rgba(110, 220, 205, 0.16); stroke-width: 1; }
+.lo-radar .rd-base { fill: rgba(63, 224, 197, 0.22); stroke: var(--teal); stroke-width: 1.6; stroke-linejoin: round; }
+.lo-radar .rd-mod { fill: rgba(197, 139, 255, 0.12); stroke: #c58bff; stroke-width: 1.6; stroke-dasharray: 4 3; stroke-linejoin: round; }
+.lo-legend { display: flex; justify-content: center; align-items: center; gap: 5px; font-size: 10.5px; color: var(--muted); }
+.lo-legend span { width: 10px; height: 3px; border-radius: 2px; background: var(--teal); }
+.lo-legend span.m { background: #c58bff; margin-left: 6px; }
+.lo-tabs { margin-bottom: 14px; }
+.lo-tabs button em { font-style: normal; font-size: 11px; padding: 1px 6px; margin-left: 3px; border-radius: 999px; background: rgba(255, 181, 71, 0.18); color: var(--amber); }
+@media (max-width: 360px) { .lo-tabs button { font-size: 12.5px; padding: 10px 4px; } }
+
+/* Mod-Werkstatt */
+.mod-parts { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r); border: 1px solid rgba(255, 181, 71, 0.35);
+  background: radial-gradient(100% 120% at 0% 0%, rgba(255, 181, 71, 0.16), rgba(255, 181, 71, 0) 60%), var(--panel-2); color: var(--amber); }
+.mod-parts b { color: var(--text); font-family: var(--font-display); font-size: 16px; }
+.mod-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mod-slot { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; text-align: left; padding: 10px; border-radius: 12px; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line); }
+.mod-slot.on { border-color: var(--line-2); box-shadow: 0 0 0 1px rgba(63, 224, 197, 0.25) inset; }
+.mod-slot.set { border-color: var(--q); }
+.mod-slot-ic { grid-row: span 3; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: rgba(63, 224, 197, 0.08); color: var(--teal); }
+.mod-slot.set .mod-slot-ic { color: var(--q); background: color-mix(in srgb, var(--q) 14%, transparent); }
+.mod-slot-name { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-family: var(--font-display); }
+.mod-slot-mod { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mod-slot:not(.set) .mod-slot-mod { color: var(--muted); font-weight: 400; }
+.mod-slot-val { font-size: 11.5px; color: var(--q); }
+.mod-detail { padding: 12px 14px; border-radius: var(--r); background: var(--panel-2); border: 1px solid var(--q, var(--line)); box-shadow: 0 0 22px -12px var(--q, transparent); }
+.mod-detail.empty { border-style: dashed; }
+.mod-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.mod-head b { font-family: var(--font-display); font-size: 16px; }
+.mod-q { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--q); font-family: var(--font-display); }
+.mod-main { font-size: 20px; font-weight: 700; font-family: var(--font-display); color: var(--q); margin: 4px 0 10px; }
+.mod-roll { position: relative; height: 30px; }
+.mod-roll .bar { position: absolute; left: 0; right: 0; top: 4px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), color-mix(in srgb, var(--q) 55%, transparent)); }
+.mod-roll .mk { position: absolute; top: 0; left: var(--v); width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px var(--q), 0 0 2px #fff; }
+.mod-roll.fresh .mk { animation: mod-roll 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.mod-roll.fresh .bar { animation: mod-flash 1.6s ease-out both; }
+@keyframes mod-roll { 0% { left: 0%; } 22% { left: 100%; } 40% { left: 8%; } 58% { left: 92%; } 74% { left: 30%; } 100% { left: var(--v); } }
+@keyframes mod-flash { 0%, 90% { box-shadow: none; } 100% { box-shadow: 0 0 14px var(--q); } }
+.mod-roll .lo, .mod-roll .hi { position: absolute; top: 16px; font-size: 10.5px; color: var(--muted); }
+.mod-roll .lo { left: 0; } .mod-roll .hi { right: 0; }
+.mod-fx { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.mod-fx li::before { content: '◆ '; font-size: 9px; vertical-align: 2px; }
+.mod-recipes { display: grid; gap: 10px; }
+.mod-recipe { padding: 12px; border-radius: var(--r); background: var(--panel-2); border: 1px solid var(--line); }
+.mod-qs { display: grid; gap: 6px; margin-top: 8px; }
+.mod-qbtn { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; text-align: left; padding: 9px 10px; border-radius: 10px; color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--q) 55%, transparent); background: color-mix(in srgb, var(--q) 9%, transparent); }
+.mod-qbtn b { font-size: 13px; color: var(--q); font-family: var(--font-display); }
+.mod-qbtn span { font-size: 12.5px; color: var(--text-2); }
+.mod-qbtn em { font-style: normal; font-size: 13px; font-weight: 600; color: var(--amber); display: flex; align-items: center; gap: 4px; min-width: 38px; justify-content: flex-end; }
+.mod-total { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+.mod-total small { width: 100%; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-family: var(--font-display); }
+.mod-total span { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: rgba(4, 14, 22, 0.6); border: 1px solid var(--line); }
+.mod-qbtn:disabled { opacity: 0.38; }
+.mod-qbtn:not(:disabled):active { transform: scale(0.97); }
+.mg-parts { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 2px 0 10px; font-size: 13px; color: var(--amber); }
+.mg-parts i { width: 10px; height: 10px; transform: rotate(45deg); background: var(--amber); box-shadow: 0 0 10px var(--amber-glow); }

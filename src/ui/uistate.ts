@@ -24,7 +24,7 @@ export type Modal =
   | { type: 'help'; topic?: string }
   | { type: 'wareIcons' }
   | { type: 'shipArt' }
-  | { type: 'loadout' }
+  | { type: 'loadout'; tab?: 'ship' | 'gear' | 'mods' | 'art'; slot?: import('../minigames/mods').ModSlot; fresh?: import('../minigames/mods').ModSlot; rollN?: number }
   | { type: 'minigames'; level: 1 | 2 | 3 | 4 | 5; gear: 1 | 2 | 3; tab?: 'games' | 'daily' | 'combat' }
   | { type: 'chart'; spec: ChartSpec; hours: number }
   | { type: 'alerts' }

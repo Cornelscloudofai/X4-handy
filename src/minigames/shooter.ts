@@ -8,6 +8,7 @@
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
+import { modStats, type ModStats } from './mods';
 import { DMG_SCALE, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, type ControlMode, type Loadout, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
@@ -275,6 +276,8 @@ export class ShooterGame implements MiniGame {
   /** Nachbrand haftender Geschosse: Gegner, Schaden pro Sekunde, Restzeit */
   private burns: { e: Enemy; dps: number; t: number }[] = [];
   private readonly sh: ShieldDef;
+  /** Effekte der Schiffsmodifikationen */
+  private readonly mods: ModStats;
   /** Waffenüberladung, Nachbrenner, Begleitjäger: Restzeit */
   private odT = 0;
   private sprintT = 0;
@@ -371,7 +374,13 @@ export class ShooterGame implements MiniGame {
     ];
     this.ship = SHIPS[lo.ship];
     const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret];
+    this.mods = cfg.mods ?? (cfg.loadout ? {} : modStats());
     this.wpn = gameGun(wd[this.ship.gunSize], wd);
+    // Mods: schnellere Geschosse fliegen weiter (gleiche Flugzeit), Fokussierlinse verengt die Streuung
+    const mv = 1 + this.m('velocity');
+    this.wpn.speed *= mv;
+    this.wpn.range *= mv;
+    this.wpn.jitter *= 1 - this.m('spread');
     this.tw = gameGun(td.gun, td);
     // Drehtempo der Türme aus den Daten (Pulsturm 180°/s = bisheriges Tempo)
     this.turTurn = (5 * td.turn) / 180;
@@ -382,7 +391,7 @@ export class ShooterGame implements MiniGame {
     // Bordkanonen auf allen Waffenplätzen; Raketenwerfer haben (seit X4 9.0) eigene Plätze – nur bei manchen Schiffen
     this.guns = [...this.ship.guns];
     this.launchers = this.ship.x4.launchers ? [0] : [];
-    this.ammo = this.ship.x4.missiles;
+    this.ammo = this.ship.x4.missiles + (this.ship.x4.launchers ? Math.round(this.m('missiles')) : 0);
     // Stärke des Schiffs gegenüber der Mamba (Haltbarkeit × Feuerkraft): die Gegner werden zahlreicher, ab dem
     // 2,5-Fachen zusätzlich zäher und gefährlicher – so bleibt der Kampf mit den Originalwerten fordernd
     const durability = (this.ship.hull + this.ship.shield) / 2;
@@ -410,21 +419,23 @@ export class ShooterGame implements MiniGame {
   // ---------- abgeleitete Werte ----------
 
   private c(id: string): number { return this.cards[id] ?? 0; }
-  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (this.sprintT > 0 ? 1.7 : 1); }
-  private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn * (this.sprintT > 0 ? 1.3 : 1); }
+  /** Effekt der Schiffsmodifikationen */
+  private m(id: keyof ModStats): number { return this.mods[id] ?? 0; }
+  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (1 + this.m('speed')) * (this.sprintT > 0 ? 1.7 : 1); }
+  private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn * (1 + this.m('turn')) * (this.sprintT > 0 ? 1.3 : 1); }
   /** Drohnen: aus Verbesserungen, dazu der Begleitjäger der Cobra (immer der letzte) */
   private get droneN(): number { return this.c('drone') + (this.escortT > 0 ? 1 : 0); }
   /** Takt der Waffen: Mk-Stufe, Schnellfeuer-Verbesserung und Waffenüberladung verkürzen Schusspausen und Nachladen */
-  private get tempo(): number { return [0.26, 0.21, 0.17][this.gear.weapon - 1] / 0.26 / (1 + 0.25 * this.c('rapid')) * (this.odT > 0 ? 0.5 : 1); }
+  private get tempo(): number { return [0.26, 0.21, 0.17][this.gear.weapon - 1] / 0.26 / (1 + 0.25 * this.c('rapid')) / (1 + this.m('rate')) * (this.odT > 0 ? 0.5 : 1); }
   /** Grundschaden je Mk-Stufe mit Verbesserungen (ohne Schiff und Waffentyp) */
-  private get baseDmg(): number { return [6, 8, 11][this.gear.weapon - 1] * (1 + 0.3 * this.c('heavy')) * (this.mutator?.id === 'glass' ? 2 : 1); }
+  private get baseDmg(): number { return [6, 8, 11][this.gear.weapon - 1] * (1 + 0.3 * this.c('heavy')) * (1 + this.m('dmg')) * (this.mutator?.id === 'glass' ? 2 : 1); }
   /** Reichweite der Bordwaffe */
   private get reach(): number { return this.wpn.range; }
   /** Schaden je Geschoss einer Bordkanone (Strahl: pro Sekunde) */
   private get damage(): number { return this.baseDmg * this.wpn.dmg; }
-  private get shieldMax(): number { return [40, 70, 100][this.gear.shield - 1] * (1 + 0.4 * this.c('shield')) * (this.mutator?.id === 'glass' ? 0.5 : 1) * this.ship.shield * this.sh.cap; }
+  private get shieldMax(): number { return [40, 70, 100][this.gear.shield - 1] * (1 + 0.4 * this.c('shield')) * (this.mutator?.id === 'glass' ? 0.5 : 1) * this.ship.shield * this.sh.cap * (1 + this.m('shield')); }
   private get missileCdMax(): number { return 8 * Math.pow(0.8, this.c('mreload')); }
-  private get dashCdMax(): number { return SPECIALS[this.ship.special].cd * Math.pow(0.75, this.c('dash')); }
+  private get dashCdMax(): number { return SPECIALS[this.ship.special].cd * Math.pow(0.75, this.c('dash')) * (1 - this.m('special')); }
   private get enemyDmg(): number { return (this.level >= 5 ? 1.3 : this.level >= 3 ? 1.15 : 1) * this.foeMul; }
   private get totalWaves(): number { return this.mode === 'endless' ? Infinity : NORMAL_WAVES; }
   private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : i === NORMAL_WAVES - 1; }
@@ -1007,7 +1018,7 @@ export class ShooterGame implements MiniGame {
     this.missileCd = Math.max(0, this.missileCd - dt);
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.shieldWait = Math.max(0, this.shieldWait - dt);
-    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.regen * this.sh.regen * (1 + 0.5 * this.c('regen')) * dt);
+    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.regen * this.sh.regen * (1 + 0.5 * this.c('regen')) * (1 + this.m('regen')) * dt);
     this.odT = Math.max(0, this.odT - dt);
     this.sprintT = Math.max(0, this.sprintT - dt);
     this.escortT = Math.max(0, this.escortT - dt);
@@ -1586,7 +1597,7 @@ export class ShooterGame implements MiniGame {
 
   private damagePlayer(dmg: number): void {
     if (this.dashT > 0) return;
-    this.shieldWait = (2.5 * this.sh.delay * this.ship.delay) / (1 + 0.5 * this.c('regen'));
+    this.shieldWait = (2.5 * this.sh.delay * this.ship.delay) / (1 + 0.5 * this.c('regen')) * (1 - this.m('delay'));
     if (this.shield > 0) {
       const s = Math.min(this.shield, dmg);
       this.shield -= s;
@@ -1595,7 +1606,7 @@ export class ShooterGame implements MiniGame {
     }
     if (dmg > 0) {
       // Hülle in Prozent: größere Schiffe halten entsprechend mehr aus
-      this.hull = Math.max(0, this.hull - dmg / this.ship.hull);
+      this.hull = Math.max(0, this.hull - dmg / (this.ship.hull * Math.max(0.5, 1 + this.m('hull'))));
       this.shake = Math.max(this.shake, 0.2);
       buzz(20);
     }

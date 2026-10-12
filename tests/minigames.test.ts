@@ -4,6 +4,7 @@ import { GasGame } from '../src/minigames/gas';
 import { CargoGame } from '../src/minigames/cargo';
 import { HighwayGame } from '../src/minigames/highway';
 import { OrbitGame, elements } from '../src/minigames/orbit';
+import { MODS, QUALITY, START_PARTS, craft, earnParts, modState, modStats, partsFor, remove as removeMod, resetMods } from '../src/minigames/mods';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
@@ -717,6 +718,57 @@ describe('Orbit-Andocken', () => {
     while (!g.result() && k++ < 60 * 40) g.update(DT);
     expect(g.result()?.success).toBe(true);
     expect(a.fuel).toBeLessThan(f0);
+  });
+});
+
+describe('Schiffsmodifikationen', () => {
+  it('Bau kostet Modteile, würfelt den Wert in der Spanne, höhere Güte bringt Zusatzeffekte', () => {
+    resetMods();
+    expect(modState().parts).toBe(START_PARTS);
+    const r = rng(7);
+    const m1 = craft('verstaerker', 1, r)!;
+    expect(modState().parts).toBe(START_PARTS - QUALITY[1].cost);
+    expect(m1.value).toBeGreaterThanOrEqual(0.06);
+    expect(m1.value).toBeLessThanOrEqual(0.12);
+    expect(m1.bonus.length).toBe(0);
+    // zu wenig Teile: nichts passiert
+    expect(craft('zellen', 3, r)).toBeNull();
+    earnParts(40);
+    const m3 = craft('zellen', 3, r)!;
+    expect(m3.bonus.length).toBe(2);
+    expect(m3.bonus.every((b) => b.stat !== 'shield')).toBe(true);
+    // ein neuer Mod ersetzt den alten im selben Platz
+    craft('kuehlung', 2, r);
+    expect(modState().slots.weapon?.id).toBe('kuehlung');
+    // Rumpfmods haben ihren Preis
+    craft('panzer', 1, r);
+    const st = modStats();
+    expect(st.hull).toBeGreaterThan(0.1);
+    expect(st.speed).toBeLessThan(0);
+    // Zerlegen gibt ein Viertel der Kosten zurück
+    const p0 = modState().parts;
+    expect(removeMod('chassis')).toBe(Math.floor(QUALITY[1].cost / 4));
+    expect(modState().parts).toBe(p0 + Math.floor(QUALITY[1].cost / 4));
+    expect(modState().slots.chassis).toBeUndefined();
+    expect(partsFor(3, 'normal')).toBe(3);
+    expect(partsFor(2, 'daily')).toBe(4);
+    for (const d of Object.values(MODS)) for (const q of [1, 2, 3] as const) expect(d.range[q][0]).toBeLessThan(d.range[q][1]);
+    resetMods();
+  });
+
+  it('wirken im Kampf: Tempo, Schild, Hülle, Schaden und Raketen', () => {
+    const mk = (mods: Record<string, number>) => {
+      const g = new ShooterGame({ ...cfg(1, 5), loadout: { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht' }, mods }, 'pirate');
+      g.resize(W, H);
+      return g as unknown as { speed: number; shieldMax: number; damage: number; ammo: number; dashCdMax: number; wpn: { range: number } };
+    };
+    const a = mk({}), b = mk({ speed: 0.2, shield: 0.3, dmg: 0.25, missiles: 3, special: 0.2, velocity: 0.3 });
+    expect(b.speed).toBeCloseTo(a.speed * 1.2, 5);
+    expect(b.shieldMax).toBeCloseTo(a.shieldMax * 1.3, 5);
+    expect(b.damage).toBeCloseTo(a.damage * 1.25, 5);
+    expect(b.ammo).toBe(a.ammo + 3);
+    expect(b.dashCdMax).toBeCloseTo(a.dashCdMax * 0.8, 5);
+    expect(b.wpn.range).toBeCloseTo(a.wpn.range * 1.3, 5);
   });
 });
 
