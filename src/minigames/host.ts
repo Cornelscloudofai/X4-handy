@@ -7,10 +7,11 @@ import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, t
 import { PIPES_GOALS, PIPES_MUTATORS, PipesGame } from './pipes';
 import { ORE_GOALS, ORE_MUTATORS, OreGame } from './ore';
 import { GAS_GOALS, GAS_MUTATORS, GasGame } from './gas';
+import { CARGO_GOALS, CARGO_MUTATORS, CargoGame } from './cargo';
 import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, type RecordOutcome } from './records';
 
-export type MiniKind = 'pipes' | 'ore' | 'gas' | 'pirates' | 'xenon';
+export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'pirates' | 'xenon';
 
 export interface MiniOpts {
   level: Level;
@@ -28,17 +29,18 @@ export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: stri
   pipes: { name: 'Störung beheben', sub: 'Rohr-Puzzle: Leitungen drehen, bis alle Module versorgt sind', icon: 'wrench', chain: 'Leitungskette: Netz um Netz gegen die Uhr' },
   ore: { name: 'Reiche Erzader', sub: 'Bergbau: Mit dem Laser den Adern folgen, ohne zu überhitzen', icon: 'miner' },
   gas: { name: 'Gasströme', sub: 'Mit dem Sammeltrichter Gas fangen und am Mutterschiff sichern', icon: 'miner' },
+  cargo: { name: 'Frachtraum', sub: 'Laden in Schwerelosigkeit: Impuls, Masse, Schwerpunkt', icon: 'box' },
   pirates: { name: 'Piratenangriff', sub: 'Kampf: Den Frachter bis zum Sprungtor beschützen', icon: 'warn', endless: 'Endloser Geleitschutz: Wie viele Wellen hältst du?' },
   xenon: { name: 'Xenon-Schwarm', sub: 'Kampf: Xenon greifen in Schwärmen an', icon: 'target', endless: 'Endlose Xenon-Abwehr: Wie viele Wellen hältst du?' },
 };
 export const MINI_KINDS = Object.keys(MINI_INFO) as MiniKind[];
 
 export function mutatorsOf(kind: MiniKind): Mutator[] {
-  return kind === 'pipes' ? PIPES_MUTATORS : kind === 'ore' ? ORE_MUTATORS : kind === 'gas' ? GAS_MUTATORS : SHOOTER_MUTATORS;
+  return kind === 'pipes' ? PIPES_MUTATORS : kind === 'ore' ? ORE_MUTATORS : kind === 'gas' ? GAS_MUTATORS : kind === 'cargo' ? CARGO_MUTATORS : SHOOTER_MUTATORS;
 }
 
 export function goalsOf(kind: MiniKind): GoalDef[] {
-  return kind === 'pipes' ? PIPES_GOALS : kind === 'ore' ? ORE_GOALS : kind === 'gas' ? GAS_GOALS : SHOOTER_GOALS;
+  return kind === 'pipes' ? PIPES_GOALS : kind === 'ore' ? ORE_GOALS : kind === 'gas' ? GAS_GOALS : kind === 'cargo' ? CARGO_GOALS : SHOOTER_GOALS;
 }
 
 /** Tagesaufgabe: fester Startwert und feste Besonderheit für heute, Stufe 3 */
@@ -64,6 +66,7 @@ function create(kind: MiniKind, c: GameCfg): MiniGame {
     case 'pipes': return new PipesGame(c);
     case 'ore': return new OreGame(c);
     case 'gas': return new GasGame(c);
+    case 'cargo': return new CargoGame(c);
     case 'pirates': return new ShooterGame(c, 'pirate');
     case 'xenon': return new ShooterGame(c, 'xenon');
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bits, consumers, generate, par, power, rotCW, rotate, turnsTo } from '../src/minigames/pipesLogic';
 import { GasGame } from '../src/minigames/gas';
+import { CargoGame } from '../src/minigames/cargo';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
@@ -422,6 +423,99 @@ describe('Gasströme', () => {
     expect(i.hits).toBe(1);
     expect(i.tank).toBeLessThan(2.2);
     expect(hit(false).hits).toBe(0);
+  });
+});
+
+describe('Frachtraum', () => {
+  function play(level: Level, auto: boolean, seed = 99, mutator: string | null = null): GameResult {
+    const g = new CargoGame(cfg(level, seed, { mutator }));
+    g.resize(W, H);
+    return run(g, () => { if (auto) g.autopilot(); });
+  }
+
+  it('mit Autopilot Sterne auf allen Stufen, ohne Stoß keine', () => {
+    for (const level of [1, 2, 3, 4, 5] as const) expect(play(level, true).stars).toBeGreaterThanOrEqual(1);
+    expect(play(1, true).stars).toBe(3);
+    expect(play(1, false).stars).toBe(0);
+    for (const m of ['heavy', 'bouncy', 'drift', 'dark']) expect(play(2, true, 99, m).points).toBeGreaterThan(0);
+  });
+
+  type CBox = { x: number; y: number; vx: number; vy: number; mass: number; state: string; cw: number; ch: number; pushes: number; c0: number; r0: number; stop: number };
+  type CInt = { boxes: CBox[]; lost: number; time: number; step(h: number): void; capture(): void; comOffset(): number; swaps(): number; push(b: CBox, jx: number, jy: number): void; cols: number; rows: number };
+  const fresh = (level: Level = 1, mutator: string | null = null) => {
+    const g = new CargoGame(cfg(level, 99, { mutator }));
+    g.resize(W, H);
+    const a = g as unknown as CInt;
+    for (const b of a.boxes) b.state = 'queue';
+    return { g, a };
+  };
+  const place = (_a: CInt, b: CBox, x: number, y: number) => { b.state = 'float'; b.x = x; b.y = y; b.vx = 0; b.vy = 0; };
+
+  it('gleicher Stoß: v = J / m – der schwere Container kommt kaum in Fahrt', () => {
+    const { a } = fresh();
+    const [l, h] = a.boxes;
+    place(a, l, 1, 1); place(a, h, 3, 1);
+    l.mass = 1; h.mass = 5;
+    a.push(l, 2, 0); a.push(h, 2, 0);
+    expect(l.vx).toBeCloseTo(2);
+    expect(h.vx).toBeCloseTo(0.4);
+  });
+
+  it('keine Reibung: ein treibender Container behält sein Tempo', () => {
+    const { a } = fresh();
+    const b = a.boxes[0];
+    place(a, b, 2, 1);
+    b.vy = 0.5;
+    for (let k = 0; k < 60; k++) a.step(1 / 60);
+    expect(b.vy).toBeCloseTo(0.5);
+    expect(b.y).toBeCloseTo(1.5, 1);
+  });
+
+  it('Stoß zweier Container erhält den Impuls', () => {
+    const { a } = fresh();
+    const [p, q] = a.boxes;
+    place(a, p, 1, 2); place(a, q, 2.2, 2);
+    p.mass = 4; q.mass = 1; p.vx = 1; q.vx = 0;
+    const before = p.mass * p.vx + q.mass * q.vx;
+    for (let k = 0; k < 30; k++) a.step(1 / 60);
+    const after = p.mass * p.vx + q.mass * q.vx;
+    expect(after).toBeCloseTo(before, 5);
+    expect(q.vx).toBeGreaterThan(p.vx); // der leichte fliegt weg
+  });
+
+  it('Magnetklammer fängt nur langsame Container', () => {
+    const { a } = fresh();
+    const [s, f] = a.boxes;
+    place(a, s, 0.55, 2.5); s.vx = 0.3; s.pushes = 1;
+    place(a, f, 2.5, 3.5); f.vx = 3; f.pushes = 1;
+    a.capture();
+    expect(s.state).toBe('clamped');
+    expect(f.state).toBe('float');
+  });
+
+  it('Schwerpunkt seitlich und Umräumungen werden richtig gezählt', () => {
+    const { a } = fresh(3);
+    const [l, r, top, low] = a.boxes;
+    for (const [b, c, rr] of [[l, 0, 4], [r, 4, 4]] as const) { b.state = 'clamped'; b.cw = 1; b.c0 = c; b.r0 = rr; b.x = c + 0.5; b.y = rr + 0.5; }
+    l.mass = 2; r.mass = 2;
+    expect(Math.abs(a.comOffset())).toBeLessThan(0.01);
+    r.mass = 6;
+    expect(a.comOffset()).toBeGreaterThan(10);
+    // C oben über A in derselben Spalte: eine Umräumung
+    for (const [b, rr, st] of [[top, 1, 2], [low, 3, 0]] as const) { b.state = 'clamped'; b.cw = 1; b.c0 = 2; b.r0 = rr; b.x = 2.5; b.y = rr + 0.5; b.stop = st; }
+    expect(a.swaps()).toBe(1);
+  });
+
+  it('unten offen: wer hinaustreibt, kostet Zeit und kommt zurück in die Warteschlange', () => {
+    const { a } = fresh();
+    const b = a.boxes[0];
+    place(a, b, 2, a.rows - 0.2);
+    b.vy = 2;
+    const t0 = a.time;
+    for (let k = 0; k < 30; k++) a.step(1 / 60);
+    expect(a.lost).toBe(1);
+    expect(b.state).toBe('queue');
+    expect(a.time).toBeGreaterThan(t0 + 5);
   });
 });
 

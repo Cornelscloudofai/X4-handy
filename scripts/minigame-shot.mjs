@@ -16,7 +16,7 @@ await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
-if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 5) fail('Minispiel-Liste unvollständig');
+if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 6) fail('Minispiel-Liste unvollständig');
 // Ausrüstung: Schiff und Waffe wählen, Auswahl erscheint im Menü; danach zurück zur Grundausstattung
 await page.click('#modal [data-act="loadout-open"]');
 await page.waitForTimeout(300);
@@ -138,6 +138,27 @@ for (let k = 0; k < 40; k++) {
 await page.screenshot({ path: `${out}/mg-8-gas.png` });
 const got = await mg(() => window.__mg.game.tank + window.__mg.game.secured);
 if (!(got > 0.3)) fail(`Sammler sammelt nichts (${got})`);
+await page.click('#minigame [data-mg="pause"]');
+await page.click('#minigame [data-mg="abort"]');
+await page.click('#minigame [data-mg="quit"]');
+
+// --- Frachtraum ---
+await page.click('#modal [data-act="mg-play"][data-kind="cargo"]');
+await page.waitForTimeout(300);
+await page.click('#minigame [data-mg="start"]');
+await page.waitForTimeout(900);
+const cb = await mg(() => { const g = window.__mg.game; const b = g.floating[0]; return b ? g.toPx(b.x, b.y) : null; });
+if (!cb) fail('Frachtraum: kein Container an der Luke');
+await page.mouse.move(cb[0], cb[1]);
+await page.mouse.down();
+await page.mouse.move(cb[0] - 30, cb[1] + 80, { steps: 5 });
+await page.screenshot({ path: `${out}/mg-8b-cargo-aim.png` });
+await page.mouse.up();
+await page.waitForTimeout(700);
+const pushed = await mg(() => window.__mg.game.boxes.some((b) => b.pushes > 0 && Math.hypot(b.vx, b.vy) > 0.1 || b.state === 'clamped'));
+if (!pushed) fail('Frachtraum: Stoß wirkt nicht');
+for (let k = 0; k < 40; k++) { await mg(() => window.__mg.game.autopilot()); await page.waitForTimeout(60); }
+await page.screenshot({ path: `${out}/mg-8c-cargo.png` });
 await page.click('#minigame [data-mg="pause"]');
 await page.click('#minigame [data-mg="abort"]');
 await page.click('#minigame [data-mg="quit"]');
