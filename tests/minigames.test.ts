@@ -313,6 +313,82 @@ describe('Gaswirbel', () => {
   it('Besonderheiten verändern die Runde', () => {
     expect(play(2, true, 99, 'gold').points).toBeGreaterThan(0);
     expect(play(2, true, 99, 'leak').points).toBeGreaterThan(0);
+    expect(play(2, true, 99, 'smog').points).toBeGreaterThan(0);
+  });
+
+  type GasInt = {
+    x: number; y: number; vx: number; vy: number; tank: number; tankValue: number; foreign: number; secured: number; hits: number; cap: number;
+    blobs: { a: number; d: number; amount: number; max: number; dens: number; foreign: boolean; charged: number; gold: boolean }[];
+    storms: { a: number; d: number; r: number; state: string; t: number }[];
+    pos(a: number, d: number): [number, number]; mother: [number, number]; motherA: number; strikeR(s: unknown): number;
+  };
+  const fresh = (level: Level, mutator: string | null = null) => {
+    const g = new GasGame(cfg(level, 99, { mutator }));
+    g.resize(W, H);
+    return { g, a: g as unknown as GasInt };
+  };
+
+  it('Staudruck: wer durch die Schwade fliegt, sammelt mehr als im Stillstand', () => {
+    const take = (moving: boolean) => {
+      const { g, a } = fresh(1);
+      const b = a.blobs[0];
+      b.amount = b.max = 100;
+      b.dens = 1;
+      for (const o of a.blobs) if (o !== b) o.amount = 0;
+      for (let k = 0; k < 30; k++) {
+        const [bx, by] = a.pos(b.a, b.d);
+        a.x = bx; a.y = by;
+        a.vx = moving ? 230 : 0; a.vy = 0;
+        g.update(DT);
+        a.x = bx; a.y = by;
+      }
+      return a.tank;
+    };
+    expect(take(true)).toBeGreaterThan(take(false) * 2);
+  });
+
+  it('Fremdgas verdünnt die Ladung: weniger gesichert als mit reinem Gas', () => {
+    const run1 = (dirty: boolean) => {
+      const { g, a } = fresh(2);
+      a.tank = 4; a.tankValue = dirty ? 2 : 4; a.foreign = dirty ? 2 : 0;
+      const [mx, my] = a.mother;
+      for (let k = 0; k < 120; k++) { a.x = mx; a.y = my; a.vx = 0; a.vy = 0; g.update(DT); a.motherA = a.motherA; }
+      return a.secured;
+    };
+    const pure = run1(false), dirty = run1(true);
+    expect(pure).toBeGreaterThan(4);
+    expect(dirty).toBeLessThan(pure / 2);
+  });
+
+  it('zu schnell am Mutterschiff: kein Entladen', () => {
+    const { g, a } = fresh(1);
+    a.tank = 3; a.tankValue = 3;
+    for (let k = 0; k < 20; k++) { const [mx, my] = a.mother; a.x = mx; a.y = my; a.vx = 300; a.vy = 0; g.update(DT); }
+    expect(a.secured).toBe(0);
+  });
+
+  it('angekündigter Blitz: im Ring halbe Ladung weg, Schwaden ringsum aufgeladen', () => {
+    const { g, a } = fresh(3);
+    const s = a.storms[0];
+    const [sx, sy] = a.pos(s.a, s.d);
+    s.state = 'charge'; s.t = 0.01;
+    a.tank = 4; a.tankValue = 4;
+    const b = a.blobs.find((o) => !o.foreign)!;
+    b.a = s.a; b.d = s.d; b.amount = 2;
+    a.x = sx + 5; a.y = sy;
+    g.update(DT);
+    expect(a.hits).toBe(1);
+    expect(a.tank).toBeLessThan(2.2);
+    expect(b.charged).toBeGreaterThan(0);
+    // außerhalb des Rings passiert nichts
+    const o = fresh(3);
+    const s2 = o.a.storms[0];
+    const [qx, qy] = o.a.pos(s2.a, s2.d);
+    s2.state = 'charge'; s2.t = 0.01;
+    o.a.tank = 4; o.a.tankValue = 4;
+    o.a.x = qx + o.a.strikeR(s2) + 40; o.a.y = qy;
+    o.g.update(DT);
+    expect(o.a.hits).toBe(0);
   });
 });
 
