@@ -16,7 +16,7 @@ await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
-if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 7) fail('Minispiel-Liste unvollständig');
+if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 8) fail('Minispiel-Liste unvollständig');
 // Ausrüstung: Schiff und Waffe wählen, Auswahl erscheint im Menü; danach zurück zur Grundausstattung
 await page.click('#modal [data-act="loadout-open"]');
 await page.waitForTimeout(300);
@@ -178,6 +178,25 @@ const hv = await mg(() => window.__mg.game.me);
 if (!(hv.x > hx0 + 0.1 && hv.vx > 0.2)) fail(`Highway: Seitenschub wirkt nicht (${hx0} → ${hv.x}, v ${hv.vx})`);
 for (let k = 0; k < 40; k++) { await mg(() => window.__mg.game.autopilot()); await page.waitForTimeout(60); }
 await page.screenshot({ path: `${out}/mg-8d-highway.png` });
+await page.click('#minigame [data-mg="pause"]');
+await page.click('#minigame [data-mg="abort"]');
+await page.click('#minigame [data-mg="quit"]');
+
+// --- Orbit-Andocken ---
+await page.click('#modal [data-act="mg-play"][data-kind="orbit"]');
+await page.waitForTimeout(300);
+await page.click('#minigame [data-mg="start"]');
+await page.waitForTimeout(300);
+const oa0 = await mg(() => { const s = window.__mg.game.ship; const r = Math.hypot(s.x, s.y), v2 = s.vx ** 2 + s.vy ** 2; return { e: v2 / 2 - 0.8 / r, f: window.__mg.game.fuel }; });
+await page.mouse.move(width - 40, 780);
+await page.mouse.down();
+await page.waitForTimeout(500);
+await page.mouse.up();
+await page.waitForTimeout(300);
+const oa1 = await mg(() => { const s = window.__mg.game.ship; const r = Math.hypot(s.x, s.y), v2 = s.vx ** 2 + s.vy ** 2; return { e: v2 / 2 - 0.8 / r, f: window.__mg.game.fuel }; });
+if (!(oa1.e > oa0.e + 0.005 && oa1.f < oa0.f)) fail(`Orbit: Schub hebt die Bahn nicht (${JSON.stringify(oa0)} → ${JSON.stringify(oa1)})`);
+for (let k = 0; k < 40; k++) { await mg(() => window.__mg.game.autopilot()); await page.waitForTimeout(60); }
+await page.screenshot({ path: `${out}/mg-8e-orbit.png` });
 await page.click('#minigame [data-mg="pause"]');
 await page.click('#minigame [data-mg="abort"]');
 await page.click('#minigame [data-mg="quit"]');

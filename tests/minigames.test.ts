@@ -3,6 +3,7 @@ import { bits, consumers, generate, par, power, rotCW, rotate, turnsTo } from '.
 import { GasGame } from '../src/minigames/gas';
 import { CargoGame } from '../src/minigames/cargo';
 import { HighwayGame } from '../src/minigames/highway';
+import { OrbitGame, elements } from '../src/minigames/orbit';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
@@ -642,6 +643,80 @@ describe('Superhighway', () => {
     }
     expect(seen).toBe(true);
     expect(inside).toBe(true);
+  });
+});
+
+describe('Orbit-Andocken', () => {
+  function play(level: Level, auto: boolean, seed = 3, mutator: string | null = null): GameResult {
+    const g = new OrbitGame(cfg(level, seed, { mutator }));
+    g.resize(W, H);
+    return run(g, () => { if (auto) g.autopilot(); }, 600);
+  }
+
+  it('mit Autopilot angedockt (Sterne), ohne Steuern Andockfenster verpasst', () => {
+    let docked = 0;
+    for (const level of [1, 2, 3, 4, 5] as const) for (const seed of [1, 2]) if (play(level, true, seed).success) docked++;
+    expect(docked).toBeGreaterThanOrEqual(9);
+    expect(play(1, true, 4).stars).toBeGreaterThanOrEqual(2);
+    expect(play(1, false).stars).toBe(0);
+    for (const m of ['lowfuel', 'weak', 'atmo', 'debris']) expect(play(2, true, 4, m).points).toBeGreaterThan(0);
+  });
+
+  type OInt = { ship: { x: number; y: number; vx: number; vy: number }; station: { x: number; y: number }; fuel: number; t: number; dist: number; predict(h: number): { pts: number[] } };
+  const fresh = (level: Level = 1, seed = 5) => {
+    const g = new OrbitGame(cfg(level, seed, { mutator: null }));
+    g.resize(W, H);
+    return { g, a: g as unknown as OInt };
+  };
+  const coast = (g: OrbitGame, sec: number) => { for (let k = 0; k < sec * 60; k++) g.update(DT); };
+  const burn = (g: OrbitGame, x: number, sec: number) => { g.pointerDown(1, x, H - 62); coast(g, sec); g.pointerUp(1); };
+
+  it('Kepler: Kreisbahn bleibt stabil, Energie bleibt erhalten', () => {
+    const { g, a } = fresh();
+    const e0 = elements(a.ship);
+    coast(g, 15);
+    const e1 = elements(a.ship);
+    expect(Math.abs(e1.energy - e0.energy) / Math.abs(e0.energy)).toBeLessThan(0.002);
+    expect(e1.e).toBeLessThan(0.01);
+  });
+
+  it('Bremsen senkt die Bahn und verkürzt den Umlauf (tiefer ist schneller); Schub hebt sie', () => {
+    const lo = fresh(), hi = fresh();
+    const a0 = elements(lo.a.ship).a, f0 = lo.a.fuel;
+    burn(lo.g, 40, 1); // links = bremsen
+    burn(hi.g, W - 40, 1); // rechts = Schub
+    const el = elements(lo.a.ship), eh = elements(hi.a.ship);
+    expect(el.a).toBeLessThan(a0 - 0.05);
+    expect(eh.a).toBeGreaterThan(a0 + 0.05);
+    expect(lo.a.fuel).toBeLessThan(f0);
+    // Apozentrum der gehobenen Bahn liegt gegenüber dem Zündpunkt
+    expect(eh.a * (1 + eh.e)).toBeGreaterThan(a0 * 1.05);
+  });
+
+  it('Vorhersage stimmt mit dem tatsächlichen Flug überein', () => {
+    const { g, a } = fresh(4, 2);
+    const p = a.predict(10).pts;
+    // Punkte alle 0,1 s: Index 100 = nach 10 s
+    const px = p[200], py = p[201];
+    coast(g, 10);
+    expect(Math.hypot(a.ship.x - px, a.ship.y - py)).toBeLessThan(0.01);
+  });
+
+  it('Andockcomputer nur im Nahbereich; dort bringt er das Schiff an die Station', () => {
+    const { g, a } = fresh();
+    g.pointerDown(1, W / 2, H - 62);
+    coast(g, 0.5);
+    g.pointerUp(1);
+    expect(a.fuel).toBeGreaterThan(0);
+    // Schiff neben die Station setzen
+    const st = a.station as { x: number; y: number; vx: number; vy: number };
+    Object.assign(a.ship, { x: st.x + 0.15, y: st.y, vx: st.vx + 0.01, vy: st.vy - 0.02 });
+    const f0 = a.fuel;
+    g.pointerDown(2, W / 2, H - 62);
+    let k = 0;
+    while (!g.result() && k++ < 60 * 40) g.update(DT);
+    expect(g.result()?.success).toBe(true);
+    expect(a.fuel).toBeLessThan(f0);
   });
 });
 
