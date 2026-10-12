@@ -63,6 +63,7 @@ interface Pocket {
 }
 interface Crystal { x: number; y: number; prog: number; state: 'ok' | 'got' | 'broken' }
 interface Zone { x: number; y: number; r: number }
+interface Crack { pts: { x: number; y: number; o: number }[]; w: number }
 interface Frag { pts: [number, number][]; rim: [number, number]; x: number; y: number; vx: number; vy: number; a: number; vr: number; t: number; slow: boolean }
 /** Asteroidenbild: Umgebungslicht, vier gerichtete Lichtschichten (+x, +y, −x, −y), Umrissmaske und das Ergebnis */
 interface AstArt { R: number; dpr: number; ambient: HTMLCanvasElement; dirs: HTMLCanvasElement[]; mask: HTMLCanvasElement; comp: HTMLCanvasElement; light: number; path: Path2D }
@@ -118,7 +119,9 @@ export class OreGame implements MiniGame {
   private coreTotal = 0;
   private coresDone = 0;
   /** Bruchlinien (lokale Punkte, vom Rand nach innen) */
-  private cracks: { x: number; y: number }[][] = [];
+  /** Rissnetz: Äste aus Punkten mit Abstand `o` vom Rand (wächst mit der Spannung von außen nach innen) */
+  private cracks: Crack[] = [];
+  private crackMax = 1;
   /** Gesteinsspannung 0–100 */
   private stress = 0;
   private collapses = 0;
@@ -254,19 +257,7 @@ export class OreGame implements MiniGame {
     this.coreTotal = this.core.length;
     this.coreOpen = false;
     // Bruchlinien: wachsen mit der Spannung vom Rand nach innen
-    this.cracks = [];
-    for (let k = 0; k < 6; k++) {
-      const a0 = (k / 6) * Math.PI * 2 + r() * 0.8;
-      let x = Math.cos(a0) * this.radiusAt(a0) * 0.98, y = Math.sin(a0) * this.radiusAt(a0) * 0.98, dir = a0 + Math.PI + (r() - 0.5) * 0.6;
-      const pts = [{ x, y }];
-      for (let i = 0; i < 9; i++) {
-        dir += (r() - 0.5) * 0.9;
-        x += Math.cos(dir) * 0.07;
-        y += Math.sin(dir) * 0.07;
-        pts.push({ x, y });
-      }
-      this.cracks.push(pts);
-    }
+    this.makeCracks(seed);
     this.stress = 0;
     // Harte Zonen
     this.zones = [];
@@ -300,6 +291,40 @@ export class OreGame implements MiniGame {
     this.burns = [];
     this.art = null;
     this.artJob = null;
+  }
+
+  /**
+   * Rissnetz: sechs Hauptrisse vom Rand nach innen, zackig (kurze Stücke, scharfe Knicke), mit Verästelungen
+   * in zwei Ebenen. Eigener Zufall, damit der übrige Asteroid gleich bleibt.
+   */
+  private makeCracks(seed: number): void {
+    const r = rng(seed ^ 0xc4ac);
+    this.cracks = [];
+    const grow = (x: number, y: number, dir: number, o: number, steps: number, w: number, depth: number): void => {
+      const pts = [{ x, y, o }];
+      for (let i = 0; i < steps; i++) {
+        // Zickzack: kleine Schwankung, ab und zu ein scharfer Knick
+        dir += (r() - 0.5) * 0.7 + (r() < 0.25 ? (r() < 0.5 ? -1 : 1) * (0.5 + r() * 0.5) : 0);
+        const st = 0.018 + r() * 0.022;
+        x += Math.cos(dir) * st;
+        y += Math.sin(dir) * st;
+        if (Math.hypot(x, y) > this.radiusAt(Math.atan2(y, x)) * 0.97) break;
+        o += st;
+        pts.push({ x, y, o });
+        // Verästelung
+        if (depth < 2 && i > 1 && r() < (depth ? 0.12 : 0.2)) {
+          const side = r() < 0.5 ? -1 : 1;
+          grow(x, y, dir + side * (0.45 + r() * 0.7), o, Math.floor((depth ? 3 : 5) + r() * (depth ? 5 : 9)), w * 0.62, depth + 1);
+        }
+      }
+      if (pts.length > 1) this.cracks.push({ pts, w });
+    };
+    for (let k = 0; k < 6; k++) {
+      const a0 = (k / 6) * Math.PI * 2 + r() * 0.8;
+      const rr = this.radiusAt(a0) * 0.99;
+      grow(Math.cos(a0) * rr, Math.sin(a0) * rr, a0 + Math.PI + (r() - 0.5) * 0.7, 0, 16 + Math.floor(r() * 10), 1, 0);
+    }
+    this.crackMax = Math.max(0.1, ...this.cracks.map((c) => c.pts[c.pts.length - 1].o));
   }
 
   private radiusAt(a: number): number {
@@ -559,8 +584,9 @@ export class OreGame implements MiniGame {
       if (this.tremorT <= 0) { this.tremorT = 1.4; sfx.warn(); buzz(15); this.floats.add(this.cx, this.cy - this.R - 6, 'Risse! Gestein entlasten', '#ffb547', 13); }
       // Staub rieselt aus den Rissen
       if (Math.random() < dt * (this.stress - 70) * 0.6) {
-        const c = this.cracks[Math.floor(Math.random() * this.cracks.length)];
-        const q = c[Math.floor(Math.random() * Math.min(c.length, 1 + (c.length - 1) * (this.stress - 20) / 80))];
+        const lim = this.crackMax * clamp((this.stress - 20) / 80, 0, 1);
+        const c = this.cracks[Math.floor(Math.random() * this.cracks.length)].pts.filter((p) => p.o <= lim);
+        const q = c[Math.floor(Math.random() * c.length)] ?? { x: 0, y: 0 };
         const [x, y] = this.toWorld(q.x, q.y);
         this.fx.add({ x, y, vx: (Math.random() - 0.5) * 30, vy: 15 + Math.random() * 25, color: '#8a7a68', size: 2 + Math.random() * 3, kind: 'dot', max: 1.2, drag: 0.5, solid: true, alpha: 0.6 });
       }
@@ -724,12 +750,22 @@ export class OreGame implements MiniGame {
     const cuts: number[] = [];
     for (let k = 0; k < n; k++) cuts.push((k + 0.2 + r() * 0.6) / n * Math.PI * 2);
     const ox = (r() - 0.5) * 0.2, oy = (r() - 0.5) * 0.2;
+    // gezackte Bruchkante je Schnitt – beide Nachbarstücke teilen sie
+    const jag = (a: number): [number, number][] => {
+      const out: [number, number][] = [];
+      let d = 0;
+      for (let f = 0.05; f < 0.92; f += 0.025 + r() * 0.03) {
+        // Zickzack mit gelegentlichen scharfen Knicken
+        d = clamp(d + (r() - 0.5) * 0.16 + (r() < 0.25 ? (r() < 0.5 ? -0.1 : 0.1) : 0), -0.16, 0.16);
+        out.push([Math.cos(a + d) * f, Math.sin(a + d) * f]);
+      }
+      return out;
+    };
+    const edges = cuts.map(jag);
     for (let k = 0; k < n; k++) {
       const a0 = cuts[k], a1 = cuts[(k + 1) % n] + (k === n - 1 ? Math.PI * 2 : 0);
       const pts: [number, number][] = [[ox, oy]];
-      // gezackte Bruchkante zur Mitte
-      const jag = (a: number): [number, number][] => [0.35, 0.7].map((f) => [Math.cos(a + (r() - 0.5) * 0.25) * f, Math.sin(a + (r() - 0.5) * 0.25) * f]);
-      const j0 = jag(a0), j1 = jag(a1).reverse();
+      const j0 = edges[k], j1 = edges[(k + 1) % n].slice().reverse();
       pts.push(...j0);
       const rim0 = pts.length;
       for (let s = 0; s <= 6; s++) { const a = a0 + (a1 - a0) * (s / 6); const rr = this.radiusAt(a) * 1.04; pts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
@@ -1107,6 +1143,7 @@ export class OreGame implements MiniGame {
       ctx.restore();
       // glühende Bruchkanten (nur innen, nicht am Außenrand)
       const edge = new Path2D();
+      ctx.miterLimit = 3;
       const [r0, r1] = f.rim;
       for (let i = r1; i < f.pts.length + r0 + 1; i++) {
         const [x, y] = f.pts[i % f.pts.length];
@@ -1117,10 +1154,10 @@ export class OreGame implements MiniGame {
         ctx.globalCompositeOperation = 'lighter';
         ctx.lineJoin = 'round';
         ctx.strokeStyle = rgba(f.slow ? '#ff5a2a' : '#ff9a40', 0.3 * hot);
-        ctx.lineWidth = 7;
+        ctx.lineWidth = 2.5;
         ctx.stroke(edge);
         ctx.strokeStyle = rgba('#ffe0a0', 0.85 * hot);
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 0.7;
         ctx.stroke(edge);
       }
       ctx.restore();
@@ -1211,34 +1248,43 @@ export class OreGame implements MiniGame {
     const f = clamp((this.stress - 20) / 80, 0, 1);
     if (f <= 0) return;
     const R = this.R;
+    const lim = f * this.crackMax;
     const glow = this.stress >= 60 ? clamp((this.stress - 60) / 40, 0, 1) * (0.6 + 0.4 * Math.sin(t * 14)) : 0;
     ctx.save();
     ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineJoin = 'miter';
+    ctx.miterLimit = 3;
     for (const c of this.cracks) {
-      const n = f * (c.length - 1);
-      ctx.beginPath();
-      ctx.moveTo(c[0].x * R, c[0].y * R);
-      for (let i = 1; i <= Math.ceil(n); i++) {
-        const k = Math.min(1, n - (i - 1));
-        const a = c[i - 1], b = c[i];
-        ctx.lineTo((a.x + (b.x - a.x) * k) * R, (a.y + (b.y - a.y) * k) * R);
+      const P = c.pts;
+      if (P[0].o >= lim) continue;
+      const path = new Path2D();
+      path.moveTo(P[0].x * R, P[0].y * R);
+      for (let i = 1; i < P.length; i++) {
+        const a = P[i - 1], b = P[i];
+        if (b.o <= lim) { path.lineTo(b.x * R, b.y * R); continue; }
+        const k = (lim - a.o) / (b.o - a.o);
+        path.lineTo((a.x + (b.x - a.x) * k) * R, (a.y + (b.y - a.y) * k) * R);
+        break;
       }
+      // feiner, dunkler Spalt mit heller Kante auf der Sonnenseite
       ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.lineWidth = 3.2 + f * 2;
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,210,170,0.14)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 0.6 + 1.1 * c.w;
+      ctx.stroke(path);
+      ctx.save();
+      ctx.translate(-Math.cos(SUN_ANGLE - this.rot) * -1, -Math.sin(SUN_ANGLE - this.rot) * -1);
+      ctx.strokeStyle = 'rgba(255,215,175,0.16)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke(path);
+      ctx.restore();
       if (glow > 0) {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = rgba('#ff6a2a', 0.25 * glow);
-        ctx.lineWidth = 9;
-        ctx.stroke();
+        ctx.strokeStyle = rgba('#ff6a2a', 0.22 * glow * c.w);
+        ctx.lineWidth = 2.5 + 2 * c.w;
+        ctx.stroke(path);
         ctx.strokeStyle = rgba('#ffc070', 0.9 * glow);
-        ctx.lineWidth = 1.4;
-        ctx.stroke();
+        ctx.lineWidth = 0.5 + 0.5 * c.w;
+        ctx.stroke(path);
       }
     }
     ctx.restore();
