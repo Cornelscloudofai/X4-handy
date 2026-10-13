@@ -70,6 +70,17 @@ export function preloadSamples(ctx?: BaseAudioContext): Promise<void> {
   return loadingAll;
 }
 
+/** Aufnahme als nahtlose Schleife (für Dauerklänge); null, wenn sie (noch) nicht geladen ist */
+export function loopSample(g: Graph, dest: AudioNode, name: string): AudioBufferSourceNode | null {
+  const b = buffers.get(name);
+  if (!b) return null;
+  const src = g.ctx.createBufferSource();
+  src.buffer = b;
+  src.loop = true;
+  src.connect(dest);
+  return src;
+}
+
 /** Aufnahme abspielen (Tonhöhe über die Abspielrate); false, wenn sie (noch) nicht geladen ist */
 export function sample(g: Graph, dest: AudioNode, name: string, o: { t: number; rate?: number; gain: number; offset?: number; dur?: number }): boolean {
   const b = buffers.get(name);

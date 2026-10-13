@@ -1,17 +1,18 @@
 // Klangdatei übernehmen: dekodieren, Stille am Ende abschneiden, Spitze auf −1 dBFS normalisieren,
 // verlustfrei als WAV (16 Bit, Originalrate, Stereo bleibt Stereo) → src/assets/sounds/<name>.wav
-// node scripts/import-sound.mjs <eingabe.(ogg|wav|mp3)> <name>
+// node scripts/import-sound.mjs <eingabe.(ogg|wav|mp3)> <name> [loop]   (loop: Schleife – nichts abschneiden, nicht ausblenden)
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { launchOpts } from './browser.mjs';
 
-const [input, name] = process.argv.slice(2);
+const [input, name, mode] = process.argv.slice(2);
+const isLoop = mode === 'loop';
 if (!input || !name) { console.error('Aufruf: node scripts/import-sound.mjs <datei> <name>'); process.exit(1); }
 const root = new URL('..', import.meta.url).pathname;
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage();
 await page.goto('about:blank');
-const r = await page.evaluate(async (b64) => {
+const r = await page.evaluate(async ([b64, isLoop]) => {
   const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const ctx = new OfflineAudioContext(2, 44100, 44100);
   const buf = await ctx.decodeAudioData(bin.buffer);
@@ -19,19 +20,19 @@ const r = await page.evaluate(async (b64) => {
   let peak = 0, last = 0;
   for (const d of chs) for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; if (v > 0.001 * peak && v > 1e-4) last = Math.max(last, i); }
   const gain = Math.pow(10, -1 / 20) / (peak || 1);
-  const n = Math.min(chs[0].length, last + Math.floor(buf.sampleRate * 0.02));
+  const n = isLoop ? chs[0].length : Math.min(chs[0].length, last + Math.floor(buf.sampleRate * 0.02));
   const nc = chs.length;
   const pcm = new Int16Array(n * nc);
   for (let i = 0; i < n; i++) for (let c = 0; c < nc; c++) {
     // die letzten 20 ms weich ausblenden
-    const fade = i > n - buf.sampleRate * 0.02 ? (n - i) / (buf.sampleRate * 0.02) : 1;
+    const fade = !isLoop && i > n - buf.sampleRate * 0.02 ? (n - i) / (buf.sampleRate * 0.02) : 1;
     pcm[i * nc + c] = Math.max(-1, Math.min(1, chs[c][i] * gain * fade)) * 32767;
   }
   const bytes = new Uint8Array(pcm.buffer);
   let s = '';
   for (let k = 0; k < bytes.length; k += 0x8000) s += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
   return { pcm: btoa(s), sr: buf.sampleRate, nc, dur: n / buf.sampleRate, gainDb: 20 * Math.log10(gain) };
-}, readFileSync(input).toString('base64'));
+}, [readFileSync(input).toString('base64'), isLoop]);
 await browser.close();
 const data = Buffer.from(r.pcm, 'base64');
 const h = Buffer.alloc(44);

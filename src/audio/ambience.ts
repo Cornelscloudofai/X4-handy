@@ -1,7 +1,7 @@
 // Atmosphäre und Klangteppich: ruhige, generative Weltraumklänge, die sich nie genau wiederholen.
 // Atmosphäre = tiefer Grundton + „Sternenwind“ (gefiltertes Rauschen) + Stationsbrummen beim Heranzoomen.
 // Klangteppich = langsam wechselnde Flächenakkorde in D-Dorisch mit vereinzelten Glockentönen; Tonart je Sektor.
-import { bell, graph, liveContext, noiseBuffer, onAudioChange, settings, tone, voiceOut } from './engine';
+import { bell, graph, liveContext, loopSample, noiseBuffer, onAudioChange, settings, tone, voiceOut } from './engine';
 
 const hz = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
 
@@ -189,6 +189,23 @@ export function loop(kind: 'drill' | 'suction' | 'beam' | 'engine'): LoopHandle 
   const out = voiceOut(g, 'sfx', { verb: 0.1 });
   out.gain.value = 0;
   const nodes: AudioScheduledSourceNode[] = [];
+  // Echte Aufnahme als Schleife, wenn vorhanden (Strahlwaffe, Bergbaulaser, Triebwerk); Tonhöhe folgt der Stärke
+  const recName = kind === 'beam' ? 'es-strahl-schleife' : kind === 'drill' ? 'es-bergbaulaser-schleife' : kind === 'engine' ? 'es-triebwerk-schleife' : '';
+  const rec = recName ? loopSample(g, out, recName) : null;
+  if (rec) {
+    const t0 = c.currentTime;
+    rec.start(t0, Math.random() * 2);
+    const base = kind === 'engine' ? 0.8 : 1;
+    return {
+      level: (v) => {
+        const t = c.currentTime;
+        const k = Math.max(0, Math.min(1, v));
+        out.gain.setTargetAtTime((kind === 'engine' ? 0.25 + 0.55 * k : 0.6) * (k > 0 ? 1 : 0), t, 0.05);
+        rec.playbackRate.setTargetAtTime(base * (0.9 + 0.25 * k), t, 0.1);
+      },
+      stop: () => { const t = c.currentTime; out.gain.setTargetAtTime(0, t, 0.06); rec.stop(t + 0.4); },
+    };
+  }
   const src = c.createBufferSource(); src.buffer = noiseBuffer(c); src.loop = true;
   const flt = c.createBiquadFilter();
   const ng = c.createGain();
