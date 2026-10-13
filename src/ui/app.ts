@@ -34,6 +34,9 @@ import { $, morph } from './dom';
 import { fmtCr } from './format';
 import { icon } from './icons';
 import { setSound, sfx, soundEnabled } from './sound';
+import { initLifecycle, meterPeak, renderOffline, setLevel, type Bus } from '../audio/engine';
+import { setNear, setScene, setSectorMood } from '../audio/ambience';
+import { SOUND_DEMO } from '../audio/sounds';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { buyOffers, defaultBuyModal } from './buyView';
@@ -106,6 +109,15 @@ export function start(): void {
   document.addEventListener('scroll', () => { if (!coachRaf) coachRaf = requestAnimationFrame(() => { coachRaf = 0; renderCoach(state, ui); }); }, true);
   initBackButton();
   document.addEventListener('change', onChange);
+  // Mischpult: Regler wirken sofort, ein kurzer Klang zeigt die neue Lautstärke
+  document.addEventListener('input', (e) => {
+    const el = e.target as HTMLInputElement;
+    const bus = el.dataset?.vol as Bus | 'master' | undefined;
+    if (!bus) return;
+    setLevel(bus, Number(el.value) / 100);
+    if (bus === 'ui' || bus === 'master') sfx.tick(); else if (bus === 'sfx') sfx.hit();
+  });
+  initLifecycle();
   initEditor();
   // Schieberegler live nachführen
   document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-order-price', 'sell-order-keep', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
@@ -127,7 +139,7 @@ export function start(): void {
     if (e.type === 'toast' && !(ui.modal && e.kind === 'info')) toast(e.text, e.kind);
     if (e.type === 'sale' && e.sector === ui.sector && Math.abs(e.value) >= 1000 && ui.view === 'sector') {
       renderer.addFloat(e.sector, e.x, e.z, e.value);
-      if (e.value > 0) sfx.coin();
+      if (e.value > 0) sfx.coin(e.value);
       // Große Verkäufe: Credits fliegen zur Anzeige
       if (e.value >= COIN_MIN) {
         const [sx, sy] = cam.toScreen(e.x, e.z);
@@ -136,22 +148,25 @@ export function start(): void {
       }
     }
     if (e.type === 'chapter') chapterBanner(e);
+    if (e.type === 'toast' && (e.kind === 'warn' || e.kind === 'bad')) sfx.warn();
     if (e.type === 'moduleDone') {
-      sfx.build();
+      sfx.buildDone();
       navigator.vibrate?.(15);
       const st = state.stations.find((x) => x.id === e.station);
       if (st) renderer.burstAt(st.sector, st.x, st.z, '#3fe0c5', 1);
     }
     if (e.type === 'shipBuilt') {
+      sfx.launch();
       const st = state.stations.find((x) => x.id === e.station);
       if (st) renderer.burstAt(st.sector, st.x, st.z, '#ffb547', 1.4);
     }
-    if (e.type === 'contractDone' || e.type === 'story') sfx.success();
+    if (e.type === 'contractDone') sfx.success();
     dirtyUI = true;
   });
   renderUI();
   fitSector();
   // Zugriff für automatisierte Tests
+  (window as unknown as { __audio: unknown }).__audio = { names: SOUND_DEMO.map((x) => x[0]), render: (i: number, sec: number) => renderOffline(SOUND_DEMO[i][1], sec), meterPeak };
   (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector, renderer };
   requestAnimationFrame(frame);
   const boot = document.getElementById('boot');
@@ -198,11 +213,23 @@ function fitGalaxy(): void {
 
 // ---------- Schleife ----------
 
+let audioSceneNow = '';
+let moodSector = '';
+let lastNear = -1;
+function audioScene(s: 'map' | 'minigame' | 'menu'): void {
+  if (s !== audioSceneNow) { audioSceneNow = s; setScene(s); }
+}
+
 function frame(now: number): void {
   const dt = Math.min(0.25, lastFrame ? (now - lastFrame) / 1000 : 0.016);
   lastFrame = now;
   // Während eines Minispiels ruht das Hauptspiel (keine Simulation, kein Zeichnen)
-  if (minigameOpen()) { requestAnimationFrame(frame); return; }
+  if (minigameOpen()) { audioScene('minigame'); requestAnimationFrame(frame); return; }
+  audioScene(ui.modal?.type === 'welcome' ? 'menu' : 'map');
+  if (ui.sector !== moodSector) { moodSector = ui.sector; setSectorMood(moodSector); }
+  // Stationsbrummen: je näher herangezoomt, desto deutlicher
+  const nearV = ui.view === 'sector' ? Math.max(0, Math.min(1, (cam.zoom / (cam.fitZoom || 1) - 3) / 10)) : 0;
+  if (Math.abs(nearV - lastNear) > 0.03) { lastNear = nearV; setNear(nearV); }
   if (!ui.paused && !(ui.modal && (ui.modal.type === 'welcome' || ui.modal.type === 'offline'))) step(state, dt * state.speed);
   followShip();
   zoomTick(dt);
@@ -273,6 +300,7 @@ function tickCredits(dt: number): void {
 
 /** Großes Banner in Fraktionsfarbe, wenn ein Kapitel abgeschlossen ist */
 function chapterBanner(e: { index: number; title: string; credits: number; faction: keyof typeof FACTIONS }): void {
+  sfx.chapter();
   const color = FACTIONS[e.faction].color;
   const host = $('banner');
   host.innerHTML = `<div class="banner-in" style="--fc:${color}"><div class="banner-glow"></div><small>Kapitel ${e.index + 1} abgeschlossen</small><b>${e.title.replace(/[<&>]/g, '')}</b><span class="num">+${fmtCr(e.credits)}</span></div>`;
@@ -396,6 +424,7 @@ function toast(text: string, kind: 'info' | 'good' | 'warn' | 'bad' = 'info'): v
 }
 
 function result(r: A.Result): void {
+  if (!r.ok) sfx.deny();
   toast(r.msg, r.ok ? 'good' : 'warn');
   refresh();
 }
@@ -643,7 +672,12 @@ function onClick(e: MouseEvent): void {
   const d = el.dataset;
   const a = d.act!;
   coachNotify(state, ui, a);
-  if (a.startsWith('open') || a === 'nav' || a.endsWith('modal')) sfx.open();
+  // Klang passend zur Handlung (Spezialfälle wie Kauf und Bau klingen in ihrer Aktion)
+  if (a === 'close-panel' || a === 'modal-close' || a === 'back') sfx.close();
+  else if (a.endsWith('-toggle')) sfx.toggle(true);
+  else if (a === 'accept' || a === 'order-accept') sfx.accept();
+  else if (a === 'sound-demo') { /* spielt den gewählten Klang */ }
+  else if (a.startsWith('open') || a === 'nav' || a.endsWith('modal')) sfx.open();
   else sfx.tap();
   const run = (): void => {
     switch (a) {
@@ -654,6 +688,7 @@ function onClick(e: MouseEvent): void {
       break;
     }
     case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
+      case 'sound-demo': SOUND_DEMO[Number(d.i)]?.[1](); break;
       case 'help': ui.modal = { type: 'help', topic: d.topic || undefined }; refresh(); break;
       case 'start-game': runConfirmed('start-game', { kind: d.kind ?? 'mining' }); break;
       case 'coach-next': markCoachSeen(state, d.id!); if (d.id === 'finish') { state.help = { ...state.help, coachOff: true }; } refresh(); break;
@@ -1048,6 +1083,7 @@ function onClick(e: MouseEvent): void {
         const r = A.queueModule(state, d.st!, d.def!, at);
         // Eine Einfügestelle wird mit einem Modul belegt, danach zurück zur Liste
         if (r.ok && ui.modal?.type === 'modules' && ui.modal.at !== undefined) ui.modal = null;
+        if (r.ok) sfx.build();
         result(r);
         break;
       }
@@ -1077,7 +1113,7 @@ function onClick(e: MouseEvent): void {
       }
       case 'modal-close': ui.modal = null; refresh(); break;
       case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all' }; refresh(); break;
-      case 'buyship': result(A.buyShip(state, d.cls!, d.st!)); break;
+      case 'buyship': { const r = A.buyShip(state, d.cls!, d.st!); if (r.ok) sfx.launch(); result(r); break; }
       case 'buy-price-off': {
         const st = stationById(state, d.st!);
         if (st?.trade[d.ware!]) { delete st.trade[d.ware!].price; delete st.trade[d.ware!].fill; }

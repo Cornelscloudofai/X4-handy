@@ -10,6 +10,7 @@
 // Tempostoß und laden Δv nach, wenn man genau durch die Mitte driftet. Ab Stufe 2 fädeln Schiffe aus Feldschleusen ein.
 // Am Ende die Ausfahrt auf der richtigen Seite treffen.
 import { sfx } from '../ui/sound';
+import { sustain } from '../audio/ambience';
 import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite, shipSprite, type FighterSprite } from '../render/shipArt';
 import {
@@ -328,6 +329,8 @@ export class HighwayGame implements MiniGame {
       return;
     }
     this.time += dt;
+    // Triebwerk: wird mit dem Tempo heller
+    sustain('hw-engine', 'engine', 0.3 + 0.6 * Math.min(1, Math.max(0, me.vy - V_MIN) / (V_MAX + 200 - V_MIN)));
     // Steuerung: links/rechts = Seitenschub, beide = Gegenschub nach vorn
     let l: boolean, rr: boolean;
     if (this.auto) ({ l, r: rr } = this.auto);
@@ -389,7 +392,7 @@ export class HighwayGame implements MiniGame {
     if (Math.abs(this.me.vx) < 0.2) return;
     this.shake = 0.2;
     this.fx.burst(this.sx(this.me.x), this.shipY, '#7fe8ff', 10, 140, 1.4, 'spark', 0.3);
-    sfx.tap();
+    sfx.thrust(this.me.vx < 0 ? -0.6 : 0.6);
   }
 
   /** Feldverstärker: genau durch die Mitte driften = Tempostoß und Δv */
@@ -409,7 +412,8 @@ export class HighwayGame implements MiniGame {
         this.floats.add(px, py - 50, `Feldstoß +${p}`, '#ffd27a', 15);
         this.fx.burst(px, py - 20, '#ffe2a0', 22, 260, 1.6, 'spark', 0.5);
         this.fx.add({ x: px, y: py - 10, color: '#ffd27a', size: this.laneW * 0.5, kind: 'ring', max: 0.45 });
-        sfx.coin();
+        sfx.chime();
+        sfx.boost();
         buzz(15);
       } else {
         g.state = -1;
@@ -505,7 +509,7 @@ export class HighwayGame implements MiniGame {
           this.fx.burst(px, py, '#ffd0a0', 18, 220, 1.6, 'spark', 0.4);
           this.fx.add({ x: px, y: py, color: '#ff9a7a', size: 10, kind: 'ring', max: 0.4 });
           this.floats.add(px, py - 20, o.mass > this.me.mass ? 'Abgeprallt!' : 'Weggestoßen!', '#ff9aa4', 14);
-          sfx.warn();
+          sfx.hull();
           buzz(50);
         }
       }

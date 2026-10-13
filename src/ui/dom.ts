@@ -53,7 +53,8 @@ function sameKind(a: Node, b: Node): boolean {
 function patchElement(t: Element, s: Element): void {
   const prevTween = t.getAttribute('data-tween');
   // Attribute
-  for (const attr of Array.from(t.attributes)) if (!s.hasAttribute(attr.name)) t.removeAttribute(attr.name);
+  // Aufgeklappte Abschnitte (<details open>) bleiben offen – das hat der Nutzer so gewählt
+  for (const attr of Array.from(t.attributes)) if (!s.hasAttribute(attr.name) && !(attr.name === 'open' && t.tagName === 'DETAILS')) t.removeAttribute(attr.name);
   for (const attr of Array.from(s.attributes)) if (t.getAttribute(attr.name) !== attr.value) t.setAttribute(attr.name, attr.value);
   if (t instanceof HTMLInputElement && s instanceof HTMLInputElement) {
     if (document.activeElement !== t && t.value !== s.value) t.value = s.value;

@@ -7,6 +7,7 @@
 // mehr, je schlechter das Rendezvous war. Ab Stufe 4 zieht ein Mond die Bahn (Swing-by: Vorbeiflug ändert die Bahnenergie).
 // Wer zu tief fliegt, wird von der Atmosphäre gebremst (Aerobremsung) – oder stürzt ab.
 import { sfx } from '../ui/sound';
+import { sustain } from '../audio/ambience';
 import { BG_IMAGES } from '../render/bgImages';
 import { fbm, perlin } from '../render/noise';
 import { shipSprite, stationCoreSprite, moduleSprite } from '../render/shipArt';
@@ -513,7 +514,8 @@ export class OrbitGame implements MiniGame {
     }
     const inp = this.input;
     const burning = (inp.pro !== inp.retro) && this.fuel > 0;
-    if (burning && !this.wasBurning) this.burns++;
+    if (burning && !this.wasBurning) { this.burns++; sfx.thrust(); }
+    if (burning && this.endT < 0) sustain('orbit-burn', 'engine', 0.75);
     this.wasBurning = burning;
     const warp = inp.warp && !burning && !inp.dock ? WARP : 1;
     this.accum += Math.min(dt, 0.05) * warp;
@@ -596,7 +598,7 @@ export class OrbitGame implements MiniGame {
           this.floats.add(this.px(s.x), this.py(s.y) - 20, `Swing-by: ${dE > 0 ? '+' : '−'}${dv} m/s ohne Treibstoff`, '#c8b8ff', 14);
           const p = this.score.add(300);
           this.floats.add(this.px(s.x), this.py(s.y) - 2, `+${p}`, '#c8b8ff', 13);
-          sfx.coin();
+          sfx.chime();
         }
         this.swingE0 = null;
       }
@@ -611,7 +613,7 @@ export class OrbitGame implements MiniGame {
         this.floats.add(this.px(s.x), this.py(s.y) - 16, 'Trümmertreffer: −10 % Δv', '#ff9aa4', 14);
         this.fx.burst(this.px(s.x), this.py(s.y), '#ffd0a0', 16, 160, 1.5, 'spark', 0.4);
         this.score.reset();
-        sfx.warn();
+        sfx.hull();
         buzz(40);
       }
     }
@@ -649,12 +651,12 @@ export class OrbitGame implements MiniGame {
       this.floats.add(x, y - 30, `Angedockt! +${p}`, '#6be38f', 18);
       this.fx.add({ x, y, color: '#6be38f', size: 30, kind: 'ring', max: 0.7 });
       this.fx.burst(x, y, '#c8ffd8', 20, 120, 1.4, 'spark', 0.6);
-      sfx.coin();
+      sfx.dock();
       buzz(30);
     } else {
       if (o === 'crash') { this.fx.burst(x, y, '#ffb070', 40, 220, 2, 'spark', 0.8); this.fx.add({ x, y, color: '#ff8a5a', size: 26, kind: 'ring', max: 0.6 }); buzz(120); }
       this.floats.add(this.w / 2, this.h * 0.35, o === 'crash' ? 'Abgestürzt!' : o === 'lost' ? 'In den Raum entkommen' : 'Andockfenster verpasst', '#ff9aa4', 18);
-      sfx.warn();
+      if (o === 'crash') sfx.explosion(1.6); else sfx.warn();
     }
     return false;
   }

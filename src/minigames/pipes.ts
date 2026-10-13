@@ -203,7 +203,7 @@ export class PipesGame implements MiniGame {
   /** Feld antippen (auch für Tests) */
   tap(i: number): void {
     const cells = rotate(this.b, i);
-    if (!cells.length) { sfx.warn(); return; }
+    if (!cells.length) { sfx.deny(); return; }
     this.moves++;
     this.boardMoves++;
     if (this.b.group[i] >= 0) this.valveTurns[this.b.group[i]] = (this.valveTurns[this.b.group[i]] ?? 0) + 1;
@@ -216,10 +216,11 @@ export class PipesGame implements MiniGame {
       this.score.bump(0.5, 3);
       const pts = this.score.add((after - before) * 15);
       this.floats.add(px, py - 10, `+${pts}`, '#ffd27a', 12);
-      sfx.coin();
+      sfx.valve();
+      sfx.flow();
     } else {
       if (after < before) this.score.reset();
-      sfx.tap();
+      sfx.valve();
     }
     if (this.p.mixed.length) this.floats.add(px, py - 10, 'Vermischt!', '#ff9aa4', 13);
     buzz(8);
@@ -245,7 +246,7 @@ export class PipesGame implements MiniGame {
       setGoal(this.goals, 'chain5', this.boards >= 5);
       setGoal(this.goals, 'chain8', this.boards >= 8);
     }
-    sfx.build();
+    sfx.buildDone();
   }
 
   update(dt: number): void {
@@ -275,7 +276,7 @@ export class PipesGame implements MiniGame {
       const leaks = Math.min(4, this.p.leaks.length);
       this.pressure = clamp(this.pressure + (leaks ? -leaks * this.pressureRate : 3) * dt, 0, 100);
       this.minPressure = Math.min(this.minPressure, this.pressure);
-      if (this.pressure <= 0) { this.failed = 'Druck verloren'; this.won = 0; sfx.warn(); return; }
+      if (this.pressure <= 0) { this.failed = 'Druck verloren'; this.won = 0; sfx.fail(); return; }
     }
     if (this.mode !== 'chain') setGoal(this.goals, 'pressure', this.minPressure >= 60);
     for (const [c, d] of this.p.leaks) {

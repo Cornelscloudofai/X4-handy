@@ -8,6 +8,7 @@
 // gibt es mehr Punkte – aber Kristalle zerspringen). Ist ein Asteroid ausgebeutet, zerbricht er – der nächste kommt.
 import { WARES } from '../data/wares';
 import { sfx } from '../ui/sound';
+import { sustain } from '../audio/ambience';
 import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
@@ -432,7 +433,7 @@ export class OreGame implements MiniGame {
     this.overheated = false;
     const [sx, sy] = this.ship;
     for (let k = 0; k < 24; k++) { const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4; this.fx.add({ x: sx, y: sy, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, color: '#bfefff', size: 2.4, max: 0.7 }); }
-    sfx.open();
+    sfx.flow();
   }
 
   /** Laser umschalten: breit ↔ fein */
@@ -441,7 +442,7 @@ export class OreGame implements MiniGame {
     this.mode = this.mode === 'wide' ? 'fine' : 'wide';
     const [mx, my] = this.modeBtn;
     this.floats.add(mx, my - 34, `Laser ${MODES[this.mode].name}`, '#ffd27a', 13);
-    sfx.open();
+    sfx.toggle(this.mode === 'fine');
   }
 
   private endStreak(): void {
@@ -492,6 +493,8 @@ export class OreGame implements MiniGame {
     }
     const m = MODES[this.mode];
     const active = this.firing && !this.overheated;
+    // Bohrlaser: Mahlen, solange er läuft; heißer = schärfer
+    if (active && this.endT < 0) sustain('ore-drill', 'drill', 0.35 + 0.6 * Math.min(1, this.heat / 100));
     const brittle = this.mutator?.id === 'brittle' ? 2 : 1;
     this.hit = 'space';
     this.hotRun = false;
@@ -604,7 +607,7 @@ export class OreGame implements MiniGame {
       this.coreFlash = 1;
       this.flash = 0.35;
       this.flashColor = '#fff0b0';
-      sfx.coin();
+      sfx.chime();
     }
     const leftCore = this.core.reduce((q, p) => q + Math.max(0, p.a), 0);
     if (this.coreOpen && this.coreTotal && leftCore < this.coreTotal * 0.15 && !this.core.every((p) => p.a < -1)) {
@@ -613,7 +616,7 @@ export class OreGame implements MiniGame {
       for (const p of this.core) p.a = -2;
       const p = this.score.add(500);
       this.floats.add(this.cx, this.cy - 30, `Kernader ausgebeutet +${p}`, '#fff0b0', 16);
-      sfx.build();
+      sfx.coin(50000);
     }
     // Ausgebeutet (Deckadern und Kern): Asteroid zerbricht
     if (leftNormal < this.astTotal * 0.08 && this.core.every((p) => p.a < -1)) this.breakAsteroid();
@@ -657,7 +660,7 @@ export class OreGame implements MiniGame {
             const pts = this.score.add(150);
             this.floats.add(px, py - 12, `Abgelassen +${pts}`, '#7fd8ff', 14);
             this.fx.add({ x: px, y: py, color: '#7fd8ff', size: 8, kind: 'ring', max: 0.5 });
-            sfx.open();
+            sfx.valve();
           }
         } else this.explode(p);
       } else if (d <= 0.2) {
@@ -691,7 +694,7 @@ export class OreGame implements MiniGame {
     for (const o of this.pockets) if (o.alive && Math.hypot(o.x - p.x, o.y - p.y) < 0.32) o.press += 0.6;
     this.endStreak();
     this.shake = 0.45;
-    sfx.warn();
+    sfx.explosion(1);
     buzz(60);
   }
 
@@ -705,7 +708,7 @@ export class OreGame implements MiniGame {
         c.state = 'broken';
         this.fx.burst(px, py, '#9ff3ff', 18, 220, 1.8, 'chunk', 0.7);
         this.floats.add(px, py - 14, 'Zersprungen', '#9ff3ff', 13);
-        sfx.warn();
+        sfx.crack();
         continue;
       }
       c.prog += dt * (fine ? 1.4 : 0.6);
@@ -717,7 +720,7 @@ export class OreGame implements MiniGame {
         this.floats.add(px, py - 14, `Kristall +${p}`, '#9ff3ff', 16);
         const [sx, sy] = this.ship;
         for (let k = 0; k < 8; k++) this.fx.add({ x: px, y: py, vx: (Math.random() - 0.5) * 160, vy: (Math.random() - 0.5) * 160, color: '#9ff3ff', size: 2.6, kind: 'chunk', max: 3, tx: sx, ty: sy - 10 });
-        sfx.coin();
+        sfx.crystal();
       }
     }
   }
@@ -736,7 +739,7 @@ export class OreGame implements MiniGame {
       this.fx.add({ x: this.cx + Math.cos(a) * d, y: this.cy + Math.sin(a) * d, vx: Math.cos(a) * (120 + Math.random() * 200), vy: Math.sin(a) * (120 + Math.random() * 200), color: k % 3 ? (k % 2 ? '#4a4038' : '#6a5e52') : this.color, size: 2 + Math.random() * 4, kind: 'chunk', max: 1.2, vr: (Math.random() - 0.5) * 8, solid: k % 3 !== 0 });
     }
     this.shake = 0.5;
-    sfx.build();
+    sfx.explosion(2);
     buzz(80);
   }
 
@@ -797,7 +800,7 @@ export class OreGame implements MiniGame {
       this.fx.add({ x: this.cx + Math.cos(a) * d, y: this.cy + Math.sin(a) * d, vx: Math.cos(a) * (40 + Math.random() * 120), vy: Math.sin(a) * (40 + Math.random() * 120) + 40, color: k % 4 ? (k % 2 ? '#3e352e' : '#5a4e44') : '#ff8a4a', size: 2 + Math.random() * 5, kind: 'chunk', max: 1.6, vr: (Math.random() - 0.5) * 6, solid: k % 4 !== 0 });
     }
     this.shake = 0.9;
-    sfx.warn();
+    sfx.explosion(3);
     buzz(120);
   }
 

@@ -325,7 +325,7 @@ export class CargoGame implements MiniGame {
       const cur = this.current;
       if (cur && sx >= 0 && sy >= 0 && sx < this.cols && sy < this.rows) {
         const c = clamp(Math.floor(sx - cur.cw / 2 + 0.5), 0, this.cols - cur.cw), r = Math.floor(sy);
-        if (this.fits(cur, c, r)) { this.target = [c, r]; this.targetPicked = true; sfx.tap(); return; }
+        if (this.fits(cur, c, r)) { this.target = [c, r]; this.targetPicked = true; sfx.tick(); return; }
       }
       if (!b) return;
     }
@@ -373,7 +373,7 @@ export class CargoGame implements MiniGame {
     const [px, py] = this.toPx(b.x, b.y);
     this.fx.add({ x: px, y: py, color: '#7fd8ff', size: 8, kind: 'ring', max: 0.35 });
     for (let k = 0; k < 8; k++) this.fx.add({ x: px, y: py, vx: -jx * 20 + (Math.random() - 0.5) * 60, vy: -jy * 20 + (Math.random() - 0.5) * 60, color: '#bfefff', size: 1.6, kind: 'spark', max: 0.3 });
-    sfx.tap();
+    sfx.thrust();
   }
 
   /** Traktorstrahl: Container anhalten (Gegenimpuls), kostet Zeit */
@@ -386,7 +386,7 @@ export class CargoGame implements MiniGame {
     const [px, py] = this.toPx(b.x, b.y);
     this.fx.add({ x: px, y: py, color: '#9fffd0', size: this.S * 0.4, kind: 'ring', max: 0.4 });
     this.floats.add(px, py - this.S * 0.5, `Traktorstrahl +${String(PEN_TRACTOR).replace('.', ',')} s`, '#9fffd0', 12);
-    sfx.open();
+    sfx.boost();
   }
 
   // ---------- Physik ----------
@@ -571,7 +571,7 @@ export class CargoGame implements MiniGame {
       if (r === 'out') {
         this.lost++;
         this.floats.add(...this.toPx(b.x, this.rows), `Ins All getrieben! +${PEN_LOST} s`, '#ff9aa4', 14);
-        sfx.warn();
+        sfx.fail();
         buzz(40);
         b.state = 'queue'; b.vx = b.vy = 0;
         this.boxes.splice(this.boxes.indexOf(b), 1);
@@ -613,7 +613,7 @@ export class CargoGame implements MiniGame {
     b.hit = 1;
     const [px, py] = this.toPx(b.x, b.y);
     this.fx.burst(px, py, '#ffd0a0', 6, 90, 1.3, 'spark', 0.25);
-    sfx.tap();
+    sfx.place();
   }
 
   /** Einrasten: Klammern schließen, Kombo für Volltreffer */
@@ -630,7 +630,8 @@ export class CargoGame implements MiniGame {
     if (clean) { this.cleanCount++; this.score.bump(0.5, 999); }
     const p = this.score.add(100);
     this.floats.add(px, py - this.S * 0.5, clean ? `Volltreffer +${p}` : `+${p}`, clean ? '#9fffd0' : '#ffd27a', 13);
-    sfx.coin();
+    sfx.place();
+    if (clean) sfx.chime();
     buzz(15);
     this.target = null;
     this.targetPicked = false;
@@ -651,7 +652,7 @@ export class CargoGame implements MiniGame {
     setGoal(this.goals, 'balance', com <= 5 && left === 0);
     setGoal(this.goals, 'fast', left === 0 && this.time + penalty <= TARGET[this.level][0]);
     if (left) this.floats.add(this.w / 2, this.h / 2, 'Zeit abgelaufen', '#ff9aa4', 18);
-    else sfx.build();
+    else sfx.buildDone();
   }
 
   private finish(): GameResult {

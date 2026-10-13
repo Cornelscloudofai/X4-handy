@@ -260,7 +260,7 @@ function setPhase(p: Phase): void {
       <div class="mg-lines">${r.lines.map(([k, v]) => `<div><small>${esc(k)}</small><b class="num">${esc(v)}</b></div>`).join('')}</div>
       ${r.goals.length ? `<div class="mg-goals">${r.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}${o?.newBadges.includes(q.id) ? '<em>Neues Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
       <div class="mg-actions">${s.replay ? '<button class="btn ghost" data-mg="again">Nochmal</button>' : ''}<button class="btn primary" data-mg="quit">Fertig</button></div></div>`;
-    if (r.success) sfx.success(); else sfx.warn();
+    if (r.success) sfx.success(); else sfx.fail();
   }
 }
 

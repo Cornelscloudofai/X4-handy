@@ -51,6 +51,8 @@ import { canUndo, undoLabel } from './undo';
 import { fmtAmount, fmtClock, fmtCr, fmtDur, fmtInt, fmtNum, pct } from './format';
 import { icon } from './icons';
 import { soundEnabled } from './sound';
+import { BUSES, BUS_LABEL, settings as audioSettings } from '../audio/engine';
+import { SOUND_DEMO } from '../audio/sounds';
 import { buildModal, diagramEditor, pickerModal, plannerPanel } from './plannerView';
 import { sellModalHtml } from './sellView';
 import { buyModalHtml } from './buyView';
@@ -1426,8 +1428,11 @@ function morePanel(state: GameState, ui: UIState): string {
           ${toggleRow('Animationen und Effekte', 'Funken, Triebwerke, driftende Nebel', !ui.reducedMotion, ui.reducedMotion ? 'Reduziert' : 'Voll', 'motion-toggle')}
         </div></div>
         <div class="section"><h3>Ton</h3><div class="box rows">
-          ${toggleRow('Klänge', 'Bei Bau, Verkauf und Erfolgen', soundEnabled(), soundEnabled() ? 'An' : 'Aus', 'sound-toggle')}
-        </div></div>`);
+          ${toggleRow('Klänge', 'Oberfläche, Effekte, Atmosphäre und Klangteppich', soundEnabled(), soundEnabled() ? 'An' : 'Aus', 'sound-toggle')}
+        </div>
+        ${soundEnabled() ? `<div class="box mixer">${(['master', ...BUSES] as const).map((k) => `<label class="mix-row"><span>${k === 'master' ? 'Gesamt' : BUS_LABEL[k]}</span><input type="range" min="0" max="100" step="1" value="${Math.round(audioSettings[k] * 100)}" data-vol="${k}" aria-label="Lautstärke ${k === 'master' ? 'gesamt' : BUS_LABEL[k]}"></label>`).join('')}</div>
+        <details class="explain sound-demo"><summary>${icon('info', 16)}Hörprobe aller Klänge</summary><p class="small muted" style="margin:0 0 8px">Antippen spielt den Klang. Sag mir gern die Nummer, wenn einer nicht passt.</p>
+          <div class="demo-grid">${SOUND_DEMO.map(([n], i) => `<button class="btn small" data-act="sound-demo" data-i="${i}"><span class="num muted">${i + 1}</span>${esc(n)}</button>`).join('')}</div></details>` : ''}</div>`);
     }
     case 'save':
       return page(`

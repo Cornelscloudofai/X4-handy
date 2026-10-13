@@ -7,6 +7,7 @@
 // volle, reine Tanks in Folge erhöhen die Kombo.
 import { WARES } from '../data/wares';
 import { sfx } from '../ui/sound';
+import { sustain } from '../audio/ambience';
 import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
@@ -387,6 +388,9 @@ export class GasGame implements MiniGame {
     const fs = this.auto ? this.auto.fs : null;
     if (fs != null) this.funnel += clamp(fs - this.funnel, -1.2 * dt, 1.2 * dt);
     else if (this.size) this.funnel = clamp(this.funnel - this.size.ky * 1.1 * dt, 0, 1);
+    // Sauger (größerer Trichter = tiefer und kräftiger) und Triebwerk nach Tempo
+    sustain('gas-suck', 'suction', 0.25 + 0.45 * this.funnel + (this.catching > 0 ? 0.2 : 0));
+    sustain('gas-engine', 'engine', Math.min(1, Math.hypot(this.vx, this.vy) / 270) * 0.8);
     // Fliegen: linker Stick, Trägheit; großer Trichter macht träge
     const maxV = 270 * (1 - 0.45 * this.funnel);
     const mx = this.auto ? this.auto.mx : this.move?.kx ?? 0, my = this.auto ? this.auto.my : this.move?.ky ?? 0;
@@ -459,7 +463,7 @@ export class GasGame implements MiniGame {
         this.sparksCaught++;
         this.charge += 0.15;
         this.fx.burst(f.x, f.y, SPARK, 6, 120, 1.2, 'spark', 0.25);
-        sfx.tap();
+        sfx.hit();
         if (this.charge >= 1) this.overload();
         continue;
       }
@@ -486,7 +490,7 @@ export class GasGame implements MiniGame {
     this.shake = 0.4;
     this.fx.burst(this.x, this.y, SPARK, 26, 280, 1.6, 'spark', 0.5);
     this.floats.add(this.x, this.y - 44, 'Überschlag!', '#d9c2ff', 15);
-    sfx.warn();
+    sfx.explosion(0.8);
     buzz(60);
   }
 
@@ -530,7 +534,7 @@ export class GasGame implements MiniGame {
       this.vx = ((this.x - sx) / Math.max(1, dShip)) * 220;
       this.vy = ((this.y - sy) / Math.max(1, dShip)) * 220;
       this.fx.burst(this.x, this.y, SPARK, 24, 300, 1.6, 'spark', 0.45);
-      sfx.warn();
+      sfx.hull();
       buzz(60);
     } else {
       this.flash = Math.max(this.flash, 0.18);
@@ -573,7 +577,7 @@ export class GasGame implements MiniGame {
         if (this.unloadStart < this.cap * 0.3) return;
         if (pure) this.pureUnloads++;
         this.floats.add(mx, my - 44, pure ? 'Rein gesichert +20 %' : `Gesichert (Reinheit ${Math.round(pureStart * 100)} %)`, pure ? '#6be38f' : '#c8d0a0', 14);
-        sfx.coin();
+        sfx.coin(pure ? 60000 : 20000);
         // Volle, reine Ladung: Kombo steigt (hält bis zur nächsten; Überschlag, Blitz und trübe Ladung setzen zurück)
         if (full && pure) { this.fullUnloads++; this.score.bump(0.5, 30); this.floats.add(mx, my - 64, `Volle Ladung ×${String(this.score.combo).replace('.', ',')}`, '#ffd27a', 15); }
         else if (full) { this.fullUnloads++; this.score.reset(); }
