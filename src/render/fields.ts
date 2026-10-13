@@ -4,6 +4,7 @@
 import { WARES } from '../data/wares';
 import type { Camera } from './camera';
 import { rgba, rng } from './sprites';
+import { spriteNames, spriteUrl } from './shipArt';
 
 interface Rock {
   /** Versatz zur Feldmitte in km */
@@ -51,7 +52,8 @@ export function rockField(id: string, ware: string, radius: number, seed: number
     return { dx: k.dx + Math.cos(a) * d, dz: k.dz + Math.sin(a) * d };
   };
   const rocks: Rock[][] = [[], [], []];
-  const kmPerPx = (R * 2.6) / 512; // gleiche Größen wie das frühere Feldbild
+  // Brockengröße: rund zwei Drittel des früheren Feldbilds – kleinere Brocken kommen beim Heranzoomen dazu
+  const kmPerPx = ((R * 2.6) / 512) * 0.65;
   const n = ware === 'nividium' ? 170 : 340;
   for (let i = 0; i < n; i++) {
     const p = around();
@@ -235,7 +237,7 @@ const BUDGET = 16e6; // Pixel – Speichergrenze fürs Handy
  */
 function zoomSprite(id: string, ware: string, data: FieldData, layer: number, zb: number, depth: number, dpr: number, base: string, accent: string): HTMLCanvasElement | null {
   const now = performance.now();
-  const key = `${id}:${layer}:${zb.toFixed(4)}:${dpr}`;
+  const key = `${id}:${layer}:${zb.toFixed(4)}:${dpr}:${rockTexturesReady() ? 't' : 'v'}`;
   const hit = zoomCache.get(key);
   if (hit) {
     hit.used = now;
@@ -291,14 +293,20 @@ function drawLayerBatched(ctx: CanvasRenderingContext2D, cam: Camera, rocks: Roc
   const iceEdge = new Path2D();
   const dust = [new Path2D(), new Path2D()];
   let iceEdgeW = 0.6;
+  // Große Brocken bekommen die Asteroidentextur (sobald die Bilder geladen sind)
+  const texOn = rockTexturesReady();
+  const texList: { x: number; y: number; size: number; rock: Rock }[] = [];
   for (const rock of rocks) {
     const rx = rock.dx * cos - rock.dz * sin, rz = rock.dx * sin + rock.dz * cos;
     const x = lx + rx * z, y = ly + rz * z;
     const size = rock.s * z;
     if (x < -size - 4 || y < -size - 4 || x > cam.w + size + 4 || y > cam.h + size + 4) continue;
     const t = Math.min(TONES - 1, Math.floor(rock.tone * TONES));
+    if (texOn && !rock.dust && size * 1.9 >= TEX_MIN) { texList.push({ x, y, size, rock }); continue; }
     if (rock.dust || size < 1.1) {
       const d = Math.max(0.6, size * 1.4);
+      // feiner Staub nur aus der Ferne – nah übernehmen die Detailstufen (sonst flache Quadrate)
+      if (d > 3.5) continue;
       dust[rock.tone > 0.5 ? 1 : 0].rect(x - d / 2, y - d / 2, d, d);
       continue;
     }
@@ -340,6 +348,7 @@ function drawLayerBatched(ctx: CanvasRenderingContext2D, cam: Camera, rocks: Roc
     ctx.strokeStyle = 'rgba(235,250,255,0.75)';
     ctx.lineWidth = iceEdgeW;
     ctx.stroke(iceEdge);
+    drawTexturedRocks(ctx, texList, ware);
     return;
   }
   ctx.fillStyle = shade(base, 0.38);
@@ -348,4 +357,196 @@ function drawLayerBatched(ctx: CanvasRenderingContext2D, cam: Camera, rocks: Roc
   ctx.fill(craters);
   ctx.fillStyle = rgba(accent, ware === 'nividium' ? 0.95 : 0.6);
   ctx.fill(sparks);
+  drawTexturedRocks(ctx, texList, ware);
+}
+
+
+// ---------- Texturen: echte Asteroidenbilder statt Vielecken, sobald ein Brocken groß genug im Bild ist ----------
+
+/** Alle Asteroidenbilder (src/assets/sprites/asteroid-<n>-ki.*); neue Bilder werden automatisch mitbenutzt */
+const ROCK_ART = spriteNames(/^asteroid-\d+-ki$/);
+const rockImgs: HTMLImageElement[] = [];
+let rockImgsReady = false;
+function rockImages(): HTMLImageElement[] | null {
+  if (typeof Image === 'undefined' || !ROCK_ART.length) return null;
+  if (!rockImgs.length) for (const n of ROCK_ART) { const im = new Image(); im.decoding = 'async'; im.src = spriteUrl(n)!; rockImgs.push(im); }
+  rockImgsReady ||= rockImgs.every((im) => im.complete && im.naturalWidth > 0);
+  return rockImgsReady ? rockImgs : null;
+}
+
+/** Ab dieser Bildgröße (CSS-Pixel) bekommt ein Brocken die Textur */
+const TEX_MIN = 14;
+
+/** Färbung je Rohstoff (multipliziert, Stärke) – Erz rostig, Silizium kühl grau, Eis hellblau, Nividium golden */
+const TINT: Record<string, [string, number]> = {
+  ore: ['#b07a55', 0.55], silicon: ['#9aa8bc', 0.5], ice: ['#cfeaff', 0.35], nividium: ['#d8b060', 0.6],
+};
+const tintCache = new Map<string, HTMLCanvasElement>();
+function tinted(i: number, ware: string): HTMLCanvasElement | HTMLImageElement | null {
+  const imgs = rockImages();
+  if (!imgs) return null;
+  const im = imgs[i % imgs.length];
+  const t = TINT[ware];
+  if (!t) return im;
+  const key = `${i % imgs.length}:${ware}`;
+  let c = tintCache.get(key);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = im.naturalWidth; c.height = im.naturalHeight;
+    const g = c.getContext('2d')!;
+    g.drawImage(im, 0, 0);
+    g.globalCompositeOperation = 'multiply';
+    g.globalAlpha = t[1];
+    g.fillStyle = t[0];
+    g.fillRect(0, 0, c.width, c.height);
+    // Durchsichtigkeit des Bildes wiederherstellen
+    g.globalCompositeOperation = 'destination-in';
+    g.globalAlpha = 1;
+    g.drawImage(im, 0, 0);
+    if (ware === 'ice') {
+      // Eis: heller, kühler Glanz
+      g.globalCompositeOperation = 'source-atop';
+      g.globalAlpha = 0.18;
+      g.fillStyle = '#e8f8ff';
+      g.fillRect(0, 0, c.width, c.height);
+    }
+    tintCache.set(key, c);
+  }
+  return c;
+}
+
+/** Texturierten Brocken zeichnen; Licht kommt im Bild von oben links – daher nur leicht gedreht, dafür gespiegelt */
+function drawTextured(ctx: CanvasRenderingContext2D, img: CanvasImageSource, x: number, y: number, d: number, rot: number, flip: boolean): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  if (flip) ctx.scale(-1, 1);
+  // Bildinhalt füllt rund 80 % des Bildes
+  const s = d * 1.25;
+  ctx.drawImage(img, -s / 2, -s / 2, s, s);
+  ctx.restore();
+}
+
+/** Texturen bereit? (für Bildzwischenspeicher: erst ohne, dann mit Texturen) */
+export function rockTexturesReady(): boolean {
+  return !!rockImages();
+}
+
+/** Große Brocken einer Ebene texturiert zeichnen (vom gebündelten Zeichnen übersprungen) */
+export function drawTexturedRocks(ctx: CanvasRenderingContext2D, list: { x: number; y: number; size: number; rock: Rock }[], ware: string): void {
+  for (const { x, y, size, rock } of list) {
+    const img = tinted(Math.floor(rock.tone * 997), ware);
+    if (img) drawTextured(ctx, img, x, y, size * 1.9, ((rock.rot % 0.7) - 0.35), rock.tone > 0.5);
+  }
+}
+
+// ---------- Detailstufen: kleinere Brocken erscheinen erst beim Heranzoomen ----------
+
+/**
+ * Stufen kleinerer Brocken (Durchmesser in km). Sie werden für den sichtbaren Ausschnitt aus einem festen
+ * Zufallsmuster erzeugt (gleiche Stelle = gleiche Brocken) und folgen der Dichte der Feldballungen.
+ * Zum Vergleich: Das S-Schiff ist rund 0,14 km lang.
+ */
+const TIERS = [
+  { dmin: 0.12, dmax: 0.4, cell: 1.6, n: 2.2 },
+  { dmin: 0.03, dmax: 0.12, cell: 0.45, n: 2.6 },
+  { dmin: 0.008, dmax: 0.03, cell: 0.12, n: 3 },
+];
+
+function hash4(a: number, b: number, c: number, d: number): number {
+  let h = (a ^ 0x9e3779b9) >>> 0;
+  for (const v of [b, c, d]) { h = Math.imul(h ^ (v | 0), 0x85ebca6b); h ^= h >>> 13; }
+  return h >>> 0;
+}
+
+/** Dichte (0–1) an einem Punkt relativ zur Feldmitte: Ballungen dicht, Rand dünn */
+function density(data: FieldData, dx: number, dz: number, R: number): number {
+  let d = 0;
+  for (const k of data.clusters) {
+    const q = ((dx - k.dx) ** 2 + (dz - k.dz) ** 2) / (k.s * k.s);
+    d = Math.max(d, Math.exp(-q * 1.3));
+  }
+  const edge = Math.hypot(dx, dz) / (R * 1.25);
+  return d * Math.max(0, 1 - edge * edge);
+}
+
+export function drawRockDetail(ctx: CanvasRenderingContext2D, cam: Camera, f: { id: string; ware: string; x: number; z: number; r: number }, seed: number): void {
+  const z = cam.zoom;
+  if (TIERS[0].dmax * z < 3) return;
+  const data = rockField(f.id, f.ware, f.r, seed);
+  const [x0, z0] = cam.toWorld(0, 0), [x1, z1] = cam.toWorld(cam.w, cam.h);
+  const ext = f.r * 1.3;
+  const minX = Math.max(Math.min(x0, x1), f.x - ext), maxX = Math.min(Math.max(x0, x1), f.x + ext);
+  const minZ = Math.max(Math.min(z0, z1), f.z - ext), maxZ = Math.min(Math.max(z0, z1), f.z + ext);
+  if (minX >= maxX || minZ >= maxZ) return;
+  const base = baseColor(f.ware), accent = WARES[f.ware]?.color ?? '#999999';
+  const fid = hashStrSimple(f.id);
+  TIERS.forEach((T, ti) => {
+    const big = T.dmax * z;
+    if (big < 3) return;
+    // weich einblenden, wenn die Stufe gerade sichtbar groß wird
+    const alpha = Math.max(0, Math.min(1, (big - 3) / 9));
+    const ix0 = Math.floor((minX - f.x) / T.cell), ix1 = Math.floor((maxX - f.x) / T.cell);
+    const iz0 = Math.floor((minZ - f.z) / T.cell), iz1 = Math.floor((maxZ - f.z) / T.cell);
+    if ((ix1 - ix0 + 1) * (iz1 - iz0 + 1) > 900) return; // Sicherheitsgrenze
+    const small = [new Path2D(), new Path2D()];
+    const tex: [number, number, number, number, boolean, number][] = [];
+    for (let ix = ix0; ix <= ix1; ix++) for (let iz = iz0; iz <= iz1; iz++) {
+      const cx = (ix + 0.5) * T.cell, cz = (iz + 0.5) * T.cell;
+      const dens = density(data, cx, cz, f.r);
+      if (dens < 0.04) continue;
+      const r = rng(hash4(fid, ti, ix, iz));
+      const count = Math.floor(T.n * dens + r());
+      for (let k = 0; k < count; k++) {
+        const wx = f.x + (ix + r()) * T.cell, wz = f.z + (iz + r()) * T.cell;
+        // logarithmisch verteilt: viele kleine, wenige große
+        const d = T.dmin * Math.pow(T.dmax / T.dmin, r() * r());
+        const [sx, sy] = cam.toScreen(wx, wz);
+        const px = d * z;
+        const tone = r(), rot = r();
+        if (px < 1 || sx < -px || sy < -px || sx > cam.w + px || sy > cam.h + px) continue;
+        if (px >= 7) { tex.push([sx, sy, px, rot, tone > 0.5, tone]); continue; }
+        // klein: unregelmäßiges Vieleck in zwei Helligkeiten
+        const p = small[tone > 0.5 ? 1 : 0];
+        const nPts = 7;
+        for (let j = 0; j < nPts; j++) {
+          const a = rot * 6.28 + (j / nPts) * Math.PI * 2;
+          const rr = (px / 2) * (0.72 + 0.28 * Math.abs(Math.sin(j * 2.3 + tone * 9)));
+          const qx = sx + Math.cos(a) * rr, qy = sy + Math.sin(a) * rr * 0.85;
+          j ? p.lineTo(qx, qy) : p.moveTo(qx, qy);
+        }
+        p.closePath();
+      }
+    }
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = shade(base, -0.62);
+    ctx.fill(small[0]);
+    ctx.fillStyle = shade(base, -0.48);
+    ctx.fill(small[1]);
+    for (const [sx, sy, px, rot, flip, tone] of tex) {
+      const img = tinted(Math.floor(tone * 997), f.ware);
+      if (img) drawTextured(ctx, img, sx, sy, px, rot * 0.7 - 0.35, flip);
+      else { ctx.fillStyle = shade(base, -0.2); ctx.beginPath(); ctx.arc(sx, sy, px / 2, 0, Math.PI * 2); ctx.fill(); }
+    }
+    void accent;
+  });
+  ctx.globalAlpha = 1;
+}
+
+function hashStrSimple(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** Brocken, an dem ein Miner gerade arbeitet (nah herangezoomt): texturiert, mit glühender Abbaustelle */
+export function drawMiningRock(ctx: CanvasRenderingContext2D, x: number, y: number, d: number, ware: string, seed: number): void {
+  const img = tinted(seed % 997, ware);
+  if (img) drawTextured(ctx, img, x, y, d, ((seed % 70) / 100) - 0.35, seed % 2 === 0);
+  else {
+    ctx.fillStyle = shade(baseColor(ware), -0.3);
+    ctx.beginPath();
+    ctx.arc(x, y, d / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }

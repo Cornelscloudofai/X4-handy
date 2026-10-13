@@ -59,6 +59,11 @@ export function spriteUrl(id: string): string | undefined {
   return URLS.get(id);
 }
 
+/** Namen aller Bilder, die auf ein Muster passen (z. B. alle Asteroiden) */
+export function spriteNames(re: RegExp): string[] {
+  return [...URLS.keys()].filter((k) => re.test(k)).sort();
+}
+
 export function spriteName(kind: FighterKind, art: ShipArt): string {
   return `${kind}-jaeger-s${SUFFIX[art]}`;
 }

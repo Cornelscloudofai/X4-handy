@@ -13,7 +13,7 @@ import type { Selection, UIState } from '../ui/uistate';
 import type { Camera } from './camera';
 import { fmtCr } from '../ui/format';
 import { Effects } from './effects';
-import { drawRockField } from './fields';
+import { drawMiningRock, drawRockDetail, drawRockField } from './fields';
 import { drawWareGlyph } from './glyphs';
 import { ensurePlaced, layoutReach, plannedPlaces, productionKind, stationStyle, tubeCurve } from './stationLayout';
 import { sectorLayers } from './bgImages';
@@ -260,6 +260,8 @@ export class SectorRenderer {
         }
       } else {
         drawRockField(ctx, cam, f, hashStr(f.id), 0, sel, parallax);
+        // Nah herangezoomt: kleinere Brocken bis hinunter zu Geröll (erscheinen stufenweise)
+        drawRockDetail(ctx, cam, f, hashStr(f.id));
       }
       // Feldnamen erst beim Heranzoomen (Gesamtansicht bleibt ruhig)
       {
@@ -2010,8 +2012,20 @@ export class SectorRenderer {
     // Herausgezoomt kein Abbau-Effekt (Laser, Glanzpunkt, Teilchen) – die Karte bleibt ruhig
     if (rel < 1.6) return;
     // Abbaustrahl kurz und fein: Länge an der Schiffsgröße orientiert, damit bei mittlerem Zoom nichts überdeckt wird
-    const len = Math.max(6, Math.min(70, 8 * s + cam.zoom * 1.3));
-    const tx = sx + Math.cos(a) * len, ty = sy + Math.sin(a) * len;
+    let len = Math.max(6, Math.min(70, 8 * s + cam.zoom * 1.3));
+    let tx = sx + Math.cos(a) * len, ty = sy + Math.sin(a) * len;
+    // Nah herangezoomt: der Laser trifft einen echten Brocken (etwas größer als das Schiff, fest im Raum)
+    const shipPx = shipLength(SHIP_MAP[sh.cls]?.size ?? 'S', cam.zoom);
+    if (!isGas(info.field.ware) && shipPx * 1.3 >= 6) {
+      const a0 = ((h % 360) * Math.PI) / 180;
+      const rd = shipPx * (1.1 + (h % 5) * 0.08);
+      const dist = shipPx * 0.55 + rd * 0.55 + 4;
+      const rx = sx + Math.cos(a0) * dist, ry = sy + Math.sin(a0) * dist;
+      drawMiningRock(ctx, rx, ry, rd, info.field.ware, h);
+      len = dist - rd * 0.3;
+      tx = sx + Math.cos(a0 + Math.sin(now / 900 + h) * 0.12) * len;
+      ty = sy + Math.sin(a0 + Math.sin(now / 900 + h) * 0.12) * len;
+    }
     if (isGas(info.field.ware)) {
       // Gas: zarter Sog-Schleier, in den feine Fäden eingesogen werden
       const spread = len * 0.4;
