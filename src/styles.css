@@ -455,6 +455,9 @@ select.compact { width: auto; max-width: 52%; min-height: 38px; font-size: 13.5p
 .welcome-hero .logo { font-family: var(--font-display); font-size: 30px; font-weight: 700; letter-spacing: 0.04em; color: var(--text); line-height: 1; }
 .welcome-hero .logo em { font-style: normal; color: var(--teal); }
 .welcome-hero p { color: var(--text-2); margin: 10px 0 0; max-width: 52ch; }
+.welcome-hero.art { position: relative; isolation: isolate; padding-top: min(44vw, 250px); background: none; }
+.welcome-hero.art::before { content: ''; position: absolute; inset: 0 0 auto; z-index: -1; aspect-ratio: 1672 / 941; border-radius: 22px 22px 0 0; background: var(--hero) center top / cover no-repeat; -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent); mask-image: linear-gradient(180deg, #000 55%, transparent); }
+.welcome-hero.art .logo { text-shadow: 0 2px 16px rgba(0, 0, 0, 0.8); }
 .steps { display: grid; gap: 10px; margin: 14px 0 4px; }
 .steps > div { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; font-size: 14px; color: var(--text-2); }
 .steps .n { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; color: var(--teal); border: 1px solid rgba(63, 224, 197, 0.4); background: rgba(63, 224, 197, 0.06); }
@@ -736,12 +739,18 @@ html.calm .mg-stars span.on svg { animation: none; }
 
 /* Startwahl im Willkommensbildschirm */
 .start-pick { display: grid; gap: 10px; }
-.start-card { display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: center; text-align: left; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: rgba(63, 224, 197, 0.06); color: var(--text); }
-.start-card .ic { grid-row: 1 / span 3; color: var(--teal); }
+.start-card { display: grid; grid-template-columns: 42% 1fr; text-align: left; padding: 0; overflow: hidden; border-radius: 14px; border: 1px solid var(--line-2); background: rgba(63, 224, 197, 0.06); color: var(--text); --c: var(--teal); }
+.start-card.miner { --c: #ffc45e; }
+.start-img { position: relative; min-height: 118px; background: #050b14 center / cover no-repeat; }
+.start-img::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 55%, rgba(7, 19, 31, 0.85)); }
+.start-img em { position: absolute; left: 8px; bottom: 8px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; font-style: normal; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px 3px 6px; border-radius: 999px; background: rgba(5, 11, 20, 0.78); color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+.start-txt { display: grid; gap: 3px; align-content: center; padding: 10px 12px 10px 10px; }
 .start-card b { font-family: var(--font-display); font-size: 16px; }
-.start-card span { font-size: 13px; color: var(--teal); }
+.start-txt > span { font-size: 13px; color: var(--c); }
 .start-card small { font-size: 12.5px; color: var(--text-2); }
 .start-card:active { background: rgba(63, 224, 197, 0.14); }
+.start-card:active .start-img { filter: brightness(1.15); }
+@media (min-width: 520px) { .start-pick { grid-template-columns: 1fr 1fr; } .start-card { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .start-txt { align-content: start; } .start-img { aspect-ratio: 3 / 2; min-height: 0; } .start-img::after { background: linear-gradient(180deg, transparent 60%, rgba(7, 19, 31, 0.85)); } }
 .quad-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .quad { display: grid; gap: 4px; padding: 10px; border-radius: 12px; border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.02); }
 .quad.on { border-color: rgba(63, 224, 197, 0.5); background: rgba(63, 224, 197, 0.07); }
@@ -1085,3 +1094,5 @@ details.explain p { margin: 0; padding: 0 12px 12px; font-size: 13.5px; line-hei
 .news-amt.deal { color: #1a0e00; background: var(--amber); border-color: var(--amber); box-shadow: 0 0 10px var(--amber-glow); }
 .news-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .news-head .news-amt { font-style: normal; margin-top: -1px; align-self: flex-start; }
+.start-card.trader .start-img { background-position: 22% 55%; }
+.start-card.miner .start-img { background-position: 42% 55%; }

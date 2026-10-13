@@ -5,7 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, classSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
-import { artPic, artStyle } from './menuArt';
+import { artPic, artStyle, CAREER } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, gameRange, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
 
@@ -1824,11 +1824,11 @@ function buyShipModal(state: GameState, m: Extract<Modal, { type: 'buyShip' }>):
 
 function welcomeModal(): string {
   return `<div class="modal" role="dialog" aria-modal="true" aria-label="Willkommen">
-    <div class="welcome-hero"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
+    <div class="welcome-hero art" style="--hero:url(${CAREER.hero})"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
     <div class="sheet-body"><div class="small muted" style="margin:0 0 8px">Wie willst du anfangen?</div>
       <div class="start-pick">
-        <button class="start-card" ${act('start-game', { kind: 'mining' })}>${icon('miner', 26)}<b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 5.000 Cr</span><small>Erz oder Silizium fördern und damit einen Wirtschaftszweig voranbringen.</small></button>
-        <button class="start-card" ${act('start-game', { kind: 'trading' })}>${icon('trader', 26)}<b>Loslegen mit Handel</b><span>2 Tuatara-Transporter (S) · 30.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></button>
+        <button class="start-card miner" ${act('start-game', { kind: 'mining' })}><span class="start-img" style="background-image:url(${CAREER.mining})"><em>${icon('miner', 16)}Bergbau</em></span><span class="start-txt"><b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 5.000 Cr</span><small>Erz oder Silizium fördern und damit einen Wirtschaftszweig voranbringen.</small></span></button>
+        <button class="start-card trader" ${act('start-game', { kind: 'trading' })}><span class="start-img" style="background-image:url(${CAREER.trading})"><em>${icon('trader', 16)}Handel</em></span><span class="start-txt"><b>Loslegen mit Handel</b><span>2 Tuatara-Transporter (S) · 30.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></span></button>
       </div>
       <div class="steps" style="margin-top:14px">
       <div><span class="n">1</span><div><b>Bauen</b>Module planst du unter Stationen → Module. Das Baumaterial liefern Schiffe ins Baulager der Station.</div></div>

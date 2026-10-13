@@ -9,6 +9,12 @@ import hilfeDrohne from '../assets/menu/hilfe-drohne.jpg';
 import einstellungenWerkhalle from '../assets/menu/einstellungen-werkhalle.jpg';
 import spielstandTresor from '../assets/menu/spielstand-tresor.jpg';
 import ueberSprungtor from '../assets/menu/ueber-sprungtor.jpg';
+import karriereHangar from '../assets/menu/karriere-hangar.jpg';
+import karriereBergbau from '../assets/menu/karriere-bergbau.jpg';
+import karriereHandel from '../assets/menu/karriere-handel.jpg';
+
+/** Bilder der Startwahl (Karriere): Hangar mit beiden Schiffen als Kopf, je Laufbahn ein eigenes Bild */
+export const CAREER = { hero: karriereHangar, mining: karriereBergbau, trading: karriereHandel };
 
 
 export interface MenuArt { bg: string; sprite?: string; /** großes, freigestelltes Menübild statt Schiffsbild */ art?: string }
