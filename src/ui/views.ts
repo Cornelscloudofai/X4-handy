@@ -5,7 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
-import { artPic, artStyle, CAREER } from './menuArt';
+import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, gameRange, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
 
@@ -404,7 +404,7 @@ export function panelHtml(state: GameState, ui: UIState): string {
     case 'sector': return sectorPanel(state, p.id ?? 'zhin', p);
     case 'more': return morePanel(state, ui);
     case 'blueprints': return blueprintsPanel(state, ui, p);
-    case 'planner': return sheet('Stationsplaner', 'Produktionsketten nach X4', plannerPanel(state, ui));
+    case 'planner': return sheet('Stationsplaner', 'Produktionsketten nach X4', panelHero('planner') + plannerPanel(state, ui));
     case 'news': return sheet('Nachrichten', 'Alle Meldungen', newsBody(state, ui.newsFilter ?? 'all', ui.newsSeenBefore ?? -1));
     case 'ledger': return sheet('Konto', 'Ein- und Ausgänge', ledgerBody(state, ui.ledgerFilter ?? 'all'));
   }
@@ -417,6 +417,13 @@ function sheet(title: string, eyebrow: string, body: string, opts: { back?: bool
     ${opts.right ?? ''}
     <button class="icon-btn" ${act('close-panel')} aria-label="Schließen">${icon('close', 22)}</button>
   </div>${opts.tabs ?? ''}<div class="sheet-body">${body}</div>`;
+}
+
+/** Kopfbild einer Hauptansicht mit kurzen Kennzahlen darauf (läuft unten in den Hintergrund aus) */
+function panelHero(key: string, stats: string[] = []): string {
+  const h = PANEL_HERO[key];
+  if (!h) return '';
+  return `<div class="panel-hero" data-key="hero-${key}"><img src="${h.src}" alt="" decoding="async" style="object-position:${h.pos}">${stats.length ? `<div class="ph-stats">${stats.map((x) => `<span>${x}</span>`).join('')}</div>` : ''}</div>`;
 }
 
 // ---- Stationen ----
@@ -440,7 +447,10 @@ function stationsPanel(state: GameState): string {
       ${alerts.length ? `<span class="pill amber">${icon('warn', 13)} ${alerts.length} Hinweis${alerts.length === 1 ? '' : 'e'}</span>` : `<span class="pill teal">${icon('check', 13)} ${pct(productionUtil(st))} Auslastung</span>`}</div></div>
       ${icon('chev', 20, 'chev')}</div>`;
   }).join('');
+  const building = state.stations.filter((x) => x.build).length;
+  const hints = state.stations.reduce((n, x) => n + stationAlerts(state, x).length, 0);
   return sheet('Stationen', `${state.stations.length} Station${state.stations.length === 1 ? '' : 'en'}`, `
+    ${panelHero('stations', [`<b>${state.stations.length}</b> Station${state.stations.length === 1 ? '' : 'en'}`, ...(building ? [`<b>${building}</b> im Bau`] : []), hints ? `<b class="warn-text">${hints}</b> Hinweis${hints === 1 ? '' : 'e'}` : 'alles versorgt'])}
     <div class="section"><div class="box rows">${list}</div></div>
     <div class="section"><div class="box rows">${blueprintEntry(state)}</div></div>
     <button class="btn outline-teal block" ${act('place-start')}>${icon('plus', 20)}Neue Station gründen · ${fmtCr(stationCost())}</button>`);
@@ -860,7 +870,7 @@ function fleetPanel(state: GameState): string {
   const traders = state.ships.filter((s) => SHIP_MAP[s.cls].role === 'trader');
   const home = state.stations[0]?.id ?? '';
   return sheet('Flotte', `${state.ships.length} Schiffe`, `
-    <div class="section"><div class="kv"><div><small>Miner</small><b>${miners.length}</b></div><div><small>Transporter</small><b>${traders.length}</b></div></div></div>
+    ${panelHero('fleet', [`<b>${miners.length}</b> Miner`, `<b>${traders.length}</b> Transporter`, `<b>${state.ships.filter((x) => shipState(x) === 'move').length}</b> unterwegs`])}
     <div class="section"><h3>Miner</h3>${miners.length ? `<div class="box rows">${miners.map((s) => shipRow(state, s)).join('')}</div>` : '<div class="box empty">Keine Miner.</div>'}</div>
     <div class="section"><h3>Transporter</h3>${traders.length ? `<div class="box rows">${traders.map((s) => shipRow(state, s)).join('')}</div>` : '<div class="box empty">Noch keine Transporter. Sie verkaufen Überschüsse und versorgen Stationen untereinander.</div>'}</div>
     <button class="btn primary block" ${act('buyship-modal', { st: home, role: 'all' })}>${icon('plus', 20)}Schiff kaufen</button>`);
@@ -1184,7 +1194,9 @@ function missionsPanel(state: GameState): string {
       <div class="job-actions">${btn}</div></div>`;
   };
   const count = (n: number) => (n ? ` <span class="count">${n}</span>` : '');
+  const chap = m ? [`Kapitel <b>${state.story.index + 1} von ${storyOf(state).length}</b>`] : ['Kampagne <b>fertig</b>'];
   return sheet('Aufträge', 'Familie Zhin und Nachbarn', `
+    ${panelHero('missions', [...chap, `<b>${active.length}</b> aktiv`, `<b>${offers.length}</b> Angebot${offers.length === 1 ? '' : 'e'}`])}
     <div class="section">${story}</div>
     <div class="section"><h3>Aktive Lieferaufträge${count(active.length)}</h3>${active.length ? `<div class="jobs">${active.map((c) => contractRow(c, false)).join('')}</div>` : '<div class="box empty">Keine aktiven Aufträge. Transporter im Autohandel liefern automatisch für angenommene Aufträge.</div>'}</div>
     <div class="section"><h3>Angebote${count(offers.length)}</h3>${offers.length ? `<div class="jobs">${offers.map((c) => contractRow(c, true)).join('')}</div>` : `<div class="box empty">Gerade keine Angebote. Neue kommen etwa alle ${state.start ? '12–30' : '30–50'} Minuten Spielzeit.</div>`}</div>
@@ -1240,6 +1252,7 @@ function marketPanel(state: GameState, ui: UIState): string {
   const oppRows = opps.map((o) => `<div class="row tap" ${act('trade-open', { ware: o.ware, from: o.key })}>${wareTile(o.ware)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[o.ware].name)}</div>
       <div class="sub wrap">${esc(marketInfo(o.key).name)} · noch ${fmtAmount(o.left)} Einheiten · ${fmtDur(o.until - state.time)}</div></div><span class="deal-badge">−${Math.round((1 - o.mult) * 100)} %</span>${icon('chev', 20, 'chev')}</div>`).join('');
   return sheet('Handel', SECTOR_MAP[secId].tradeStation.name, `
+    ${panelHero('market', [`<b>${esc(SECTOR_MAP[secId].name)}</b>`, opps.length ? `<b>${opps.length}</b> Sonderangebot${opps.length === 1 ? '' : 'e'}` : 'keine Sonderangebote'])}
     ${opps.length ? `<div class="section"><h3>Sonderangebote · ${opps.length}</h3><div class="box rows">${oppRows}</div><p class="small muted" style="margin:6px 0 0">Antippen zum Kaufen – der Autohandel nimmt Sonderangebote nicht selbst an.</p></div>` : ''}
     <details class="explain"><summary>${icon('info', 16)}Wie entstehen die Preise?</summary><p>Preise folgen dem Bestand: Leere Lager zahlen den Höchstpreis, volle nur den Mindestpreis. Große Verkäufe drücken die Preise. ▲/▼ zeigt die Abweichung vom Durchschnittspreis – grün ist ein guter Verkaufsort.</p></details>
     <div class="pills scroll" style="margin-bottom:8px">${known.map((id) => `<button class="pill ${id === secId ? 'teal' : ''}" ${act('market-sector', { id })}>${esc(SECTOR_MAP[id].name)}</button>`).join('')}</div>

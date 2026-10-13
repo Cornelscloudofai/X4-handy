@@ -13,6 +13,21 @@ import karriereHangar from '../assets/menu/karriere-hangar.jpg';
 import karriereBergbau from '../assets/menu/karriere-bergbau.jpg';
 import karriereHandel from '../assets/menu/karriere-handel.jpg';
 
+import kopfAuftraege from '../assets/menu/kopf-auftraege.jpg';
+import kopfPlaner from '../assets/menu/kopf-planer.jpg';
+import kopfStationen from '../assets/menu/kopf-stationen.jpg';
+import kopfFlotte from '../assets/menu/kopf-flotte.jpg';
+import kopfHandel from '../assets/menu/kopf-handel.jpg';
+
+/** Kopfbilder der Hauptansichten (eigene KI-Bilder, volle Auflösung); pos = sichtbarer Ausschnitt */
+export const PANEL_HERO: Record<string, { src: string; pos: string }> = {
+  missions: { src: kopfAuftraege, pos: '50% 45%' },
+  planner: { src: kopfPlaner, pos: '50% 55%' },
+  stations: { src: kopfStationen, pos: '62% 45%' },
+  fleet: { src: kopfFlotte, pos: '60% 55%' },
+  market: { src: kopfHandel, pos: '62% 45%' },
+};
+
 /** Bilder der Startwahl (Karriere): Hangar mit beiden Schiffen als Kopf, je Laufbahn ein eigenes Bild */
 export const CAREER = { hero: karriereHangar, mining: karriereBergbau, trading: karriereHandel };
 
