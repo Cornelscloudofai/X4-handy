@@ -6,8 +6,8 @@ export type Bus = 'ui' | 'sfx' | 'amb' | 'music';
 export const BUSES: Bus[] = ['ui', 'sfx', 'amb', 'music'];
 export const BUS_LABEL: Record<Bus, string> = { ui: 'Oberfläche', sfx: 'Effekte', amb: 'Atmosphäre', music: 'Musik' };
 
-export interface AudioSettings { on: boolean; master: number; ui: number; sfx: number; amb: number; music: number }
-const DEFAULTS: AudioSettings = { on: true, master: 0.8, ui: 0.6, sfx: 0.85, amb: 0.45, music: 0.4 };
+export interface AudioSettings { on: boolean; master: number; ui: number; sfx: number; amb: number; music: number; /** Klangteppich: melodisch (mehrere Stimmungen) oder klassisch (nur Flächen und Glocken) */ style: 'melodisch' | 'klassisch' }
+const DEFAULTS: AudioSettings = { on: true, master: 0.8, ui: 0.6, sfx: 0.85, amb: 0.45, music: 0.4, style: 'melodisch' };
 const KEY = 'x4-sektorbau-audio';
 
 function load(): AudioSettings {
@@ -160,6 +160,12 @@ export function setLevel(k: 'master' | Bus, v: number): void {
   settings[k] = Math.max(0, Math.min(1, v));
   save();
   if (live) applyLevels(live);
+}
+
+export function setMusicStyle(v: AudioSettings['style']): void {
+  settings.style = v;
+  save();
+  onChange.forEach((f) => f());
 }
 
 export function setOn(on: boolean): void {

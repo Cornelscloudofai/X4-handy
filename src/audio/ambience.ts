@@ -1,7 +1,7 @@
 // Atmosphäre und Klangteppich: ruhige, generative Weltraumklänge, die sich nie genau wiederholen.
 // Atmosphäre = tiefer Grundton + „Sternenwind“ (gefiltertes Rauschen) + Stationsbrummen beim Heranzoomen.
 // Klangteppich = langsam wechselnde Flächenakkorde in D-Dorisch mit vereinzelten Glockentönen; Tonart je Sektor.
-import { bell, graph, liveContext, loopSample, noiseBuffer, onAudioChange, settings, tone, voiceOut } from './engine';
+import { bell, graph, liveContext, loopSample, noiseBuffer, onAudioChange, renderOffline, settings, tone, voiceOut } from './engine';
 
 const hz = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
 
@@ -15,6 +15,30 @@ const CHORDS: number[][] = [
   [33, 48, 52, 55, 60, 64],
 ];
 const MELODY = [62, 64, 65, 67, 69, 72, 74, 76, 77, 81];
+
+/**
+ * Stimmungen des melodischen Klangteppichs: je eigene Akkordfolge, Tonleiter, Melodie-Instrument und Dichte.
+ * Jede Stimmung dauert einige Minuten, dann folgt weich die nächste – ohne Schlagzeug, ohne festen Takt.
+ */
+interface Mood { name: string; chords: number[][]; scale: number[]; voice: 'glocke' | 'epiano' | 'floete' | 'streicher'; pad: OscillatorType; bright: number; gap: [number, number]; notes: [number, number]; len: [number, number] }
+const MOODS: Mood[] = [
+  // Weite: die bisherige, schwebende Stimmung
+  { name: 'Weite', chords: CHORDS, scale: [62, 64, 65, 67, 69, 71, 72, 74, 76, 77], voice: 'glocke', pad: 'sawtooth', bright: 1, gap: [6, 12], notes: [3, 5], len: [1.2, 2.6] },
+  // Hoffnung: D-Dur/Lydisch – hell und zuversichtlich, weiches E-Piano
+  { name: 'Hoffnung', chords: [[38, 50, 54, 57, 61, 64], [43, 50, 55, 59, 62, 66], [35, 50, 54, 57, 61], [45, 49, 52, 57, 59, 64]], scale: [62, 64, 66, 68, 69, 71, 73, 74, 76, 78], voice: 'epiano', pad: 'triangle', bright: 1.3, gap: [5, 10], notes: [4, 7], len: [0.7, 1.6] },
+  // Tiefe: dunkles d-Moll – tiefe Streicherfläche, wenige lange Töne
+  { name: 'Tiefe', chords: [[26, 38, 50, 53, 57], [22, 34, 50, 53, 58], [31, 43, 50, 55, 58], [33, 45, 52, 55, 57]], scale: [50, 53, 55, 57, 58, 60, 62, 65], voice: 'streicher', pad: 'sawtooth', bright: 0.7, gap: [8, 16], notes: [2, 4], len: [2, 4] },
+  // Glanz: F-Lydisch – schimmernd, flötenartige Melodie mit sanftem Vibrato
+  { name: 'Glanz', chords: [[41, 53, 57, 60, 64, 67], [36, 52, 55, 59, 62], [43, 55, 59, 62, 66], [38, 53, 57, 62, 64]], scale: [65, 67, 69, 71, 72, 74, 76, 77, 79, 81], voice: 'floete', pad: 'triangle', bright: 1.15, gap: [5, 11], notes: [4, 6], len: [0.9, 2] },
+];
+let moodIdx = 0;
+let moodEnd = 0;
+let nextPhrase = 0;
+/** letzte Melodienote (für schrittweise Bewegung) und ein Motiv, das in der Stimmung wiederkehrt */
+let lastNote = 0;
+let motif: number[] = [];
+const melodic = () => settings.style !== 'klassisch';
+const mood = () => (melodic() ? MOODS[moodIdx % MOODS.length] : MOODS[0]);
 
 type Scene = 'map' | 'minigame' | 'menu';
 
@@ -114,13 +138,14 @@ function playChord(t: number, notes: number[], len: number): void {
   const c = g.ctx;
   const lp = c.createBiquadFilter();
   lp.type = 'lowpass'; lp.Q.value = 0.7;
-  lp.frequency.setValueAtTime(380, t);
-  lp.frequency.linearRampToValueAtTime(900 + Math.random() * 500, t + len * 0.45);
+  const m = mood();
+  lp.frequency.setValueAtTime(380 * m.bright, t);
+  lp.frequency.linearRampToValueAtTime((900 + Math.random() * 500) * m.bright, t + len * 0.45);
   lp.frequency.linearRampToValueAtTime(420, t + len + 4);
   lp.connect(musicOut);
   notes.forEach((n, i) => {
     const f = hz(n + transpose);
-    for (const det of [-6, 6]) tone(g, lp, { f, t: t + i * 0.12, type: i === 0 ? 'triangle' : 'sawtooth', a: 3, d: 1, sus: 0.8, hold: len - 4, r: 5, gain: i === 0 ? 0.05 : 0.016, detune: det + (Math.random() - 0.5) * 4 });
+    for (const det of [-6, 6]) tone(g, lp, { f, t: t + i * 0.12, type: i === 0 ? 'triangle' : m.pad, a: 3, d: 1, sus: 0.8, hold: len - 4, r: 5, gain: (i === 0 ? 0.05 : m.pad === 'triangle' ? 0.026 : 0.016) * (m.name === 'Tiefe' ? 1.3 : 1), detune: det + (Math.random() - 0.5) * 4 });
   });
 }
 
@@ -131,22 +156,101 @@ function playBell(t: number): void {
   bell(g, musicOut, { f: hz(n + (Math.random() < 0.3 ? 12 : 0)), t, ratio: 3.5, index: 0.9, dur: 2.5, gain: 0.03, a: 0.02 });
 }
 
+/** Eine Melodienote im Instrument der Stimmung */
+function melodyNote(t: number, midi: number, dur: number, vel: number): void {
+  const g = graph();
+  if (!g || !musicOut) return;
+  const f = hz(midi + transpose);
+  const v = mood().voice;
+  if (v === 'glocke') bell(g, musicOut, { f, t, ratio: 3.5, index: 0.9, dur: dur + 1.5, gain: 0.032 * vel, a: 0.02 });
+  else if (v === 'epiano') {
+    // E-Piano: FM mit Verhältnis 1 und kurzem Anschlag, weich ausklingend
+    bell(g, musicOut, { f, t, ratio: 1, index: 1.4, dur: dur + 1.8, gain: 0.04 * vel, a: 0.006 });
+    bell(g, musicOut, { f: f * 2, t, ratio: 1, index: 0.4, dur: dur * 0.6 + 0.4, gain: 0.008 * vel, a: 0.006 });
+  } else if (v === 'floete') {
+    // Flöte: Sinus mit langsamem Anstieg, leichtem Vibrato und Hauch
+    const c = g.ctx;
+    const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const vib = c.createOscillator(); vib.frequency.value = 4.8;
+    const vg = c.createGain(); vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * 0.006, t + 0.6);
+    vib.connect(vg).connect(o.frequency);
+    const env = c.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(0.045 * vel, t + 0.25);
+    env.gain.setValueAtTime(0.045 * vel, t + dur);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.9);
+    o.connect(env).connect(musicOut);
+    tone(g, musicOut, { f: f * 2, t, type: 'sine', a: 0.3, d: dur, sus: 0.3, r: 0.6, gain: 0.006 * vel });
+    o.start(t); vib.start(t); o.stop(t + dur + 1); vib.stop(t + dur + 1);
+  } else {
+    // Streicher: zwei verstimmte Sägezähne hinter Tiefpass, langsamer Bogen
+    const lp = g.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1300; lp.Q.value = 0.5;
+    lp.connect(musicOut);
+    for (const det of [-5, 5]) tone(g, lp, { f, t, type: 'sawtooth', a: Math.min(1.2, dur * 0.4), d: dur, sus: 0.7, hold: 0, r: 1.4, gain: 0.024 * vel, detune: det });
+  }
+}
+
+/** Kurze Phrase: meist schrittweise, Ruhepunkt auf einem Akkordton; gelegentlich kehrt das Motiv der Stimmung wieder */
+function playPhrase(t: number): void {
+  const m = mood();
+  const scale = m.scale;
+  const chord = m.chords[(chordIdx + m.chords.length - 1) % m.chords.length];
+  const chordTones = new Set(chord.map((n) => ((n % 12) + 12) % 12));
+  const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+  let notes: number[];
+  if (motif.length && Math.random() < 0.4) {
+    // Motiv wiederholen, leicht versetzt
+    const shift = [0, 0, 2, -2, 5][Math.floor(Math.random() * 5)];
+    notes = motif.map((n) => scale.reduce((best, s) => (Math.abs(s - (n + shift)) < Math.abs(best - (n + shift)) ? s : best), scale[0]));
+  } else {
+    const k = Math.round(rnd(m.notes[0], m.notes[1]));
+    let i = lastNote ? scale.indexOf(scale.reduce((b, s) => (Math.abs(s - lastNote) < Math.abs(b - lastNote) ? s : b), scale[0])) : Math.floor(scale.length / 2);
+    notes = [];
+    for (let j = 0; j < k; j++) {
+      const r = Math.random();
+      i += r < 0.35 ? 1 : r < 0.7 ? -1 : r < 0.85 ? 2 : -2;
+      i = Math.max(0, Math.min(scale.length - 1, i));
+      notes.push(scale[i]);
+    }
+    // Ende auf einem Akkordton
+    const lastI = notes.length - 1;
+    for (let d = 0; d < 3 && !chordTones.has(((notes[lastI] % 12) + 12) % 12); d++) notes[lastI] = scale[Math.max(0, Math.min(scale.length - 1, scale.indexOf(notes[lastI]) + (d % 2 ? -1 : 1)))];
+    if (!motif.length || Math.random() < 0.2) motif = notes.slice(0, Math.min(4, notes.length));
+  }
+  let tt = t;
+  notes.forEach((n, j) => {
+    const last = j === notes.length - 1;
+    const dur = rnd(m.len[0], m.len[1]) * (last ? 1.8 : 1);
+    melodyNote(tt, n, dur, last ? 0.85 : 0.7 + Math.random() * 0.3);
+    tt += dur * (0.8 + Math.random() * 0.4);
+  });
+  lastNote = notes[notes.length - 1];
+  nextPhrase = tt + rnd(m.gap[0], m.gap[1]);
+}
+
 function schedule(): void {
   const c = liveContext();
   if (!c || !running) return;
   const now = c.currentTime;
   if (c.state === 'running' && !trackActive) {
+    // Stimmungswechsel nach einigen Minuten (nur melodisch); die nächste Fläche trägt schon die neue Stimmung
+    if (melodic() && now >= moodEnd) {
+      if (moodEnd) { moodIdx = (moodIdx + 1 + (Math.random() < 0.3 ? 1 : 0)) % MOODS.length; motif = []; chordIdx = 0; }
+      moodEnd = now + 150 + Math.random() * 120;
+    }
     if (now + 0.5 >= nextChord) {
       const len = 10 + Math.random() * 6;
-      playChord(Math.max(now, nextChord), CHORDS[chordIdx % CHORDS.length], len);
+      const cs = mood().chords;
+      playChord(Math.max(now, nextChord), cs[chordIdx % cs.length], len);
       chordIdx += Math.random() < 0.7 ? 1 : 2;
       nextChord = Math.max(now, nextChord) + len;
     }
-    if (now >= nextBell) {
+    if (melodic() && now >= nextPhrase) playPhrase(now + 0.1);
+    if (now >= nextBell && (!melodic() || mood().voice === 'glocke' || Math.random() < 0.35)) {
       playBell(now + 0.05);
       // manchmal ein zweiter Ton kurz danach – wie eine kleine Phrase
       if (Math.random() < 0.35) playBell(now + 0.4 + Math.random() * 0.5);
-      nextBell = now + 4 + Math.random() * 9;
+      nextBell = now + (melodic() ? 9 : 4) + Math.random() * 9;
     }
   }
   timer = window.setTimeout(schedule, 400);
@@ -172,6 +276,9 @@ export function startSoundscape(): void {
   musicOut.gain.value = sceneLevels().music;
   nextChord = g.ctx.currentTime + 1.5;
   nextBell = g.ctx.currentTime + 6;
+  nextPhrase = g.ctx.currentTime + 8;
+  moodIdx = Math.floor(Math.random() * MOODS.length);
+  moodEnd = g.ctx.currentTime + 150 + Math.random() * 120;
   schedule();
   onStart.forEach((f) => f());
 }
@@ -295,4 +402,38 @@ let watch = 0;
 function reap(): void {
   const now = performance.now();
   for (const [k, e] of held) if (now - e.t > 160) { e.h.stop(); held.delete(k); }
+}
+
+/** Name der aktuellen Stimmung (für die Anzeige in den Einstellungen) */
+export function moodName(): string {
+  return melodic() ? mood().name : 'Klassisch';
+}
+
+/** Nächste Stimmung sofort (Hörprobe) */
+export function nextMood(): string {
+  const c = liveContext();
+  if (!c) return moodName();
+  moodIdx = (moodIdx + 1) % MOODS.length;
+  motif = [];
+  chordIdx = 0;
+  nextChord = c.currentTime + 0.3;
+  nextPhrase = c.currentTime + 1.5;
+  moodEnd = c.currentTime + 150 + Math.random() * 120;
+  return moodName();
+}
+
+/** Hörprobe einer Stimmung als Datei (Prüfskript): plant Flächen und Melodie im Voraus in einen Offline-Kontext */
+export function renderMood(i: number, sec: number): Promise<AudioBuffer> {
+  return renderOffline(() => {
+    const g = graph();
+    if (!g) return;
+    const keep = { moodIdx, musicOut, chordIdx, motif, lastNote, nextPhrase, transpose };
+    moodIdx = i; chordIdx = 0; motif = []; lastNote = 0; transpose = 0;
+    musicOut = voiceOut(g, 'music', { verb: 0.55 });
+    let tc = 0.2;
+    while (tc < sec) { const len = 10 + Math.random() * 6; const cs = mood().chords; playChord(tc, cs[chordIdx % cs.length], len); chordIdx++; tc += len; }
+    nextPhrase = 3;
+    while (nextPhrase < sec - 4) playPhrase(nextPhrase);
+    ({ moodIdx, musicOut, chordIdx, motif, lastNote, nextPhrase, transpose } = keep);
+  }, sec);
 }
