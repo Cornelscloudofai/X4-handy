@@ -167,6 +167,7 @@ function resize(): void {
   cam.w = galaxyCam.w = r.width;
   cam.h = galaxyCam.h = r.height;
   if (first) fitSector();
+  else cam.maxZoom = nearZoomMax();
   fitGalaxy();
 }
 
@@ -178,9 +179,14 @@ function bottomHeight(): number {
   return (document.getElementById('nav')?.getBoundingClientRect().height ?? 70) + 12;
 }
 
+/** Höchster Zoom: das kleinste Schiff (S, 0,56 km) füllt gut drei Viertel der kürzeren Bildschirmseite */
+function nearZoomMax(): number {
+  return Math.max(40, (0.78 * Math.min(cam.w, cam.h)) / 0.56);
+}
+
 function fitSector(): void {
   cam.fit(SECTOR_RADIUS, bottomHeight() + 50, Math.min(hudHeight(), cam.h * 0.4));
-  cam.maxZoom = 40;
+  cam.maxZoom = nearZoomMax();
 }
 
 function fitGalaxy(): void {

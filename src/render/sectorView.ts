@@ -2270,9 +2270,12 @@ function bendPoint(x1: number, y1: number, x2: number, y2: number, lane: number)
 
 /** Stationen werden überhöht gezeichnet, damit ihre Module schon bei mittlerem Zoom erkennbar sind */
 function stationScale(zoom: number): number {
-  // Nah herangezoomt dürfen Module groß werden – dann sind ihre Details erkennbar
-  return Math.min(68, zoom * 2.7);
+  // Nah herangezoomt dürfen Module groß werden – dann sind ihre Details erkennbar. Über Zoom 40 hinaus (Nahansicht
+  // bis ein S-Schiff den Bildschirm füllt) wächst die Station mit der Karte weiter, damit sie neben den Schiffen stimmt.
+  return zoom <= NEAR_ZOOM ? Math.min(68, zoom * 2.7) : 68 * (zoom / NEAR_ZOOM);
 }
+/** bisherige Zoomgrenze; darüber beginnt die Nahansicht */
+const NEAR_ZOOM = 40;
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   ctx.beginPath();
