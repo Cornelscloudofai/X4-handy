@@ -251,7 +251,14 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
     const dim = focus && !edgeLit(e);
     const energy = e.from === 'energycells';
     const d = `M${sx.toFixed(1)} ${sy.toFixed(1)} C${(sx + dx).toFixed(1)} ${sy.toFixed(1)} ${(tx - dx).toFixed(1)} ${ty.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)}`;
-    paths += `<path d="${d}" fill="none" stroke="${short ? '#ff6b7a' : color}" stroke-width="${width.toFixed(1)}" stroke-linecap="round" opacity="${dim ? 0.1 : energy ? 0.45 : 0.9}"${energy || short ? ' stroke-dasharray="6 5"' : ''}/>`;
+    const stroke = short ? '#ff6b7a' : color;
+    // weicher Schein unter der Linie, darauf die Linie, darüber wandernde Punkte (Menge = Tempo)
+    if (!dim) paths += `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${(width * 2.8).toFixed(1)}" stroke-linecap="round" opacity="${energy ? 0.05 : 0.11}"/>`;
+    paths += `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${width.toFixed(1)}" stroke-linecap="round" opacity="${dim ? 0.1 : energy ? 0.45 : 0.9}"${energy || short ? ' stroke-dasharray="6 5"' : ''}/>`;
+    if (!dim) {
+      const speed = Math.sqrt((e.amount * WARES[e.from].price.avg) / maxValue);
+      paths += `<path d="${d}" class="dg-flow${short ? ' short' : ''}" fill="none" stroke="${short ? '#ffc2c8' : `color-mix(in srgb, ${color} 45%, white)`}" stroke-width="${Math.max(2, width * 0.62).toFixed(1)}" style="animation-duration:${(short ? 3.2 : 2.6 - 1.6 * speed).toFixed(2)}s" opacity="${energy ? 0.5 : 0.95}"/>`;
+    }
     if (!preview && !dim && (!energy || focus)) {
       const lx = tx - 40, ly = ty - 6;
       const text = fmtAmount(e.amount) + '/h';
@@ -269,14 +276,18 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
     const dim = focus && !nodeLit(id);
     // In der Kettenansicht zeigt ein feiner Ring, dass die Ware zum Pfad gehört
     const ring = chain && !dim && id !== focus ? `<rect x="${pt.x - 5}" y="${pt.y - 5}" width="${NW + 10}" height="${NH + 10}" rx="18" fill="none" stroke="${WARES[focus].color}" stroke-width="1.2" opacity="0.55"/>` : '';
-    const name = w.name.length > 21 ? w.name.slice(0, 20) + '…' : w.name;
+    const name = w.name.length > 18 ? w.name.slice(0, 17) + '…' : w.name;
     const x = pt.x, y = pt.y;
     let inner = '';
     if (n.kind === 'module') {
       const c = counts[id];
       const sub = c ? [c.built && `${c.built} gebaut`, c.building && `${c.building} im Bau`, c.planned && `${c.planned} geplant`].filter(Boolean).join(' · ') : `je ${fmtInt(n.rate)}/h`;
       const status = st === 'deficit' ? `fehlen ${fmtInt(-n.net)}/h` : st === 'underfed' ? `läuft mit ${Math.round(n.eff * 100)} % · ${WARES[n.limiting]?.name ?? ''} knapp` : st === 'end' ? `${fmtInt(n.net)}/h Endprodukt` : st === 'surplus' ? `+${fmtInt(n.net)}/h Überschuss` : 'ausgeglichen';
+      // Versorgung: Laufgrad der Module (unten im Kästchen)
+      const fill = Math.max(0, Math.min(1, st === 'deficit' ? 1 + n.net / Math.max(1, n.use) : n.eff));
       inner = `
+        <rect x="${x + 14}" y="${y + NH - 9}" width="${NW - 28}" height="3.5" rx="1.75" fill="#ffffff" opacity="0.08"/>
+        <rect x="${x + 14}" y="${y + NH - 9}" width="${((NW - 28) * fill).toFixed(1)}" height="3.5" rx="1.75" fill="${col}" opacity="0.85"/>
         <text x="${x + 14}" y="${y + 50}" class="dg-count">${n.modules}<tspan class="dg-sub" dx="6">Modul${n.modules === 1 ? '' : 'e'}</tspan></text>
         <text x="${x + 14}" y="${y + 68}" class="dg-sub">${esc(sub)}</text>
         <text x="${x + 14}" y="${y + 88}" class="dg-rate">+${fmtAmount(n.prod)}/h<tspan class="dg-sub" dx="6">Bedarf ${fmtAmount(n.use)}</tspan></text>
@@ -297,10 +308,14 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
     }
     const noBp = n.kind === 'module' && missing?.has('prod_' + id);
     const tag = [n.kind === 'mined' ? 'Rohstoff' : n.kind === 'bought' ? 'Zukauf' : st === 'end' ? 'Endprodukt' : '', noBp ? 'Bauplan fehlt' : ''].filter(Boolean).join(' · ');
-    cards += `<g class="dg-node" data-node="${id}" opacity="${dim ? (chain ? 0.22 : 0.35) : 1}">${ring}
-      <rect x="${x}" y="${y}" width="${NW}" height="${NH}" rx="14" fill="${st === 'end' ? '#1d1b12' : '#0c1c2a'}" stroke="${col}" stroke-width="${focus === id ? 3 : 1.6}"${n.kind === 'bought' ? ' stroke-dasharray="6 4"' : ''}/>
+    // Kopfzeile in Warenfarbe (oben gerundet), Symbol und Name
+    const head = `M${x} ${y + 14}a14 14 0 0 1 14 -14h${NW - 28}a14 14 0 0 1 14 14v20h-${NW}z`;
+    cards += `<g class="dg-node ${st}${focus === id ? ' focus' : ''}" data-node="${id}" opacity="${dim ? (chain ? 0.22 : 0.35) : 1}">${ring}
+      <rect class="base" x="${x}" y="${y}" width="${NW}" height="${NH}" rx="14" fill="${st === 'end' ? '#1d1b12' : '#0c1c2a'}" stroke="${col}" stroke-width="${focus === id ? 3 : 1.6}"${n.kind === 'bought' ? ' stroke-dasharray="6 4"' : ''}/>
+      <path d="${head}" fill="${w.color}" opacity="0.13"/>
       <rect x="${x}" y="${y}" width="6" height="${NH}" rx="3" fill="${w.color}"/>
-      <text x="${x + 14}" y="${y + 24}" class="dg-title">${esc(name)}</text>
+      <g transform="translate(${x + 12} ${y + 7})">${wareIcon(id, 20)}</g>
+      <text x="${x + 38}" y="${y + 23}" class="dg-title">${esc(name)}</text>
       ${tag ? `<text x="${x + 12}" y="${y - 7}" class="dg-tag" fill="${noBp ? '#ffb547' : col}">${tag}</text>` : ''}
       ${inner}
     </g>`;

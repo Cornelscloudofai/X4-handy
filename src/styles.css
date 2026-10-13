@@ -1096,3 +1096,102 @@ details.explain p { margin: 0; padding: 0 12px 12px; font-size: 13.5px; line-hei
 .news-head .news-amt { font-style: normal; margin-top: -1px; align-self: flex-start; }
 .start-card.trader .start-img { background-position: 22% 55%; }
 .start-card.miner .start-img { background-position: 42% 55%; }
+
+/* Aufträge: Kampagnenkarte mit Fortschrittsring und Kapitelleiste, Auftragskarten mit Warenweg */
+.story-card.done { border-color: rgba(99, 230, 140, 0.45); }
+.story-top { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.story-top h2 { margin: 2px 0 6px; }
+.story-ring { position: relative; flex: none; display: grid; place-items: center; }
+.story-ring b { position: absolute; font-family: var(--font-display); font-size: 17px; color: var(--amber); }
+.story-card.done .story-ring b { color: var(--green); }
+.ch-track { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.ch-track i { width: 16px; height: 4px; border-radius: 2px; background: rgba(255, 181, 71, 0.18); }
+.ch-track i.done { background: rgba(255, 181, 71, 0.65); }
+.ch-track i.now { width: 26px; background: var(--amber); box-shadow: 0 0 8px rgba(255, 181, 71, 0.6); }
+.goal-num { display: flex; justify-content: space-between; margin: 4px 0 6px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.reward-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+.reward-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.io.gold { border-color: rgba(255, 211, 107, 0.45); color: #ffe2a0; background: rgba(255, 211, 107, 0.07); }
+h3 .count { margin-right: auto; display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 6px; border-radius: 10px; background: rgba(63, 224, 197, 0.14); color: var(--teal); font-size: 11.5px; letter-spacing: 0; vertical-align: 1px; }
+.jobs { display: grid; gap: 10px; }
+.job { display: grid; gap: 10px; padding: 12px; border-radius: var(--r, 16px); border: 1px solid var(--line); background: linear-gradient(180deg, rgba(20, 38, 54, 0.7), rgba(10, 22, 33, 0.7)); }
+.job.active { border-color: rgba(63, 224, 197, 0.35); }
+.job-head { display: flex; gap: 10px; align-items: center; }
+.job-head .grow { flex: 1; min-width: 0; }
+.job-head .eyebrow { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.job.active .job-head .eyebrow { color: var(--teal); }
+.job-head .title { font-weight: 600; font-size: 15.5px; }
+.job-head .sub { font-size: 12.5px; color: var(--text-2); }
+.job-pay { text-align: right; flex: none; }
+.job-pay b { display: block; font-family: var(--font-display); font-size: 18px; }
+.job-pay small { font-size: 11px; color: var(--muted); }
+.job-route { display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); align-items: center; gap: 6px; padding: 8px 10px; border-radius: 12px; background: rgba(4, 12, 20, 0.55); border: 1px solid var(--line); }
+.job-route .end { display: grid; min-width: 0; }
+.job-route .end.to { text-align: right; }
+.job-route small { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.job-route b { font-size: 13px; font-weight: 600; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.job-route em { font-style: normal; font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.route-line { position: relative; height: 3px; border-radius: 2px; background: repeating-linear-gradient(90deg, var(--c, var(--teal)) 0 6px, transparent 6px 11px); background-size: 22px 3px; animation: routeFlow 1.1s linear infinite; opacity: 0.85; }
+.route-line::after { content: ''; position: absolute; right: -2px; top: -4px; border: 5.5px solid transparent; border-left: 7px solid var(--c, var(--teal)); border-right: 0; }
+@keyframes routeFlow { to { background-position: 22px 0; } }
+.calm .route-line { animation: none; }
+.job-prog .small { margin-top: 4px; }
+.job-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.job-stats .pill .ic { width: 13px; height: 13px; }
+.job-more summary { cursor: pointer; font-size: 12.5px; color: var(--muted); list-style: none; }
+.job-more summary::before { content: '▸ '; }
+.job-more[open] summary::before { content: '▾ '; }
+.job-more p { margin: 6px 0 0; font-size: 12.5px; color: var(--text-2); }
+.job-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Modul-Reiter: Überblick gebaut → im Bau → geplant, gebaute Module als Kacheln */
+.stage-strip { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1.25fr) 18px minmax(0, 1fr); align-items: stretch; gap: 4px; margin-bottom: 16px; }
+.stage { display: grid; align-content: start; gap: 1px; padding: 9px 10px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025); min-width: 0; }
+.stage small { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.stage b { font-family: var(--font-display); font-size: 20px; line-height: 1.15; }
+.stage span { font-size: 12px; color: var(--text-2); line-height: 1.3; overflow-wrap: anywhere; hyphens: auto; }
+.stage.done b { color: var(--teal); }
+.stage.now { border-color: rgba(255, 181, 71, 0.4); background: rgba(255, 181, 71, 0.06); }
+.stage.now b { color: var(--amber); }
+.stage-strip:not(.run):not(.wait) .stage.now { border-color: var(--line); background: rgba(255, 255, 255, 0.025); }
+.stage-strip:not(.run):not(.wait) .stage.now b { color: var(--muted); }
+.stage-arrow { align-self: center; height: 3px; border-radius: 2px; position: relative; background: repeating-linear-gradient(90deg, rgba(110, 220, 205, 0.55) 0 4px, transparent 4px 7px); background-size: 14px 3px; }
+.stage-arrow::after { content: ''; position: absolute; right: -3px; top: -3.5px; border: 5px solid transparent; border-left: 6px solid rgba(110, 220, 205, 0.7); border-right: 0; }
+.stage-strip.run .stage-arrow { animation: routeFlow14 0.9s linear infinite reverse; }
+.stage-strip.wait .stage.now { border-color: rgba(255, 120, 90, 0.5); }
+@keyframes routeFlow14 { from { background-position: 14px 0; } to { background-position: 0 0; } }
+.calm .stage-arrow { animation: none !important; }
+.mod-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mod-tile { position: relative; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(20, 38, 54, 0.6), rgba(10, 22, 33, 0.6)); min-width: 0; }
+.mod-tile .ware-tile { width: 34px; height: 34px; }
+.mod-pic { position: relative; width: 46px; height: 46px; border-radius: 10px; background: radial-gradient(circle at 50% 45%, #10283a, #050b14 75%); display: grid; place-items: center; overflow: visible; }
+.mod-pic img { width: 100%; height: 100%; object-fit: contain; transform: rotate(-90deg); filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)); }
+.mod-pic .wm { position: absolute; right: -6px; bottom: -6px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: #0b1724; border: 1px solid var(--line-2); }
+.mod-n { justify-self: start; font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--text); }
+.mod-name { grid-column: 1 / -1; font-weight: 600; font-size: 13.5px; line-height: 1.25; padding-right: 2px; }
+.mod-sub { grid-column: 1 / -1; font-size: 12px; color: var(--text-2); line-height: 1.3; }
+.mod-tile .bar { grid-column: 1 / -1; margin-top: 2px; }
+.mod-del { position: absolute; top: 6px; right: 6px; opacity: 0.55; }
+.mod-del:active { opacity: 1; }
+.buildstore .job-more { margin-top: 2px; }
+
+/* Fließdiagramm: wandernde Punkte auf den Kanten, Schein für Fokus und Engpass */
+.dg-flow { stroke-linecap: round; stroke-dasharray: 0.1 15; animation: dgFlow 2s linear infinite; pointer-events: none; }
+.dg-flow.short { stroke-dasharray: 0.1 22; }
+@keyframes dgFlow { to { stroke-dashoffset: -15.1; } }
+.dg-flow.short { animation-name: dgFlowShort; }
+@keyframes dgFlowShort { to { stroke-dashoffset: -22.1; } }
+.calm .dg-flow { animation: none; }
+.dg-node.focus .base { filter: drop-shadow(0 0 10px rgba(63, 224, 197, 0.45)); }
+.dg-node.deficit .base { animation: dgWarn 1.6s ease-in-out infinite; }
+@keyframes dgWarn { 50% { stroke-opacity: 0.35; } }
+.calm .dg-node.deficit .base { animation: none; }
+/* Planer auf schmalen Handys: Kennzahlen 2 × 2 (kurz und waagerecht), Sonne über die ganze Breite mit Sektornamen */
+@media (max-width: 460px) {
+  .plan-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .plan-summary > div { padding: 7px 10px; }
+  .plan-summary b { font-size: 16px; }
+}
+.plan-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.plan-options label.opt { grid-column: 1 / -1; }
+.plan-options select { width: 100%; text-overflow: ellipsis; }

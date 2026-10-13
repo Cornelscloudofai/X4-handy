@@ -4,7 +4,7 @@ import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } 
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
-import { FIGHTER_NAME, classSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
+import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, gameRange, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
@@ -27,6 +27,7 @@ import { H } from '../engine/history';
 import { bigChart, sparkline, type ChartSpec } from './charts';
 import { tw } from './tween';
 import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
+import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
@@ -635,7 +636,7 @@ function buildStoreBox(state: GameState, st: Station): string {
       ${canMove ? `<button class="btn small" ${act('build-move-open', { st: st.id, ware: id })}>Umladen</button>` : ''}</div>`;
   }).join('');
   return `<div class="box buildstore" style="margin-bottom:10px"><div class="row" style="padding-bottom:4px">${icon('box', 20, 'muted')}<div class="grow"><div class="title">Baulager ${helpBtn('buildstore')}</div>
-      <div class="sub wrap">Schiffe liefern das Baumaterial hierher – auch ohne Dock. Ware aus dem eigenen Stationslager lädst du mit „Umladen“ selbst hin und her. Fehlt etwas, bleibt der Bau beim erreichten Prozentwert stehen und läuft mit jeder Lieferung weiter.</div></div></div>
+      <details class="job-more"><summary>Wie funktioniert das Baulager?</summary><p>Schiffe liefern das Baumaterial hierher – auch ohne Dock. Ware aus dem eigenen Stationslager lädst du mit „Umladen“ selbst hin und her. Fehlt etwas, bleibt der Bau beim erreichten Prozentwert stehen und läuft mit jeder Lieferung weiter.</p></details></div></div>
     ${rows ? `<div class="rows">${rows}</div>` : '<p class="small muted" style="margin:4px 14px 0">Leer – es wird gerade kein Material gebraucht.</p>'}
     <div style="padding:8px 14px 12px"><label class="check"><input type="checkbox" data-change="auto-buy-build" data-st="${st.id}" ${own ? '' : 'checked'}> NPC-Händler und Markteinkäufe dürfen liefern</label>
     <p class="small muted" style="margin:4px 0 0">${own ? 'Nur eigenes Material: Das Baulager nimmt nur Ware aus deinen Stationen an (eigene Transporter, Lieferreihenfolge, Umladen aus dem Stationslager).' : 'NPC-Händler bringen Material und werden bei Lieferung bezahlt; deine Transporter kaufen es auch am Markt. Eigene Stationen liefern immer mit.'}</p></div></div>`;
@@ -693,26 +694,39 @@ function stationModules(state: GameState, st: Station): string {
     const d = MODULE_MAP[def];
     const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
     const sub = d.kind === 'production' ? `${pct(g.util / g.n)} Auslastung` : d.kind === 'storage' ? `${fmtInt((d.capacity ?? 0) * g.n)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'habitat' ? `${fmtInt((d.housing ?? 0) * g.n)} Bewohner` : d.kind === 'dock' ? 'M- und S-Schiffe' : d.kind === 'pier' ? 'L-Schiffe' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe (kommen mit Kampfschiffen)' : d.yardSize === 'L' ? 'Baut L-Schiffe' : 'Baut S- und M-Schiffe · Dock für S/M') : 'Verbindet alle Module';
-    return `<div class="row">${lead}<div class="grow"><div class="title">${esc(d.name)} <span class="muted small">× ${g.n}</span></div><div class="sub wrap">${esc(sub)}</div></div>
-      ${d.kind !== 'core' ? `<button class="icon-btn" ${act('ask-demolish', { st: st.id, uid: g.uids[g.uids.length - 1] })} aria-label="Modul abreißen">${icon('trash', 18)}</button>` : ''}</div>`;
+    const util = d.kind === 'production' ? g.util / g.n : -1;
+    const artKey = d.kind === 'production' ? productionKind(d.ware) : d.kind === 'storage' ? d.storage ?? 'Container' : d.kind === 'shipyard' ? 'yard_' + (d.yardSize ?? 'M') : d.kind;
+    const url = shipArt() === 'vector' ? undefined : moduleSpriteUrl(artKey);
+    return `<div class="mod-tile ${d.kind}">${url ? `<span class="mod-pic"><img src="${url}" alt="" loading="lazy" decoding="async">${d.kind === 'production' && d.ware ? wareMark(d.ware, 8) : ''}</span>` : lead}<div class="mod-n num">×${g.n}</div>
+      <div class="mod-name two-lines">${esc(d.name)}</div><div class="mod-sub">${esc(sub)}</div>
+      ${util >= 0 ? bar(util, util < 0.4 ? 'amber' : '') : ''}
+      ${d.kind !== 'core' ? `<button class="icon-btn sm mod-del" ${act('ask-demolish', { st: st.id, uid: g.uids[g.uids.length - 1] })} aria-label="Modul abreißen">${icon('trash', 15)}</button>` : ''}</div>`;
   }).join('');
   const needDock = !hasDockFor(st, 'M') && !st.queue.some((q) => q.def === 'dock_m') && st.build?.def !== 'dock_m';
   const cap = storageCap(st);
   const isContainer = (def?: string) => !!def && MODULE_MAP[def]?.kind === 'storage' && MODULE_MAP[def]?.storage === 'Container';
   const needStore = !cap.Container && !st.queue.some((q) => isContainer(q.def)) && !isContainer(st.build?.def);
-  const summary = st.queue.length ? `<p class="small muted" style="margin:0 0 8px">${st.queue.length} Position${st.queue.length === 1 ? '' : 'en'} geplant · Material ca. ${fmtCr(total)} · reine Bauzeit ${fmtDur(eta)}.</p>` : '';
+  // Überblick: gebaut → im Bau → geplant (Pfeile fließen, solange gebaut wird)
+  const nBuilt = st.modules.filter((m) => MODULE_MAP[m.def]?.kind !== 'core').length;
+  const bd = st.build ? MODULE_MAP[st.build.def] : undefined;
+  const stage = `<div class="stage-strip ${st.build ? (st.waiting === 'material' ? 'wait' : 'run') : ''}">
+      <div class="stage done"><small>Gebaut</small><b class="num">${nBuilt}</b><span>${nBuilt === 1 ? 'Modul' : 'Module'}</span></div><i class="stage-arrow"></i>
+      <div class="stage now"><small>Im Bau</small>${bd ? `<b class="num">${pct(buildProgress(st))}</b><span lang="de">${esc(bd.name)}</span>` : '<b>–</b><span>nichts</span>'}</div><i class="stage-arrow"></i>
+      <div class="stage next"><small>Geplant</small><b class="num">${st.queue.length}</b><span>${st.queue.length ? `${fmtCr(total)} · ${fmtDur(eta)}` : 'leer'}</span></div></div>`;
+  const summary = '';
   return `
-    <div class="section"><h3>Baureihenfolge ${helpBtn('buildstore')}</h3>
-    <div class="card-actions" style="margin-bottom:10px"><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 16)}Modul einplanen</button><button class="btn small" ${act('plan-station', { st: st.id })}>${icon('planner', 16)}Fließdiagramm</button>${blueprintEntry(state, true)}${canUndo() ? `<button class="btn small" ${act('undo')} title="${esc(undoLabel())}">${icon('undo', 16)}Rückgängig</button>` : ''}</div>
-    ${summary}
-    ${buildStoreBox(state, st)}
-    ${build || rows ? `<div class="box build-list" data-draglist data-st="${st.id}">${build}${rows}${rows ? slot(st.queue.length) : ''}</div>
-      <p class="small muted" style="margin:6px 0 0">Am Griff ${icon('more', 12, 'inline')} ziehen oder mit den Pfeilen umsortieren. ${icon('plus', 12, 'inline')} zwischen zwei Positionen fügt dort ein Modul ein. Das laufende Modul ist fest.</p>` : `<div class="box empty">Keine Positionen geplant. Plane Module ein – sie werden der Reihe nach aus dem Material im Baulager gebaut.</div>`}</div>
+    ${stage}
     ${needDock || needStore ? `<div class="section"><div class="box rows">
       ${needDock ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Ohne Dock beliefern Schiffe nur das Baulager – Handel und Miner brauchen ein Dock.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: 'dock_m', at: 0 })}>Dock zuerst</button></div>` : ''}
       ${needStore ? `<div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">Energiezellen und Produkte brauchen ein Containerlager.</div></div><button class="btn small amber" ${act('queue', { st: st.id, def: bestStorage(state, 'Container'), at: 0 })}>Lager zuerst</button></div>` : ''}
     </div></div>` : ''}
-    <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="box rows">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;
+    <div class="section"><h3>Baureihenfolge ${helpBtn('buildstore')}</h3>
+    <div class="card-actions" style="margin-bottom:10px"><button class="btn primary small" ${act('modal-modules', { st: st.id, cat: 'production' })}>${icon('plus', 16)}Modul einplanen</button><button class="btn small" ${act('plan-station', { st: st.id })}>${icon('planner', 16)}Fließdiagramm</button>${blueprintEntry(state, true)}${canUndo() ? `<button class="btn small" ${act('undo')} title="${esc(undoLabel())}">${icon('undo', 16)}Rückgängig</button>` : ''}</div>
+    ${summary}
+    ${build || rows ? `<div class="box build-list" data-draglist data-st="${st.id}">${build}${rows}${rows ? slot(st.queue.length) : ''}</div>
+      <p class="small muted" style="margin:6px 0 0">Am Griff ${icon('more', 12, 'inline')} ziehen oder mit den Pfeilen umsortieren. ${icon('plus', 12, 'inline')} zwischen zwei Positionen fügt dort ein Modul ein. Das laufende Modul ist fest.</p>` : `<div class="box empty">Keine Positionen geplant. Plane Module ein – sie werden der Reihe nach aus dem Material im Baulager gebaut.</div>`}</div>
+    <div class="section">${buildStoreBox(state, st)}</div>
+    <div class="section"><h3>Gebaute Module</h3>${built ? `<div class="mod-grid">${built}</div>` : '<div class="box empty">Noch nichts gebaut.</div>'}</div>`;
 }
 
 /** Lieferreihenfolge: wohin die Transporter dieser Station Überschüsse zuerst bringen */
@@ -1100,26 +1114,36 @@ function vendorModal(state: GameState, ui: UIState, m: Extract<Modal, { type: 'v
 
 // ---- Aufträge ----
 
+/** Kapitelleiste: erledigte, aktuelle und kommende Kapitel als Punkte (Ausschnitt um das aktuelle) */
+function chapterTrack(idx: number, total: number): string {
+  const from = Math.max(1, Math.min(idx - 3, total - 6)), to = Math.min(total, from + 6);
+  const dots: string[] = [];
+  for (let i = from; i <= to; i++) dots.push(`<i class="${i < idx ? 'done' : i === idx ? 'now' : ''}"></i>`);
+  return `<div class="ch-track" aria-label="Kapitel ${idx} von ${total}">${from > 1 ? '<span>…</span>' : ''}${dots.join('')}${to < total ? '<span>…</span>' : ''}</div>`;
+}
+
 function missionsPanel(state: GameState): string {
   const m = currentMission(state);
   let story = '';
   if (m) {
     const p = m.progress(state);
     const done = p.cur >= p.target;
-    const idx = state.story.index + 1;
-    story = `<div class="story-card">
-      <div class="eyebrow">Kampagne · Kapitel ${idx} von ${storyOf(state).length}</div>
-      <h2>${esc(m.title)}</h2><p>${esc(m.story)}</p>
+    const idx = state.story.index + 1, total = storyOf(state).length;
+    const frac = Math.min(1, p.cur / Math.max(1e-9, p.target));
+    story = `<div class="story-card ${done ? 'done' : ''}">
+      <div class="story-top"><div class="story-ring">${utilRing(frac, 22)}<b>${idx}</b></div>
+        <div style="min-width:0;flex:1"><div class="eyebrow">Kampagne · Kapitel ${idx} von ${total}</div><h2>${esc(m.title)}</h2>${chapterTrack(idx, total)}</div></div>
+      <p>${esc(m.story)}</p>
       ${m.about ? `<p class="about"><b>Wofür?</b> ${esc(m.about)}</p>` : ''}
       <div class="goal">${icon(done ? 'check' : 'target', 20)}<div style="flex:1;min-width:0"><b>${esc(m.goal)}</b>
-        <div class="small muted" style="margin:4px 0 6px">${fmtAmount(Math.min(p.cur, p.target))} / ${fmtAmount(p.target)}</div>${bar(p.cur / p.target, done ? '' : 'amber')}</div></div>
+        <div class="goal-num"><span>${fmtAmount(Math.min(p.cur, p.target))} / ${fmtAmount(p.target)}</span><span>${Math.floor(frac * 100)} %</span></div>${bar(frac, done ? '' : 'amber')}</div></div>
       <p class="hint">${icon('info', 16)}<span>${esc(m.hint)}</span></p>
-      <div class="flow" style="margin-bottom:12px"><span class="io">${icon('wallet', 15)}<b>${fmtCr(m.reward.credits)}</b></span>${Object.entries(m.reward.rep ?? {}).map(([f, n]) => `<span class="io">${icon('star', 15)}<b>+${n}</b> Ruf ${FACTIONS[f as 'frf'].short}</span>`).join('')}</div>
+      <div class="reward-row"><span class="reward-label">Belohnung</span><span class="io gold">${icon('wallet', 15)}<b>${fmtCr(m.reward.credits)}</b></span>${Object.entries(m.reward.rep ?? {}).map(([f, n]) => `<span class="io">${icon('star', 15)}<b>+${n}</b> Ruf ${FACTIONS[f as 'frf'].short}</span>`).join('')}</div>
       ${m.delivery && !done ? courierButtons(state, state.contracts.find((c) => c.story && c.status === 'active')?.id) : ''}
       <button class="btn ${done ? 'primary' : 'disabled'} block" ${act('claim')}>${icon('gift', 20)}${done ? 'Belohnung abholen' : 'Noch nicht erreicht'}</button>
     </div>`;
   } else {
-    story = `<div class="story-card"><div class="eyebrow">Kampagne abgeschlossen</div><h2>Freies Spiel</h2><p>Die Familien stehen in deiner Schuld. Erweitere dein Imperium und erfülle weiter Aufträge.</p></div>`;
+    story = `<div class="story-card done"><div class="eyebrow">Kampagne abgeschlossen</div><h2>Freies Spiel</h2><p>Die Familien stehen in deiner Schuld. Erweitere dein Imperium und erfülle weiter Aufträge.</p></div>`;
   }
   const active = state.contracts.filter((c) => c.status === 'active' && !c.story);
   const offers = state.contracts.filter((c) => c.status === 'offer');
@@ -1128,26 +1152,42 @@ function missionsPanel(state: GameState): string {
     const s = SECTOR_MAP[c.sector];
     const courier = isDelivery(c);
     const destKey = c.market ?? c.sector;
-    const route = `→ ${esc(courier ? marketInfo(destKey).name : s.tradeStation.name)}`;
+    const dest = courier ? marketInfo(destKey).name : s.tradeStation.name;
     // Bester Einkauf (ohne Schiffsposition): was bei diesem Auftrag hängen bleibt
     const best = courier ? deliverySources(state, c, null).filter((x) => !x.own).sort((a, b) => b.profit - a.profit)[0] : undefined;
+    const unit = c.reward / c.amount;
+    const over = w.price.avg > 0 ? unit / w.price.avg - 1 : 0;
+    const left = c.deadline - state.time;
+    const urgent = left < Math.min(1800, c.duration * 0.25);
     const btn = courier
       ? `<button class="btn small ${offer ? 'primary' : ''}" ${act('courier-ship-modal', { id: c.id })}>${icon('trader', 16)}${offer ? 'Ansehen und annehmen' : 'Schiff schicken'}</button>`
       : offer ? `<button class="btn small primary" ${act('accept', { id: c.id })}>Annehmen</button>` : `<button class="btn small" ${act('courier-modal', { id: c.id })}>Aus Lager liefern</button>`;
-    return `<div class="row" data-key="c${c.id}" style="flex-wrap:wrap">${wareTile(c.ware)}<div class="grow"><div class="title two-lines">${esc(c.title)}</div>
-      <div class="sub wrap">${fmtInt(c.amount)} ${esc(w.name)} ${route}</div>
-      ${courier ? `<div class="small muted">Zahlt <b class="pos">${fmtInt(c.reward / c.amount)} Cr</b> je Einheit (üblich ${fmtInt(w.price.avg)}) · Lohn ${fmtCr(c.reward)}${best ? ` · günstig bei ${esc(best.name)} für ${fmtInt(best.price)} Cr · Gewinn bis ${fmtCr(best.profit)}${best.units < c.amount - 0.5 ? ' je Fahrt' : ''}` : ''} · für ${c.size}-Frachter${offer ? ` · ${fmtDur(c.duration)} Frist` : ''}</div>` : ''}
-      ${offer ? '' : `${bar(c.delivered / c.amount)}<div class="small muted" style="margin-top:4px">${fmtInt(c.delivered)} / ${fmtInt(c.amount)} geliefert · noch ${fmtDur(c.deadline - state.time)}</div>`}</div>
-      ${courier ? '' : `<div class="right"><b class="pos">${fmtCr(c.reward)}</b><div class="small muted">${offer ? `${fmtDur(c.duration)} Frist` : `Ruf +${c.rep}`}</div></div>`}
-      <div class="small muted" style="width:100%;margin-top:4px">${contractPayNote(state, c)}</div>
-      <div style="width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-        ${offer ? `<span class="small muted" style="margin-right:auto;align-self:center">läuft ab in ${fmtDur(c.deadline - state.time)}</span>` : ''}${btn}
-      </div></div>`;
+    // Weg der Ware: günstigster bekannter Einkauf → Ziel (Linie fließt)
+    const route = `<div class="job-route">
+        <span class="end">${best ? `<small>Einkauf</small><b>${esc(best.name)}</b><em>${fmtInt(best.price)} Cr</em>` : `<small>Einkauf</small><b>${courier ? 'frei wählbar' : 'eigenes Lager'}</b>`}</span>
+        <i class="route-line" style="--c:${w.color}"></i>
+        <span class="end to"><small>Ziel</small><b>${esc(dest)}</b><em class="pos">${fmtInt(unit)} Cr</em></span></div>`;
+    const stats = [
+      courier && over > 0.02 ? `<span class="pill teal">+${Math.round(over * 100)} % über üblich</span>` : '',
+      best ? `<span class="pill">Gewinn bis ${fmtCr(best.profit)}${best.units < c.amount - 0.5 ? ' je Fahrt' : ''}</span>` : '',
+      courier ? `<span class="pill">${c.size}-Frachter</span>` : `<span class="pill">Ruf +${c.rep}</span>`,
+      `<span class="pill ${urgent ? 'amber' : ''}">${icon('clock', 13)}${offer ? `läuft ab in ${fmtDur(left)}` : `noch ${fmtDur(left)}`}</span>`,
+    ].join('');
+    return `<div class="job ${offer ? 'offer' : 'active'}" data-key="c${c.id}">
+      <div class="job-head">${wareTile(c.ware)}<div class="grow"><div class="eyebrow">${courier ? 'Lieferung' : 'Auftrag'}${offer ? '' : ' · läuft'}</div><div class="title two-lines">${esc(courier ? w.name : c.title)}</div>
+        <div class="sub">${fmtInt(c.amount)} Einheiten${offer && courier ? ` · ${fmtDur(c.duration)} Frist` : ''}</div></div>
+        <div class="job-pay"><b class="pos">${fmtCr(c.reward)}</b><small>Lohn</small></div></div>
+      ${route}
+      ${offer ? '' : `<div class="job-prog">${bar(c.delivered / c.amount)}<div class="small muted">${fmtInt(c.delivered)} / ${fmtInt(c.amount)} geliefert</div></div>`}
+      <div class="job-stats">${stats}</div>
+      <details class="job-more"><summary>Wie wird bezahlt?</summary><p>${contractPayNote(state, c)}</p></details>
+      <div class="job-actions">${btn}</div></div>`;
   };
+  const count = (n: number) => (n ? ` <span class="count">${n}</span>` : '');
   return sheet('Aufträge', 'Familie Zhin und Nachbarn', `
     <div class="section">${story}</div>
-    <div class="section"><h3>Aktive Lieferaufträge</h3>${active.length ? `<div class="box rows">${active.map((c) => contractRow(c, false)).join('')}</div>` : '<div class="box empty">Keine aktiven Aufträge. Transporter im Autohandel liefern automatisch für angenommene Aufträge.</div>'}</div>
-    <div class="section"><h3>Angebote</h3>${offers.length ? `<div class="box rows">${offers.map((c) => contractRow(c, true)).join('')}</div>` : `<div class="box empty">Gerade keine Angebote. Neue kommen etwa alle ${state.start ? '12–30' : '30–50'} Minuten Spielzeit.</div>`}</div>
+    <div class="section"><h3>Aktive Lieferaufträge${count(active.length)}</h3>${active.length ? `<div class="jobs">${active.map((c) => contractRow(c, false)).join('')}</div>` : '<div class="box empty">Keine aktiven Aufträge. Transporter im Autohandel liefern automatisch für angenommene Aufträge.</div>'}</div>
+    <div class="section"><h3>Angebote${count(offers.length)}</h3>${offers.length ? `<div class="jobs">${offers.map((c) => contractRow(c, true)).join('')}</div>` : `<div class="box empty">Gerade keine Angebote. Neue kommen etwa alle ${state.start ? '12–30' : '30–50'} Minuten Spielzeit.</div>`}</div>
     ${shipOrdersSection(state)}
     <div class="section"><h3>Ruf</h3><div class="kv">${(['frf', 'zya'] as const).map((f) => `<div><small>${esc(FACTIONS[f].name)}</small><b>${fmtNum(state.rep[f], 1)}</b>${bar(Math.max(0, state.rep[f]) / 30, 'amber')}</div>`).join('')}</div>
     <p class="small muted">Ruf öffnet Baupläne und Baulizenzen. Handel bringt Ruf bis Stufe 10, darüber zählen Aufträge.</p>

@@ -302,6 +302,12 @@ const MODULE_ART: Record<string, string[]> = {
   Liquid: ['split-lager-gas-ki'],
 };
 
+/** Bild-URL eines Moduls nach Bauart (für Listen und Kacheln), sonst undefined */
+export function moduleSpriteUrl(kind: string): string | undefined {
+  const name = kind === 'core' ? 'split-station-kern-hell-ki' : MODULE_ART[kind]?.[0];
+  return name ? URLS.get(name) : undefined;
+}
+
 /** Bild eines Moduls nach Bauart (Produktionsart oder Lagertyp), sonst null (dann Neon-Zeichnung) */
 export function moduleSprite(kind: string, seed: number): HTMLImageElement | null {
   const list = MODULE_ART[kind];
