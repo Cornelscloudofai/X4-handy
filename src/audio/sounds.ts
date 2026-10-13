@@ -212,61 +212,78 @@ function filt(g: G, dest: AudioNode, type: BiquadFilterType, f: number, q = 0.7)
   return b;
 }
 
-/** Knall-Anteil jedes Schusses: kurzer, harter Einschwinger + Bassschlag – gibt Wucht auch auf Handylautsprechern */
-function punch(g: G, o: AudioNode, t: number, crack: number, sub: number, subF = 110): void {
-  if (crack) noise(g, o, { t, type: 'highpass', f: vary(2600, 0.1), a: 0.0005, d: 0.022, gain: crack });
-  if (sub) tone(g, o, { f: vary(subF, 0.05), to: subF * 0.4, t, a: 0.001, d: 0.09, gain: sub, glide: 0.07 });
+/** Bass-Anteil jedes Schusses: kurzer, gedämpfter Einschwinger + tiefer Bassschlag mit Körper (vor der Sättigung,
+ *  damit Obertöne entstehen und der Bass auch auf Handylautsprechern als Druck ankommt) */
+function punch(g: G, o: AudioNode, bass: AudioNode, t: number, crack: number, sub: number, subF = 95, len = 0.16): void {
+  if (crack) noise(g, o, { t, type: 'bandpass', f: vary(1400, 0.1), q: 0.6, a: 0.0006, d: 0.02, gain: crack });
+  if (sub) {
+    tone(g, bass, { f: vary(subF * 1.45, 0.04), to: subF * 0.6, t, a: 0.002, d: len, gain: sub * 0.75, glide: len * 0.7 });
+    noise(g, bass, { t, type: 'bandpass', f: 220, q: 0.8, a: 0.002, d: len * 0.6, gain: sub * 0.9 });
+  }
+}
+
+/** Klangkette der Waffen: Tiefen kräftig anheben, Höhen absenken, sanft sättigen – dunkel, satt, nicht schrill */
+function weaponChain(g: G, o: AudioNode): { body: AudioNode; bass: AudioNode } {
+  const ws = shaper(g, 1.6);
+  const low = g.ctx.createBiquadFilter();
+  low.type = 'peaking'; low.frequency.value = 160; low.Q.value = 0.9; low.gain.value = 6;
+  const high = g.ctx.createBiquadFilter();
+  high.type = 'highshelf'; high.frequency.value = 5000; high.gain.value = -6;
+  low.connect(high).connect(ws).connect(o);
+  // Bass eigens stärker gesättigt (Obertöne um 150–300 Hz)
+  const bws = shaper(g, 2.8);
+  const blp = g.ctx.createBiquadFilter();
+  blp.type = 'lowpass'; blp.frequency.value = 1100;
+  bws.connect(blp).connect(o);
+  return { body: low, bass: bws };
 }
 
 /**
- * Schuss je Waffenart: Aufnahme (Kenney, CC0) mit eigener Tonhöhe und Filterung, darüber Knall, Bassschlag und
- * waffentypischer Synthese-Anteil. Leichte Zufallsvariation; Panorama nach Bildschirmseite.
+ * Schuss je Waffenart: Aufnahme (Kenney, CC0) tiefer gestimmt und abgedunkelt, darunter ein satter Bassschlag,
+ * darüber nur wenig Hall (trocken, nicht hohl). Leichte Zufallsvariation; Panorama nach Bildschirmseite.
  */
 function shot(kind: Gun = 'puls', pan = 0): void {
   if (!gate('shot', 55)) return;
-  play('sfx', { pan: pan * 0.6, verb: 0.1, gain: 0.6 }, (g, o, t) => {
-    const ws = shaper(g, 1.8);
-    ws.connect(o);
+  play('sfx', { pan: pan * 0.6, verb: 0.025, gain: 0.6 }, (g, o, t) => {
+    const { body, bass } = weaponChain(g, o);
     switch (kind) {
       case 'bolzen': // Bolzenrepetierer: mechanischer, harter Schlag
-        sample(g, filt(g, ws, 'lowpass', 5200), 'kenney-blaster-repeater', { t, rate: vary(1.12, 0.05), gain: 0.36 });
-        bell(g, o, { f: vary(900, 0.06), t, ratio: 1.41, index: 3, dur: 0.06, gain: 0.08 });
-        punch(g, o, t, 0.12, 0.28, 120);
+        sample(g, filt(g, filt(g, body, 'lowpass', 6000), 'highpass', 150), 'kenney-blaster-repeater', { t, rate: vary(0.92, 0.04), gain: 0.65 });
+        bell(g, body, { f: vary(420, 0.06), t, ratio: 1.41, index: 2.5, dur: 0.07, gain: 0.08 });
+        punch(g, o, bass, t, 0.1, 0.34, 85, 0.13);
         break;
-      case 'schrot': // Splitterbatterie: dichte Salve aus Knistern
-        sample(g, filt(g, ws, 'highpass', 300), 'kenney-blaster-repeater', { t, rate: vary(1.5, 0.05), gain: 0.55 });
-        for (const dt of [0, 0.014, 0.03]) noise(g, o, { t: t + dt, type: 'bandpass', f: vary(2400, 0.2), q: 1.2, a: 0.0008, d: 0.03, gain: 0.4 });
-        punch(g, o, t, 0.1, 0.3, 95);
+      case 'schrot': // Splitterbatterie: dumpfe Salve
+        sample(g, filt(g, filt(g, body, 'lowpass', 6500), 'highpass', 150), 'kenney-blaster-repeater', { t, rate: vary(1.05, 0.05), gain: 0.65 });
+        for (const dt of [0, 0.016, 0.034]) noise(g, body, { t: t + dt, type: 'bandpass', f: vary(1300, 0.2), q: 0.7, a: 0.0008, d: 0.04, gain: 0.4 });
+        punch(g, o, bass, t, 0.08, 0.36, 80, 0.15);
         break;
-      case 'plasma': // Plasmakanone: dicker, blubbernder Schuss
-        sample(g, filt(g, ws, 'lowpass', 2200, 2.5), 'kenney-blaster', { t, rate: vary(0.55, 0.05), gain: 0.5 });
-        tone(g, ws, { f: vary(320), to: 85, t, type: 'sawtooth', a: 0.004, d: 0.2, gain: 0.07, glide: 0.18 });
-        punch(g, o, t, 0.06, 0.38, 90);
+      case 'plasma': // Plasmakanone: schwer und wabernd
+        sample(g, filt(g, body, 'lowpass', 1600), 'kenney-blaster', { t, rate: vary(0.42, 0.04), gain: 0.55 });
+        tone(g, body, { f: vary(180), to: 55, t, type: 'sawtooth', a: 0.004, d: 0.22, gain: 0.06, glide: 0.2 });
+        punch(g, o, bass, t, 0.04, 0.5, 70, 0.22);
         break;
-      case 'neutron': // Neutronen-Gatling: heller, scharfer Riss
-        sample(g, filt(g, ws, 'highpass', 1200), 'kenney-blaster', { t, rate: vary(1.7, 0.05), gain: 0.7, dur: 0.18 });
-        tone(g, o, { f: vary(3200), to: 700, t, type: 'sawtooth', a: 0.0008, d: 0.05, gain: 0.04 });
-        punch(g, o, t, 0.24, 0.22, 150);
+      case 'neutron': // Neutronen-Gatling: schnell und trocken
+        sample(g, filt(g, body, 'lowpass', 4200), 'kenney-blaster', { t, rate: vary(1.0, 0.05), gain: 0.5, dur: 0.16 });
+        punch(g, o, bass, t, 0.1, 0.32, 110, 0.1);
         break;
-      case 'tau': // Tau-Beschleuniger: Peitschenknall wie eine Railgun
-        sample(g, ws, 'kenney-blaster', { t, rate: vary(0.85, 0.04), gain: 0.42 });
-        noise(g, o, { t, type: 'bandpass', f: 7000, to: 700, q: 2, a: 0.001, d: 0.14, gain: 0.2, glide: 0.12 });
-        punch(g, o, t, 0.14, 0.32, 100);
+      case 'tau': // Tau-Beschleuniger: Railgun – Wumms mit kurzem Luftriss
+        sample(g, filt(g, body, 'lowpass', 2800), 'kenney-blaster', { t, rate: vary(0.62, 0.04), gain: 0.5 });
+        noise(g, body, { t, type: 'bandpass', f: 2600, to: 400, q: 0.8, a: 0.001, d: 0.12, gain: 0.14, glide: 0.1 });
+        punch(g, o, bass, t, 0.08, 0.5, 75, 0.2);
         break;
-      case 'thermal': // Thermaler Desintegrator: zischend, heiß
-        sample(g, filt(g, ws, 'lowpass', 3200), 'kenney-blaster-repeater', { t, rate: vary(0.7, 0.05), gain: 0.36 });
-        noise(g, o, { t: t + 0.01, type: 'highpass', f: 4500, a: 0.01, d: 0.18, gain: 0.08 });
-        punch(g, o, t, 0.06, 0.3, 85);
+      case 'thermal': // Thermaler Desintegrator: brodelnd
+        sample(g, filt(g, filt(g, body, 'lowpass', 4500), 'highpass', 130), 'kenney-blaster-repeater', { t, rate: vary(0.72, 0.05), gain: 0.62 });
+        noise(g, body, { t: t + 0.01, type: 'bandpass', f: 1600, q: 0.6, a: 0.01, d: 0.16, gain: 0.16 });
+        punch(g, o, bass, t, 0.05, 0.38, 72, 0.17);
         break;
-      case 'boson': // Bosonenlanze: schwerer, aufgeladener Stoß
-        sample(g, filt(g, ws, 'lowpass', 2600), 'kenney-blaster', { t, rate: vary(0.45, 0.04), gain: 0.55 });
-        tone(g, ws, { f: 70, to: 260, t, type: 'sawtooth', a: 0.002, d: 0.08, gain: 0.06, glide: 0.06 });
-        punch(g, o, t, 0.12, 0.45, 70);
+      case 'boson': // Bosonenlanze: sehr tiefer, schwerer Stoß
+        sample(g, filt(g, body, 'lowpass', 1800), 'kenney-blaster', { t, rate: vary(0.34, 0.04), gain: 0.6 });
+        punch(g, o, bass, t, 0.06, 0.6, 58, 0.28);
         break;
-      default: // Pulslaser: klassischer, kräftiger Laserschuss
-        sample(g, filt(g, ws, 'lowpass', 9000), 'kenney-blaster', { t, rate: vary(1.22, 0.05), gain: 0.42, dur: 0.32 });
-        tone(g, o, { f: vary(1500), to: 320, t, type: 'square', a: 0.001, d: 0.06, gain: 0.035, glide: 0.06 });
-        punch(g, o, t, 0.1, 0.22, 130);
+      default: // Pulslaser: satter Laserschuss
+        sample(g, filt(g, body, 'lowpass', 4000), 'kenney-blaster', { t, rate: vary(0.8, 0.04), gain: 0.5, dur: 0.34 });
+        tone(g, body, { f: vary(620), to: 140, t, type: 'triangle', a: 0.001, d: 0.08, gain: 0.05, glide: 0.07 });
+        punch(g, o, bass, t, 0.07, 0.38, 95, 0.15);
     }
   });
 }
@@ -274,18 +291,19 @@ function shot(kind: Gun = 'puls', pan = 0): void {
 /** Gegnerischer Schuss: leiser und dumpfer als die eigenen, damit die eigenen im Vordergrund bleiben */
 function enemyShot(pan = 0): void {
   if (!gate('enemyShot', 110)) return;
-  play('sfx', { pan: pan * 0.7, verb: 0.14, gain: 1 }, (g, o, t) => {
-    sample(g, filt(g, o, 'lowpass', 3500), 'kenney-enemy-attack', { t, rate: vary(1, 0.08), gain: 0.22 });
+  play('sfx', { pan: pan * 0.7, verb: 0.05, gain: 1 }, (g, o, t) => {
+    sample(g, filt(g, o, 'lowpass', 2600), 'kenney-enemy-attack', { t, rate: vary(0.75, 0.08), gain: 0.26 });
   });
 }
 
 /** Rakete startet: Zündung, dann Zischen, das davonzieht */
 function missile(): void {
   if (!gate('missile', 120)) return;
-  play('sfx', { verb: 0.16, gain: 1 }, (g, o, t) => {
-    sample(g, filt(g, o, 'lowpass', 4000), 'kenney-blaster', { t, rate: vary(0.7, 0.05), gain: 0.3 });
-    punch(g, o, t, 0.08, 0.25, 90);
-    noise(g, o, { t: t + 0.02, type: 'bandpass', f: 900, to: 3200, q: 0.8, a: 0.03, d: 0.5, gain: 0.2, glide: 0.5 });
+  play('sfx', { verb: 0.06, gain: 1 }, (g, o, t) => {
+    const { body, bass } = weaponChain(g, o);
+    sample(g, filt(g, body, 'lowpass', 2600), 'kenney-blaster', { t, rate: vary(0.55, 0.05), gain: 0.35 });
+    punch(g, o, bass, t, 0.05, 0.35, 80, 0.18);
+    noise(g, body, { t: t + 0.02, type: 'bandpass', f: 500, to: 1800, q: 0.6, a: 0.03, d: 0.5, gain: 0.22, glide: 0.5 });
   });
 }
 
@@ -293,8 +311,8 @@ function missile(): void {
 function hit(pan = 0): void {
   if (!gate('hit', 45)) return;
   play('sfx', { pan: pan * 0.6, gain: 1 }, (g, o, t) => {
-    if (!sample(g, o, 'kenney-enemy-hurt', { t, rate: vary(1.35, 0.1), gain: 0.22 })) bell(g, o, { f: vary(1400, 0.1), t, ratio: 1.41, index: 3, dur: 0.06, gain: 0.12 });
-    noise(g, o, { t, type: 'highpass', f: 3500, a: 0.0008, d: 0.018, gain: 0.12 });
+    if (!sample(g, o, 'kenney-enemy-hurt', { t, rate: vary(0.95, 0.1), gain: 0.28 })) bell(g, o, { f: vary(700, 0.1), t, ratio: 1.41, index: 3, dur: 0.06, gain: 0.12 });
+    tone(g, o, { f: vary(140, 0.06), to: 60, t, a: 0.001, d: 0.06, gain: 0.14 });
   });
 }
 
@@ -302,15 +320,20 @@ function hit(pan = 0): void {
 function explosion(size = 1, pan = 0): void {
   const s = Math.max(0.3, Math.min(4, size));
   if (!gate(s >= 2 ? 'boom-big' : 'boom', s >= 2 ? 150 : 70)) return;
-  play('sfx', { pan: pan * 0.7, verb: 0.2 + 0.08 * Math.min(2, s), gain: 1 }, (g, o, t) => {
+  play('sfx', { pan: pan * 0.7, verb: 0.06 + 0.04 * Math.min(2, s), gain: 1 }, (g, o, t) => {
     const ws = shaper(g, 2.6);
-    ws.connect(o);
-    const rate = Math.max(0.45, Math.min(1.35, vary(1.15 / Math.sqrt(s), 0.06)));
+    const ls = g.ctx.createBiquadFilter();
+    ls.type = 'lowshelf'; ls.frequency.value = 160; ls.gain.value = 6;
+    const hs = g.ctx.createBiquadFilter();
+    hs.type = 'highshelf'; hs.frequency.value = 4000; hs.gain.value = -8;
+    ls.connect(hs).connect(o);
+    ws.connect(ls);
+    const rate = Math.max(0.38, Math.min(1, vary(0.85 / Math.sqrt(s), 0.06)));
     sample(g, ws, 'kenney-enemy-destroy', { t, rate, gain: Math.min(0.6, 0.3 + 0.1 * s) });
-    if (s >= 1.4) sample(g, filt(g, o, 'lowpass', 1800), 'kenney-impact', { t: t + 0.01, rate: vary(0.7, 0.05), gain: Math.min(0.5, 0.18 * s) });
+    if (s >= 1.4) sample(g, filt(g, ls, 'lowpass', 1800), 'kenney-impact', { t: t + 0.01, rate: vary(0.7, 0.05), gain: Math.min(0.5, 0.18 * s) });
     const len = 0.3 + 0.35 * s;
     tone(g, ws, { f: vary(90 / Math.sqrt(s), 0.08), to: 28, t, a: 0.002, d: len * 0.8, gain: Math.min(0.5, 0.2 + 0.1 * s), glide: len * 0.7 });
-    noise(g, o, { t: t + 0.06, type: 'bandpass', f: 2500, to: 800, q: 1.2, a: 0.02, d: len * 1.2, gain: 0.06 * Math.min(2, s), rate: 0.7 });
+    noise(g, ls, { t: t + 0.06, type: 'bandpass', f: 1200, to: 400, q: 0.7, a: 0.02, d: len * 1.2, gain: 0.06 * Math.min(2, s), rate: 0.6 });
   });
 }
 
@@ -328,7 +351,7 @@ function shield(): void {
 function hull(): void {
   if (!gate('hull', 110)) return;
   play('sfx', { verb: 0.12, gain: 1 }, (g, o, t) => {
-    sample(g, o, 'kenney-impact', { t, rate: vary(1.1, 0.06), gain: 0.5 });
+    sample(g, o, 'kenney-impact', { t, rate: vary(0.85, 0.06), gain: 0.55 });
     tone(g, o, { f: 110, to: 45, t, a: 0.002, d: 0.16, gain: 0.3 });
     noise(g, o, { t, type: 'bandpass', f: 700, q: 1.2, a: 0.002, d: 0.12, gain: 0.15, rate: 0.5 });
   });
