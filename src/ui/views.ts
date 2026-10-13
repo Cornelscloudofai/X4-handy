@@ -137,7 +137,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 16)}Station</button>
     <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 16)}Routen</button>
     ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button>
-    <div class="zoom"><button data-zoom="in" aria-label="Hineinzoomen (halten für stufenlos)">${icon('plus', 16)}</button><div class="zoom-track" data-zoom="track" role="slider" aria-label="Zoom stufenlos"><i class="zoom-knob"></i></div><button data-zoom="out" aria-label="Herauszoomen (halten für stufenlos)">${icon('minus', 16)}</button></div>
+    <div class="zoom"><button data-zoom="in" aria-label="Hineinzoomen (halten für stufenlos)">${icon('plus', 16)}</button><div class="zoom-track" data-zoom="track" role="slider" aria-label="Zoom stufenlos"><i class="zoom-knob" style="top:${((1 - (ui.zoomFrac ?? 0.5)) * 100).toFixed(1)}%"></i></div><button data-zoom="out" aria-label="Herauszoomen (halten für stufenlos)">${icon('minus', 16)}</button></div>
   </div>${flowFilter(state, ui)}`}`;
 }
 

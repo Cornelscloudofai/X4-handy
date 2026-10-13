@@ -73,6 +73,8 @@ export interface UIState {
   labelDensity: number;
   /** Kapitelziel auf der Karte eingeklappt */
   objMin?: boolean;
+  /** Zoomstufe 0 (weit) … 1 (nah) für den Schieber der Zoom-Leiste */
+  zoomFrac?: number;
   /** Sektor-Hintergrund: Bilder (Standard) oder erzeugte Himmel */
   bgMode: 'image' | 'procedural';
   /** Stil der Warensymbole: leuchtend (gefüllt) oder Linie */

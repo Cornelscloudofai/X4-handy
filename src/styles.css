@@ -1055,7 +1055,7 @@ details.explain p { margin: 0; padding: 0 12px 12px; font-size: 13.5px; line-hei
 .zoom-track { position: relative; height: 92px; border-top: 1px solid var(--line); touch-action: none; cursor: ns-resize; }
 .zoom-track::before { content: ''; position: absolute; left: 50%; top: 10px; bottom: 10px; width: 2px; margin-left: -1px; border-radius: 1px; background: linear-gradient(180deg, rgba(63, 224, 197, 0.6), rgba(63, 224, 197, 0.12)); }
 .zoom-knob { position: absolute; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal-glow), 0 0 0 3px rgba(5, 11, 20, 0.9);
-  top: 50%; transform: translateY(0); }
+  transition: none; }
 .zoom-track { padding: 10px 0; box-sizing: border-box; }
 .zoom-knob { margin-top: -7px; }
 .zoom button, .zoom-track { touch-action: none; user-select: none; -webkit-user-select: none; }

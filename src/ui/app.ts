@@ -532,11 +532,12 @@ function zoomTick(dt: number): void {
     zoomHold.t += dt;
     if (zoomHold.t >= 0.18) cam.zoomAt(Math.exp((zoomHold.kind === 'in' ? 1.6 : -1.6) * dt), cam.w / 2, cam.h / 2);
   }
+  // Stand merken (die Kopfleiste schreibt ihn beim Neuaufbau in die Vorlage – kein Springen) und nur bei Änderung setzen
+  const f = Math.max(0, Math.min(1, Math.log(cam.zoom / cam.minZoom) / Math.log(cam.maxZoom / cam.minZoom)));
+  ui.zoomFrac = f;
   const knob = document.querySelector<HTMLElement>('#hud .zoom-knob');
-  if (knob) {
-    const f = Math.log(cam.zoom / cam.minZoom) / Math.log(cam.maxZoom / cam.minZoom);
-    knob.style.top = `${((1 - Math.max(0, Math.min(1, f))) * 100).toFixed(1)}%`;
-  }
+  const top = `${((1 - f) * 100).toFixed(1)}%`;
+  if (knob && knob.style.top !== top) knob.style.top = top;
 }
 
 // ---------- Zurück-Taste (Android) und Escape ----------
