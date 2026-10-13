@@ -1031,3 +1031,35 @@ details.explain summary { display: flex; align-items: center; gap: 8px; padding:
 details.explain summary::-webkit-details-marker { display: none; }
 details.explain summary .ic { color: var(--teal); }
 details.explain p { margin: 0; padding: 0 12px 12px; font-size: 13.5px; line-height: 1.45; color: var(--text-2); }
+
+/* Kopfleiste schlanker: Wichtiges (Credits, Zeit, Warnungen) gut lesbar, Nebensächliches kleiner */
+#hud { gap: 5px; padding: calc(var(--safe-top) + 6px) 8px 0; }
+.hud-row { gap: 4px; }
+.chip { min-height: 34px; padding: 0 8px; border-radius: 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+.chip b { font-size: 13.5px; }
+.chip.credits b { font-size: 14.5px; }
+.chip.sector b { font-size: 12.5px; -webkit-line-clamp: 1; white-space: nowrap; text-overflow: ellipsis; display: block; }
+.chip.time button { height: 28px; min-width: 28px; border-radius: 7px; }
+.chip.time button.speed { font-size: 13px; padding: 0 5px; }
+.sub-row { padding: 0 3px; }
+.crumb { font-size: 10.5px; color: rgba(127, 198, 220, 0.75); }
+.clock { font-size: 10.5px; }
+.tool-row { gap: 6px; align-items: flex-start; }
+.tool-row > .btn { min-height: 32px; padding: 0 11px; border-radius: 9px; font-size: 13px; gap: 6px; border-color: var(--line); }
+.tool-row > .btn.outline-teal { border-color: rgba(63, 224, 197, 0.45); }
+.tool-row > .menu-btn { width: 32px; padding: 0; }
+.news-btn .badge { top: -6px; right: -6px; min-width: 16px; height: 16px; line-height: 16px; font-size: 10px; }
+.zoom { width: 32px; border-radius: 10px; overflow: visible; flex: none; margin-right: 0; }
+.zoom button { width: 32px; height: 30px; }
+.zoom button + button, .zoom .zoom-track + button { border-top: 1px solid var(--line); }
+.zoom-track { position: relative; height: 92px; border-top: 1px solid var(--line); touch-action: none; cursor: ns-resize; }
+.zoom-track::before { content: ''; position: absolute; left: 50%; top: 10px; bottom: 10px; width: 2px; margin-left: -1px; border-radius: 1px; background: linear-gradient(180deg, rgba(63, 224, 197, 0.6), rgba(63, 224, 197, 0.12)); }
+.zoom-knob { position: absolute; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal-glow), 0 0 0 3px rgba(5, 11, 20, 0.9);
+  top: 50%; transform: translateY(0); }
+.zoom-track { padding: 10px 0; box-sizing: border-box; }
+.zoom-knob { margin-top: -7px; }
+.zoom button, .zoom-track { touch-action: none; user-select: none; -webkit-user-select: none; }
+.objective { padding: 6px 10px 6px 8px; }
+.objective-wrap .objective { padding-right: 40px; }
+.obj-hide { right: 6px; top: 50%; margin-top: -14px; }
+#hud::before { height: calc(var(--safe-top) + 120px); }

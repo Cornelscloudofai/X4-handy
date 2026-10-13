@@ -100,6 +100,7 @@ export function start(): void {
   new ResizeObserver(resize).observe(canvas);
   attachInput(canvas, () => (ui.view === 'galaxy' ? galaxyCam : cam), { onTap, onLongPress });
   document.addEventListener('click', onClick);
+  initZoomControl();
   // Hinweis-Rahmen folgt dem Ziel beim Scrollen
   let coachRaf = 0;
   document.addEventListener('scroll', () => { if (!coachRaf) coachRaf = requestAnimationFrame(() => { coachRaf = 0; renderCoach(state, ui); }); }, true);
@@ -197,6 +198,7 @@ function frame(now: number): void {
   if (minigameOpen()) { requestAnimationFrame(frame); return; }
   if (!ui.paused && !(ui.modal && (ui.modal.type === 'welcome' || ui.modal.type === 'offline'))) step(state, dt * state.speed);
   followShip();
+  zoomTick(dt);
   const c = ui.view === 'galaxy' ? galaxyCam : cam;
   c.update(dt, ui.view === 'galaxy' ? GALAXY_HEX * 3 : SECTOR_RADIUS * 1.1);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -489,6 +491,52 @@ function onLongPress(sx: number, sy: number): void {
   ui.placing = { x, z, valid: check.ok, msg: check.msg, set: true };
   ui.selection = null;
   refresh();
+}
+
+// ---------- Zoom-Leiste: Tippen = ein Schritt, Halten = stufenlos, Schieber = direkt ----------
+
+let zoomHold: { kind: 'in' | 'out' | 'track'; id: number; t: number } | null = null;
+
+function zoomTrackSet(e: PointerEvent): void {
+  const tr = document.querySelector<HTMLElement>('#hud .zoom-track');
+  if (!tr) return;
+  const r = tr.getBoundingClientRect();
+  const f = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+  const target = cam.minZoom * Math.pow(cam.maxZoom / cam.minZoom, f);
+  cam.zoomAt(target / cam.zoom, cam.w / 2, cam.h / 2);
+}
+
+function initZoomControl(): void {
+  document.addEventListener('pointerdown', (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-zoom]');
+    if (!el) return;
+    e.preventDefault();
+    zoomHold = { kind: el.dataset.zoom as 'in' | 'out' | 'track', id: e.pointerId, t: 0 };
+    el.setPointerCapture?.(e.pointerId);
+    if (zoomHold.kind === 'track') zoomTrackSet(e);
+  });
+  document.addEventListener('pointermove', (e) => { if (zoomHold?.kind === 'track' && e.pointerId === zoomHold.id) zoomTrackSet(e); });
+  const end = (e: PointerEvent) => {
+    if (!zoomHold || e.pointerId !== zoomHold.id) return;
+    // kurzer Tipp: ein Schritt wie bisher
+    if (zoomHold.kind !== 'track' && zoomHold.t < 0.18) cam.zoomAt(zoomHold.kind === 'in' ? 1.4 : 1 / 1.4, cam.w / 2, cam.h / 2);
+    zoomHold = null;
+  };
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+}
+
+/** jedes Bild: gehaltene Zoomtaste gleitend zoomen, Schieberknopf nachführen */
+function zoomTick(dt: number): void {
+  if (zoomHold && zoomHold.kind !== 'track') {
+    zoomHold.t += dt;
+    if (zoomHold.t >= 0.18) cam.zoomAt(Math.exp((zoomHold.kind === 'in' ? 1.6 : -1.6) * dt), cam.w / 2, cam.h / 2);
+  }
+  const knob = document.querySelector<HTMLElement>('#hud .zoom-knob');
+  if (knob) {
+    const f = Math.log(cam.zoom / cam.minZoom) / Math.log(cam.maxZoom / cam.minZoom);
+    knob.style.top = `${((1 - Math.max(0, Math.min(1, f))) * 100).toFixed(1)}%`;
+  }
 }
 
 // ---------- Zurück-Taste (Android) und Escape ----------

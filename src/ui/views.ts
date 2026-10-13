@@ -118,26 +118,26 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
   const speedLabel = `×${state.speed}`;
   const inGalaxy = ui.view === 'galaxy';
   const unread = unreadNews(state);
-  const newsBtn = `<button class="btn menu-btn news-btn" ${act('open-news')} aria-label="Nachrichten${unread ? ` – ${unread} neu` : ''}">${icon('info', 20)}${unread ? `<b class="badge num">${unread > 99 ? '99+' : unread}</b>` : ''}</button>`;
+  const newsBtn = `<button class="btn menu-btn news-btn" ${act('open-news')} aria-label="Nachrichten${unread ? ` – ${unread} neu` : ''}">${icon('info', 17)}${unread ? `<b class="badge num">${unread > 99 ? '99+' : unread}</b>` : ''}</button>`;
   return `
   <div class="hud-row">
-    <button class="chip sector" ${act('galaxy')} aria-label="Galaxiekarte öffnen">${icon(inGalaxy ? 'sector' : 'galaxy', 18)}<b>${esc(inGalaxy ? 'Galaxie' : sec.name)}</b></button>
+    <button class="chip sector" ${act('galaxy')} aria-label="Galaxiekarte öffnen">${icon(inGalaxy ? 'sector' : 'galaxy', 15)}<b>${esc(inGalaxy ? 'Galaxie' : sec.name)}</b></button>
     <button class="chip credits ${creditFlash}" ${act('open-ledger')} aria-label="Credits – Kontobuch öffnen"><b class="num">${fmtCr(shownCredits)}</b></button>
     <div class="chip time ${ui.paused ? 'paused' : ''}">
-      <button ${act('pause')} aria-label="${ui.paused ? 'Fortsetzen' : 'Pausieren'}">${icon(ui.paused ? 'play' : 'pause', 18)}</button>
+      <button ${act('pause')} aria-label="${ui.paused ? 'Fortsetzen' : 'Pausieren'}">${icon(ui.paused ? 'play' : 'pause', 15)}</button>
       <button class="speed" ${act('speed')} aria-label="Spieltempo">${speedLabel}</button>
     </div>
-    <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 19)}<b class="num">${alerts.length}</b></button>
+    <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 15)}<b class="num">${alerts.length}</b></button>
   </div>
   <div class="sub-row">
     <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${state.sectors.length} von ${SECTORS.length} Sektoren` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
-  ${inGalaxy ? `<div class="tool-row">${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button></div>` : `<div class="tool-row">
-    <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 20)}Station</button>
-    <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 20)}Routen</button>
-    ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 20)}</button>
-    <div class="zoom"><button ${act('zoom-in')} aria-label="Hineinzoomen">${icon('plus', 20)}</button><button ${act('zoom-out')} aria-label="Herauszoomen">${icon('minus', 20)}</button></div>
+  ${inGalaxy ? `<div class="tool-row">${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
+    <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 16)}Station</button>
+    <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 16)}Routen</button>
+    ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button>
+    <div class="zoom"><button data-zoom="in" aria-label="Hineinzoomen (halten für stufenlos)">${icon('plus', 16)}</button><div class="zoom-track" data-zoom="track" role="slider" aria-label="Zoom stufenlos"><i class="zoom-knob"></i></div><button data-zoom="out" aria-label="Herauszoomen (halten für stufenlos)">${icon('minus', 16)}</button></div>
   </div>${flowFilter(state, ui)}`}`;
 }
 
@@ -174,7 +174,7 @@ export function objectiveHtml(state: GameState, ui: UIState): string {
       ${icon(done ? 'gift' : 'target', 22)}
       <div style="flex:1;min-width:0"><small>${done ? 'Ziel erreicht' : `Kapitel ${state.story.index + 1} · ${esc(m.title)}`}</small><span>${esc(done ? 'Belohnung abholen' : m.goal)}</span>
       ${done ? '' : `<div class="mini"><i style="width:${(frac * 100).toFixed(0)}%"></i></div>`}</div>
-      ${icon('chev', 18, 'chev')}
+      ${done ? icon('chev', 18, 'chev') : ''}
     </button>${done ? '' : `<button class="obj-hide" ${act('obj-toggle')} aria-label="Kapitelziel einklappen">${icon('down', 16)}</button>`}</div>`;
 }
 
