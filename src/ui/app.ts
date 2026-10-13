@@ -331,6 +331,28 @@ function renderUI(): void {
   document.documentElement.style.setProperty('--bottom-stack', (ui.modal ? 96 : $('bottom').offsetHeight) + 'px');
   document.documentElement.classList.toggle('calm', ui.reducedMotion);
   renderCoach(state, ui);
+  drawPortraits();
+}
+
+/** Stationsporträts (Leinwände mit data-st) in voller Bildschirmauflösung zeichnen */
+function drawPortraits(): void {
+  const list = document.querySelectorAll<HTMLCanvasElement>('canvas.st-portrait');
+  if (!list.length) return;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const now = performance.now();
+  for (const c of list) {
+    const st = stationById(state, c.dataset.st ?? '');
+    if (!st) continue;
+    const w = c.clientWidth, h = c.clientHeight;
+    if (!w || !h) continue;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const g = c.getContext('2d')!;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    renderer.drawPortrait(g, st, w, h, cam, now, c.classList.contains('small') ? 0.05 : -0.1);
+  }
 }
 let readyTimer = 0;
 
@@ -923,6 +945,7 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'ship-art-try': openMinigame('pirates', { level: 1, mutator: null }, () => refresh(), true); break;
+      case 'obj-toggle': ui.objMin = !ui.objMin; try { localStorage.setItem('x4-sektorbau-objmin', ui.objMin ? '1' : ''); } catch { /* egal */ } refresh(); break;
       case 'more-sub': openPanel('more', undefined, d.tab, true); break;
       case 'mg-tab': if (ui.modal?.type === 'minigames') { ui.modal.tab = d.tab as 'games' | 'daily' | 'combat'; refresh(); } break;
       case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as Level; refresh(); } break;

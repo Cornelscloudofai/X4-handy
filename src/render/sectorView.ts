@@ -909,6 +909,18 @@ export class SectorRenderer {
   }
 
   /** Problemsymbol unter dem Finger: öffnet die Station mit dem passenden Reiter */
+  /**
+   * Porträt einer Station für Listen und Kopfbilder: derselbe Aufbau wie auf der Karte (Kern, Module, Rohre),
+   * mittig und passend zur Ausdehnung skaliert. Ohne Partikel (dt = 0).
+   */
+  drawPortrait(ctx: CanvasRenderingContext2D, st: Station, w: number, h: number, cam: Camera, now: number, pad = 0.35): void {
+    ensurePlaced(st);
+    const places = st.modules.filter((m) => m.at && MODULE_MAP[m.def]?.kind !== 'core').map((m) => ({ p: m.at!, def: m.def }));
+    const reach = layoutReach(places);
+    const unit = Math.min(w, h) / 2 / (reach + pad);
+    this.drawStationStructure(ctx, st, w / 2, h / 2, unit, now, cam, 0);
+  }
+
   markerAt(sx: number, sy: number): { station: string; tab: string } | null {
     let best: { station: string; tab: string } | null = null, bd = Infinity;
     for (const m of this.markers) {

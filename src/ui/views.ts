@@ -163,12 +163,19 @@ export function objectiveHtml(state: GameState, ui: UIState): string {
   if (!m || ui.panel || ui.placing || ui.view === 'galaxy') return '';
   const p = m.progress(state);
   const done = p.cur >= p.target;
-  return `<button class="objective ${done ? 'ready' : ''}" ${act('nav', { tab: 'missions' })}>
+  const frac = Math.min(1, p.cur / Math.max(1e-9, p.target));
+  // eingeklappt: nur ein kleiner Ring mit Fortschritt (bei erreichtem Ziel immer offen)
+  if (ui.objMin && !done) {
+    const C = 2 * Math.PI * 15;
+    return `<div class="objective-wrap min"><button class="obj-mini" ${act('obj-toggle')} aria-label="Kapitelziel einblenden">
+      <i class="obj-ring"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" class="bg"/><circle cx="18" cy="18" r="15" class="fg" style="stroke-dasharray:${(frac * C).toFixed(1)} ${C.toFixed(1)}"/></svg>${icon('target', 16)}</i><span>Kap. ${state.story.index + 1} · ${Math.round(frac * 100)} %</span></button></div>`;
+  }
+  return `<div class="objective-wrap"><button class="objective ${done ? 'ready' : ''}" ${act('nav', { tab: 'missions' })}>
       ${icon(done ? 'gift' : 'target', 22)}
       <div style="flex:1;min-width:0"><small>${done ? 'Ziel erreicht' : `Kapitel ${state.story.index + 1} · ${esc(m.title)}`}</small><span>${esc(done ? 'Belohnung abholen' : m.goal)}</span>
-      ${done ? '' : `<div class="mini"><i style="width:${Math.min(100, (p.cur / p.target) * 100).toFixed(0)}%"></i></div>`}</div>
+      ${done ? '' : `<div class="mini"><i style="width:${(frac * 100).toFixed(0)}%"></i></div>`}</div>
       ${icon('chev', 18, 'chev')}
-    </button>`;
+    </button>${done ? '' : `<button class="obj-hide" ${act('obj-toggle')} aria-label="Kapitelziel einklappen">${icon('down', 16)}</button>`}</div>`;
 }
 
 export function navHtml(state: GameState, ui: UIState): string {
@@ -413,14 +420,21 @@ function sheet(title: string, eyebrow: string, body: string, opts: { back?: bool
 
 // ---- Stationen ----
 
+/** Auslastungsring (SVG) mit Farbe nach Höhe */
+function utilRing(u: number, r: number): string {
+  const s = r * 2 + 6, C = 2 * Math.PI * r, f = Math.max(0, Math.min(1, u));
+  const col = f >= 0.8 ? 'var(--green)' : f >= 0.4 ? 'var(--teal)' : 'var(--amber)';
+  return `<svg class="util-ring" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" aria-hidden="true"><circle cx="${s / 2}" cy="${s / 2}" r="${r}" class="bg"/><circle cx="${s / 2}" cy="${s / 2}" r="${r}" class="fg" style="stroke:${col};stroke-dasharray:${(f * C).toFixed(1)} ${C.toFixed(1)}"/></svg>`;
+}
+
 function stationsPanel(state: GameState): string {
   const list = state.stations.map((st) => {
     const alerts = stationAlerts(state, st);
     const prods = [...new Set(st.modules.map((m) => MODULE_MAP[m.def]).filter((d) => d?.kind === 'production').map((d) => d!.ware!))];
-    return `<div class="row tap" ${act('open-station', { id: st.id, tab: 'overview' })} data-key="${st.id}">
-      <div class="emblem" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center;border:1px solid rgba(63,224,197,.3);color:${alerts.length ? 'var(--amber)' : 'var(--teal)'}">${icon('station', 22)}</div>
+    return `<div class="row tap st-row" ${act('open-station', { id: st.id, tab: 'overview' })} data-key="${st.id}">
+      <span class="st-thumb ${alerts.length ? 'warn' : ''}"><canvas class="st-portrait small" data-st="${st.id}"></canvas>${utilRing(productionUtil(st), 8)}</span>
       <div class="grow"><div class="title">${esc(st.name)}</div>
-      <div class="sub">${esc(sector(st.sector).name)} · ${prods.length ? prods.map((id) => esc(WARES[id].name)).join(', ') : 'noch keine Produktion'}</div>
+      <div class="sub wrap">${esc(sector(st.sector).name)} · ${prods.length ? prods.map((id) => esc(WARES[id].name)).join(', ') : 'noch keine Produktion'}</div>
       <div class="pills" style="margin-top:6px">${st.build ? `<span class="pill amber">${icon('wrench', 13)} Bau ${pct(buildProgress(st))}</span>` : ''}
       ${alerts.length ? `<span class="pill amber">${icon('warn', 13)} ${alerts.length} Hinweis${alerts.length === 1 ? '' : 'e'}</span>` : `<span class="pill teal">${icon('check', 13)} ${pct(productionUtil(st))} Auslastung</span>`}</div></div>
       ${icon('chev', 20, 'chev')}</div>`;
@@ -476,11 +490,21 @@ function stationOverview(state: GameState, st: Station): string {
   }).join('');
   const stor = storageUse(st).map((s) => `<div><small>${STORAGE_LABEL[s.type]}</small><b>${s.cap ? pct(s.used / s.cap) : '—'}</b>${bar(s.cap ? s.used / s.cap : 0, s.type === 'Liquid' ? 'blue' : s.type === 'Solid' ? 'solid' : '')}<div class="small muted" style="margin-top:4px">${fmtAmount(s.used)} / ${fmtAmount(s.cap)} m³</div></div>`).join('');
   const shipCount = state.ships.filter((s) => s.home === st.id).length;
+  const runway = shortestRunway(st);
+  const status = alerts.length
+    ? `<span class="st-status warn">${icon('warn', 16)}${esc(alerts[0].text.split(': ').slice(1).join(': '))}${alerts.length > 1 ? ` <em>+${alerts.length - 1}</em>` : ''}</span>`
+    : runway && runway.seconds < 6 * 3600
+      ? `<span class="st-status ${runway.seconds < 3600 ? 'warn' : ''}">${icon('clock', 16)}${esc(WARES[runway.ware].name)} reicht ${fmtDur(runway.seconds)}</span>`
+      : `<span class="st-status ok">${icon('check', 16)}Versorgt – keine Engpässe</span>`;
+  const value = stationOutputValue(st);
+  const hero = `<div class="st-hero"><canvas class="st-portrait" data-st="${st.id}"></canvas>
+    <div class="st-hero-l">${utilRing(util, 17)}<div><small>Auslastung</small><b>${tw(util, 'pct')}</b></div></div>
+    <div class="st-hero-r"><small>Wertschöpfung</small><b class="${value < 0 ? 'neg' : 'pos'}">${value >= 0 ? '+' : ''}${fmtCr(value)}/h</b></div>
+    <div class="st-hero-b">${status}</div></div>`;
   return `
-    ${alerts.length ? `<div class="section"><div class="box rows">${alerts.map((a) => `<div class="row">${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text.split(': ').slice(1).join(': '))}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, st, a.ware))}</div>` : ''}</div></div>`).join('')}</div></div>` : ''}
+    ${hero}
+    ${alerts.length > 1 || alerts[0]?.ware ? `<div class="section"><div class="box rows">${alerts.filter((a, i) => i > 0 || a.ware).map((a) => `<div class="row">${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text.split(': ').slice(1).join(': '))}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, st, a.ware))}</div>` : ''}</div></div>`).join('')}</div></div>` : ''}
     <div class="section"><div class="kv">
-      <div><small>Auslastung</small><b>${tw(util, 'pct')}</b></div>
-      <div><small>Wertschöpfung</small><b class="${stationOutputValue(st) < 0 ? 'neg' : ''}">${fmtCr(stationOutputValue(st))}/h</b></div>
       <div><small>Umsatz gesamt</small><b class="pos">${tw(st.income, 'cr')}</b></div>
       <div><small>Einkauf gesamt</small><b>${tw(st.expenses, 'cr')}</b></div>
       <div><small>Module</small><b>${st.modules.length}${st.build || st.queue.length ? ` <span class="small muted">+${(st.build ? 1 : 0) + st.queue.length}</span>` : ''}</b></div>
@@ -1176,12 +1200,12 @@ function marketPanel(state: GameState, ui: UIState): string {
   const oppRows = opps.map((o) => `<div class="row tap" ${act('trade-open', { ware: o.ware, from: o.key })}>${wareTile(o.ware)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[o.ware].name)}</div>
       <div class="sub wrap">${esc(marketInfo(o.key).name)} · noch ${fmtAmount(o.left)} Einheiten · ${fmtDur(o.until - state.time)}</div></div><span class="deal-badge">−${Math.round((1 - o.mult) * 100)} %</span>${icon('chev', 20, 'chev')}</div>`).join('');
   return sheet('Handel', SECTOR_MAP[secId].tradeStation.name, `
-    ${opps.length ? `<div class="section"><h3>Sonderangebote · ${opps.length}</h3><div class="box rows">${oppRows}</div><p class="small muted" style="margin:6px 0 0">Antippen und kaufen – damit nimmst du das Angebot an. Der Autohandel nimmt Sonderangebote nicht von selbst an.</p></div>` : ''}
-    <p class="lead">Preise folgen dem Bestand: Leere Lager zahlen den Höchstpreis, volle nur den Mindestpreis. Große Verkäufe drücken die Preise.</p>
-    <div class="pills" style="margin-bottom:10px">${known.map((id) => `<button class="pill ${id === secId ? 'teal' : ''}" ${act('market-sector', { id })}>${esc(SECTOR_MAP[id].name)}</button>`).join('')}</div>
-    <div class="pills" style="margin-bottom:14px">${groups.map((g) => `<button class="pill ${ui.marketGroup === g ? 'amber' : ''}" ${act('market-group', { g })}>${g === 'all' ? 'Alle' : esc(GROUP_LABEL[g as 'mineral'])}</button>`).join('')}</div>
+    ${opps.length ? `<div class="section"><h3>Sonderangebote · ${opps.length}</h3><div class="box rows">${oppRows}</div><p class="small muted" style="margin:6px 0 0">Antippen zum Kaufen – der Autohandel nimmt Sonderangebote nicht selbst an.</p></div>` : ''}
+    <details class="explain"><summary>${icon('info', 16)}Wie entstehen die Preise?</summary><p>Preise folgen dem Bestand: Leere Lager zahlen den Höchstpreis, volle nur den Mindestpreis. Große Verkäufe drücken die Preise. ▲/▼ zeigt die Abweichung vom Durchschnittspreis – grün ist ein guter Verkaufsort.</p></details>
+    <div class="pills scroll" style="margin-bottom:8px">${known.map((id) => `<button class="pill ${id === secId ? 'teal' : ''}" ${act('market-sector', { id })}>${esc(SECTOR_MAP[id].name)}</button>`).join('')}</div>
+    <div class="pills scroll" style="margin-bottom:14px">${groups.map((g) => `<button class="pill ${ui.marketGroup === g ? 'amber' : ''}" ${act('market-group', { g })}>${g === 'all' ? 'Alle' : esc(GROUP_LABEL[g as 'mineral'])}</button>`).join('')}</div>
     ${secKnown ? `<p class="small muted" style="margin:0 0 6px">${SECTOR_MAP[secId].tradeStation.name}: ${intelTag(state, secId)}</p><div class="box rows">${rows}</div>` : unknownBox(secId)}
-    <p class="small muted" style="margin-top:10px">▲/▼ Abweichung vom Durchschnittspreis. Grün: guter Verkaufsort.${state.start ? ' Live sind nur Quadranten mit eigener Station oder Satellit – sonst gilt der Stand, als zuletzt ein Schiff dort war.' : ''}</p>`);
+    <p class="small muted" style="margin-top:10px">${state.start ? 'Live sind nur Quadranten mit eigener Station oder Satellit – sonst gilt der Stand, als zuletzt ein Schiff dort war.' : ''}</p>`);
 }
 
 function warePanel(state: GameState, id: string, p: Panel): string {

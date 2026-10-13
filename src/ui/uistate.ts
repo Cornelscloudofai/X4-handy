@@ -71,6 +71,8 @@ export interface UIState {
   reducedMotion: boolean;
   /** Beschriftungsdichte der Karte 0 (wenig) bis 100 (viel), Standard 50 */
   labelDensity: number;
+  /** Kapitelziel auf der Karte eingeklappt */
+  objMin?: boolean;
   /** Sektor-Hintergrund: Bilder (Standard) oder erzeugte Himmel */
   bgMode: 'image' | 'procedural';
   /** Stil der Warensymbole: leuchtend (gefüllt) oder Linie */
@@ -107,6 +109,7 @@ export const ui: UIState = {
   galaxySel: null,
   reducedMotion: initialReducedMotion(),
   labelDensity: initialLabelDensity(),
+  objMin: (() => { try { return globalThis.localStorage?.getItem('x4-sektorbau-objmin') === '1'; } catch { return false; } })(),
   bgMode: initialBgMode(),
   iconStyle: initialIconStyle(),
   panel: null,
