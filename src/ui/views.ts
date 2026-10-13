@@ -4,7 +4,7 @@ import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } 
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
-import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
+import { FIGHTER_NAME, classSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, gameRange, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
@@ -480,7 +480,7 @@ function stationOverview(state: GameState, st: Station): string {
     ${alerts.length ? `<div class="section"><div class="box rows">${alerts.map((a) => `<div class="row">${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text.split(': ').slice(1).join(': '))}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, st, a.ware))}</div>` : ''}</div></div>`).join('')}</div></div>` : ''}
     <div class="section"><div class="kv">
       <div><small>Auslastung</small><b>${tw(util, 'pct')}</b></div>
-      <div><small>Wertschöpfung</small><b>${fmtCr(stationOutputValue(st))}/h</b></div>
+      <div><small>Wertschöpfung</small><b class="${stationOutputValue(st) < 0 ? 'neg' : ''}">${fmtCr(stationOutputValue(st))}/h</b></div>
       <div><small>Umsatz gesamt</small><b class="pos">${tw(st.income, 'cr')}</b></div>
       <div><small>Einkauf gesamt</small><b>${tw(st.expenses, 'cr')}</b></div>
       <div><small>Module</small><b>${st.modules.length}${st.build || st.queue.length ? ` <span class="small muted">+${(st.build ? 1 : 0) + st.queue.length}</span>` : ''}</b></div>
@@ -741,11 +741,32 @@ function stationStorage(state: GameState, st: Station): string {
     <p class="small muted">Ohne Einstellung teilen sich alle Waren einer Lagerart den Platz gleichmäßig („auto“). Eingestellte Anteile gehen vor, der Rest wird verteilt.</p>`;
 }
 
+/** Zustand eines Schiffs als Farbe: arbeitet (grün), unterwegs (türkis), wartet/untätig (gelb) */
+function shipState(s: Ship): 'work' | 'move' | 'wait' {
+  if (s.phase === 'idle' || s.phase === 'waiting') return 'wait';
+  if (s.phase === 'mining' || s.phase === 'unloading' || s.phase === 'selling' || s.phase === 'docking' || s.phase === 'surveying') return 'work';
+  return 'move';
+}
+
+/** Füllstand des Laderaums (0 … 1) */
+function cargoFill(s: Ship): number {
+  if (!s.cargo) return 0;
+  return Math.min(1, (s.cargo.amount * (WARES[s.cargo.ware]?.volume ?? 1)) / Math.max(1, SHIP_MAP[s.cls].capacity));
+}
+
+/** Bild des Schiffs (oder Symbol, falls es keins gibt) mit Rollenfarbe */
+function shipThumb(s: Ship, size = 'm'): string {
+  const c = SHIP_MAP[s.cls], url = classSpriteUrl(s.cls);
+  return `<span class="ship-thumb ${size}" style="--c:${c.role === 'miner' ? '#ffc45e' : '#5ff0d8'}">${url ? `<img src="${url}" alt="" loading="lazy" decoding="async">` : icon(c.role === 'miner' ? 'miner' : 'trader', 18)}<i class="dot ${shipState(s)}"></i></span>`;
+}
+
 function shipRow(_state: GameState, s: Ship): string {
   const c = SHIP_MAP[s.cls];
-  return `<div class="row tap" ${act('open-ship', { id: s.id })} data-key="${s.id}">
-    <span class="ware-tile" style="--c:${c.role === 'miner' ? '#ffc45e' : '#5ff0d8'}">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
-    <div class="grow"><div class="title">${esc(s.name)}</div><div class="sub wrap"><span class="muted">${esc(c.name)}</span> · ${esc(s.status)}${s.cargo ? ` · ${fmtAmount(s.cargo.amount)} ${esc(WARES[s.cargo.ware].name)}` : ''}</div></div>
+  const fill = cargoFill(s);
+  return `<div class="row tap ship-row" ${act('open-ship', { id: s.id })} data-key="${s.id}">
+    ${shipThumb(s)}
+    <div class="grow"><div class="title">${esc(s.name)}</div><div class="sub wrap"><span class="muted">${esc(c.name)}</span> · ${esc(s.status)}</div>
+      ${s.cargo ? `<div class="cargo-line"><span class="cbar"><i style="width:${Math.max(4, Math.round(fill * 100))}%;--c:${WARES[s.cargo.ware].color}"></i></span><span>${fmtAmount(s.cargo.amount)} ${esc(WARES[s.cargo.ware].name)}</span></div>` : ''}</div>
     ${icon('chev', 20, 'chev')}</div>`;
 }
 
@@ -940,10 +961,14 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
     </div>`;
   }
   const dockWarn = home && !hasDockFor(home, c.size) ? `<div class="section"><div class="box rows"><div class="row">${icon('warn', 20, 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(home.name)} braucht ${c.size === 'L' ? 'einen Pier' : 'ein Dock'}, damit dieses Schiff andocken kann.</div></div><button class="btn small amber" ${act('queue', { st: home.id, def: c.size === 'L' ? 'pier_l' : 'dock_m' })}>Bauen</button></div></div></div>` : '';
+  const url = classSpriteUrl(s.cls), fill = cargoFill(s);
+  const hero = `<div class="ship-hero" style="--c:${c.role === 'miner' ? '#ffc45e' : '#5ff0d8'}">${url ? `<img src="${url}" alt="">` : `<span class="ship-hero-ic">${icon(c.role === 'miner' ? 'miner' : 'trader', 96)}</span>`}
+    <div class="ship-hero-txt"><span class="state ${shipState(s)}"><i></i>${esc(s.status)}</span>
+      <div class="ship-hero-cargo"><small>Laderaum ${Math.round(fill * 100)} %</small><i><b style="width:${Math.round(fill * 100)}%;${s.cargo ? `--c:${WARES[s.cargo.ware].color}` : ''}"></b></i></div></div></div>`;
   return sheet(s.name, c.name, `
+    ${hero}
     ${dockWarn}
     <div class="section"><div class="kv">
-      <div class="wide"><small>Status</small><b style="font-size:15px">${esc(s.status)}</b></div>
       <div><small>Fracht</small><b style="font-size:15px">${s.cargo ? `${fmtAmount(s.cargo.amount)} ${esc(WARES[s.cargo.ware].name)}` : 'leer'}</b></div>
       <div><small>Frachtraum</small><b style="font-size:15px">${fmtInt(c.capacity)} m³ ${esc(STORAGE_LABEL[c.storage])}</b></div>
       <div><small>Fahrten</small><b>${fmtInt(s.trips)}</b></div>
@@ -1148,8 +1173,8 @@ function marketPanel(state: GameState, ui: UIState): string {
       <div class="right"><b>${tw(price)} Cr</b><div class="small ${rel > 0.05 ? 'pos' : rel < -0.05 ? 'neg' : 'muted'}">${rel >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(rel * 100))} %</div></div></div>`;
   }).join('');
   const opps = (state.opportunities ?? []).filter((o) => o.until > state.time && o.left >= 1);
-  const oppRows = opps.map((o) => `<div class="row tap" ${act('trade-open', { ware: o.ware, from: o.key })}>${wareTile(o.ware)}<div class="grow"><div class="title two-lines" style="font-weight:500">${esc(marketInfo(o.key).name)} räumt für ${Math.round(o.mult * 100)} %</div>
-      <div class="sub wrap">${esc(WARES[o.ware].name)} · noch ${fmtAmount(o.left)} Einheiten · ${fmtDur(o.until - state.time)}</div></div>${icon('chev', 20, 'chev')}</div>`).join('');
+  const oppRows = opps.map((o) => `<div class="row tap" ${act('trade-open', { ware: o.ware, from: o.key })}>${wareTile(o.ware)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[o.ware].name)}</div>
+      <div class="sub wrap">${esc(marketInfo(o.key).name)} · noch ${fmtAmount(o.left)} Einheiten · ${fmtDur(o.until - state.time)}</div></div><span class="deal-badge">−${Math.round((1 - o.mult) * 100)} %</span>${icon('chev', 20, 'chev')}</div>`).join('');
   return sheet('Handel', SECTOR_MAP[secId].tradeStation.name, `
     ${opps.length ? `<div class="section"><h3>Sonderangebote · ${opps.length}</h3><div class="box rows">${oppRows}</div><p class="small muted" style="margin:6px 0 0">Antippen und kaufen – damit nimmst du das Angebot an. Der Autohandel nimmt Sonderangebote nicht von selbst an.</p></div>` : ''}
     <p class="lead">Preise folgen dem Bestand: Leere Lager zahlen den Höchstpreis, volle nur den Mindestpreis. Große Verkäufe drücken die Preise.</p>

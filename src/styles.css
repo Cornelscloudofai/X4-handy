@@ -950,3 +950,34 @@ button.chip.credits { cursor: pointer; color: inherit; font: inherit; }
 .menu-net .amber .core { fill: #ffd27a; } .menu-net .amber .halo { fill: rgba(255, 181, 71, 0.3); } .menu-net .amber .ring { stroke: rgba(255, 181, 71, 0.9); }
 @keyframes net-pulse { 0% { transform: scale(0.6); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
 .calm .menu-net path, .calm .menu-net .ring { animation: none; }
+
+/* Paket 1 Übersicht: Karte frei halten, Schiffe mit Bild, Sonderangebote */
+#hud::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: calc(var(--safe-top) + 150px); z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(3, 8, 14, 0.82) 0%, rgba(3, 8, 14, 0.55) 55%, rgba(3, 8, 14, 0) 100%); }
+.toast span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.banner-on .coach-bubble, .banner-on .coach-ring { opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.ship-thumb { position: relative; flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; color: var(--c);
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--c) 18%, #0b1a28), #050b14 75%); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+.ship-thumb img { width: 88%; height: 88%; object-fit: contain; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.7)); }
+.ship-thumb .dot { position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--panel-solid); }
+.dot.work, .state.work i { background: var(--green); box-shadow: 0 0 8px rgba(107, 227, 143, 0.7); }
+.dot.move, .state.move i { background: var(--teal); box-shadow: 0 0 8px var(--teal-glow); }
+.dot.wait, .state.wait i { background: var(--amber); box-shadow: 0 0 8px var(--amber-glow); }
+.ship-row { gap: 12px; }
+.cargo-line { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 12px; color: var(--text-2); }
+.cargo-line .cbar { flex: none; width: 64px; height: 5px; border-radius: 3px; background: rgba(110, 220, 205, 0.14); overflow: hidden; }
+.cargo-line .cbar i { display: block; height: 100%; background: var(--c, var(--teal)); }
+.ship-hero { position: relative; display: flex; align-items: flex-end; min-height: 150px; margin-bottom: 14px; padding: 12px 14px; border-radius: var(--r); overflow: hidden; border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+  background: radial-gradient(55% 70% at 72% 45%, color-mix(in srgb, var(--c) 22%, transparent), transparent 70%),
+    repeating-linear-gradient(90deg, rgba(110, 220, 205, 0.05) 0 1px, transparent 1px 22px), repeating-linear-gradient(0deg, rgba(110, 220, 205, 0.05) 0 1px, transparent 1px 22px), linear-gradient(180deg, #071422, #02060b); }
+.ship-hero img { position: absolute; right: 6%; top: 50%; height: 125%; transform: translateY(-50%) rotate(90deg); filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.7)); animation: hero-drift 6s ease-in-out infinite; }
+@keyframes hero-drift { 50% { transform: translate(-6px, -50%) rotate(90deg); } }
+.calm .ship-hero img { animation: none; }
+.ship-hero-txt { position: relative; max-width: 52%; display: grid; gap: 8px; }
+.ship-hero .state { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14.5px; line-height: 1.25; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9); }
+.ship-hero .state i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.ship-hero-cargo small { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-family: var(--font-display); margin-bottom: 4px; }
+.ship-hero-cargo i { display: block; width: 140px; height: 6px; border-radius: 3px; background: rgba(110, 220, 205, 0.14); overflow: hidden; }
+.ship-hero-cargo b { display: block; height: 100%; background: var(--c); }
+.deal-badge { flex: none; padding: 4px 8px; border-radius: 8px; font-family: var(--font-display); font-weight: 700; font-size: 14px; color: #1a0e00; background: var(--amber); box-shadow: 0 0 12px var(--amber-glow); }
+.ship-hero-ic { position: absolute; right: 10%; top: 50%; transform: translateY(-50%); color: var(--c); opacity: 0.5; filter: drop-shadow(0 0 16px var(--c)); }

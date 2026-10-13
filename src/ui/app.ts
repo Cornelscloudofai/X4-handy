@@ -282,7 +282,9 @@ function chapterBanner(e: { index: number; title: string; credits: number; facti
     if (t) screenFx.coinsTo(cx, cy + 20, t[0], t[1], 16);
   }, 900);
   clearTimeout(bannerTimer);
-  bannerTimer = window.setTimeout(() => { host.classList.remove('show'); host.hidden = true; }, 3200);
+  // Hinweisblase während des Banners ausblenden, damit sich nichts überlagert
+  document.body.classList.add('banner-on');
+  bannerTimer = window.setTimeout(() => { host.classList.remove('show'); host.hidden = true; document.body.classList.remove('banner-on'); }, 3200);
 }
 let bannerTimer = 0;
 
@@ -357,8 +359,9 @@ function toast(text: string, kind: 'info' | 'good' | 'warn' | 'bad' = 'info'): v
   el.innerHTML = icon(kind === 'good' ? 'check' : kind === 'info' ? 'info' : 'warn', 18) + `<span></span>`;
   el.querySelector('span')!.textContent = text;
   host.appendChild(el);
-  while (host.children.length > 2) host.firstElementChild!.remove();
-  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 350); }, 2800);
+  // nur eine Meldung zur Zeit – die Karte bleibt frei; alle Meldungen stehen im Nachrichtenblatt
+  while (host.children.length > 1) host.firstElementChild!.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 350); }, 3000);
 }
 
 function result(r: A.Result): void {

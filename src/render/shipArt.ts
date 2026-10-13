@@ -242,6 +242,12 @@ const MAP_SHIPS: Record<string, string> = {
   tuatara: 'split-tuatara-ki',
 };
 
+/** Bild-URL einer Schiffsklasse (für Listen und Kopfbilder), sonst undefined */
+export function classSpriteUrl(cls: string): string | undefined {
+  const name = MAP_SHIPS[cls];
+  return name ? URLS.get(name) : undefined;
+}
+
 /** Bild einer Schiffsklasse für die Karte, sonst null */
 export function mapShipSprite(cls: string): FighterSprite | null {
   const name = MAP_SHIPS[cls];
