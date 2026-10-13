@@ -2,8 +2,6 @@
 // passendes Schiffs- oder Stationsbild davor. Die Bilder liegen als eigene Dateien vor und werden erst beim Anzeigen geladen.
 import { BG_IMAGES } from '../render/bgImages';
 import { spriteUrl } from '../render/shipArt';
-import stationDraufsicht from '../assets/menu/station-draufsicht.webp';
-import minispieleDraufsicht from '../assets/menu/minispiele-draufsicht.webp';
 import leitstandBanner from '../assets/menu/leitstand-banner.jpg';
 import unternehmenStation from '../assets/menu/unternehmen-station.jpg';
 import minispieleSzene from '../assets/menu/minispiele-szene.jpg';
@@ -12,8 +10,6 @@ import einstellungenWerkhalle from '../assets/menu/einstellungen-werkhalle.jpg';
 import spielstandTresor from '../assets/menu/spielstand-tresor.jpg';
 import ueberSprungtor from '../assets/menu/ueber-sprungtor.jpg';
 
-/** Eigene Menübilder in voller Auflösung: freigestellte Motive für die großen Kacheln */
-export const MENU_IMG = { stationDraufsicht, minispieleDraufsicht };
 
 export interface MenuArt { bg: string; sprite?: string; /** großes, freigestelltes Menübild statt Schiffsbild */ art?: string }
 
