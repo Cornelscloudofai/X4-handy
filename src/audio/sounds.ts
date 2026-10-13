@@ -1,6 +1,6 @@
 // Klangbibliothek: jeder Klang aus Oszillatoren, FM-Glocken und gefiltertem Rauschen gebaut, mit Hall, Panorama
 // und leichter Zufallsvariation, damit sich Wiederholungen nicht abnutzen.
-import { bell, duckFor, gate, graph, noise, shaper, tone, vary, voiceOut, type Bus } from './engine';
+import { bell, duckFor, gate, graph, noise, sample, shaper, tone, vary, voiceOut, type Bus } from './engine';
 
 type G = NonNullable<ReturnType<typeof graph>>;
 
@@ -204,87 +204,133 @@ function accept(): void {
 
 type Gun = 'puls' | 'bolzen' | 'schrot' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'strahl' | string;
 
-/** Schuss je Waffenart; leise, da sehr häufig; Panorama nach Bildschirmseite */
+/** Filter vor einem Ausgang (für Aufnahmen und Synthese gemeinsam) */
+function filt(g: G, dest: AudioNode, type: BiquadFilterType, f: number, q = 0.7): BiquadFilterNode {
+  const b = g.ctx.createBiquadFilter();
+  b.type = type; b.frequency.value = f; b.Q.value = q;
+  b.connect(dest);
+  return b;
+}
+
+/** Knall-Anteil jedes Schusses: kurzer, harter Einschwinger + Bassschlag – gibt Wucht auch auf Handylautsprechern */
+function punch(g: G, o: AudioNode, t: number, crack: number, sub: number, subF = 110): void {
+  if (crack) noise(g, o, { t, type: 'highpass', f: vary(2600, 0.1), a: 0.0005, d: 0.022, gain: crack });
+  if (sub) tone(g, o, { f: vary(subF, 0.05), to: subF * 0.4, t, a: 0.001, d: 0.09, gain: sub, glide: 0.07 });
+}
+
+/**
+ * Schuss je Waffenart: Aufnahme (Kenney, CC0) mit eigener Tonhöhe und Filterung, darüber Knall, Bassschlag und
+ * waffentypischer Synthese-Anteil. Leichte Zufallsvariation; Panorama nach Bildschirmseite.
+ */
 function shot(kind: Gun = 'puls', pan = 0): void {
   if (!gate('shot', 55)) return;
-  play('sfx', { pan: pan * 0.6, verb: 0.06, gain: 2.5 }, (g, o, t) => {
+  play('sfx', { pan: pan * 0.6, verb: 0.1, gain: 0.6 }, (g, o, t) => {
+    const ws = shaper(g, 1.8);
+    ws.connect(o);
     switch (kind) {
-      case 'schrot':
-        noise(g, o, { t, type: 'bandpass', f: 1400, to: 500, q: 0.8, a: 0.002, d: 0.09, gain: 0.22 });
-        tone(g, o, { f: 140, to: 60, t, a: 0.002, d: 0.06, gain: 0.15 });
+      case 'bolzen': // Bolzenrepetierer: mechanischer, harter Schlag
+        sample(g, filt(g, ws, 'lowpass', 5200), 'kenney-blaster-repeater', { t, rate: vary(1.12, 0.05), gain: 0.36 });
+        bell(g, o, { f: vary(900, 0.06), t, ratio: 1.41, index: 3, dur: 0.06, gain: 0.08 });
+        punch(g, o, t, 0.12, 0.28, 120);
         break;
-      case 'bolzen':
-        tone(g, o, { f: vary(620), to: 180, t, type: 'square', a: 0.002, d: 0.09, gain: 0.04 });
-        noise(g, o, { t, type: 'highpass', f: 3000, a: 0.001, d: 0.03, gain: 0.08 });
+      case 'schrot': // Splitterbatterie: dichte Salve aus Knistern
+        sample(g, filt(g, ws, 'highpass', 300), 'kenney-blaster-repeater', { t, rate: vary(1.5, 0.05), gain: 0.55 });
+        for (const dt of [0, 0.014, 0.03]) noise(g, o, { t: t + dt, type: 'bandpass', f: vary(2400, 0.2), q: 1.2, a: 0.0008, d: 0.03, gain: 0.4 });
+        punch(g, o, t, 0.1, 0.3, 95);
         break;
-      case 'plasma':
-        tone(g, o, { f: vary(300), to: 90, t, type: 'sawtooth', a: 0.004, d: 0.16, gain: 0.05 });
-        tone(g, o, { f: vary(450), to: 130, t, type: 'sine', a: 0.004, d: 0.16, gain: 0.06 });
+      case 'plasma': // Plasmakanone: dicker, blubbernder Schuss
+        sample(g, filt(g, ws, 'lowpass', 2200, 2.5), 'kenney-blaster', { t, rate: vary(0.55, 0.05), gain: 0.5 });
+        tone(g, ws, { f: vary(320), to: 85, t, type: 'sawtooth', a: 0.004, d: 0.2, gain: 0.07, glide: 0.18 });
+        punch(g, o, t, 0.06, 0.38, 90);
         break;
-      case 'neutron':
-      case 'tau':
-        tone(g, o, { f: vary(1800), to: 400, t, type: 'sawtooth', a: 0.001, d: 0.07, gain: 0.035 });
-        noise(g, o, { t, type: 'highpass', f: 5000, a: 0.001, d: 0.04, gain: 0.07 });
+      case 'neutron': // Neutronen-Gatling: heller, scharfer Riss
+        sample(g, filt(g, ws, 'highpass', 1200), 'kenney-blaster', { t, rate: vary(1.7, 0.05), gain: 0.7, dur: 0.18 });
+        tone(g, o, { f: vary(3200), to: 700, t, type: 'sawtooth', a: 0.0008, d: 0.05, gain: 0.04 });
+        punch(g, o, t, 0.24, 0.22, 150);
         break;
-      case 'thermal':
-      case 'boson':
-        tone(g, o, { f: vary(240), to: 70, t, type: 'square', a: 0.003, d: 0.14, gain: 0.04 });
-        noise(g, o, { t, type: 'lowpass', f: 1600, to: 300, a: 0.003, d: 0.12, gain: 0.12 });
+      case 'tau': // Tau-Beschleuniger: Peitschenknall wie eine Railgun
+        sample(g, ws, 'kenney-blaster', { t, rate: vary(0.85, 0.04), gain: 0.42 });
+        noise(g, o, { t, type: 'bandpass', f: 7000, to: 700, q: 2, a: 0.001, d: 0.14, gain: 0.2, glide: 0.12 });
+        punch(g, o, t, 0.14, 0.32, 100);
         break;
-      default: // Puls
-        tone(g, o, { f: vary(1100), to: 260, t, type: 'square', a: 0.001, d: 0.07, gain: 0.05 });
-        tone(g, o, { f: vary(1650), to: 400, t, type: 'sine', a: 0.001, d: 0.05, gain: 0.07 });
+      case 'thermal': // Thermaler Desintegrator: zischend, heiß
+        sample(g, filt(g, ws, 'lowpass', 3200), 'kenney-blaster-repeater', { t, rate: vary(0.7, 0.05), gain: 0.36 });
+        noise(g, o, { t: t + 0.01, type: 'highpass', f: 4500, a: 0.01, d: 0.18, gain: 0.08 });
+        punch(g, o, t, 0.06, 0.3, 85);
+        break;
+      case 'boson': // Bosonenlanze: schwerer, aufgeladener Stoß
+        sample(g, filt(g, ws, 'lowpass', 2600), 'kenney-blaster', { t, rate: vary(0.45, 0.04), gain: 0.55 });
+        tone(g, ws, { f: 70, to: 260, t, type: 'sawtooth', a: 0.002, d: 0.08, gain: 0.06, glide: 0.06 });
+        punch(g, o, t, 0.12, 0.45, 70);
+        break;
+      default: // Pulslaser: klassischer, kräftiger Laserschuss
+        sample(g, filt(g, ws, 'lowpass', 9000), 'kenney-blaster', { t, rate: vary(1.22, 0.05), gain: 0.42, dur: 0.32 });
+        tone(g, o, { f: vary(1500), to: 320, t, type: 'square', a: 0.001, d: 0.06, gain: 0.035, glide: 0.06 });
+        punch(g, o, t, 0.1, 0.22, 130);
     }
   });
 }
 
-/** Rakete startet: Zischen mit kurzer Zündung */
+/** Gegnerischer Schuss: leiser und dumpfer als die eigenen, damit die eigenen im Vordergrund bleiben */
+function enemyShot(pan = 0): void {
+  if (!gate('enemyShot', 110)) return;
+  play('sfx', { pan: pan * 0.7, verb: 0.14, gain: 1 }, (g, o, t) => {
+    sample(g, filt(g, o, 'lowpass', 3500), 'kenney-enemy-attack', { t, rate: vary(1, 0.08), gain: 0.22 });
+  });
+}
+
+/** Rakete startet: Zündung, dann Zischen, das davonzieht */
 function missile(): void {
   if (!gate('missile', 120)) return;
-  play('sfx', { verb: 0.12, gain: 1.6 }, (g, o, t) => {
-    tone(g, o, { f: 180, to: 60, t, a: 0.002, d: 0.08, gain: 0.12 });
-    noise(g, o, { t, type: 'bandpass', f: 900, to: 3000, q: 0.7, a: 0.02, d: 0.4, gain: 0.12, glide: 0.4 });
+  play('sfx', { verb: 0.16, gain: 1 }, (g, o, t) => {
+    sample(g, filt(g, o, 'lowpass', 4000), 'kenney-blaster', { t, rate: vary(0.7, 0.05), gain: 0.3 });
+    punch(g, o, t, 0.08, 0.25, 90);
+    noise(g, o, { t: t + 0.02, type: 'bandpass', f: 900, to: 3200, q: 0.8, a: 0.03, d: 0.5, gain: 0.2, glide: 0.5 });
   });
 }
 
-/** Treffer am Gegner: kurzes metallisches Ticken */
+/** Treffer am Gegner: kurzer, satter Einschlag */
 function hit(pan = 0): void {
   if (!gate('hit', 45)) return;
-  play('sfx', { pan: pan * 0.6, gain: 3 }, (g, o, t) => {
-    bell(g, o, { f: vary(1400, 0.1), t, ratio: 1.41, index: 3, dur: 0.06, gain: 0.04 });
-    noise(g, o, { t, type: 'highpass', f: 4000, a: 0.001, d: 0.02, gain: 0.06 });
+  play('sfx', { pan: pan * 0.6, gain: 1 }, (g, o, t) => {
+    if (!sample(g, o, 'kenney-enemy-hurt', { t, rate: vary(1.35, 0.1), gain: 0.22 })) bell(g, o, { f: vary(1400, 0.1), t, ratio: 1.41, index: 3, dur: 0.06, gain: 0.12 });
+    noise(g, o, { t, type: 'highpass', f: 3500, a: 0.0008, d: 0.018, gain: 0.12 });
   });
 }
 
-/** Explosion nach Größe: Druckwelle (tiefer Schlag), Knall, nachrieselnde Trümmer */
+/** Explosion nach Größe: Aufnahme (tiefer bei großen), Druckwelle, Knall, nachrieselnde Trümmer */
 function explosion(size = 1, pan = 0): void {
   const s = Math.max(0.3, Math.min(4, size));
   if (!gate(s >= 2 ? 'boom-big' : 'boom', s >= 2 ? 150 : 70)) return;
-  play('sfx', { pan: pan * 0.7, verb: 0.18 + 0.08 * Math.min(2, s) }, (g, o, t) => {
-    const ws = shaper(g, 3);
+  play('sfx', { pan: pan * 0.7, verb: 0.2 + 0.08 * Math.min(2, s), gain: 1 }, (g, o, t) => {
+    const ws = shaper(g, 2.6);
     ws.connect(o);
-    const len = 0.35 + 0.35 * s;
-    tone(g, ws, { f: vary(95 / Math.sqrt(s), 0.08), to: 30, t, a: 0.003, d: len * 0.8, gain: Math.min(0.5, 0.18 + 0.1 * s), glide: len * 0.7 });
-    noise(g, ws, { t, type: 'lowpass', f: vary(4200), to: 160, q: 0.6, a: 0.002, d: len, gain: Math.min(0.42, 0.14 + 0.09 * s), glide: len * 0.8 });
-    noise(g, o, { t: t + 0.05, type: 'bandpass', f: 2500, to: 900, q: 1.2, a: 0.02, d: len * 1.2, gain: 0.05 * Math.min(2, s), rate: 0.7 });
+    const rate = Math.max(0.45, Math.min(1.35, vary(1.15 / Math.sqrt(s), 0.06)));
+    sample(g, ws, 'kenney-enemy-destroy', { t, rate, gain: Math.min(0.6, 0.3 + 0.1 * s) });
+    if (s >= 1.4) sample(g, filt(g, o, 'lowpass', 1800), 'kenney-impact', { t: t + 0.01, rate: vary(0.7, 0.05), gain: Math.min(0.5, 0.18 * s) });
+    const len = 0.3 + 0.35 * s;
+    tone(g, ws, { f: vary(90 / Math.sqrt(s), 0.08), to: 28, t, a: 0.002, d: len * 0.8, gain: Math.min(0.5, 0.2 + 0.1 * s), glide: len * 0.7 });
+    noise(g, o, { t: t + 0.06, type: 'bandpass', f: 2500, to: 800, q: 1.2, a: 0.02, d: len * 1.2, gain: 0.06 * Math.min(2, s), rate: 0.7 });
   });
 }
 
-/** Schild fängt Treffer: zischendes Aufleuchten */
+/** Schild fängt Treffer: zischendes, elektrisches Aufleuchten */
 function shield(): void {
   if (!gate('shield', 90)) return;
-  play('sfx', { verb: 0.1, gain: 3 }, (g, o, t) => {
+  play('sfx', { verb: 0.14, gain: 5 }, (g, o, t) => {
     noise(g, o, { t, type: 'bandpass', f: 3200, to: 1200, q: 2.5, a: 0.003, d: 0.14, gain: 0.14 });
     tone(g, o, { f: 440, to: 330, t, type: 'triangle', a: 0.003, d: 0.12, gain: 0.05 });
+    tone(g, o, { f: 880, to: 1320, t, type: 'sine', a: 0.003, d: 0.1, gain: 0.03 });
   });
 }
 
-/** Hüllentreffer: dumpfer Schlag mit Knirschen */
+/** Hüllentreffer: harter Metallschlag mit Knirschen */
 function hull(): void {
   if (!gate('hull', 110)) return;
-  play('sfx', { verb: 0.1 }, (g, o, t) => {
-    tone(g, o, { f: 110, to: 45, t, a: 0.002, d: 0.16, gain: 0.32 });
-    noise(g, o, { t, type: 'bandpass', f: 700, q: 1.2, a: 0.002, d: 0.12, gain: 0.2, rate: 0.5 });
+  play('sfx', { verb: 0.12, gain: 1 }, (g, o, t) => {
+    sample(g, o, 'kenney-impact', { t, rate: vary(1.1, 0.06), gain: 0.5 });
+    tone(g, o, { f: 110, to: 45, t, a: 0.002, d: 0.16, gain: 0.3 });
+    noise(g, o, { t, type: 'bandpass', f: 700, q: 1.2, a: 0.002, d: 0.12, gain: 0.15, rate: 0.5 });
   });
 }
 
@@ -330,13 +376,12 @@ function fail(): void {
 
 // ---------- Minispiele: Werkzeuge ----------
 
-/** Gestein bricht: Knacken mit tiefem Rumpeln */
+/** Gestein bricht: Aufnahme (Bruch) mit tiefem Rumpeln */
 function crack(): void {
   if (!gate('crack', 70)) return;
-  play('sfx', { verb: 0.15, gain: 1.5 }, (g, o, t) => {
-    noise(g, o, { t, type: 'bandpass', f: vary(1800, 0.15), q: 1.5, a: 0.001, d: 0.06, gain: 0.25 });
-    tone(g, o, { f: 90, to: 45, t, a: 0.002, d: 0.15, gain: 0.18 });
-    noise(g, o, { t: t + 0.03, type: 'lowpass', f: 900, a: 0.01, d: 0.3, gain: 0.06, rate: 0.6 });
+  play('sfx', { verb: 0.15, gain: 1 }, (g, o, t) => {
+    if (!sample(g, o, 'kenney-break', { t, rate: vary(0.85, 0.12), gain: 0.45 })) noise(g, o, { t, type: 'bandpass', f: vary(1800, 0.15), q: 1.5, a: 0.001, d: 0.06, gain: 0.35 });
+    tone(g, o, { f: 90, to: 45, t, a: 0.002, d: 0.15, gain: 0.25 });
   });
 }
 
@@ -415,7 +460,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, missile, hit, explosion, shield, hull, alarm, boss, pickup, fail,
+  shot, enemyShot, missile, hit, explosion, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 
@@ -425,7 +470,8 @@ export const SOUND_DEMO: [string, () => void][] = [
   ['Credits', () => coin(500)], ['Credits groß', () => coin(300000)], ['Bau beginnt', build], ['Bau fertig', buildDone],
   ['Auftrag erledigt', success], ['Neues Kapitel', chapter], ['Warnung', warn], ['Nachricht', ping],
   ['Schiff startet', launch], ['Andocken', dock], ['Auftrag angenommen', accept],
-  ['Puls-Laser', () => shot('puls')], ['Schrot', () => shot('schrot')], ['Plasma', () => shot('plasma')], ['Rakete', missile],
+  ['Puls-Laser', () => shot('puls')], ['Bolzen', () => shot('bolzen')], ['Splitter', () => shot('schrot')], ['Plasma', () => shot('plasma')],
+  ['Neutron', () => shot('neutron')], ['Tau', () => shot('tau')], ['Thermal', () => shot('thermal')], ['Boson', () => shot('boson')], ['Gegnerschuss', () => enemyShot()], ['Rakete', missile],
   ['Treffer', () => hit()], ['Explosion klein', () => explosion(0.6)], ['Explosion groß', () => explosion(3)], ['Schild', shield], ['Hülle', hull],
   ['Neue Welle', alarm], ['Boss', boss], ['Aufsammeln', pickup], ['Niederlage', fail],
   ['Gestein bricht', crack], ['Kristall', crystal], ['Ventil', valve], ['Fluss', flow], ['Schub', boost], ['Tor', chime], ['Steuerdüse', () => thrust()], ['Container', place],

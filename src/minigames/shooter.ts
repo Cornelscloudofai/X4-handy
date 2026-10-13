@@ -1391,6 +1391,9 @@ export class ShooterGame implements MiniGame {
 
   private enemyShot(e: Enemy, a: number, v: number, dmg: number, color: string, w = 2, life = 1.8): void {
     this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: dmg * this.enemyDmg, from: 'e', life, color, w, pierce: 0 });
+    // nur hörbar, wenn der Schütze im Bild ist
+    const sx = (e.x - this.camX) * this.zoom, sy = (e.y - this.camY) * this.zoom;
+    if (sx > -40 && sx < this.w + 40 && sy > -40 && sy < this.h + 40) sfx.enemyShot(this.panAt(e.x));
   }
 
   /**

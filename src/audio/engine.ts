@@ -48,6 +48,46 @@ let live: Graph | null = null;
 let cur: Graph | null = null;
 const noiseCache = new WeakMap<BaseAudioContext, AudioBuffer>();
 
+// ---------- Aufnahmen (CC0, src/assets/sounds) ----------
+
+const SAMPLE_URLS = import.meta.glob('../assets/sounds/*.wav', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const buffers = new Map<string, AudioBuffer>();
+let loadingAll: Promise<void> | null = null;
+
+/** Alle Aufnahmen laden und dekodieren (einmal, nach der ersten Berührung; zusammen unter 1 MB) */
+export function preloadSamples(ctx?: BaseAudioContext): Promise<void> {
+  const c = ctx ?? live?.ctx;
+  if (!c) return Promise.resolve();
+  loadingAll ??= Promise.all(Object.entries(SAMPLE_URLS).map(async ([path, url]) => {
+    const name = path.split('/').pop()!.replace('.wav', '');
+    try {
+      const data = await (await fetch(url)).arrayBuffer();
+      buffers.set(name, await c.decodeAudioData(data));
+    } catch {
+      /* fehlt die Aufnahme, bleibt der synthetische Anteil */
+    }
+  })).then(() => undefined);
+  return loadingAll;
+}
+
+/** Aufnahme abspielen (Tonhöhe über die Abspielrate); false, wenn sie (noch) nicht geladen ist */
+export function sample(g: Graph, dest: AudioNode, name: string, o: { t: number; rate?: number; gain: number; offset?: number; dur?: number }): boolean {
+  const b = buffers.get(name);
+  if (!b) return false;
+  const src = g.ctx.createBufferSource();
+  src.buffer = b;
+  src.playbackRate.value = o.rate ?? 1;
+  const env = g.ctx.createGain();
+  env.gain.value = o.gain;
+  if (o.dur) {
+    env.gain.setValueAtTime(o.gain, o.t + o.dur * 0.7);
+    env.gain.exponentialRampToValueAtTime(0.0001, o.t + o.dur);
+  }
+  src.connect(env).connect(dest);
+  src.start(o.t, o.offset ?? 0, o.dur);
+  return true;
+}
+
 /** Hall-Antwort: zwei Sekunden abklingendes, nach oben weicher werdendes Stereo-Rauschen mit kurzer Vorverzögerung */
 function impulse(ctx: BaseAudioContext, sec = 2.4): AudioBuffer {
   const n = Math.floor(ctx.sampleRate * sec);
@@ -133,6 +173,7 @@ export function ensure(): Graph | null {
       if (!Ctx) return null;
       const ctx = new Ctx({ latencyHint: 'interactive' });
       live = build(ctx, true);
+      void preloadSamples();
       onChange.forEach((f) => f());
     }
     const c = live.ctx as AudioContext;
