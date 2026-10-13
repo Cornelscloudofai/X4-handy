@@ -437,7 +437,7 @@ function demoLoop(name: string): () => void {
 
 /** Hörprobe in den Einstellungen: Name → Klang */
 export const SOUND_DEMO: [string, () => void][] = [
-  ['Tippen', tap], ['Öffnen', open], ['Schließen', close], ['Ablehnen', deny],
+  ['Titelmusik', () => { void import('./music').then((m) => m.playTitle()); }], ['Tippen', tap], ['Öffnen', open], ['Schließen', close], ['Ablehnen', deny],
   ['Credits', () => coin(500)], ['Credits groß', () => coin(300000)], ['Bau beginnt', build], ['Bau fertig', buildDone],
   ['Auftrag erledigt', success], ['Neues Kapitel', chapter], ['Warnung', warn], ['Nachricht', ping],
   ['Schiff startet', launch], ['Andocken', dock], ['Auftrag angenommen', accept],

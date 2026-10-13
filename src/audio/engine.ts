@@ -4,7 +4,7 @@
 
 export type Bus = 'ui' | 'sfx' | 'amb' | 'music';
 export const BUSES: Bus[] = ['ui', 'sfx', 'amb', 'music'];
-export const BUS_LABEL: Record<Bus, string> = { ui: 'Oberfläche', sfx: 'Effekte', amb: 'Atmosphäre', music: 'Klangteppich' };
+export const BUS_LABEL: Record<Bus, string> = { ui: 'Oberfläche', sfx: 'Effekte', amb: 'Atmosphäre', music: 'Musik' };
 
 export interface AudioSettings { on: boolean; master: number; ui: number; sfx: number; amb: number; music: number }
 const DEFAULTS: AudioSettings = { on: true, master: 0.8, ui: 0.6, sfx: 0.85, amb: 0.45, music: 0.4 };

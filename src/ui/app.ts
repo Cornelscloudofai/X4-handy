@@ -37,6 +37,7 @@ import { setSound, sfx, soundEnabled } from './sound';
 import { initLifecycle, meterPeak, preloadSamples, renderOffline, setLevel, type Bus } from '../audio/engine';
 import { setNear, setScene, setSectorMood } from '../audio/ambience';
 import { SOUND_DEMO } from '../audio/sounds';
+import { sceneChanged as musicScene } from '../audio/music';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { buyOffers, defaultBuyModal } from './buyView';
@@ -217,7 +218,7 @@ let audioSceneNow = '';
 let moodSector = '';
 let lastNear = -1;
 function audioScene(s: 'map' | 'minigame' | 'menu'): void {
-  if (s !== audioSceneNow) { audioSceneNow = s; setScene(s); }
+  if (s !== audioSceneNow) { audioSceneNow = s; setScene(s); musicScene(s); }
 }
 
 function frame(now: number): void {

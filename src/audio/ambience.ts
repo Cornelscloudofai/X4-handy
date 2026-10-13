@@ -135,7 +135,7 @@ function schedule(): void {
   const c = liveContext();
   if (!c || !running) return;
   const now = c.currentTime;
-  if (c.state === 'running') {
+  if (c.state === 'running' && !trackActive) {
     if (now + 0.5 >= nextChord) {
       const len = 10 + Math.random() * 6;
       playChord(Math.max(now, nextChord), CHORDS[chordIdx % CHORDS.length], len);
@@ -152,6 +152,15 @@ function schedule(): void {
   timer = window.setTimeout(schedule, 400);
 }
 
+/** Läuft gerade ein Musikstück (Datei)? Dann pausiert der generative Klangteppich */
+let trackActive = false;
+export function setTrackActive(on: boolean): void {
+  trackActive = on;
+  const c = liveContext();
+  if (!on && c) { nextChord = c.currentTime + 2; nextBell = c.currentTime + 8; }
+}
+export function currentScene(): Scene { return scene; }
+
 /** Atmosphäre und Klangteppich starten (nach der ersten Berührung) bzw. bei Stummschaltung anhalten */
 export function startSoundscape(): void {
   if (!settings.on) return stopSoundscape();
@@ -164,6 +173,13 @@ export function startSoundscape(): void {
   nextChord = g.ctx.currentTime + 1.5;
   nextBell = g.ctx.currentTime + 6;
   schedule();
+  onStart.forEach((f) => f());
+}
+
+const onStart: (() => void)[] = [];
+/** Wird aufgerufen, sobald die Klangwelt startet (für die Titelmusik) */
+export function onSoundscapeStart(f: () => void): void {
+  onStart.push(f);
 }
 
 export function stopSoundscape(): void {
