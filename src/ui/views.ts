@@ -5,7 +5,7 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
-import { artPic, artStyle } from './menuArt';
+import { MENU_IMG, artPic, artStyle } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, gameRange, sustainedDps, type ShipId, type X4Gun } from '../minigames/loadout';
 
@@ -1256,15 +1256,30 @@ function morePanel(state: GameState, ui: UIState): string {
   const tab = ui.panel?.tab;
   const sub = MORE_SUBS.find((m) => m.id === tab);
   if (!sub) {
-    // Übersicht: Kurzbilanz und Kacheln
-    const tiles = MORE_SUBS.map((m) => `<button class="menu-tile has-art" style="${artStyle('more-' + m.id)}" ${m.id === 'games' ? act('minigames') : act('more-sub', { tab: m.id })} data-key="more-${m.id}">
-        ${artPic('more-' + m.id, 'menu-tile-art')}<span class="menu-tile-ic">${icon(m.icon, 24)}</span><span class="menu-tile-title">${esc(m.title)}</span><span class="menu-tile-sub">${esc(m.sub)}</span></button>`).join('');
+    // Übersicht: Kopfbereich mit Planet und Handelsnetz, Unternehmenswert, zwei große Bildkacheln, vier kleine Kacheln
+    const big = (id: 'company' | 'games', img: string) => {
+      const m = MORE_SUBS.find((x) => x.id === id)!;
+      return `<button class="menu-big ${id}" ${id === 'games' ? act('minigames') : act('more-sub', { tab: id })} data-key="more-${id}" style="${artStyle(id === 'games' ? 'more-games' : 'more-company')}">
+        <img class="menu-big-art" src="${img}" alt="" decoding="async">
+        <span class="menu-big-ic">${icon(m.icon, 26)}</span>
+        <span class="menu-big-txt"><b>${esc(m.title)}</b><small>${id === 'games' ? `${MINI_KINDS.length} Spiele · Rekorde · ${modState().parts} Modteile` : 'Kennzahlen · Verlauf · Ereignisse'}</small></span>
+        <span class="menu-big-chev">${icon('chev', 26)}</span></button>`;
+    };
+    const small = MORE_SUBS.filter((m) => m.id !== 'company' && m.id !== 'games').map((m) => `<button class="menu-small" ${act('more-sub', { tab: m.id })} data-key="more-${m.id}">
+        <span class="menu-small-ic">${icon(m.icon, 22)}</span><span class="menu-small-txt"><b>${esc(m.title)}</b><small>${esc(m.sub)}</small></span>${icon('chev', 16, 'chev')}</button>`).join('');
+    // Handelsnetz: feste Knoten und Verbindungen (Zeichnung, gestochen scharf in jeder Auflösung)
+    const N: [number, number, number][] = [[205, 40, 1], [262, 18, 0], [300, 62, 2], [238, 92, 0], [330, 112, 0], [180, 118, 0], [342, 30, 0]];
+    const E = [[0, 1], [0, 2], [0, 3], [2, 4], [3, 5], [2, 6], [1, 6], [3, 4]];
+    const net = `<svg class="menu-net" viewBox="0 0 360 140" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+      ${E.map(([a, b]) => `<path d="M${N[a][0]} ${N[a][1]} Q ${(N[a][0] + N[b][0]) / 2 + 8} ${(N[a][1] + N[b][1]) / 2 - 10} ${N[b][0]} ${N[b][1]}"/>`).join('')}
+      ${N.map(([x, y, k], i) => `<g class="n${k === 2 ? ' amber' : k === 1 ? ' big' : ''}" style="--d:${i * 0.4}s"><circle cx="${x}" cy="${y}" r="${k ? 7 : 4.5}" class="halo"/><circle cx="${x}" cy="${y}" r="${k ? 3.2 : 2.2}" class="core"/>${k ? `<circle cx="${x}" cy="${y}" r="11" class="ring"/>` : ''}</g>`).join('')}</svg>`;
     return sheet('Leitstand', 'Mehr', `
-      <div class="section"><div class="menu-hero" style="${artStyle('hero')}">
-        <div class="menu-hero-txt"><small>Familie Zhin</small><b>${tw(netWorth(state), 'cr')}</b><span>Unternehmenswert</span></div>
-        <div class="menu-hero-side"><small>Spielzeit</small><b>${fmtClock(state.time)}</b><small>${state.stations.length} Stationen · ${state.ships.length} Schiffe</small></div>
-      </div></div>
-      <div class="section"><div class="menu-grid">${tiles}</div></div>
+      <div class="menu-head" style="${artStyle('hero')}">${net}
+        <div class="menu-head-time"><small>Spielzeit</small><b>${fmtClock(state.time)}</b></div></div>
+      <div class="menu-worth">${icon('chart', 30)}<div class="grow"><small>Unternehmenswert</small><b>${tw(netWorth(state), 'cr')}</b></div>
+        <div class="right small muted">${state.stations.length} Station${state.stations.length === 1 ? '' : 'en'}<br>${state.ships.length} Schiff${state.ships.length === 1 ? '' : 'e'}</div></div>
+      <div class="section menu-bigs">${big('company', MENU_IMG.stationDraufsicht)}${big('games', MENU_IMG.minispieleDraufsicht)}</div>
+      <div class="section"><div class="menu-smalls">${small}</div></div>
       <div class="section"><div class="card-actions"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>`);
   }
   const page = (body: string) => sheet(sub.title, 'Mehr', `<div class="page-hero" style="${artStyle('more-' + sub.id)}">${artPic('more-' + sub.id, 'page-hero-art')}<div><b>${esc(sub.title)}</b><span>${esc(sub.sub)}</span></div></div>` + body, { back: true });
