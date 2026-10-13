@@ -97,19 +97,85 @@ export function unreadNews(state: GameState): number {
   return state.log.filter((e) => e.toast && e.t > seen).length;
 }
 
+/** Art einer Meldung: Symbol, Farbe und kurze Kennzeichnung – zum Erfassen auf einen Blick */
+interface NewsType { label: string; icon: string; color: string }
+const NT: Record<string, NewsType> = {
+  campaign: { label: 'Kampagne', icon: 'star', color: '#ffd36b' },
+  contract: { label: 'Auftrag', icon: 'missions', color: '#ffb547' },
+  offer: { label: 'Angebot', icon: 'market', color: '#ff9f5a' },
+  market: { label: 'Markt', icon: 'chart', color: '#5fb4ff' },
+  ship: { label: 'Flotte', icon: 'fleet', color: '#5ff0d8' },
+  build: { label: 'Bau', icon: 'wrench', color: '#7fb6ff' },
+  trade: { label: 'Handel', icon: 'wallet', color: '#6be38f' },
+  world: { label: 'Galaxie', icon: 'galaxy', color: '#b49cff' },
+  mining: { label: 'Abbau', icon: 'miner', color: '#ffc45e' },
+  problem: { label: 'Problem', icon: 'warn', color: '#ff7a7a' },
+  info: { label: 'Info', icon: 'info', color: '#9fb4bb' },
+};
+
+export function newsType(e: LogEntry): NewsType {
+  const t = e.text;
+  if (e.kind === 'bad' || /konnten nicht|Frist verpasst|verfallen|vermisst/.test(t)) return NT.problem;
+  if (/^Ziel erreicht|^Belohnung erhalten|Kapitel/.test(t) || e.link?.kind === 'story') return NT.campaign;
+  if (/^Sonderangebot|^Gelegenheit/.test(t) || e.link?.kind === 'opp') return NT.offer;
+  if (/Nachfrage|Überangebot|Preis/.test(t)) return NT.market;
+  if (/Auftrag|^Lieferung für|Schiffsbestellung/.test(t) || e.link?.kind === 'contract' || e.link?.kind === 'shipOrder') return NT.contract;
+  if (/wartet auf Baumaterial/.test(t)) return { ...NT.build, label: 'Bau wartet', color: '#ffb547' };
+  if (/fertiggestellt|abgerissen|gegründet|Baulizenz|Bauplan|Mehr Ruf/.test(t)) return NT.build;
+  if (/verkauft|übergeben|Handelsroute/.test(t)) return NT.trade;
+  if (/gekauft|vom Stapel|Pilot steigt/.test(t) || e.link?.kind === 'ship') return NT.ship;
+  if (/Schürfrecht|Vermessung|am Feld|fertig: /.test(t) || e.link?.kind === 'field') return NT.mining;
+  if (/neue Fabrik|weiteres Modul|Neue Station erfasst|Satellit/.test(t) || e.link?.kind === 'market' || e.link?.kind === 'sector') return NT.world;
+  if (e.kind === 'warn') return { ...NT.problem, label: 'Hinweis', color: '#ffb547' };
+  return e.link?.kind === 'station' ? NT.build : NT.info;
+}
+
+/** Meldung in Überschrift und Zusatz teilen: „Neues Auftragsangebot“ / „Lieferung: Graphen (…)“ */
+export function newsSplit(text: string): { head: string; rest: string } {
+  const t = text.replace(/\.$/, '');
+  const c = t.indexOf(': ');
+  if (c > 0 && c <= 42) return { head: t.slice(0, c), rest: t.slice(c + 2) };
+  const d = t.indexOf(' – ');
+  if (d > 0 && d <= 70) return { head: t.slice(0, d), rest: t.slice(d + 3) };
+  return { head: t, rest: '' };
+}
+
+/** Geldbetrag in der Meldung (für ein Abzeichen rechts) */
+function newsAmount(text: string): string {
+  const m = text.match(/(?:[+−-]\s?)?\d[\d.]*(?:,\d+)?\s?(?:Mio |Tsd )?Cr\b/);
+  return m ? m[0].replace(/\s+/g, ' ') : '';
+}
+
 export function newsBody(state: GameState, filter: NewsFilter, seenBefore: number): string {
   const list = [...state.log].reverse().filter((e) => newsCategory(e).includes(filter));
   const chips = (Object.keys(NEWS_LABEL) as NewsFilter[]).map((f) => `<button class="pill ${f === filter ? 'teal' : ''}" ${act('news-filter', { f })}>${NEWS_LABEL[f]}</button>`).join('');
+  let lastDay = -1;
   const rows = list.map((e) => {
-    const cls = e.kind === 'good' ? 'pos' : e.kind === 'bad' ? 'neg' : e.kind === 'warn' ? 'warn-text' : '';
+    const ty = newsType(e);
+    let { head, rest } = newsSplit(e.text);
+    let badge = '';
+    // Sonderangebot: Ware als Überschrift, Rabatt als Abzeichen, Ort und Dauer darunter
+    const so = e.text.match(/^Sonderangebot: (.+?) räumt (\d+) min lang (.+?) für (\d+) % des Preises(?: \(bis ([\d.]+) Einheiten\))?/);
+    if (so) { head = so[3]; rest = `${so[1]} · ${so[2]} min${so[5] ? ` · bis ${so[5]} Einheiten` : ''}`; badge = `−${100 - Number(so[4])} %`; }
     const isNew = e.toast && e.t > seenBefore;
+    const amount = newsAmount(e.text);
+    const day = Math.floor(e.t / 86400);
+    const sep = day !== lastDay ? `<div class="news-day">Tag ${day + 1}</div>` : '';
+    lastDay = day;
     const btns = [linkButton(state, e.link), extraButton(state, e.link)].filter(Boolean).join('');
-    return `<div class="row news-row ${isNew ? 'new' : ''}"><span class="small muted num" style="flex:none;width:64px">${fmtClock(e.t).replace('Tag ', 'T')}</span>
-      <div class="grow"><div class="sub wrap ${cls}" style="${e.kind === 'info' ? 'color:var(--text)' : ''}">${isNew ? '<b class="pill amber" style="padding:0 5px;font-size:10px;margin-right:4px">NEU</b>' : ''}${esc(e.text)}</div>
-      ${btns ? `<div class="row-links">${btns}</div>` : ''}</div></div>`;
+    const clock = fmtClock(e.t).replace(/^Tag \d+ · /, '');
+    return `${sep}<div class="news-item ${isNew ? 'new' : ''} ${e.toast ? 'imp' : ''}" style="--nc:${ty.color}">
+      <span class="news-ic">${icon(ty.icon, 18)}</span>
+      <div class="grow">
+        <div class="news-meta"><b>${esc(ty.label)}</b>${isNew ? '<em>NEU</em>' : ''}<span class="num">${esc(clock)}</span></div>
+        <div class="news-head"><span>${esc(head)}</span>${badge ? `<i class="news-amt deal">${esc(badge)}</i>` : amount ? `<i class="news-amt ${/^[−-]/.test(amount) || e.kind === 'bad' ? 'neg' : ''}">${esc(amount)}</i>` : ''}</div>
+        ${rest ? `<div class="news-rest">${esc(rest)}</div>` : ''}
+        ${btns ? `<div class="row-links">${btns}</div>` : ''}
+      </div>
+      </div>`;
   }).join('');
-  return `<div class="pills" style="margin-bottom:10px">${chips}${helpBtn('news')}</div>
-    <div class="box rows">${rows || '<div class="empty">Keine Meldungen in dieser Auswahl.</div>'}</div>
+  return `<div class="pills scroll" style="margin-bottom:10px">${chips}${helpBtn('news')}</div>
+    <div class="news-list">${rows || '<div class="box empty">Keine Meldungen in dieser Auswahl.</div>'}</div>
     <p class="small muted" style="margin:8px 0 0">Die letzten ${state.log.length} Meldungen. „Wichtig“ sind die, die unten eingeblendet wurden.</p>`;
 }
 

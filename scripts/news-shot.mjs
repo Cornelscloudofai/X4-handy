@@ -30,7 +30,7 @@ await page.waitForTimeout(300);
 await page.click('#hud [data-act="open-news"]');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${out}/news-2-list.png` });
-const news = await page.evaluate(() => ({ rows: document.querySelectorAll('#panel .news-row').length, links: document.querySelectorAll('#panel [data-act="news-go"]').length }));
+const news = await page.evaluate(() => ({ rows: document.querySelectorAll('#panel .news-item').length, typed: document.querySelectorAll('#panel .news-item .news-meta b').length, links: document.querySelectorAll('#panel [data-act="news-go"]').length }));
 // Erste Meldung mit Verweis anspringen
 await page.click('#panel [data-act="news-go"]');
 await page.waitForTimeout(500);
