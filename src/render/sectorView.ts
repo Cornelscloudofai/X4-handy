@@ -295,7 +295,8 @@ export class SectorRenderer {
     // NPC-Käuferstationen
     for (const n of sec.npcStations) {
       const [sx, sy] = cam.toScreen(n.x, n.z);
-      if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) continue;
+      const nm = cam.zoom > NEAR_ZOOM ? 6 * stationScale(cam.zoom) : 40;
+      if (sx < -nm || sx > W + nm || sy < -nm || sy > H + nm) continue;
       const col = NPC_COLOR[n.kind];
       const sel = ui.selection?.kind === 'npcst' && ui.selection.id === n.id;
       // Nah herangezoomt: aus Modulbildern zusammengesetzt wie die eigenen Stationen
@@ -379,7 +380,8 @@ export class SectorRenderer {
       const cls = SHIP_MAP[sh.cls];
       const docked = sh.phase === 'docking' || sh.phase === 'unloading' || sh.phase === 'selling' || (sh.phase === 'waiting' && !sh.path.length);
       const [sx, sy] = cam.toScreen(sh.x, sh.z);
-      if (sx < -30 || sx > W + 30 || sy < -30 || sy > H + 30) continue;
+      const sm = Math.max(30, shipLength(cls.size, cam.zoom));
+      if (sx < -sm || sx > W + sm || sy < -sm || sy > H + sm) continue;
       const color = cls.role === 'miner' ? C.miner : C.trader;
       const moving = !docked && sh.phase !== 'mining' && sh.path.length > 0;
       // Angedockte Schiffe liegen im Dock – nicht über dem Stationssymbol zeichnen (ausgewählte bleiben sichtbar)
@@ -762,7 +764,9 @@ export class SectorRenderer {
 
   private drawStation(ctx: CanvasRenderingContext2D, st: Station, cam: Camera, now: number, selected: boolean, s: number, dt: number): void {
     const [sx, sy] = cam.toScreen(st.x, st.z);
-    if (sx < -140 || sx > cam.w + 140 || sy < -140 || sy > cam.h + 140) return;
+    // Ganz nah ist die Station viel größer als der Bildschirm: erst ausblenden, wenn auch ihr Rand draußen ist
+    const m = Math.max(140, (stationReach(st) * stationScale(cam.zoom)) * 1.3 + 40);
+    if (sx < -m || sx > cam.w + m || sy < -m || sy > cam.h + m) return;
     const problem = st.modules.some((m) => m.stall === 'input');
     const color = problem ? C.amber : C.teal;
     const rel = cam.zoom / (cam.fitZoom || 1);
@@ -1283,24 +1287,34 @@ export class SectorRenderer {
     if (d.kind === 'dock' || d.kind === 'pier') {
       const col = '#a0e6f0';
       if (d.kind === 'dock' && this.drawModuleImage(ctx, 'dock', unit, seed)) {
-        // Ganz nah: ab und zu steht ein kleines Schiff auf einem der Landefelder (drei M-Felder in der Mitte)
+        // Ganz nah: ab und zu steht ein Schiff im Kartenmaßstab auf einem Landefeld – ein M-Schiff auf einem der drei
+        // M-Felder in der Mitte (±0,27 Einheiten entlang der Achse), ein S-Schiff auf einem S-Feld daneben (±0,19 quer)
         if (fine) {
           const cycle = (now / 7000 + seed * 0.37) % 1;
           if (cycle < 0.55) {
             const al = cycle < 0.08 ? cycle / 0.08 : cycle > 0.47 ? (0.55 - cycle) / 0.08 : 1;
-            const r = unit * 0.13;
+            const k = Math.floor(now / 7000 + seed);
+            const small = k % 2 === 1;
+            const cls = small ? DOCK_S[k % DOCK_S.length] : DOCK_M[k % DOCK_M.length];
+            const sprite = mapShipSprite(cls);
+            const px = ((k % 3) - 1) * unit * 0.27, py = small ? (k % 4 < 2 ? -1 : 1) * unit * 0.19 : 0;
+            const len = SHIP_UNIT[small ? 'S' : 'M'] * unit;
             ctx.save();
-            ctx.translate((Math.floor(now / 7000 + seed) % 3 - 1) * unit * 0.34, 0);
+            ctx.translate(px, py);
             ctx.rotate(seed * 1.3);
             ctx.globalAlpha = al;
-            ctx.fillStyle = '#0a1721';
-            ctx.beginPath();
-            ctx.moveTo(r, 0); ctx.lineTo(-r * 0.7, r * 0.6); ctx.lineTo(-r * 0.4, 0); ctx.lineTo(-r * 0.7, -r * 0.6);
-            ctx.closePath();
-            ctx.fill();
-            ctx.strokeStyle = rgba(C.trader, 0.9);
-            ctx.lineWidth = thin;
-            ctx.stroke();
+            if (sprite) ctx.drawImage(sprite.img, -len / 2, -len / 2, len, len);
+            else {
+              const r = len * 0.45;
+              ctx.fillStyle = '#0a1721';
+              ctx.beginPath();
+              ctx.moveTo(r, 0); ctx.lineTo(-r * 0.7, r * 0.6); ctx.lineTo(-r * 0.4, 0); ctx.lineTo(-r * 0.7, -r * 0.6);
+              ctx.closePath();
+              ctx.fill();
+              ctx.strokeStyle = rgba(C.trader, 0.9);
+              ctx.lineWidth = thin;
+              ctx.stroke();
+            }
             ctx.restore();
           }
         }
@@ -1859,10 +1873,10 @@ export class SectorRenderer {
   /** Zeichnet ein eigenes Schiff; Rückgabe: Halbmesser des Gezeichneten (für Auswahlring und Ladungspunkt) */
   private drawShip(ctx: CanvasRenderingContext2D, cls: string, x: number, y: number, heading: number, size: number, color: string, alpha: number, moving: boolean, now: number, seed: number): number {
     const sprite = mapShipSprite(cls);
-    // KI-Bild in festem Kartenmaßstab: wächst beim Zoomen genau wie Karte, Felder und Asteroiden; Größen wie in X4
-    // (L rund 3,5-mal so lang wie M, ein S-Schiff passt auf die Landeplattform). Ist es dafür noch zu klein,
-    // zeigt die Karte das Symbol und blendet beim Heranzoomen weich zum Bild über.
-    const L = sprite ? SHIP_KM[SHIP_MAP[cls]?.size ?? 'M'] * this.lastZoom : 0;
+    // KI-Bild im selben Maßstab wie die Stationsmodule: ein S-Schiff passt auf einen S-Landeplatz des Andockmoduls,
+    // ein M-Schiff auf einen M-Platz; L rund 3,5-mal so lang wie M. Ist es dafür noch zu klein, zeigt die Karte das
+    // Symbol und blendet beim Heranzoomen weich zum Bild über.
+    const L = sprite ? shipLength(SHIP_MAP[cls]?.size ?? 'M', this.lastZoom) : 0;
     const t = sprite ? Math.max(0, Math.min(1, (L - SPRITE_MIN) / SPRITE_FADE)) : 0;
     if (sprite && t < 1) {
       // noch zu klein fürs Bild: kleiner Marker (je Klasse etwas größer), damit nichts größer wirkt als es ist
@@ -2354,10 +2368,18 @@ const YARD_IMG: Record<string, number> = { M: 1.25, L: 1.79, XL: 2.42 };
 const PIER_IMG = 2.0;
 const PIER_PORT = 469 / 1254;
 /**
- * Länge der Schiffsbilder in Kartenkilometern (Kartenmaßstab, nicht echte Größe – sonst wären Schiffe unsichtbar klein);
- * Verhältnisse wie in X4: L rund 3,5-mal so lang wie M, S etwa 0,4-mal.
+ * Bildkante der Schiffsbilder in Moduleinheiten (wie die Stationen). Das Andockmodul (1,1 Einheiten) hat M-Landeplätze
+ * von rund 0,19 und S-Plätze von rund 0,13 Einheiten: ein M-Schiff füllt seinen Platz, ein S-Schiff steht mit Rand auf
+ * seinem. Verhältnisse wie in X4: L rund 3,5-mal so lang wie M, S 0,4-mal.
  */
-const SHIP_KM: Record<'S' | 'M' | 'L', number> = { S: 0.56, M: 1.4, L: 4.9 };
+const SHIP_UNIT: Record<'S' | 'M' | 'L', number> = { S: 0.08, M: 0.2, L: 0.7 };
+/** Bildlänge eines Schiffs in Bildpunkten bei diesem Zoom – passend zu den Stationsmodulen */
+/** Schiffe, die ganz nah zur Zierde auf den Landefeldern der Andockmodule stehen */
+const DOCK_M = ['boa', 'alligator_min', 'alligator_gas'];
+const DOCK_S = ['tuatara', 'tuatara_min'];
+export function shipLength(size: 'S' | 'M' | 'L', zoom: number): number {
+  return SHIP_UNIT[size] * stationScale(zoom);
+}
 /** Ab dieser Bildlänge (Bildpunkte) wird statt des Symbols das Bild gezeigt, mit weichem Übergang */
 const SPRITE_MIN = 12;
 const SPRITE_FADE = 10;

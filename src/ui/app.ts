@@ -18,7 +18,7 @@ import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/ty
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
 import { GALAXY_HEX, drawGalaxy, galaxyHit, sectorCenter } from '../render/galaxyView';
-import { SectorRenderer } from '../render/sectorView';
+import { SectorRenderer, shipLength } from '../render/sectorView';
 import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
 import { setWareIconStyle } from './wareIcons';
@@ -179,9 +179,10 @@ function bottomHeight(): number {
   return (document.getElementById('nav')?.getBoundingClientRect().height ?? 70) + 12;
 }
 
-/** Höchster Zoom: das kleinste Schiff (S, 0,56 km) füllt gut drei Viertel der kürzeren Bildschirmseite */
+/** Höchster Zoom: das kleinste Schiff (S) füllt gut drei Viertel der kürzeren Bildschirmseite */
 function nearZoomMax(): number {
-  return Math.max(40, (0.78 * Math.min(cam.w, cam.h)) / 0.56);
+  // so nah, dass ein S-Schiff rund 78 % des Bildschirms füllt (Schiffslänge wächst über Zoom 40 linear)
+  return Math.max(40, (0.78 * Math.min(cam.w, cam.h)) / (shipLength('S', 1000) / 1000));
 }
 
 function fitSector(): void {
