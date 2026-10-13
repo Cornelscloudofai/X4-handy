@@ -310,10 +310,13 @@ export function diagramContent(r: PlanResult, p: PlannerUI, counts: Record<strin
     const tag = [n.kind === 'mined' ? 'Rohstoff' : n.kind === 'bought' ? 'Zukauf' : st === 'end' ? 'Endprodukt' : '', noBp ? 'Bauplan fehlt' : ''].filter(Boolean).join(' · ');
     // Kopfzeile in Warenfarbe (oben gerundet), Symbol und Name
     const head = `M${x} ${y + 14}a14 14 0 0 1 14 -14h${NW - 28}a14 14 0 0 1 14 14v20h-${NW}z`;
+    // Farbstreifen links folgt der Rundung des Kästchens (5 breit, innen gerade)
+    const stripe = `M${x + 5} ${y + 3.28}A14 14 0 0 0 ${x} ${y + 14}V${y + NH - 14}A14 14 0 0 0 ${x + 5} ${y + NH - 3.28}Z`;
     cards += `<g class="dg-node ${st}${focus === id ? ' focus' : ''}" data-node="${id}" opacity="${dim ? (chain ? 0.22 : 0.35) : 1}">${ring}
       <rect class="base" x="${x}" y="${y}" width="${NW}" height="${NH}" rx="14" fill="${st === 'end' ? '#1d1b12' : '#0c1c2a'}" stroke="${col}" stroke-width="${focus === id ? 3 : 1.6}"${n.kind === 'bought' ? ' stroke-dasharray="6 4"' : ''}/>
       <path d="${head}" fill="${w.color}" opacity="0.13"/>
-      <rect x="${x}" y="${y}" width="6" height="${NH}" rx="3" fill="${w.color}"/>
+      <path d="${stripe}" fill="${w.color}"/>
+      <rect x="${x}" y="${y}" width="${NW}" height="${NH}" rx="14" fill="none" stroke="${col}" stroke-width="${focus === id ? 3 : 1.6}"${n.kind === 'bought' ? ' stroke-dasharray="6 4"' : ''} pointer-events="none"/>
       <g transform="translate(${x + 12} ${y + 7})">${wareIcon(id, 20)}</g>
       <text x="${x + 38}" y="${y + 23}" class="dg-title">${esc(name)}</text>
       ${tag ? `<text x="${x + 12}" y="${y - 7}" class="dg-tag" fill="${noBp ? '#ffb547' : col}">${tag}</text>` : ''}
