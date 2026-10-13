@@ -1265,16 +1265,10 @@ function morePanel(state: GameState, ui: UIState): string {
         <span class="menu-big-txt"><b>${esc(m.title)}</b><small>${id === 'games' ? `${MINI_KINDS.length} Spiele · Rekorde · ${modState().parts} Modteile` : 'Kennzahlen · Verlauf · Ereignisse'}</small></span>
         <span class="menu-big-chev">${icon('chev', 26)}</span></button>`;
     };
-    const small = MORE_SUBS.filter((m) => m.id !== 'company' && m.id !== 'games').map((m) => `<button class="menu-small" ${act('more-sub', { tab: m.id })} data-key="more-${m.id}">
+    const small = MORE_SUBS.filter((m) => m.id !== 'company' && m.id !== 'games').map((m) => `<button class="menu-small has-img" style="${artStyle('more-' + m.id)}" ${act('more-sub', { tab: m.id })} data-key="more-${m.id}">
         <span class="menu-small-ic">${icon(m.icon, 22)}</span><span class="menu-small-txt"><b>${esc(m.title)}</b><small>${esc(m.sub)}</small></span>${icon('chev', 16, 'chev')}</button>`).join('');
-    // Handelsnetz: feste Knoten und Verbindungen (Zeichnung, gestochen scharf in jeder Auflösung)
-    const N: [number, number, number][] = [[205, 40, 1], [262, 18, 0], [300, 62, 2], [238, 92, 0], [330, 112, 0], [180, 118, 0], [342, 30, 0]];
-    const E = [[0, 1], [0, 2], [0, 3], [2, 4], [3, 5], [2, 6], [1, 6], [3, 4]];
-    const net = `<svg class="menu-net" viewBox="0 0 360 140" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
-      ${E.map(([a, b]) => `<path d="M${N[a][0]} ${N[a][1]} Q ${(N[a][0] + N[b][0]) / 2 + 8} ${(N[a][1] + N[b][1]) / 2 - 10} ${N[b][0]} ${N[b][1]}"/>`).join('')}
-      ${N.map(([x, y, k], i) => `<g class="n${k === 2 ? ' amber' : k === 1 ? ' big' : ''}" style="--d:${i * 0.4}s"><circle cx="${x}" cy="${y}" r="${k ? 7 : 4.5}" class="halo"/><circle cx="${x}" cy="${y}" r="${k ? 3.2 : 2.2}" class="core"/>${k ? `<circle cx="${x}" cy="${y}" r="11" class="ring"/>` : ''}</g>`).join('')}</svg>`;
     return sheet('Leitstand', 'Mehr', `
-      <div class="menu-head" style="${artStyle('hero')}">${net}
+      <div class="menu-head" style="${artStyle('hero')}">
         <div class="menu-head-time"><small>Spielzeit</small><b>${fmtClock(state.time)}</b></div></div>
       <div class="menu-worth">${icon('chart', 30)}<div class="grow"><small>Unternehmenswert</small><b>${tw(netWorth(state), 'cr')}</b></div>
         <div class="right small muted">${state.stations.length} Station${state.stations.length === 1 ? '' : 'en'}<br>${state.ships.length} Schiff${state.ships.length === 1 ? '' : 'e'}</div></div>

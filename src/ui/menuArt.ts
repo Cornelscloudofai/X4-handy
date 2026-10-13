@@ -3,23 +3,32 @@
 import { BG_IMAGES } from '../render/bgImages';
 import { spriteUrl } from '../render/shipArt';
 import stationDraufsicht from '../assets/menu/station-draufsicht.webp';
-import stationSchraeg from '../assets/menu/station-schraeg.webp';
 import minispieleDraufsicht from '../assets/menu/minispiele-draufsicht.webp';
-import minispieleSchraeg from '../assets/menu/minispiele-schraeg.webp';
+import leitstandBanner from '../assets/menu/leitstand-banner.jpg';
+import unternehmenStation from '../assets/menu/unternehmen-station.jpg';
+import minispieleSzene from '../assets/menu/minispiele-szene.jpg';
+import hilfeDrohne from '../assets/menu/hilfe-drohne.jpg';
+import einstellungenWerkhalle from '../assets/menu/einstellungen-werkhalle.jpg';
+import spielstandTresor from '../assets/menu/spielstand-tresor.jpg';
+import ueberSprungtor from '../assets/menu/ueber-sprungtor.jpg';
 
-/** Eigene Menübilder (freigestellt, volle Auflösung) */
-export const MENU_IMG = { stationDraufsicht, stationSchraeg, minispieleDraufsicht, minispieleSchraeg };
+/** Eigene Menübilder in voller Auflösung: freigestellte Motive für die großen Kacheln */
+export const MENU_IMG = { stationDraufsicht, minispieleDraufsicht };
 
 export interface MenuArt { bg: string; sprite?: string; /** großes, freigestelltes Menübild statt Schiffsbild */ art?: string }
 
+/** Eigene Szenen (KI-Bilder für Menüs): ersetzen Hintergrund und Schiffsbild */
+const SCENE: Record<string, string> = {
+  hero: leitstandBanner,
+  'more-company': unternehmenStation,
+  'more-games': minispieleSzene,
+  'more-help': hilfeDrohne,
+  'more-settings': einstellungenWerkhalle,
+  'more-save': spielstandTresor,
+  'more-about': ueberSprungtor,
+};
+
 const ART: Record<string, { bg: string; sprite?: string; art?: string }> = {
-  hero: { bg: 'ringplanet' },
-  'more-company': { bg: 'planet-tuerkis', art: stationSchraeg },
-  'more-games': { bg: 'asteroidenstrom-dunkel', art: minispieleSchraeg },
-  'more-help': { bg: 'nebel-blau-mond', sprite: 'split-drohne-ki' },
-  'more-settings': { bg: 'asteroidenkette', sprite: 'split-turm-plasma-hell-ki' },
-  'more-save': { bg: 'finsternis', sprite: 'split-lager-container-ki' },
-  'more-about': { bg: 'nebel-rot-tuerkis-2', sprite: 'sprungtor-ki' },
   pipes: { bg: 'nebel-rot-tuerkis-2', sprite: 'split-modul-produktion-hell-ki' },
   ore: { bg: 'asteroiden-sonne', sprite: 'asteroid-2-ki' },
   gas: { bg: 'wirbel-violett', sprite: 'split-alligator-gas-ki' },
@@ -31,6 +40,7 @@ const ART: Record<string, { bg: string; sprite?: string; art?: string }> = {
 };
 
 export function menuArt(key: string): MenuArt | null {
+  if (SCENE[key]) return { bg: SCENE[key] };
   const a = ART[key];
   if (!a) return null;
   const bg = BG_IMAGES.find((b) => b.id === a.bg)?.url;
