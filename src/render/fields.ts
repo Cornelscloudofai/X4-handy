@@ -363,32 +363,60 @@ function drawLayerBatched(ctx: CanvasRenderingContext2D, cam: Camera, rocks: Roc
 
 // ---------- Texturen: echte Asteroidenbilder statt Vielecken, sobald ein Brocken groß genug im Bild ist ----------
 
-/** Alle Asteroidenbilder (src/assets/sprites/asteroid-<n>-ki.*); neue Bilder werden automatisch mitbenutzt */
-const ROCK_ART = spriteNames(/^asteroid-\d+-ki$/);
-const rockImgs: HTMLImageElement[] = [];
-let rockImgsReady = false;
-function rockImages(): HTMLImageElement[] | null {
-  if (typeof Image === 'undefined' || !ROCK_ART.length) return null;
-  if (!rockImgs.length) for (const n of ROCK_ART) { const im = new Image(); im.decoding = 'async'; im.src = spriteUrl(n)!; rockImgs.push(im); }
-  rockImgsReady ||= rockImgs.every((im) => im.complete && im.naturalWidth > 0);
-  return rockImgsReady ? rockImgs : null;
+/**
+ * Asteroidenbilder: allgemeine (asteroid-<n>-ki, werden je Rohstoff eingefärbt) und rohstoffeigene
+ * (asteroid-erz|silizium|eis|nividium-<n>-ki, unverändert). Neue Bilder nach diesem Schema werden automatisch benutzt.
+ */
+const GENERIC = spriteNames(/^asteroid-\d+-ki$/);
+const OWN: Record<string, string[]> = {
+  ore: spriteNames(/^asteroid-erz-\d+-ki$/),
+  silicon: spriteNames(/^asteroid-silizium-\d+-ki$/),
+  ice: spriteNames(/^asteroid-eis-\d+-ki$/),
+  nividium: spriteNames(/^asteroid-nividium-\d+-ki$/),
+};
+/** Bildliste je Rohstoff: [Name, einfärben?] – eigene Bilder zuerst, allgemeine nur wo es passt */
+function artFor(ware: string): [string, boolean][] {
+  const own = (OWN[ware] ?? []).map((n): [string, boolean] => [n, false]);
+  if (ware === 'ice') return own.length ? own : GENERIC.map((n) => [n, true]);
+  // Nividium: eigene Bilder plus golden eingefärbtes Erzgestein; Erz/Silizium: eigene plus allgemeine
+  const extra = ware === 'nividium' ? OWN.ore.map((n): [string, boolean] => [n, true]) : GENERIC.map((n): [string, boolean] => [n, true]);
+  return [...own, ...extra];
+}
+const imgCache = new Map<string, HTMLImageElement>();
+function img(name: string): HTMLImageElement | null {
+  if (typeof Image === 'undefined') return null;
+  let im = imgCache.get(name);
+  if (!im) { im = new Image(); im.decoding = 'async'; im.src = spriteUrl(name)!; imgCache.set(name, im); }
+  return im.complete && im.naturalWidth > 0 ? im : null;
+}
+/** true, sobald die Bilder geladen sind (für Bildzwischenspeicher: erst ohne, dann mit Texturen) */
+let allReady = false;
+function rockImagesReady(): boolean {
+  if (allReady) return true;
+  const names = [...GENERIC, ...Object.values(OWN).flat()];
+  if (!names.length) return false;
+  allReady = names.map(img).every(Boolean);
+  return allReady;
 }
 
 /** Ab dieser Bildgröße (CSS-Pixel) bekommt ein Brocken die Textur */
 const TEX_MIN = 14;
 
-/** Färbung je Rohstoff (multipliziert, Stärke) – Erz rostig, Silizium kühl grau, Eis hellblau, Nividium golden */
+/** Färbung allgemeiner Bilder je Rohstoff (multipliziert, Stärke) */
 const TINT: Record<string, [string, number]> = {
-  ore: ['#b07a55', 0.55], silicon: ['#9aa8bc', 0.5], ice: ['#cfeaff', 0.35], nividium: ['#d8b060', 0.6],
+  ore: ['#b07a55', 0.45], silicon: ['#9aa8bc', 0.5], ice: ['#cfeaff', 0.35], nividium: ['#d8a040', 0.55],
 };
 const tintCache = new Map<string, HTMLCanvasElement>();
 function tinted(i: number, ware: string): HTMLCanvasElement | HTMLImageElement | null {
-  const imgs = rockImages();
-  if (!imgs) return null;
-  const im = imgs[i % imgs.length];
+  if (!rockImagesReady()) return null;
+  const list = artFor(ware);
+  if (!list.length) return null;
+  const [name, doTint] = list[i % list.length];
+  const im = img(name);
+  if (!im) return null;
   const t = TINT[ware];
-  if (!t) return im;
-  const key = `${i % imgs.length}:${ware}`;
+  if (!doTint || !t) return im;
+  const key = `${name}:${ware}`;
   let c = tintCache.get(key);
   if (!c) {
     c = document.createElement('canvas');
@@ -403,13 +431,6 @@ function tinted(i: number, ware: string): HTMLCanvasElement | HTMLImageElement |
     g.globalCompositeOperation = 'destination-in';
     g.globalAlpha = 1;
     g.drawImage(im, 0, 0);
-    if (ware === 'ice') {
-      // Eis: heller, kühler Glanz
-      g.globalCompositeOperation = 'source-atop';
-      g.globalAlpha = 0.18;
-      g.fillStyle = '#e8f8ff';
-      g.fillRect(0, 0, c.width, c.height);
-    }
     tintCache.set(key, c);
   }
   return c;
@@ -429,7 +450,7 @@ function drawTextured(ctx: CanvasRenderingContext2D, img: CanvasImageSource, x: 
 
 /** Texturen bereit? (für Bildzwischenspeicher: erst ohne, dann mit Texturen) */
 export function rockTexturesReady(): boolean {
-  return !!rockImages();
+  return rockImagesReady();
 }
 
 /** Große Brocken einer Ebene texturiert zeichnen (vom gebündelten Zeichnen übersprungen) */
