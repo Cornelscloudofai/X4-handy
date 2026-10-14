@@ -27,7 +27,7 @@ import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, typ
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
 import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
-import { loadout, setControlMode, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
+import { loadout, setControlMode, setEnemyBars, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
@@ -1020,6 +1020,11 @@ function onClick(e: MouseEvent): void {
       case 'mg-back': ui.modal = lastMg ?? { type: 'minigames', level: 1, gear: 1, tab: 'combat' }; refresh(); break;
       case 'mg-controls': {
         setControlMode(d.mode as ControlMode);
+        refresh();
+        break;
+      }
+      case 'mg-bars': {
+        setEnemyBars(Number(d.v));
         refresh();
         break;
       }

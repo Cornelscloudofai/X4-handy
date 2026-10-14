@@ -480,3 +480,22 @@ export function setControlMode(m: ControlMode): void {
     /* Speicher nicht verfügbar */
   }
 }
+
+// ---- Anzeige von Hülle und Schild über den Gegnern: Deckkraft (0 = aus), gemerkt ----
+export const ENEMY_BAR_STEPS = [0, 0.3, 0.55, 0.9] as const;
+const BARS_KEY = 'x4-sektorbau-feindanzeige';
+export function enemyBars(): number {
+  try {
+    const v = Number(globalThis.localStorage?.getItem(BARS_KEY));
+    return (ENEMY_BAR_STEPS as readonly number[]).includes(v) && globalThis.localStorage?.getItem(BARS_KEY) != null ? v : 0.3;
+  } catch {
+    return 0.3;
+  }
+}
+export function setEnemyBars(v: number): void {
+  try {
+    globalThis.localStorage?.setItem(BARS_KEY, String(v));
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}

@@ -10,7 +10,7 @@ import { sfx } from '../ui/sound';
 import { sustain } from '../audio/ambience';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
-import { DMG_SCALE, LTURRETS, weaponFits, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, weaponFits, enemyBars, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -38,6 +38,8 @@ interface Enemy {
   /** Laserstrahl: Restzeit (aufladen, dann feuern), Richtung, angesammelter Schaden am Frachter */
   beamT?: number; beamA?: number; beamAcc?: number;
   shielded: boolean;
+  /** eigener Schild: lädt nach 3 s ohne Treffer wieder auf; Aufblitzen bei Treffern auf den Schild */
+  sh: number; shMax: number; shT: number; shFlash: number;
   /** Großziel mitten in einer Welle (kleinere Fregatte bzw. K-Segment), kein Endboss */
   mini?: boolean;
   inside?: boolean;
@@ -152,16 +154,18 @@ function turnTo(a: number, b: number, step: number): number {
   return Math.abs(d) <= step ? b : a + Math.sign(d) * step;
 }
 
-const SPEC: Record<EKind, { hp: number; speed: number; r: number; color: string; name: string; pts: number; cost: number }> = {
-  jaeger: { hp: 30, speed: 165, r: 10, color: '#ff8a5c', name: 'Piratenjäger', pts: 100, cost: 2 },
-  kanone: { hp: 95, speed: 70, r: 16, color: '#ffb547', name: 'Kanonenboot', pts: 250, cost: 4 },
-  rakete: { hp: 55, speed: 90, r: 13, color: '#ffd27a', name: 'Raketenboot', pts: 200, cost: 3.5 },
-  schild: { hp: 70, speed: 85, r: 13, color: '#7fd8ff', name: 'Schildträger', pts: 250, cost: 4 },
-  n: { hp: 15, speed: 205, r: 8, color: '#ff3b4a', name: 'Xenon N', pts: 60, cost: 1.5 },
-  m: { hp: 75, speed: 95, r: 14, color: '#ff5c6c', name: 'Xenon M', pts: 250, cost: 4 },
-  xs: { hp: 70, speed: 85, r: 13, color: '#ff9ab0', name: 'Schirmdrohne', pts: 250, cost: 4 },
-  boss: { hp: 450, speed: 45, r: 34, color: '#ffb547', name: 'Boss', pts: 1500, cost: 0 },
-  turret: { hp: 90, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
+/** Gegner etwas zäher als die Grundwerte (Hülle), dazu ein eigener Schild je Art (sh) */
+const ENEMY_HULL = 1.1, ENEMY_SHIELD = 0.6;
+const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: number; color: string; name: string; pts: number; cost: number }> = {
+  jaeger: { hp: 30, sh: 22, speed: 165, r: 10, color: '#ff8a5c', name: 'Piratenjäger', pts: 100, cost: 2 },
+  kanone: { hp: 95, sh: 60, speed: 70, r: 16, color: '#ffb547', name: 'Kanonenboot', pts: 250, cost: 4 },
+  rakete: { hp: 55, sh: 40, speed: 90, r: 13, color: '#ffd27a', name: 'Raketenboot', pts: 200, cost: 3.5 },
+  schild: { hp: 70, sh: 80, speed: 85, r: 13, color: '#7fd8ff', name: 'Schildträger', pts: 250, cost: 4 },
+  n: { hp: 15, sh: 12, speed: 205, r: 8, color: '#ff3b4a', name: 'Xenon N', pts: 60, cost: 1.5 },
+  m: { hp: 75, sh: 55, speed: 95, r: 14, color: '#ff5c6c', name: 'Xenon M', pts: 250, cost: 4 },
+  xs: { hp: 70, sh: 70, speed: 85, r: 13, color: '#ff9ab0', name: 'Schirmdrohne', pts: 250, cost: 4 },
+  boss: { hp: 450, sh: 300, speed: 45, r: 34, color: '#ffb547', name: 'Boss', pts: 1500, cost: 0 },
+  turret: { hp: 90, sh: 30, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
 };
 
 const CARDS: Card[] = [
@@ -350,6 +354,8 @@ export class ShooterGame implements MiniGame {
   private attackCap = 2;
   /** Wellen bis zum Sprungtor: große Schiffe fliegen eine längere Route */
   private nWaves = NORMAL_WAVES;
+  /** Deckkraft der Hülle/Schild-Anzeige über den Gegnern (Einstellung, 0 = aus) */
+  private barAlpha = enemyBars();
   /** Türme des eigenen Schiffs: Pause und Richtung */
   private pTur: { cd: number; a: number; mag: number }[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
@@ -912,8 +918,9 @@ export class ShooterGame implements MiniGame {
 
   private makeEnemy(kind: EKind, x: number, y: number): Enemy {
     const s = SPEC[kind];
-    const hp = s.hp * HP_MUL[this.level] * (this.mode === 'endless' ? 1 + this.wave * 0.06 : 1);
-    return { kind, x, y, vx: 0, vy: 0, hp, max: hp, cd: 1 + this.r() * 1.5, r: s.r, target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
+    const k = HP_MUL[this.level] * (this.mode === 'endless' ? 1 + this.wave * 0.06 : 1);
+    const hp = s.hp * ENEMY_HULL * k, sh = s.sh * ENEMY_SHIELD * k;
+    return { kind, x, y, vx: 0, vy: 0, hp, max: hp, sh, shMax: sh, shT: 9, shFlash: 0, cd: 1 + this.r() * 1.5, r: s.r, target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
   }
 
   private spawnGroup(list: EKind[], from: number): void {
@@ -933,7 +940,9 @@ export class ShooterGame implements MiniGame {
     const [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120, this.fY - 1100)];
     const b = this.makeEnemy('boss', x, y);
     b.ang = mini ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
-    b.hp = b.max = SPEC.boss.hp * HP_MUL[this.level] * (mini ? 0.55 : 1) * (this.mode === 'endless' ? 1 + this.wave * 0.05 : 1);
+    const bk = HP_MUL[this.level] * (mini ? 0.55 : 1) * (this.mode === 'endless' ? 1 + this.wave * 0.05 : 1);
+    b.hp = b.max = SPEC.boss.hp * ENEMY_HULL * bk;
+    b.sh = b.shMax = SPEC.boss.sh * ENEMY_SHIELD * bk;
     b.r = 34;
     b.mini = mini;
     this.enemies.push(b);
@@ -1444,6 +1453,12 @@ export class ShooterGame implements MiniGame {
   }
 
   private updateEnemies(dt: number): void {
+    // Schilde laden nach 3 s ohne Treffer wieder auf (ein Viertel je Sekunde)
+    for (const e of this.enemies) {
+      e.shT += dt;
+      e.shFlash = Math.max(0, e.shFlash - dt);
+      if (e.shT > 3 && e.sh < e.shMax) e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.25 * dt);
+    }
     const fx = this.fx1, fy = this.fy1;
     // Schildträger schützen Verbündete in der Nähe
     const shielders = this.enemies.filter((e) => e.kind === 'schild' || e.kind === 'xs');
@@ -1809,7 +1824,16 @@ export class ShooterGame implements MiniGame {
   /** bypass: Anteil des Schadens, der durch fremde Schilde dringt (Thermal-Desintegrator: teilweise) */
   private damageEnemy(e: Enemy, dmg: number, bypass = 0.3): void {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
-    e.hp -= e.shielded ? dmg * bypass : dmg;
+    let d = e.shielded ? dmg * bypass : dmg;
+    // eigener Schild fängt zuerst ab
+    e.shT = 0;
+    if (e.sh > 0) {
+      const a = Math.min(e.sh, d);
+      e.sh -= a;
+      d -= a;
+      e.shFlash = 0.18;
+    }
+    e.hp -= d;
     e.flash = 0.08;
     if (e.hp <= 0) this.killEnemy(e, true);
     else sfx.hit(this.panAt(e.x));
@@ -2450,6 +2474,7 @@ export class ShooterGame implements MiniGame {
         ctx.drawImage(spr.img, -size / 2, top, size, size);
       }
       ctx.restore();
+      this.drawEnemyStatus(ctx, e);
       return;
     }
     const r = e.r;
@@ -2494,12 +2519,32 @@ export class ShooterGame implements MiniGame {
       ctx.fill();
     }
     ctx.restore();
-    if ((e.max > 40 || e.kind === 'boss') && e.hp < e.max) {
-      const bw = e.kind === 'boss' ? 80 : 32;
-      ctx.fillStyle = 'rgba(14,30,44,0.85)';
-      ctx.fillRect(e.x - bw / 2, e.y - e.r - (e.kind === 'boss' ? 30 : 9), bw, 3);
+    this.drawEnemyStatus(ctx, e);
+  }
+
+  /** Schild-Aufblitzen sowie Hülle und Schild als feine Linien über dem Gegner (Deckkraft einstellbar) */
+  private drawEnemyStatus(ctx: CanvasRenderingContext2D, e: Enemy): void {
+    const base = SPEC[e.kind].color;
+    // Schild-Aufblitzen: Treffer auf den Schild zeigen eine dünne Blase
+    if (e.shFlash > 0) {
+      ctx.strokeStyle = rgba('#8fe0ff', e.shFlash * 2.5);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r * (e.kind === 'boss' ? 1.6 : 1.5), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Hülle und Schild: zwei feine Linien über dem Gegner, Deckkraft einstellbar; unbeschädigt noch blasser
+    const alpha = this.barAlpha * (e.hp < e.max || e.sh < e.shMax ? 1 : 0.45);
+    if (alpha > 0.01) {
+      const bw = e.kind === 'boss' ? 80 : Math.max(18, e.r * 2.2), by = e.y - e.r - (e.kind === 'boss' ? 30 : 9);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(14,30,44,0.9)';
+      ctx.fillRect(e.x - bw / 2, by - 3, bw, 5);
+      if (e.shMax > 0) { ctx.fillStyle = '#8fe0ff'; ctx.fillRect(e.x - bw / 2, by - 3, bw * (e.sh / e.shMax), 2); }
       ctx.fillStyle = base;
-      ctx.fillRect(e.x - bw / 2, e.y - e.r - (e.kind === 'boss' ? 30 : 9), bw * (e.hp / e.max), 3);
+      ctx.fillRect(e.x - bw / 2, by, bw * Math.max(0, e.hp / e.max), 2);
+      ctx.restore();
     }
   }
 
