@@ -106,3 +106,19 @@ export function setMusicFx(on: boolean): void {
     /* Speicher nicht verfügbar */
   }
 }
+
+/** fortlaufende Schlagposition an Stelle t (s): 12,5 = halb zwischen Schlag 12 und 13 (für Bewegungen im Takt) */
+export function beatPos(map: BeatMap, t: number): number {
+  const b = map.beats;
+  if (!b.length) return 0;
+  const i = lastAtOrBefore(b, t);
+  if (i < 0) return (t - b[0]) / (60 / map.bpm);
+  const next = b[i + 1] ?? b[i] + 60 / map.bpm;
+  return i + (t - b[i]) / Math.max(1e-3, next - b[i]);
+}
+
+/** Index des ersten Schlags auf einer „Eins“ ab Zeitpunkt t (s) */
+export function downbeatFrom(map: BeatMap, t: number): number {
+  for (let i = 0; i < map.beats.length; i++) if (map.beats[i] >= t && (((i - map.downbeatPhase) % 4) + 4) % 4 === 0) return i;
+  return -1;
+}

@@ -9,11 +9,12 @@ import { WARES } from '../data/wares';
 import { sfx } from '../ui/sound';
 import { sustain } from '../audio/ambience';
 import { playGameTrack, type GameTrack } from '../audio/music';
-import { beatAt, musicFx, NO_BEAT, type Beat, type BeatMap } from '../audio/rhythm';
+import { beatAt, beatPos, downbeatFrom, musicFx, NO_BEAT, type Beat, type BeatMap } from '../audio/rhythm';
+import { DANCE_BEATS, danceFrame, type DanceFrame } from './gasDance';
 import trackUrl from '../assets/music/gas-celestial-drift.mp3';
 import trackBeats from '../assets/music/gas-celestial-drift.beats.json';
 import { BG_IMAGES } from '../render/bgImages';
-import { mapShipSprite } from '../render/shipArt';
+import { mapShipSprite, projectileSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
@@ -22,6 +23,15 @@ import {
 
 /** Eine Runde dauert so lange wie das Lied (Celestial Drift, 3:48) */
 const DURATION = Math.round((trackBeats as { duration: number }).duration);
+/** Höhepunkt des Liedes: ab der „Eins“ bei etwa 1:57 tanzen zwei Gassammeldrohnen um den Sammler */
+const DANCE_AT = 117;
+const DANCE_START = downbeatFrom(trackBeats as unknown as BeatMap, DANCE_AT);
+const DRONE = 'gasdrohne-b-ki';
+/** Lage im Drohnenbild (Anteile der Bildgröße, Mitte = 0): Triebwerk unten, zwei Ansaugtrichter an den Greifarmen */
+const DRONE_ENGINE: [number, number] = [0, 0.4];
+const DRONE_FUNNELS: [number, number][] = [[-0.27, -0.37], [0.33, -0.25]];
+
+interface Drone { x: number; y: number; vx: number; vy: number; rot: number; trail: [number, number][] }
 const UNITS = 50;
 /** Gesicherter Wert für 1/2/3 Sterne – ursprünglich für 50 s, mit der Rundenlänge hochgerechnet */
 const GOALS_50: Record<Level, [number, number, number]> = { 1: [14, 24, 34], 2: [12, 21, 30], 3: [10, 18, 26], 4: [9, 15, 22], 5: [8, 13, 20] };
@@ -161,6 +171,8 @@ export class GasGame implements MiniGame {
   private lastBeat = -1;
   private lastLevel = 0;
   private twinkles: { x: number; y: number; t: number; s: number }[] = [];
+  private drones: Drone[] | null = null;
+  private dance: DanceFrame | null = null;
   private nextGas = 0;
   private nextForeign = 4;
   private nextGold = 14;
@@ -761,7 +773,10 @@ export class GasGame implements MiniGame {
 
   /** Musik: startet mit dem Spiel, pausiert mit ihm und blendet am Ende aus */
   phase(p: 'play' | 'pause' | 'end'): void {
-    if (p === 'play') { if (this.track) this.track.resume(); else this.track = playGameTrack(trackUrl, 0.8); }
+    if (p === 'play') {
+      if (this.track) this.track.resume(); else this.track = playGameTrack(trackUrl, 0.8);
+      projectileSprite(DRONE); // Drohnenbild schon anfordern, damit es zum Tanz bereitliegt
+    }
     else if (p === 'pause') this.track?.pause();
     else { this.track?.stop(3); this.track = null; }
   }
@@ -787,9 +802,109 @@ export class GasGame implements MiniGame {
 
   private lastDraw = 0;
 
+  /** Tanzende Drohnen: folgen den Zielpunkten der Choreografie federnd (leichtes Überschwingen wirkt verspielt) */
+  private updateDance(dt: number): void {
+    const map = trackBeats as unknown as BeatMap;
+    const d = DANCE_START < 0 || this.endT >= 0 ? -1 : beatPos(map, this.track?.time() ?? this.beatClock) - DANCE_START;
+    const fr = danceFrame(d, this.w, this.h, this.beat.flash);
+    this.dance = fr;
+    if (!fr) { if (d > DANCE_BEATS || d < 0) this.drones = null; return; }
+    const targets = [fr.a, fr.b];
+    if (!this.drones) this.drones = targets.map(([ox, oy]) => ({ x: this.x + ox, y: this.y + oy, vx: 0, vy: 0, rot: 0, trail: [] }));
+    const k = fr.grip * fr.grip, c = 2 * fr.grip * 0.62;
+    for (const [i, dr] of this.drones.entries()) {
+      const tx = this.x + targets[i][0], ty = this.y + targets[i][1];
+      dr.vx += ((tx - dr.x) * k - dr.vx * c) * dt;
+      dr.vy += ((ty - dr.y) * k - dr.vy * c) * dt;
+      dr.x += dr.vx * dt;
+      dr.y += dr.vy * dt;
+      // Nase in Flugrichtung, im Stand wieder aufrecht; beim Wackeln neben dem Sammler aufrecht und nur seitlich geneigt
+      const sp = Math.hypot(dr.vx, dr.vy);
+      const want = fr.figure === 'wackeln' ? clamp(dr.vx / 250, -0.5, 0.5) : sp > 25 ? Math.atan2(dr.vx, -dr.vy) : 0;
+      let da = want - dr.rot;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      dr.rot += da * Math.min(1, dt * 6);
+      dr.trail.unshift([dr.x, dr.y]);
+      if (dr.trail.length > 14) dr.trail.pop();
+    }
+  }
+
+  private drawDrones(ctx: CanvasRenderingContext2D, t: number): void {
+    const fr = this.dance;
+    if (!fr || !this.drones) return;
+    const img = projectileSprite(DRONE), S = 40, kick = this.beat.flash;
+    ctx.save();
+    ctx.globalAlpha = fr.alpha;
+    for (const [i, dr] of this.drones.entries()) {
+      // Gasspur: kleine leuchtende Punkte, die hinter der Drohne verblassen
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const [k, [x, y]] of dr.trail.entries()) {
+        if (k % 2) continue;
+        const a = (1 - k / dr.trail.length) * 0.22;
+        ctx.fillStyle = rgba(this.color, a);
+        ctx.beginPath();
+        ctx.arc(x, y, 2 + (1 - k / dr.trail.length) * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.save();
+      ctx.translate(dr.x, dr.y);
+      ctx.rotate(dr.rot);
+      const sc = 1 + 0.07 * kick;
+      ctx.scale(sc, sc);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // Triebwerk: Flamme nach hinten, länger bei schneller Fahrt
+      const sp = Math.min(1, Math.hypot(dr.vx, dr.vy) / 220);
+      const ex = DRONE_ENGINE[0] * S, ey = DRONE_ENGINE[1] * S, fl = 5 + 12 * sp + Math.random() * 3;
+      const eg = ctx.createLinearGradient(ex, ey, ex, ey + fl);
+      eg.addColorStop(0, rgba('#fff0d0', 0.9));
+      eg.addColorStop(0.35, rgba('#ff9a3a', 0.7));
+      eg.addColorStop(1, rgba('#ff9a3a', 0));
+      ctx.fillStyle = eg;
+      ctx.beginPath();
+      ctx.moveTo(ex - 3, ey);
+      ctx.lineTo(ex + 3, ey);
+      ctx.lineTo(ex, ey + fl);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      if (img) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, -S / 2, -S / 2, S, S);
+      } else {
+        // Ersatz ohne Bilder: Rumpf mit zwei Tankkugeln
+        ctx.fillStyle = '#9a4a32';
+        ctx.fillRect(-S * 0.08, -S * 0.4, S * 0.16, S * 0.8);
+        ctx.fillStyle = '#2fa7a8';
+        for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(sx * S * 0.22, S * 0.05, S * 0.18, 0, Math.PI * 2); ctx.fill(); }
+      }
+      // Ansaugtrichter leuchten im Takt (abwechselnd je Drohne) und atmen leise weiter
+      ctx.globalCompositeOperation = 'lighter';
+      for (const [j, [fx, fy]] of DRONE_FUNNELS.entries()) {
+        const glow = 0.25 + 0.15 * Math.sin(t * 3 + i * 2 + j) + 0.6 * kick * ((this.beat.index + i + j) % 2 ? 1 : 0.4);
+        const gx = fx * S, gy = fy * S, gr = S * 0.16;
+        const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+        g.addColorStop(0, rgba('#bff8ff', Math.min(1, glow)));
+        g.addColorStop(1, rgba(this.color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(gx, gy, gr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   draw(ctx: CanvasRenderingContext2D, now: number): void {
     const t = now / 1000;
-    this.updateBeat(this.lastDraw ? Math.min(0.1, t - this.lastDraw) : 0.016);
+    const fdt = this.lastDraw ? Math.min(0.1, t - this.lastDraw) : 0.016;
+    this.updateBeat(fdt);
+    this.updateDance(fdt);
     this.lastDraw = t;
     this.drawBackground(ctx);
     this.drawPulse(ctx);
@@ -800,6 +915,7 @@ export class GasGame implements MiniGame {
     this.drawStorms(ctx, t);
     this.drawMother(ctx, t);
     this.fx.draw(ctx);
+    this.drawDrones(ctx, t);
     this.drawShip(ctx, t);
     this.floats.draw(ctx);
     ctx.restore();
