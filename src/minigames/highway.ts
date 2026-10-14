@@ -15,7 +15,7 @@ import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite, shipSprite, type FighterSprite } from '../render/shipArt';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, starsFor, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator,
+  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
 
 /** Spuren des Highways */
@@ -108,6 +108,21 @@ export class HighwayGame implements MiniGame {
   ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
+  /** Wertung zum Nachlesen: Sterne nach Reisezeit, Punkte für Tempo, Feldverstärker, Ausfahrt und übriges Δv */
+  get rules(): Rules {
+    const t = this.targets().map((v) => Math.floor(v));
+    return {
+      stars: [`Ankunft in höchstens ${t[2]} s`, `… in höchstens ${t[1]} s`, `… in höchstens ${t[0]} s`],
+      points: [
+        `Reisezeit = Fahrzeit, verpasste Ausfahrt +${PEN_EXIT} s`,
+        'Fahrt: bis 30 je Sekunde, je schneller, desto mehr',
+        'Feldverstärker genau durch die Mitte: 150, Kombo +0,5 bis ×4; ein Zusammenstoß setzt sie zurück',
+        'Ausfahrt getroffen: 500',
+        'Am Ende: 40 je übrige Einheit Δv',
+        ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+      ],
+    };
+  }
   private level: Level;
   private r: () => number;
   private score: Score;
@@ -374,7 +389,7 @@ export class HighwayGame implements MiniGame {
       const lane = Math.floor(me.x);
       this.exitOk = this.exitSide < 0 ? lane === 0 : lane === LANES - 1;
       if (!this.exitOk) { this.penalty += PEN_EXIT; this.floats.add(this.w / 2, this.h * 0.4, `Ausfahrt verpasst! +${PEN_EXIT} s`, '#ff9aa4', 18); sfx.warn(); }
-      else { const p = this.score.add(500); this.floats.add(this.w / 2, this.h * 0.4, `Ausfahrt ${this.exitName} +${p}`, '#6be38f', 17); sfx.coin(); }
+      else { const p = this.score.add(500, 'Ausfahrt getroffen'); this.floats.add(this.w / 2, this.h * 0.4, `Ausfahrt ${this.exitName} +${p}`, '#6be38f', 17); sfx.coin(); }
       me.vx += this.exitSide * 1.2;
       this.endT = 0;
       setGoal(this.goals, 'exit', this.exitOk);
@@ -385,7 +400,7 @@ export class HighwayGame implements MiniGame {
     setGoal(this.goals, 'noretro', !this.retroUsed);
     setGoal(this.goals, 'gates', this.gatesHit >= 4);
     // Punkte: schnelle Fahrt in der Mitte
-    this.score.points += Math.round((me.vy / V_MAX) * dt * 30 * this.score.mult);
+    this.score.bonus((me.vy / V_MAX) * dt * 30, 'Fahrt (Tempo)');
   }
 
   private wall(): void {
@@ -408,7 +423,7 @@ export class HighwayGame implements MiniGame {
         me.vy += BOOST;
         this.fuel = Math.min(this.fuel0, this.fuel + this.fuel0 * GATE_FUEL);
         this.score.bump(0.5, 1e9);
-        const p = this.score.add(150);
+        const p = this.score.add(150, 'Feldverstärker');
         this.floats.add(px, py - 50, `Feldstoß +${p}`, '#ffd27a', 15);
         this.fx.burst(px, py - 20, '#ffe2a0', 22, 260, 1.6, 'spark', 0.5);
         this.fx.add({ x: px, y: py - 10, color: '#ffd27a', size: this.laneW * 0.5, kind: 'ring', max: 0.45 });
@@ -525,10 +540,13 @@ export class HighwayGame implements MiniGame {
     const total = this.time + this.penalty;
     const [t3, t2, t1] = this.targets();
     const stars = starsFor(-total, -t1, -t2, -t3);
-    this.score.points += Math.round(this.fuel * 40 * this.score.mult);
+    this.score.bonus(this.fuel * 40, 'Übriges Δv');
+    const got = `${total.toFixed(1).replace('.', ',')} s`;
     return {
       success: stars > 0,
       stars,
+      starRules: [t1, t2, t3].map((t, i) => ({ text: this.rules.stars[i], ok: total <= t, got })),
+      breakdown: this.score.breakdown(),
       score: Math.round(total),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),

@@ -13,7 +13,7 @@ import { mapShipSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator,
+  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
 
 const DURATION = 50;
@@ -104,6 +104,21 @@ export class GasGame implements MiniGame {
   ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
+  /** Wertung zum Nachlesen: Sterne nach gesicherter Menge, Punkte nach Wert der Ladung */
+  get rules(): Rules {
+    const u = (v: number) => (v * UNITS).toLocaleString('de-DE');
+    const [g1, g2, g3] = GOALS[this.level];
+    return {
+      stars: [`${u(g1)} Einheiten sichern`, `${u(g2)} Einheiten sichern`, `${u(g3)} Einheiten sichern`],
+      points: [
+        'Gesichert wird beim Andocken am Mutterschiff; was am Ende noch im Tank ist, zählt halb',
+        'Je gesicherte Einheit 2 Punkte – goldenes Gas zählt dreifach, Fremdgas verdünnt die Ladung (Wert × Reinheit)',
+        'Reine Ladung (mindestens 95 %): +20 %',
+        'Volle und reine Ladung: Kombo +0,5 bis ×4; eine volle, aber trübe Ladung setzt sie zurück',
+        ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+      ],
+    };
+  }
   private level: Level;
   private ware: string;
   private color: string;
@@ -564,7 +579,7 @@ export class GasGame implements MiniGame {
       const pureStart = this.unloadStart > 0 ? 1 - this.unloadForeign / this.unloadStart : 1;
       const gain = v * pur * (pureStart >= PURE ? 1.2 : 1);
       this.secured += gain;
-      this.score.add(gain * 100);
+      this.score.add(gain * 100, pureStart >= PURE ? 'Reine Ladungen (+20 %)' : 'Gesicherte Ladung');
       if (Math.random() < 0.6) this.fx.add({ x: this.x, y: this.y, vx: (mx - this.x) * 2, vy: (my - this.y) * 2, color: this.color, size: 2.2, max: 0.4 });
       if (this.tank <= 0.01) {
         this.tank = 0;
@@ -590,11 +605,14 @@ export class GasGame implements MiniGame {
     // Ungesicherte Ladung zählt nur halb
     const open = this.tankValue * this.purity() * 0.5;
     const total = this.secured + open;
-    this.score.points += Math.round(open * 100 * this.score.mult);
+    this.score.bonus(open * 100, 'Rest im Tank (halb)');
     const stars = starsFor(total, g1, g2, g3);
+    const got = `${Math.round(total * UNITS).toLocaleString('de-DE')} Einheiten`;
     return {
       success: stars > 0,
       stars,
+      starRules: [g1, g2, g3].map((g, i) => ({ text: this.rules.stars[i], ok: total >= g, got })),
+      breakdown: this.score.breakdown(),
       score: Math.round((total / g3) * 100),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),

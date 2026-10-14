@@ -15,7 +15,7 @@ import { BG_IMAGES } from '../render/bgImages';
 import { shipSprite } from '../render/shipArt';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, starsFor, Starfield, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator,
+  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
 
 /** Zeitlimit der Runde (s) */
@@ -124,6 +124,21 @@ export class CargoGame implements MiniGame {
   ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
+  /** Wertung zum Nachlesen: Sterne nach Abfertigungszeit, Punkte je eingeklinktem Container und für Restzeit */
+  get rules(): Rules {
+    const [t3, t2, t1] = TARGET[this.level];
+    return {
+      stars: [`Abfertigung in höchstens ${t1} s`, `… in höchstens ${t2} s`, `… in höchstens ${t3} s`],
+      points: [
+        'Abfertigungszeit = Ladezeit + Zuschläge: Traktorstrahl +1,5 s, ins All getrieben +6 s, Umräumen beim Entladen +4 s je Container, schiefer Schwerpunkt, nicht verladen +10 s je Container',
+        'Jeder eingeklinkte Container: 100',
+        'Volltreffer (eingeklinkt mit dem ersten Schuss): Kombo +0,5 bis ×4; Traktorstrahl oder ein verlorener Container setzen sie zurück',
+        `Zeitbonus: 20 je Sekunde unter ${t1} s`,
+        'Bleibt mehr als die Hälfte liegen, gibt es keinen Stern',
+        ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+      ],
+    };
+  }
   private level: Level;
   private r: () => number;
   private score: Score;
@@ -628,7 +643,7 @@ export class CargoGame implements MiniGame {
     this.fx.burst(px, py, '#9fe8ff', 12, 130, 1.3, 'spark', 0.3);
     const clean = b.shots <= 1;
     if (clean) { this.cleanCount++; this.score.bump(0.5, 999); }
-    const p = this.score.add(100);
+    const p = this.score.add(100, clean ? 'Container (Volltreffer)' : 'Container');
     this.floats.add(px, py - this.S * 0.5, clean ? `Volltreffer +${p}` : `+${p}`, clean ? '#9fffd0' : '#ffd27a', 13);
     sfx.place();
     if (clean) sfx.chime();
@@ -660,10 +675,14 @@ export class CargoGame implements MiniGame {
     const [t3, t2, t1] = TARGET[this.level];
     const left = this.queue.length + this.floating.length + (this.held ? 1 : 0);
     const stars = left > this.total / 2 ? 0 : starsFor(-f.total, -t1, -t2, -t3);
-    this.score.points += Math.max(0, Math.round((t1 - f.total) * 20 * this.score.mult));
+    this.score.bonus((t1 - f.total) * 20, 'Zeitbonus');
+    const got = `${f.total.toFixed(1).replace('.', ',')} s${left > this.total / 2 ? ' – mehr als die Hälfte liegt noch' : ''}`;
+    const ok = left <= this.total / 2;
     return {
       success: stars > 0,
       stars,
+      starRules: [t1, t2, t3].map((t, i) => ({ text: this.rules.stars[i], ok: ok && f.total <= t, got })),
+      breakdown: this.score.breakdown(),
       score: Math.round(f.total),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),

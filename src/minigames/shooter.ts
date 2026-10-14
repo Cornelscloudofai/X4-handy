@@ -13,7 +13,7 @@ import { modStats, type ModStats } from './mods';
 import { DMG_SCALE, LTURRETS, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
-  type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
+  type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
 } from './common';
 
 export type { Gear } from './common';
@@ -235,6 +235,25 @@ export class ShooterGame implements MiniGame {
   ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
+  /** Wertung zum Nachlesen: Sterne nach Frachter-Hülle (Endlos: nach Wellen), Punkte für Abschüsse und das Ziel */
+  get rules(): Rules {
+    const bounty = this.mutator?.id === 'bounty' ? ' (Kopfgeld: ×1,5)' : '';
+    const foes = this.side === 'pirate'
+      ? `Abschüsse: Jäger 100, Raketenboot 200, Kanonenboot und Schildträger 250, Geschützturm 200, Fregatte 1.500${bounty}`
+      : `Abschüsse: Xenon N 60, Xenon M und Schirmdrohne 250, Geschützturm 200, K-Segment 1.500${bounty}`;
+    return {
+      stars: this.mode === 'endless'
+        ? ['4 Wellen überstehen', '7 Wellen überstehen', '10 Wellen überstehen']
+        : ['Den Frachter bis zum Sprungtor bringen', '… mit mindestens 55 % Frachter-Hülle', '… mit mindestens 85 % Frachter-Hülle'],
+      points: [
+        foes,
+        'Abgeschossene Rakete 30, gesprengte Mine 20',
+        this.mode === 'endless' ? 'Jede überstandene Welle: 300 × Wellennummer' : 'Am Sprungtor: 1.000 fürs Ankommen, dazu bis 2.000 nach Frachter-Hülle (100 % = 2.000)',
+        'Kombo: jeder Abschuss kurz nach dem letzten erhöht den Faktor um 0,5 (bis ×6); nach 2,5 s ohne Abschuss fällt er auf ×1',
+        ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+      ],
+    };
+  }
   private level: Level;
   private mode: Mode;
   private r: () => number;
@@ -901,13 +920,14 @@ export class ShooterGame implements MiniGame {
         this.gateY = this.fY - 330;
         this.outcome = 'win';
         this.endT = 0;
-        this.score.add(1000 + Math.round((this.fHull / this.fMax) * 2000));
+        this.score.add(1000, 'Sprungtor erreicht');
+        this.score.add(Math.round((this.fHull / this.fMax) * 2000), 'Frachter-Hülle');
         setGoal(this.goals, 'hull80', this.fHull / this.fMax > 0.8);
         sfx.success();
         return;
       }
       if (this.mode === 'endless') {
-        this.score.add(300 * (this.wave + 1));
+        this.score.add(300 * (this.wave + 1), 'Wellen überstanden');
         this.fHull = Math.min(this.fMax, this.fHull + this.fMax * 0.1);
         setGoal(this.goals, 'wave6', this.wave + 2 >= 6 || this.goals.find((g) => g.id === 'wave6')?.done === true);
         setGoal(this.goals, 'wave10', this.wave + 2 >= 10 || this.goals.find((g) => g.id === 'wave10')?.done === true);
@@ -1177,7 +1197,7 @@ export class ShooterGame implements MiniGame {
     for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitE = null; hitM = null; hitMine = null; } }
     const x2 = ox + c * hitT, y2 = oy + sn * hitT;
     if (hitE) this.damageEnemy(hitE, dmg);
-    if (hitM) { hitM.hp -= dmg; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y); } }
+    if (hitM) { hitM.hp -= dmg; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y, 'Raketen abgeschossen'); } }
     if (hitMine) { hitMine.hp -= dmg; if (hitMine.hp <= 0) this.detonate(hitMine); }
     if (hitE || hitM || hitMine) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
     this.rails.push({ x1: ox, y1: oy, x2, y2, t: 0.22, color });
@@ -1217,7 +1237,7 @@ export class ShooterGame implements MiniGame {
         this.damageEnemy(hitE, dps * dt, 1);
         if (Math.random() < 0.5) this.fx.add({ x: ox + c * hitT, y: oy + sn * hitT, color: '#bffff6', size: 1.6, max: 0.15 });
       }
-      if (hitM) { hitM.hp -= dps * dt; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y); } }
+      if (hitM) { hitM.hp -= dps * dt; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y, 'Raketen abgeschossen'); } }
       this.beams.push([ox, oy, ox + c * hitT, oy + sn * hitT]);
     }
   }
@@ -1547,7 +1567,7 @@ export class ShooterGame implements MiniGame {
       if (rock) { this.fx.burst(b.x, b.y, '#a89a8a', 3, 90, 1.4, 'chunk', 0.3); continue; }
       if (b.from === 'p') {
         const em = this.eMissiles.find((m) => Math.hypot(m.x - b.x, m.y - b.y) < 9);
-        if (em) { em.hp -= b.dmg; if (em.hp <= 0) { this.explode(em.x, em.y, '#ff8a5c', 0.5, false); this.gain(30, em.x, em.y); } continue; }
+        if (em) { em.hp -= b.dmg; if (em.hp <= 0) { this.explode(em.x, em.y, '#ff8a5c', 0.5, false); this.gain(30, em.x, em.y, 'Raketen abgeschossen'); } continue; }
         const mine = this.mines.find((m) => Math.hypot(m.x - b.x, m.y - b.y) < 10);
         if (mine) { mine.hp -= b.dmg; if (mine.hp <= 0) this.detonate(mine); continue; }
         // Der geschützte Boss-Rumpf lässt Geschosse durch – so erreicht man auch die Türme dahinter
@@ -1642,7 +1662,7 @@ export class ShooterGame implements MiniGame {
     if (Math.hypot(this.px - m.x, this.py - m.y) < 70 && this.dashT <= 0) this.damagePlayer(25);
     if (Math.hypot(this.fx1 - m.x, this.fy1 - m.y) < 80) this.hitFreighter(30, m.x, m.y);
     for (const e of [...this.enemies]) if (Math.hypot(e.x - m.x, e.y - m.y) < 70) this.damageEnemy(e, 60);
-    this.gain(20, m.x, m.y);
+    this.gain(20, m.x, m.y, 'Minen gesprengt');
   }
 
   private updatePickups(dt: number): void {
@@ -1662,8 +1682,8 @@ export class ShooterGame implements MiniGame {
     this.pickups = this.pickups.filter((p) => p.life > 0);
   }
 
-  private gain(base: number, x: number, y: number): void {
-    const p = this.score.add(base);
+  private gain(base: number, x: number, y: number, cat = 'Abschüsse'): void {
+    const p = this.score.add(base, cat);
     if (p >= 50) this.floats.add(x, y - 14, `+${p}`, '#ffd27a', p >= 500 ? 18 : 13);
   }
 
@@ -1683,7 +1703,7 @@ export class ShooterGame implements MiniGame {
     if (!byPlayer) return;
     this.kills++;
     this.score.bump(0.5, 2.5);
-    this.gain(SPEC[e.kind].pts * (this.mutator?.id === 'bounty' ? 1.5 : 1), e.x, e.y);
+    this.gain(SPEC[e.kind].pts * (this.mutator?.id === 'bounty' ? 1.5 : 1), e.x, e.y, e.kind === 'boss' ? 'Boss' : e.kind === 'turret' ? 'Geschütztürme' : 'Abschüsse');
     if (e.kind === 'boss') {
       this.bossKills++;
       setGoal(this.goals, 'boss30', this.bossT < 30);
@@ -1744,9 +1764,19 @@ export class ShooterGame implements MiniGame {
       headline = ok ? 'Frachter in Sicherheit' : this.outcome === 'player' ? 'Jäger zerstört' : 'Frachter verloren';
     }
     if (!ok) for (const g of this.goals) if (g.id === 'nomissile' || g.id === 'tough' || g.id === 'hull80') g.done = false;
+    const hull = `Frachter-Hülle ${Math.round(f * 100)} %`;
+    const starRules = this.mode === 'endless'
+      ? [4, 7, 10].map((n, i) => ({ text: this.rules.stars[i], ok: waves >= n, got: `${waves} Wellen` }))
+      : [
+        { text: this.rules.stars[0], ok, got: ok ? undefined : headline },
+        { text: this.rules.stars[1], ok: ok && f >= 0.55, got: hull },
+        { text: this.rules.stars[2], ok: ok && f >= 0.85, got: hull },
+      ];
     return {
       success: ok,
       stars,
+      starRules,
+      breakdown: this.score.breakdown(),
       score: Math.round(f * 100),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),

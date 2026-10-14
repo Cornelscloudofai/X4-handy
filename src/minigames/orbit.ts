@@ -13,7 +13,7 @@ import { fbm, perlin } from '../render/noise';
 import { shipSprite, stationCoreSprite, moduleSprite } from '../render/shipArt';
 import {
   buzz, clamp, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type MiniGame, type Mutator,
+  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type MiniGame, type Mutator, type Rules,
 } from './common';
 
 /** Gravitationsparameter des Planeten (Planetenradius = 1, Zeit in Spielsekunden = Missionsminuten) */
@@ -196,6 +196,19 @@ export class OrbitGame implements MiniGame {
   ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
+  /** Wertung zum Nachlesen: Sterne fürs Andocken, übriges Δv und die Zielzeit (unabhängig voneinander) */
+  get rules(): Rules {
+    return {
+      stars: ['An der Station andocken', 'Beim Andocken noch mindestens 40 % Δv übrig', `Andocken innerhalb der Zielzeit (${this.clock(this.tTarget)})`],
+      points: [
+        'Angedockt: 1.000, dazu bis 800 nach übrigem Δv (voller Tank = 800)',
+        'Swing-by am Mond: 300',
+        'Zeitbonus: 10 je Sekunde, die du unter dem Anderthalbfachen der Zielzeit bleibst',
+        'Der zweite und dritte Stern zählen nur mit Andocken, sind aber unabhängig voneinander',
+        ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+      ],
+    };
+  }
   readonly scenario: Scenario;
   private r: () => number;
   private score: Score;
@@ -596,7 +609,7 @@ export class OrbitGame implements MiniGame {
           this.swing = true;
           const dv = Math.round(Math.abs(dE) / Math.max(0.2, v) * MS);
           this.floats.add(this.px(s.x), this.py(s.y) - 20, `Swing-by: ${dE > 0 ? '+' : '−'}${dv} m/s ohne Treibstoff`, '#c8b8ff', 14);
-          const p = this.score.add(300);
+          const p = this.score.add(300, 'Swing-by');
           this.floats.add(this.px(s.x), this.py(s.y) - 2, `+${p}`, '#c8b8ff', 13);
           sfx.chime();
         }
@@ -647,7 +660,7 @@ export class OrbitGame implements MiniGame {
       this.ship.x = this.station.x; this.ship.y = this.station.y;
       setGoal(this.goals, 'precise', this.dockDv * MS < 1000);
       setGoal(this.goals, 'fast', this.t <= this.tTarget);
-      const p = this.score.add(1000 + Math.round((this.fuel / this.fuel0) * 800));
+      const p = this.score.add(1000, 'Angedockt') + this.score.add(Math.round((this.fuel / this.fuel0) * 800), 'Übriges Δv');
       this.floats.add(x, y - 30, `Angedockt! +${p}`, '#6be38f', 18);
       this.fx.add({ x, y, color: '#6be38f', size: 30, kind: 'ring', max: 0.7 });
       this.fx.burst(x, y, '#c8ffd8', 20, 120, 1.4, 'spark', 0.6);
@@ -665,10 +678,16 @@ export class OrbitGame implements MiniGame {
     const ok = this.outcome === 'docked';
     const left = this.fuel / this.fuel0;
     const stars = (ok ? 1 + (left >= 0.4 ? 1 : 0) + (this.t <= this.tTarget ? 1 : 0) : 0) as 0 | 1 | 2 | 3;
-    if (ok) this.score.points += Math.round(Math.max(0, this.tTarget * 1.5 - this.t) * 10 * this.score.mult);
+    if (ok) this.score.bonus((this.tTarget * 1.5 - this.t) * 10, 'Zeitbonus');
     return {
       success: ok,
       stars,
+      starRules: [
+        { text: this.rules.stars[0], ok, got: ok ? undefined : this.outcome === 'crash' ? 'Abgestürzt' : this.outcome === 'lost' ? 'Fluchtbahn' : 'Andockfenster verpasst' },
+        { text: this.rules.stars[1], ok: ok && left >= 0.4, got: `${Math.round(left * 100)} % übrig` },
+        { text: this.rules.stars[2], ok: ok && this.t <= this.tTarget, got: `Missionszeit ${this.clock(this.t)}` },
+      ],
+      breakdown: this.score.breakdown(),
       score: Math.round(this.t),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),

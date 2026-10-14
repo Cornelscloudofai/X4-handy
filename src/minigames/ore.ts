@@ -14,7 +14,7 @@ import { mapShipSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
 import {
   buzz, clamp, drawButton, roundRect, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator,
+  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
 
 const DURATION = 45;
@@ -105,6 +105,20 @@ export class OreGame implements MiniGame {
   ];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
+  /** Wertung zum Nachlesen: Sterne nach Ausbeute, Punkte für Erz, Kristalle, Kernader und Zerlegen */
+  get rules(): Rules {
+    return {
+      stars: ['50 % Ausbeute', '100 % Ausbeute', '160 % Ausbeute'],
+      points: [
+        'Ausbeute: abgebautes Erz im Verhältnis zu den Adern des Asteroiden – über 100 % kommst du nur mit weiteren Asteroiden (erst zerlegen, wenn die Kernader ausgebeutet ist)',
+        'Erz: laufend, solange der Laser auf einer Ader liegt; im Heißlauf (ab 70 % Hitze) ×1,5',
+        'Kombo: ohne Absetzen auf der Ader alle 1,2 s +0,5 bis ×4; abgesetzt fällt sie zurück',
+        'Kristall 400 · Kernader ausgebeutet 500 · Gastasche abgelassen 150 · Asteroid zerlegt 800',
+        'Abzüge: explodierte Gastasche −200, Einsturz −400 (und ein Teil der Ladung ist verloren)',
+        ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+      ],
+    };
+  }
   private level: Level;
   private seed: number;
   private ware: string;
@@ -531,7 +545,7 @@ export class OreGame implements MiniGame {
           this.offVein = 0;
           const c = Math.min(4, 1 + Math.floor(this.streak / 1.2) * 0.5);
           if (c > this.score.combo) { this.score.combo = c; this.score.maxCombo = Math.max(this.score.maxCombo, c); this.floats.add(hx, hy - 20, `×${String(c).replace('.', ',')}`, '#ffd27a', 15); }
-          this.score.add(value * 120 * (this.hotRun ? 1.5 : 1));
+          this.score.add(value * 120 * (this.hotRun ? 1.5 : 1), this.hotRun ? 'Erz im Heißlauf (×1,5)' : 'Erz');
           while (this.chunkAcc >= 0.12) {
             this.chunkAcc -= 0.12;
             const [sx, sy] = this.ship;
@@ -614,7 +628,7 @@ export class OreGame implements MiniGame {
       // Kernader ausgebeutet (einmal zählen: Punkte auf −2 setzen)
       this.coresDone++;
       for (const p of this.core) p.a = -2;
-      const p = this.score.add(500);
+      const p = this.score.add(500, 'Kernader');
       this.floats.add(this.cx, this.cy - 30, `Kernader ausgebeutet +${p}`, '#fff0b0', 16);
       sfx.coin(50000);
     }
@@ -657,7 +671,7 @@ export class OreGame implements MiniGame {
           if (p.vent >= 1) {
             p.alive = false;
             this.vented++;
-            const pts = this.score.add(150);
+            const pts = this.score.add(150, 'Gastaschen abgelassen');
             this.floats.add(px, py - 12, `Abgelassen +${pts}`, '#7fd8ff', 14);
             this.fx.add({ x: px, y: py, color: '#7fd8ff', size: 8, kind: 'ring', max: 0.5 });
             sfx.valve();
@@ -680,7 +694,7 @@ export class OreGame implements MiniGame {
     this.fx.add({ x: px, y: py, color: '#ff8a5c', size: 10, kind: 'ring', max: 0.5 });
     this.heat = Math.min(100, this.heat + 45);
     this.lost += Math.min(this.mined - this.lost, this.total * 0.05);
-    this.score.points = Math.max(0, this.score.points - 200);
+    this.score.penalty(200, 'Explodierte Gastaschen');
     this.floats.add(px, py - 10, '−200', '#ff9aa4', 15);
     // Druckwelle: zerstört nahe Aderstücke, erschüttert das Gestein, setzt Nachbartaschen unter Druck
     for (const v of [...this.veins, ...(this.coreOpen ? [this.core] : [])]) for (const q of v) {
@@ -716,7 +730,7 @@ export class OreGame implements MiniGame {
       if (c.prog >= 1) {
         c.state = 'got';
         this.gotCrystals++;
-        const p = this.score.add(400);
+        const p = this.score.add(400, 'Kristalle');
         this.floats.add(px, py - 14, `Kristall +${p}`, '#9ff3ff', 16);
         const [sx, sy] = this.ship;
         for (let k = 0; k < 8; k++) this.fx.add({ x: px, y: py, vx: (Math.random() - 0.5) * 160, vy: (Math.random() - 0.5) * 160, color: '#9ff3ff', size: 2.6, kind: 'chunk', max: 3, tx: sx, ty: sy - 10 });
@@ -729,7 +743,7 @@ export class OreGame implements MiniGame {
     this.asteroids++;
     this.breakT = 0;
     this.firing = false;
-    const p = this.score.add(800);
+    const p = this.score.add(800, 'Asteroiden zerlegt');
     this.floats.add(this.cx, this.cy, `Zerlegt! +${p}`, '#ffd27a', 20);
     this.shatter(false);
     this.flash = 0.6;
@@ -790,7 +804,7 @@ export class OreGame implements MiniGame {
     this.stress = 0;
     this.endStreak();
     this.lost += Math.min(this.mined - this.lost, this.total * 0.08);
-    this.score.points = Math.max(0, this.score.points - 400);
+    this.score.penalty(400, 'Einstürze');
     this.floats.add(this.cx, this.cy, 'Einsturz! −400', '#ff9aa4', 20);
     this.shatter(true);
     this.flash = 0.4;
@@ -807,9 +821,12 @@ export class OreGame implements MiniGame {
   private finish(): GameResult {
     const f = this.fraction();
     const stars = starsFor(f, 0.5, 1, 1.6);
+    const got = `${Math.round(f * 100)} % Ausbeute`;
     return {
       success: stars > 0,
       stars,
+      starRules: [0.5, 1, 1.6].map((t, i) => ({ text: this.rules.stars[i], ok: f >= t, got })),
+      breakdown: this.score.breakdown(),
       score: Math.round(f * 100),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),

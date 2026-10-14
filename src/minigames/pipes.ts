@@ -7,7 +7,7 @@ import { drawWareGlyph } from '../render/glyphs';
 import { sfx } from '../ui/sound';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator,
+  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
 } from './common';
 import { DIRS, bits, consumers, generate, par, power, rotate, type Board, type GenOpts, type PowerInfo } from './pipesLogic';
 
@@ -52,6 +52,29 @@ export class PipesGame implements MiniGame {
   readonly controls = ['Rohrstück antippen: um 90° drehen', 'Farbige Ringe: Ventile – alle Teile der Gruppe drehen mit', 'Gekreuzte Brücken leiten nur geradeaus', 'Offene Enden lassen den Druck sinken'];
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
+  /** Züge, bis zu denen es noch den Stern „wenige Züge“ gibt */
+  private get moveStar(): number { return Math.floor(this.parMoves * 1.6 + 3); }
+  /** Wertung zum Nachlesen: Sterne fürs Lösen, wenige Züge und schnelles Lösen; Punkte je versorgtem Feld und Netz */
+  get rules(): Rules {
+    const tail = [
+      'Jedes neu versorgte Feld: 15; Kombo +0,5 bis ×5, wenn du kurz hintereinander Felder anschließt (3 s); ein Zug, der Versorgung kappt, setzt sie zurück',
+      ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+    ];
+    if (this.mode === 'chain') return {
+      stars: ['2 Netze lösen', '4 Netze lösen', '6 Netze lösen'],
+      points: ['Jedes gelöste Netz: 1.000 und ' + CHAIN_BONUS + ' s mehr Zeit', 'Wenige Züge: 30 je Zug unter dem Anderthalbfachen des Bestwerts', ...tail],
+    };
+    return {
+      stars: ['Alle Module versorgen', `… mit höchstens ${this.moveStar} Zügen (Bestwert ${this.parMoves})`, `… in höchstens der halben Zeit (${fmtTime(this.limit / 2)})`],
+      points: [
+        'Netz steht: 1.000',
+        'Restzeit: 10 je übrige Sekunde',
+        'Wenige Züge: 30 je Zug unter dem Anderthalbfachen des Bestwerts',
+        'Der zweite und dritte Stern sind unabhängig voneinander – beide setzen das gelöste Netz voraus',
+        ...tail,
+      ],
+    };
+  }
   private level: Level;
   private mode: Mode;
   private seed: number;
@@ -214,7 +237,7 @@ export class PipesGame implements MiniGame {
     const [px, py] = this.cellCenter(i);
     if (after > before) {
       this.score.bump(0.5, 3);
-      const pts = this.score.add((after - before) * 15);
+      const pts = this.score.add((after - before) * 15, 'Versorgte Felder');
       this.floats.add(px, py - 10, `+${pts}`, '#ffd27a', 12);
       sfx.valve();
       sfx.flow();
@@ -232,7 +255,9 @@ export class PipesGame implements MiniGame {
     this.boards++;
     const left = this.limit - this.time;
     const okMoves = this.boardMoves <= Math.ceil(this.parMoves * 1.3) + 2;
-    const pts = this.score.add(1000 + Math.max(0, Math.round(this.mode === 'chain' ? 0 : left * 10)) + Math.max(0, Math.ceil(this.parMoves * 1.3) + 2 - this.boardMoves) * 30);
+    const pts = this.score.add(1000, this.mode === 'chain' ? 'Gelöste Netze' : 'Netz steht')
+      + (this.mode === 'chain' ? 0 : this.score.add(Math.max(0, Math.round(left * 10)), 'Restzeit'))
+      + this.score.add(Math.max(0, Math.ceil(this.parMoves * 1.3) + 2 - this.boardMoves) * 30, 'Wenige Züge');
     this.floats.add(this.w / 2, this.oy - 6, `Netz steht! +${pts}`, '#ffd27a', 18);
     for (const c of this.cons) { const [px, py] = this.cellCenter(c); this.fx.burst(px, py, this.colors[this.b.owner[c]] ?? this.colors[0], 14, 160, 2.2); }
     if (this.mode !== 'chain') {
@@ -303,9 +328,18 @@ export class PipesGame implements MiniGame {
       if (this.time > this.limit * 0.5) stars--;
     }
     if (!success) for (const g of this.goals) if (g.id !== 'combo3') g.done = false;
+    const starRules = this.mode === 'chain'
+      ? [2, 4, 6].map((n, i) => ({ text: this.rules.stars[i], ok: this.boards >= n, got: `${this.boards} ${this.boards === 1 ? 'Netz' : 'Netze'}` }))
+      : [
+        { text: this.rules.stars[0], ok, got: ok ? undefined : `${this.p.okConsumers} von ${this.cons.length} versorgt` },
+        { text: this.rules.stars[1], ok: ok && this.boardMoves <= this.parMoves * 1.6 + 3, got: `${this.boardMoves} Züge` },
+        { text: this.rules.stars[2], ok: ok && this.time <= this.limit * 0.5, got: fmtTime(this.time) },
+      ];
     return {
       success,
       stars: stars as 0 | 1 | 2 | 3,
+      starRules,
+      breakdown: this.score.breakdown(),
       score: ok ? 100 : Math.round((this.p.okConsumers / Math.max(1, this.cons.length)) * 100),
       points: this.score.points,
       goals: this.goals.map((g) => ({ ...g })),

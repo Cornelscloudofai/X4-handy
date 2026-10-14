@@ -51,6 +51,21 @@ export interface GameResult {
   points: number;
   /** Nebenziele der Runde */
   goals: Goal[];
+  /** Woraus sich die Punkte zusammensetzen (Bezeichnung, Punkte) – Summe = points */
+  breakdown?: [string, number][];
+  /** Bedingung je Stern (1., 2., 3.) mit erreichtem Wert */
+  starRules?: StarRule[];
+}
+
+/** Bedingung für einen Stern: was zu tun ist, ob erreicht, und was du erreicht hast */
+export interface StarRule { text: string; ok: boolean; got?: string }
+
+/** Wertung eines Spiels zum Nachlesen vor dem Start und in der Pause */
+export interface Rules {
+  /** je Stern eine Bedingung (1., 2., 3. Stern) */
+  stars: string[];
+  /** woher die Punkte kommen */
+  points: string[];
 }
 
 export interface HudItem { label: string; value: string; warn?: boolean }
@@ -65,6 +80,8 @@ export interface MiniGame {
   readonly controls: string[];
   /** Besonderheit dieser Runde */
   readonly mutator: Mutator | null;
+  /** Wertung: Sterne und Punkte */
+  readonly rules?: Rules;
   /** Nebenziele dieser Runde (laufend aktualisiert) */
   readonly goals: Goal[];
   /** Aktuelle Punkte und Kombo-Faktor */
@@ -305,20 +322,60 @@ export function setGoal(goals: Goal[], id: string, done: boolean): void {
   if (g) g.done = done;
 }
 
-/** Punkte mit Kombo und Rundenfaktor */
+/** Punkte mit Kombo und Rundenfaktor; merkt sich, woraus sie sich zusammensetzen */
 export class Score {
   points = 0;
   combo = 1;
   maxCombo = 1;
   /** Restzeit, bis die Kombo verfällt */
   hold = 0;
+  /** Grundpunkte je Quelle sowie Zuschläge durch Kombo und Besonderheit */
+  private cats = new Map<string, number>();
+  private comboExtra = 0;
+  private multExtra = 0;
 
   constructor(public mult = 1, public maxMult = 5) {}
 
-  add(base: number): number {
+  /** Punkte mit Kombo und Besonderheit; cat: wofür (für die Aufschlüsselung) */
+  add(base: number, cat = 'Sonstiges'): number {
     const p = Math.round(base * this.combo * this.mult);
     this.points += p;
+    this.track(base, cat, base * this.mult * (this.combo - 1));
     return p;
+  }
+
+  /** Bonus ohne Kombo (z. B. Restzeit am Ende), mit dem Faktor der Besonderheit */
+  bonus(base: number, cat: string): number {
+    const p = Math.max(0, Math.round(base * this.mult));
+    this.points += p;
+    // gerundet verbuchen, damit auch viele kleine Beträge (z. B. je Bild) in der Aufschlüsselung stimmen
+    if (p) this.track(p / this.mult, cat, 0);
+    return p;
+  }
+
+  /** Abzug (nicht unter null); erscheint in der Aufschlüsselung als eigene Zeile */
+  penalty(amount: number, cat: string): number {
+    const p = Math.min(this.points, Math.round(amount));
+    this.points -= p;
+    this.cats.set(cat, (this.cats.get(cat) ?? 0) - p);
+    return p;
+  }
+
+  private track(base: number, cat: string, combo: number): void {
+    this.cats.set(cat, (this.cats.get(cat) ?? 0) + base);
+    this.comboExtra += combo;
+    this.multExtra += base * (this.mult - 1);
+  }
+
+  /** Aufschlüsselung: Grundpunkte je Quelle, Kombo-Bonus, Faktor der Besonderheit – die Summe ergibt die Punkte */
+  breakdown(): [string, number][] {
+    const rows: [string, number][] = [...this.cats].filter(([, v]) => Math.abs(v) >= 0.5).map(([k, v]) => [k, Math.round(v)]);
+    if (this.comboExtra >= 0.5) rows.push(['Kombo-Bonus', Math.round(this.comboExtra)]);
+    if (Math.abs(this.multExtra) >= 0.5) rows.push([`Besonderheit ×${String(this.mult).replace('.', ',')}`, Math.round(this.multExtra)]);
+    // Rundungsreste in die größte Zeile, damit die Summe stimmt
+    const diff = this.points - rows.reduce((a, [, v]) => a + v, 0);
+    if (rows.length && diff) { const big = rows.reduce((a, r) => (r[1] > a[1] ? r : a)); big[1] += diff; }
+    return rows;
   }
 
   /** Kombo erhöhen (Schritt), hält `hold` Sekunden */

@@ -3,7 +3,7 @@
 // Rekorden und Abzeichen. Das Hauptspiel ruht, solange ein Minispiel offen ist.
 import { sfx } from '../ui/sound';
 import { esc } from '../ui/dom';
-import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, type Level, type MiniGame, type Mode, type Mutator } from './common';
+import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, type Level, type MiniGame, type Mode, type Mutator, type Rules } from './common';
 import { PIPES_GOALS, PIPES_MUTATORS, PipesGame } from './pipes';
 import { ORE_GOALS, ORE_MUTATORS, OreGame } from './ore';
 import { GAS_GOALS, GAS_MUTATORS, GasGame } from './gas';
@@ -13,7 +13,7 @@ import { ORBIT_GOALS, ORBIT_MUTATORS, OrbitGame } from './orbit';
 import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
 import { earnParts, partsFor } from './mods';
 import { artPic } from '../ui/menuArt';
-import { best, bestPoints, dailyBest, hasBadge, recordResult, today, type RecordOutcome } from './records';
+import { best, bestPoints, dailyBest, hasBadge, recordResult, today, totalStars, UNLOCK, type RecordOutcome } from './records';
 
 export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon';
 
@@ -223,6 +223,30 @@ function mutatorBox(m: Mutator | null): string {
   return m ? `<div class="mg-mut-box"><div><b>${esc(m.name)}</b><span>${esc(m.desc)}</span></div><em class="num">×${String(m.mult).replace('.', ',')}</em></div>` : '';
 }
 
+const STARS = (n: number) => `<span class="mg-rs" aria-label="${n} Stern${n > 1 ? 'e' : ''}">${'★'.repeat(n)}<i>${'★'.repeat(3 - n)}</i></span>`;
+
+/** Wertung vor dem Start und in der Pause: wofür es Sterne und Punkte gibt, was Sterne bringen */
+function rulesBox(r: Rules | undefined, kind: string, mode: Mode, open: boolean): string {
+  if (!r) return '';
+  const factor = mode === 'daily' || mode === 'chain' || mode === 'endless' ? 2 : 1;
+  const have = totalStars(kind);
+  const next = have < UNLOCK[4] ? `Stufe 4 ab ${UNLOCK[4]} ★` : have < UNLOCK[5] ? `Stufe 5 ab ${UNLOCK[5]} ★` : '';
+  return `<details class="mg-rules"${open ? ' open' : ''}><summary>Wertung: Sterne und Punkte</summary>
+    <div class="mg-rule-list">${r.stars.map((t, i) => `<div>${STARS(i + 1)}<span>${esc(t)}</span></div>`).join('')}</div>
+    <small>Punkte</small><ul>${r.points.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    <p class="mg-rule-note">Jeder Stern bringt ${factor === 2 ? '2 Modteile' : '1 Modteil'}. ${mode === 'normal' ? `Die besten Sterne je Stufe zählen für die nächsten Stufen – bisher ${have} ★${next ? `, ${next}` : ''}.` : 'Punkte zählen für den Rekord.'}</p></details>`;
+}
+
+/** Auswertung: welche Sterne erreicht sind (mit deinem Wert) und woraus sich die Punkte zusammensetzen */
+function resultDetail(r: GameResult): string {
+  const stars = r.starRules?.length ? `<div class="mg-rule-list end">${r.starRules.map((q, i) => `<div class="${q.ok ? 'ok' : 'no'}">${STARS(i + 1)}<span>${esc(q.text)}${q.got ? `<em>${esc(q.got)}</em>` : ''}</span><b>${q.ok ? '✓' : ''}</b></div>`).join('')}</div>` : '';
+  const nextStar = r.starRules?.find((q) => !q.ok);
+  const hint = nextStar ? `<p class="mg-next">Nächster Stern: ${esc(nextStar.text)}</p>` : '';
+  const rows = r.breakdown?.filter(([, v]) => v !== 0) ?? [];
+  const pts = rows.length ? `<div class="mg-breakdown"><small>Punkte im Einzelnen</small>${rows.map(([k, v]) => `<div><span>${esc(k)}</span><b class="num">${v > 0 ? '+' : ''}${fmtPts(v)}</b></div>`).join('')}<div class="sum"><span>Gesamt</span><b class="num">${fmtPts(r.points)}</b></div></div>` : '';
+  return stars + hint + pts;
+}
+
 function setPhase(p: Phase): void {
   const s = cur;
   if (!s) return;
@@ -244,11 +268,13 @@ function setPhase(p: Phase): void {
       ${mutatorBox(g.mutator)}
       <ul class="mg-controls">${g.controls.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
       ${g.goals.length ? `<div class="mg-goals"><small>Nebenziele</small>${g.goals.map((q) => `<div class="${hasBadge(s.kind, q.id) ? 'has' : ''}"><i></i>${esc(q.text)}${hasBadge(s.kind, q.id) ? '<em>Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
+      ${rulesBox(g.rules, s.kind, mode, false)}
       ${rec ? `<p class="mg-rec">Rekord: <b class="num">${fmtPts(rec)}</b> Punkte</p>` : ''}
       <div class="mg-actions"><button class="btn ghost" data-mg="quit">Zurück</button><button class="btn primary" data-mg="start">Start</button></div></div>`;
   } else if (p === 'pause') {
     layer.innerHTML = `<div class="mg-card"><small class="eyebrow">Pause</small><h2>${esc(g.title)}</h2>
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
+      ${rulesBox(g.rules, s.kind, mode, true)}
       <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button></div></div>`;
   } else {
     const r = s.result!;
@@ -257,6 +283,7 @@ function setPhase(p: Phase): void {
       <div class="mg-stars">${[1, 2, 3].map((i) => `<span class="${i <= r.stars ? 'on' : ''}" style="--d:${i * 0.18}s">${STAR}</span>`).join('')}</div>
       <div class="mg-points"><b class="num">${fmtPts(r.points)}</b><span>Punkte</span>${o?.newRecord ? '<em>Neuer Rekord!</em>' : o?.previous ? `<small>Rekord ${fmtPts(o.previous)}</small>` : ''}</div>
       ${s.parts ? `<div class="mg-parts"><i></i>+${s.parts} Modteil${s.parts > 1 ? 'e' : ''} für Schiffsmodifikationen</div>` : ''}
+      ${resultDetail(r)}
       <div class="mg-lines">${r.lines.map(([k, v]) => `<div><small>${esc(k)}</small><b class="num">${esc(v)}</b></div>`).join('')}</div>
       ${r.goals.length ? `<div class="mg-goals">${r.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}${o?.newBadges.includes(q.id) ? '<em>Neues Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
       <div class="mg-actions">${s.replay ? '<button class="btn ghost" data-mg="again">Nochmal</button>' : ''}<button class="btn primary" data-mg="quit">Fertig</button></div></div>`;

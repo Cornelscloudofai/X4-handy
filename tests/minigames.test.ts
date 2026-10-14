@@ -925,3 +925,44 @@ describe('Rahmen: Punkte, Ziele, Rekorde', () => {
     expect(badgeCount('ore')).toBe(1);
   });
 });
+
+describe('Wertung: Sterne und Punkte nachvollziehbar', () => {
+  it('Aufschlüsselung ergibt genau die Punkte (Kombo, Besonderheit, Bonus, Abzug)', () => {
+    const s = new Score(1.3, 4);
+    s.add(100, 'Abschüsse');
+    s.bump(0.5);
+    s.add(55, 'Abschüsse');
+    s.add(17, 'Kristalle');
+    s.bonus(33.3, 'Zeitbonus');
+    s.penalty(20, 'Einstürze');
+    const rows = s.breakdown();
+    expect(rows.reduce((a, [, v]) => a + v, 0)).toBe(s.points);
+    expect(rows.map(([k]) => k)).toEqual(['Abschüsse', 'Kristalle', 'Zeitbonus', 'Einstürze', 'Kombo-Bonus', 'Besonderheit ×1,3']);
+    expect(rows.find(([k]) => k === 'Einstürze')![1]).toBe(-20);
+  });
+
+  it('jedes Spiel nennt drei Sterne-Bedingungen und schlüsselt die Punkte auf', () => {
+    const games: MiniGame[] = [
+      new PipesGame(cfg(1, 3)), new PipesGame(cfg(1, 3, { mode: 'chain' })), new OreGame(cfg(1, 3)), new GasGame(cfg(1, 3)),
+      new CargoGame(cfg(1, 3)), new HighwayGame(cfg(1, 3)), new OrbitGame(cfg(1, 3)),
+      new ShooterGame(cfg(1, 3), 'pirate'), new ShooterGame(cfg(1, 3, { mode: 'endless' }), 'xenon'),
+    ];
+    for (const g of games) {
+      g.resize(W, H);
+      expect(g.rules?.stars.length).toBe(3);
+      expect(g.rules!.points.length).toBeGreaterThan(1);
+      for (let i = 0; i < 600; i++) g.update(DT);
+      const r = g.abort();
+      expect(r.starRules?.length).toBe(3);
+      expect((r.breakdown ?? []).reduce((a, [, v]) => a + v, 0)).toBe(r.points);
+    }
+  });
+
+  it('Kampf: Sterne-Haken passen zu den vergebenen Sternen', () => {
+    const g = new ShooterGame({ ...cfg(1, 5) }, 'xenon');
+    g.resize(W, H);
+    const r = run(g, () => g.autopilot(), 600);
+    expect(r.starRules!.filter((q) => q.ok).length).toBe(r.stars);
+    expect(r.breakdown!.some(([k]) => k === 'Abschüsse')).toBe(true);
+  }, 30000);
+});
