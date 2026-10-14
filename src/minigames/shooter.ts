@@ -2798,25 +2798,26 @@ export class ShooterGame implements MiniGame {
   private drawAmmo(ctx: CanvasRenderingContext2D): void {
     const w = this.wpn;
     if (!w.mag || w.beam) return;
-    const W = 132, H = 8;
-    const x = this.w - W - 18, y = TOP + 192; // unter den Zoom-Knöpfen – frei vom großen Zielstick
+    // klein und unaufdringlich unter den Zoom-Knöpfen – frei vom großen Zielstick
+    const W = 84, H = 4;
+    const x = this.w - W - 20, y = TOP + 184;
     ctx.save();
     ctx.fillStyle = 'rgba(5,14,22,0.72)';
     ctx.strokeStyle = 'rgba(110,220,205,0.25)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(x - 8, y - 20, W + 16, H + 30, 8);
+    ctx.roundRect(x - 6, y - 14, W + 12, H + 20, 6);
     ctx.fill();
     ctx.stroke();
-    ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
+    ctx.font = '600 9px "Chakra Petch", Barlow, sans-serif';
     ctx.textBaseline = 'alphabetic';
     if (this.reloading) {
       const f = 1 - this.reloadLeft / Math.max(0.01, this.reloadMax);
       ctx.fillStyle = '#ffb547';
       ctx.textAlign = 'left';
-      ctx.fillText('NACHLADEN', x, y - 6);
+      ctx.fillText('NACHLADEN', x, y - 4);
       ctx.textAlign = 'right';
-      ctx.fillText(`${this.reloadLeft.toFixed(1).replace('.', ',')} s`, x + W, y - 6);
+      ctx.fillText(`${this.reloadLeft.toFixed(1).replace('.', ',')} s`, x + W, y - 4);
       ctx.fillStyle = 'rgba(255,181,71,0.18)';
       ctx.fillRect(x, y, W, H);
       ctx.fillStyle = '#ffb547';
@@ -2826,12 +2827,12 @@ export class ShooterGame implements MiniGame {
       const low = n / max <= 0.25;
       ctx.fillStyle = low ? '#ffb547' : 'rgba(169,195,198,0.85)';
       ctx.textAlign = 'left';
-      ctx.fillText('MAGAZIN', x, y - 6);
+      ctx.fillText('MAGAZIN', x, y - 4);
       ctx.textAlign = 'right';
       ctx.fillStyle = low ? '#ffb547' : '#e4f3f0';
-      ctx.fillText(`${n} / ${max}`, x + W, y - 6);
+      ctx.fillText(`${n} / ${max}`, x + W, y - 4);
       if (max <= 24) {
-        const gap = 2, sw = (W - gap * (max - 1)) / max;
+        const gap = max > 12 ? 1 : 2, sw = (W - gap * (max - 1)) / max;
         for (let i = 0; i < max; i++) {
           ctx.fillStyle = i < n ? (low ? '#ffb547' : '#7ffff0') : 'rgba(127,255,240,0.14)';
           ctx.fillRect(x + i * (sw + gap), y, sw, H);

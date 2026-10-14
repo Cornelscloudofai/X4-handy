@@ -314,16 +314,18 @@ export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
 /**
  * Werte einer Waffe für eine Platzgröße. L-Hauptbatterie (Zerstörer): die Daten fehlen noch – Annahme: aus der
- * M-Version abgeleitet, dreifacher Schaden je Geschoss, etwas langsamerer Takt und 2,5-fache Reichweite (höchstens
- * 1.500 Spielpunkte – etwa wie der schwere Bosonenlanzen-Turm); Nahkampfwaffen bleiben so kürzer als Plasma.
+ * M-Version abgeleitet, etwas langsamerer Takt und 2,5-fache Reichweite (höchstens 1.500 Spielpunkte – etwa wie der
+ * schwere Bosonenlanzen-Turm); Nahkampfwaffen bleiben so kürzer als Plasma. Schaden je Geschoss: Waffen mit schweren
+ * Einzeltreffern (Plasma, Bosonenlanze: über 300 je Treffer) dreifach – sie zerlegen Gegner ohnehin mit einem Schuss –,
+ * alle anderen sechsfach, damit ihre Dauerleistung (gut 4,5- bis 6-mal M) mit den schweren mithält.
  */
 export function weaponGun(w: WeaponDef, size: GunSize): X4Gun {
   if (size !== 'l') return w[size];
   if (w.l) return w.l;
-  const m = w.m;
-  if (w.beam) return { ...m, dmg: m.dmg * 3, beamRange: 416 * 2.5 };
+  const m = w.m, k = m.dmg > 300 ? 3 : 6;
+  if (w.beam) return { ...m, dmg: m.dmg * k, beamRange: 416 * 2.5 };
   const reach = m.v * m.life * RANGE_SCALE;
-  return { ...m, dmg: m.dmg * 3, rate: m.rate * 0.75, life: m.life * Math.min(2.5, L_MAX_RANGE / reach) };
+  return { ...m, dmg: m.dmg * k, rate: m.rate * 0.75, life: m.life * Math.min(2.5, L_MAX_RANGE / reach) };
 }
 
 /** Waffe passt auf diesen Waffenplatz (schwere Waffen nur auf L-Plätze) */
