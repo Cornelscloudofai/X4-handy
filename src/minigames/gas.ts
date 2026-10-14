@@ -742,8 +742,8 @@ export class GasGame implements MiniGame {
     if (b.index < 0) return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const nebula = b.bar % 2 === 0 ? 1 : 0.6;
-    const a = 0.045 * b.bass + 0.17 * b.flash * nebula + 0.08 * b.phrase + (b.level === 2 ? 0.03 : 0);
+    const nebula = b.bar % 2 === 0 ? 1 : 0.7;
+    const a = 0.05 * b.bass + 0.28 * b.flash * nebula + 0.12 * b.phrase + (b.level === 2 ? 0.03 : 0);
     const g = ctx.createRadialGradient(this.w / 2, this.h * 0.45, 0, this.w / 2, this.h * 0.45, Math.max(this.w, this.h) * 0.75);
     g.addColorStop(0, rgba(this.color, a));
     g.addColorStop(1, rgba(this.color, 0));
@@ -754,7 +754,7 @@ export class GasGame implements MiniGame {
       const R = Math.max(this.w, this.h) * (0.15 + 0.75 * (1 - b.phrase)), cx = this.w / 2, cy = this.h * 0.45;
       const ring = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, R);
       ring.addColorStop(0, rgba(this.color, 0));
-      ring.addColorStop(0.7, rgba(this.color, 0.12 * b.phrase));
+      ring.addColorStop(0.7, rgba(this.color, 0.18 * b.phrase));
       ring.addColorStop(1, rgba(this.color, 0));
       ctx.fillStyle = ring;
       ctx.fillRect(0, 0, this.w, this.h);
@@ -983,7 +983,7 @@ export class GasGame implements MiniGame {
       }
       // Strombett leuchtet auf dem Schlag auf und schwillt mit dem Bass (nicht beim Fremdgas)
       const bt = s.kind === 'foreign' ? 0 : 1;
-      const glow = 1 + bt * (2.6 * this.beat.flash + 1.0 * this.beat.phrase);
+      const glow = 1 + bt * (3.5 * this.beat.flash + 1.2 * this.beat.phrase);
       ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.035) * fade * glow);
       ctx.lineWidth = s.width * (1 + bt * 0.12 * this.beat.bass);
       ctx.stroke();
@@ -1009,7 +1009,7 @@ export class GasGame implements MiniGame {
         ctx.drawImage(art.clouds.foreign[f.v], -s / 2, -s / 2, s, s);
       } else {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.min(1, (f.kind === 'gold' ? 0.7 : 0.5) * edge * (1 + 0.45 * bp + 0.2 * this.beat.phrase));
+        ctx.globalAlpha = Math.min(1, (f.kind === 'gold' ? 0.7 : 0.5) * edge * (1 + 0.8 * bp + 0.3 * this.beat.phrase));
         ctx.drawImage((f.kind === 'gold' ? art.clouds.gold : art.clouds.gas)[f.v], -s / 2, -s / 2, s, s);
         if (bp > 0.08 && (fi + gi) % (f.kind === 'gold' ? 2 : every) === 0) {
           const r = Math.min(7, f.size * (0.06 + 0.1 * bp));

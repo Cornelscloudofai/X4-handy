@@ -25,9 +25,11 @@ describe('Takt-Effekte', () => {
     expect(beatAt(map, 8.05).bar).toBe(4);
   });
 
-  it('Blitz folgt der Schlagstärke der Musik', () => {
-    const soft = { ...map, hits: map.hits!.map((_, i) => (i === 4 ? 60 : 255)) };
-    expect(beatAt(soft, 2.01).flash).toBeLessThan(beatAt(map, 2.01).flash * 0.4);
+  it('Blitz folgt der Schlagstärke der Musik, jede Eins bleibt aber deutlich sichtbar', () => {
+    const soft = { ...map, hits: map.hits!.map((_, i) => (i === 4 ? 0 : 255)) };
+    const f = beatAt(soft, 2.01).flash, full = beatAt(map, 2.01).flash;
+    expect(f).toBeLessThan(full * 0.6);
+    expect(f).toBeGreaterThan(full * 0.45);
   });
 
   it('Gas-Lied: Schlagstärken und Betonung vorhanden, Eins und Zwei betont', () => {

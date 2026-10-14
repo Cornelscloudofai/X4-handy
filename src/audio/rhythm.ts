@@ -67,8 +67,8 @@ function env(v: number[], rate: number, t: number): number {
 }
 
 /** Blitz je Taktposition: Eins hell und etwas länger, Zwei kurz nachgesetzt, Drei/Vier leise */
-const FLASH_WEIGHT = [1, 0.7, 0.3, 0.35];
-const FLASH_DECAY = [8, 16, 14, 14];
+const FLASH_WEIGHT = [1, 0.75, 0.3, 0.35];
+const FLASH_DECAY = [6, 12, 12, 12];
 
 /** Taktwerte an Stelle t (s) im Stück; decay: wie schnell der Puls nach einem Schlag abklingt */
 export function beatAt(map: BeatMap, t: number, decay = 7): Beat {
@@ -78,9 +78,10 @@ export function beatAt(map: BeatMap, t: number, decay = 7): Beat {
   const pulse = Math.exp(-since * decay);
   const pos = i - map.downbeatPhase, inBar = ((pos % 4) + 4) % 4, bar = Math.floor(pos / 4);
   const down = i >= 0 && inBar === 0 ? pulse : 0;
-  // Stärke des Schlags aus der Musik (ohne Messung: mittlere Betonung der Taktposition)
-  const strength = i < 0 ? 0 : map.hits ? Math.min(1, (map.hits[i] ?? 0) / 200) : (map.groove?.[inBar] ?? 1);
-  const flash = i < 0 ? 0 : Math.exp(-since * FLASH_DECAY[inBar]) * FLASH_WEIGHT[inBar] * Math.pow(strength, 1.1);
+  // Stärke des Schlags: jeder Schlag blitzt mindestens zur Hälfte, kräftige Anschläge der Musik heben ihn bis zum
+  // vollen Wert (ohne Messung: mittlere Betonung der Taktposition)
+  const strength = i < 0 ? 0 : map.hits ? 0.5 + 0.5 * Math.min(1, (map.hits[i] ?? 0) / 150) : (map.groove?.[inBar] ?? 1);
+  const flash = i < 0 ? 0 : Math.exp(-since * FLASH_DECAY[inBar]) * FLASH_WEIGHT[inBar] * strength;
   const phrase = i >= 0 && inBar === 0 && bar % 4 === 0 ? Math.exp(-since * 2.2) * Math.max(0.4, strength) : 0;
   const s = lastAtOrBefore(map.sections as unknown as number[], t, (k) => map.sections[k][0]);
   return {
