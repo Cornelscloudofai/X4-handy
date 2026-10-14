@@ -113,6 +113,8 @@ const DRIFT_DAMP = 0.35;
 const TURN_ONLY = 0.35;
 /** Radius der Steuerkreise (Bildpunkte) */
 const JOY_R = 78;
+/** Rechter Steuerkreis (Zielen/Lenken und Feuern) – größer für feineres Zielen */
+const AIM_R = 108;
 /** Zwei Sticks: rechts ab diesem Ausschlag wird gefeuert; Schub seitwärts ein Viertel, rückwärts ein Drittel */
 const AIM_FIRE = 0.55;
 const SIDE_THRUST = 1 / 4;
@@ -259,6 +261,12 @@ export class ShooterGame implements MiniGame {
   private aimA = -Math.PI / 2;
   /** Finger auf der Feuertaste (99 = Autopilot) */
   private fireId: number | null = null;
+  /** Nachladen des Magazins: verbleibende und gesamte Zeit (Sekunden) – für die Anzeige */
+  private reloadLeft = 0;
+  private reloadMax = 1;
+  private ringFlash = 0;
+  /** Magazin leer, wird nachgeladen (Anzeige zeigt dann 0 statt des schon wieder vollen Zählers) */
+  private reloading = false;
   /** Reiseantrieb 0…1 */
   private cruise = 0;
   /** Vorhaltepunkt des anvisierten Gegners */
@@ -503,7 +511,7 @@ export class ShooterGame implements MiniGame {
     const [dx, dy, dr] = this.btnDash;
     if (Math.hypot(x - dx, y - dy) < dr + 10) { this.doSpecial(); return; }
     // zwei Sticks: rechte Hälfte zielt und feuert, linke fliegt
-    if (this.ctrl === 'zwei' && x > this.w / 2) { if (!this.aim) this.aim = { id, ox: x, oy: y, kx: 0, ky: 0 }; return; }
+    if (this.ctrl !== 'eins' && x > this.w / 2) { if (!this.aim) this.aim = { id, ox: x, oy: y, kx: 0, ky: 0 }; return; }
     if (!this.joy) this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 };
   }
 
@@ -511,7 +519,7 @@ export class ShooterGame implements MiniGame {
     const j = this.joy?.id === id ? this.joy : this.aim?.id === id ? this.aim : null;
     if (!j) return;
     let dx = x - j.ox, dy = y - j.oy;
-    const d = Math.hypot(dx, dy), max = JOY_R;
+    const d = Math.hypot(dx, dy), max = j === this.aim ? AIM_R : JOY_R;
     if (d > max) {
       // Basis wandert mit, damit man nie „am Anschlag hängt“
       j.ox += (dx / d) * (d - max);
@@ -972,15 +980,24 @@ export class ShooterGame implements MiniGame {
     const j = this.joy;
     const defl = j ? Math.min(1, Math.hypot(j.kx, j.ky)) : 0;
     let thr: number, thrA = this.aimA, eff = 1;
-    if (this.ctrl === 'zwei' && j?.id !== 99) {
+    if (this.ctrl !== 'eins' && j?.id !== 99) {
       // zwei Sticks: rechts bestimmt die Blickrichtung (weit ausgelenkt: feuern), links der Schub in jede Richtung –
       // auch seitwärts und rückwärts, dort schwächer
       const a = this.aim, ad = a ? Math.min(1, Math.hypot(a.kx, a.ky)) : 0;
-      if (a && ad > 0.15) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * dt));
+      if (this.ctrl === 'lenk') {
+        // Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung
+        if (a && ad > 0.12) {
+          const rel = Math.atan2(a.kx, -a.ky);
+          const k = clamp(rel / (Math.PI / 2), -1, 1) * Math.min(1, ad / 0.5);
+          this.aimA = wrapA(this.aimA + k * this.turnRate * dt);
+        }
+      } else if (a && ad > 0.15) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * dt));
       if (this.fireId !== 99) {
         const fire = a && ad > AIM_FIRE ? a.id : null;
-        // kurzes Vibrieren, sobald der rechte Stick über den Ring geht und die Waffen auslösen
-        if (fire !== null && this.fireId === null) vibrate(14);
+        // Rückmeldung, sobald der rechte Stick über den Ring geht und die Waffen auslösen: kurzes Vibrieren (wo das
+        // Gerät es erlaubt), leiser Klick und ein Aufleuchten des Rings
+        if (fire !== null && this.fireId === null) { vibrate(25); sfx.tick(); this.ringFlash = 0.25; }
+        if (fire === null && this.fireId !== null) vibrate(8);
         this.fireId = fire;
       }
       thr = clamp((defl - 0.12) / 0.88, 0, 1);
@@ -1045,6 +1062,8 @@ export class ShooterGame implements MiniGame {
     } else this.lock = null;
     // Bordkanonen: nur geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4)
     this.fireCd -= dt;
+    this.ringFlash = Math.max(0, this.ringFlash - dt);
+    if (this.reloading) { this.reloadLeft = Math.max(0, this.fireCd); if (this.fireCd <= 0) this.reloading = false; }
     this.beams = [];
     for (const r of this.rails) r.t -= dt;
     this.rails = this.rails.filter((r) => r.t > 0);
@@ -1076,7 +1095,7 @@ export class ShooterGame implements MiniGame {
       }
       // nächster Schuss; ist das Magazin leer, erst nachladen
       this.fireCd = w.interval * this.tempo;
-      if (w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; }
+      if (w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; this.reloadLeft = this.reloadMax = this.fireCd; this.reloading = true; }
     }
     this.updateTurrets(dt);
     // Nachbrand: dringt zum Teil durch fremde Schilde (Annahme: 65 % statt 30 %)
@@ -1203,6 +1222,7 @@ export class ShooterGame implements MiniGame {
         }
         t.cd = w.interval * this.tempo;
         if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
+        sfx.turretShot(this.turType, this.panAt(x));
       }
     }
   }
@@ -2550,28 +2570,103 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
   }
 
+  /**
+   * Magazinanzeige rechts unten: Füllstand als Segmente (bei kleinen Magazinen) oder Balken, Schusszahl,
+   * beim Nachladen ein bernsteinfarbener Fortschrittsbalken mit Restzeit. Strahlwaffen haben kein Magazin.
+   */
+  private drawAmmo(ctx: CanvasRenderingContext2D): void {
+    const w = this.wpn;
+    if (!w.mag || w.beam) return;
+    const W = 132, H = 8;
+    const x = this.w - W - 18, y = TOP + 192; // unter den Zoom-Knöpfen – frei vom großen Zielstick
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,14,22,0.72)';
+    ctx.strokeStyle = 'rgba(110,220,205,0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x - 8, y - 20, W + 16, H + 30, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    if (this.reloading) {
+      const f = 1 - this.reloadLeft / Math.max(0.01, this.reloadMax);
+      ctx.fillStyle = '#ffb547';
+      ctx.textAlign = 'left';
+      ctx.fillText('NACHLADEN', x, y - 6);
+      ctx.textAlign = 'right';
+      ctx.fillText(`${this.reloadLeft.toFixed(1).replace('.', ',')} s`, x + W, y - 6);
+      ctx.fillStyle = 'rgba(255,181,71,0.18)';
+      ctx.fillRect(x, y, W, H);
+      ctx.fillStyle = '#ffb547';
+      ctx.fillRect(x, y, W * f, H);
+    } else {
+      const n = this.mag, max = w.mag;
+      const low = n / max <= 0.25;
+      ctx.fillStyle = low ? '#ffb547' : 'rgba(169,195,198,0.85)';
+      ctx.textAlign = 'left';
+      ctx.fillText('MAGAZIN', x, y - 6);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = low ? '#ffb547' : '#e4f3f0';
+      ctx.fillText(`${n} / ${max}`, x + W, y - 6);
+      if (max <= 24) {
+        const gap = 2, sw = (W - gap * (max - 1)) / max;
+        for (let i = 0; i < max; i++) {
+          ctx.fillStyle = i < n ? (low ? '#ffb547' : '#7ffff0') : 'rgba(127,255,240,0.14)';
+          ctx.fillRect(x + i * (sw + gap), y, sw, H);
+        }
+      } else {
+        ctx.fillStyle = 'rgba(127,255,240,0.14)';
+        ctx.fillRect(x, y, W, H);
+        ctx.fillStyle = low ? '#ffb547' : '#7ffff0';
+        ctx.fillRect(x, y, (W * n) / max, H);
+      }
+    }
+    ctx.restore();
+  }
+
   private drawControls(ctx: CanvasRenderingContext2D, t: number): void {
-    const stick = (j: { ox: number; oy: number; kx: number; ky: number }, inner: number, dashed: boolean, color: string) => {
+    const stick = (j: { ox: number; oy: number; kx: number; ky: number }, inner: number, dashed: boolean, color: string, R = JOY_R) => {
       ctx.strokeStyle = rgba(color, 0.35);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(j.ox, j.oy, JOY_R, 0, Math.PI * 2);
+      ctx.arc(j.ox, j.oy, R, 0, Math.PI * 2);
       ctx.stroke();
       // innerer Ring: ein Stick – nur drehen (ohne Schub); zwei Sticks rechts – bis hier nur zielen, darüber feuern
       ctx.setLineDash(dashed ? [4, 5] : []);
       ctx.strokeStyle = rgba(color, 0.3);
       ctx.beginPath();
-      ctx.arc(j.ox, j.oy, JOY_R * inner, 0, Math.PI * 2);
+      ctx.arc(j.ox, j.oy, R * inner, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = rgba(color, 0.35);
       ctx.beginPath();
-      ctx.arc(j.ox + j.kx * JOY_R, j.oy + j.ky * JOY_R, 22, 0, Math.PI * 2);
+      ctx.arc(j.ox + j.kx * R, j.oy + j.ky * R, 22, 0, Math.PI * 2);
       ctx.fill();
     };
     const j = this.joy;
     if (j && j.id !== 99) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
-    if (this.aim) stick(this.aim, AIM_FIRE, true, this.fireId !== null ? '#ffb547' : '#3fe0c5');
+    if (this.aim) {
+      stick(this.aim, AIM_FIRE, true, this.fireId !== null ? '#ffb547' : '#3fe0c5', AIM_R);
+      // Feuerschwelle leuchtet beim Überschreiten kurz auf
+      if (this.ringFlash > 0) {
+        ctx.strokeStyle = rgba('#ffd27a', this.ringFlash * 3);
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(this.aim.ox, this.aim.oy, AIM_R * AIM_FIRE, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // Lenkrad: Hilfslinie „geradeaus“ nach oben
+      if (this.ctrl === 'lenk') {
+        ctx.strokeStyle = 'rgba(110,220,205,0.25)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.aim.ox, this.aim.oy - AIM_R * 0.2);
+        ctx.lineTo(this.aim.ox, this.aim.oy - AIM_R);
+        ctx.stroke();
+      }
+    }
+    this.drawAmmo(ctx);
     for (const [btn, label, can] of [[this.btnZoomOut, '−', this.zoomGoal > ZOOMS[ZOOMS.length - 1]], [this.btnZoomIn, '+', this.zoomGoal < ZOOMS[0]]] as const) {
       ctx.fillStyle = 'rgba(5,14,22,0.78)';
       ctx.strokeStyle = can ? 'rgba(110,220,205,0.55)' : 'rgba(110,220,205,0.18)';

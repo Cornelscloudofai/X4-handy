@@ -246,6 +246,15 @@ function shot(kind: Gun = 'puls', pan = 0): void {
   });
 }
 
+/** Turmschuss: eigener Klang und eigener Mindestabstand (sonst verschluckt ihn der Bordkanonenschuss), leiser */
+function turretShot(kind: Gun = 'puls', pan = 0): void {
+  if (!gate('turret', 70)) return;
+  const d = GUNS[kind] ?? GUNS.puls;
+  play('sfx', { pan: pan * 0.6, verb: 0.04, gain: 0.5 }, (g, o, t) => {
+    if (!sample(g, o, d.s, { t, rate: vary(d.rate * 1.08, 0.04), gain: d.gain * 0.75, dur: d.dur ? Math.min(0.6, d.dur) : undefined })) tone(g, o, { f: vary(800), to: 200, t, type: 'triangle', a: 0.001, d: 0.06, gain: 0.08 });
+  });
+}
+
 /** Gegnerischer Schuss: leiser und dumpfer als die eigenen, damit die eigenen im Vordergrund bleiben */
 function enemyShot(pan = 0): void {
   if (!gate('enemyShot', 110)) return;
@@ -426,7 +435,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, enemyShot, missile, hit, explosion, shield, hull, alarm, boss, pickup, fail,
+  shot, turretShot, enemyShot, missile, hit, explosion, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 

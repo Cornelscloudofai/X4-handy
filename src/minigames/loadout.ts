@@ -329,11 +329,13 @@ export function loadoutLabel(l: Loadout = loadout()): string {
 }
 
 // ---- Steuerung im Kampf: ein Stick (Drehen + Schub, Feuertaste) oder zwei Sticks (links fliegen, rechts zielen und feuern) ----
-export type ControlMode = 'eins' | 'zwei';
+/** eins: ein Stick + Feuertaste; zwei: rechts zielen (Richtung zeigen); lenk: rechts lenken wie ein Lenkrad */
+export type ControlMode = 'eins' | 'zwei' | 'lenk';
 const CONTROL_KEY = 'x4-sektorbau-steuerung';
 export function controlMode(): ControlMode {
   try {
-    return globalThis.localStorage?.getItem(CONTROL_KEY) === 'zwei' ? 'zwei' : 'eins';
+    const v = globalThis.localStorage?.getItem(CONTROL_KEY);
+    return v === 'zwei' || v === 'lenk' ? v : 'eins';
   } catch {
     return 'eins';
   }
