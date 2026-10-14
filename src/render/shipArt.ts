@@ -44,6 +44,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'split-chimera-ki': { xs: [-0.137, -0.082, 0.081, 0.137], y: 0.34, color: '#ff9a4a' },
   'split-dragon-ki': { xs: [0], y: 0.385, color: '#ff9a4a' },
   'split-cobra-ki': { xs: [-0.08, 0, 0.083], y: 0.384, color: '#ff9a4a' },
+  'split-klapperschlange-ki': { xs: [-0.1, 0, 0.1], y: 0.455, color: '#ff9a4a' },
   // Miner und Frachter auf der Sektorkarte
   'split-alligator-min-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
   'split-alligator-gas-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
@@ -193,7 +194,7 @@ export function projectileSprite(name: string): HTMLImageElement | null {
  */
 const HULL: Record<string, [number, number, number]> = {
   'split-jaguar': [150, 64, 32], 'split-asp': [163, 58, 28], 'split-balaur': [127, 62, 43], 'split-chimera': [185, 64, 40],
-  'split-dragon': [193, 51, 39], 'split-cobra': [140, 63, 42], 'split-jaeger-s': [133, 65, 38],
+  'split-dragon': [193, 51, 39], 'split-cobra': [140, 63, 42], 'split-klapperschlange': [178, 56, 34], 'split-jaeger-s': [133, 65, 38],
 };
 
 /**

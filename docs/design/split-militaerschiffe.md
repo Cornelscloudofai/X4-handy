@@ -106,3 +106,13 @@ Annahmen, weil die Daten nichts dazu enthalten:
 Ausgleich: Die Stärke des Schiffs (Haltbarkeit × Feuerkraft mit der gewählten Waffe) bestimmt die Gegner. Bis zum
 2,5-Fachen kommen entsprechend mehr Gegner, darüber werden sie zusätzlich zäher und gefährlicher. Schaden über
 400 Punkte je Geschoss zählt dabei nicht (er verpufft an kleinen Gegnern).
+
+## Klapperschlange im Minispiel (Annahmen)
+
+- **L-Türme:** im Minispiel vier (zwei je Seite an den Schulterpanzern) – die Tabelle oben nennt 6 × L; noch zu prüfen.
+  Werte der L-Türme fehlen: aus den M-Türmen gleicher Art abgeleitet (etwa dreifacher Schaden, mehr Reichweite,
+  langsameres Schwenken). Schwenkbereich −25° (über den Bug) bis 140° bzw. 130° nach hinten.
+- **Hauptbatterie (4 × L):** aus der M-Version der gewählten Waffe abgeleitet – dreifacher Schaden, ¾ Takt, ¼ mehr Reichweite.
+- **L-Schild:** 30 000, lädt 230/s nach 1,5 s (Annahme), dazu die 15 M-Schilde.
+- **L-Steuerdüsen:** achtfaches Drehmoment eines S-Schiffs (Annahme), sonst wäre der Zerstörer kaum zu lenken.
+- **Raketen:** Lager 160, aber kein Werfer – im Minispiel ohne Raketen.

@@ -255,6 +255,16 @@ function turretShot(kind: Gun = 'puls', pan = 0): void {
   });
 }
 
+/** Schwerer L-Turm (Zerstörer): tiefer und wuchtiger als der M-Turm, mit Bassschlag; eigener Mindestabstand */
+function heavyShot(kind: Gun = 'plasma', pan = 0): void {
+  if (!gate('heavy', 90)) return;
+  const d = GUNS[kind] ?? GUNS.plasma;
+  play('sfx', { pan: pan * 0.6, verb: 0.06, gain: 0.65 }, (g, o, t) => {
+    if (sample(g, o, d.s, { t, rate: vary(d.rate * 0.72, 0.03), gain: d.gain, dur: d.dur })) weight(g, o, t, d.w * 1.6, d.f * 0.7, d.len * 1.4);
+    else tone(g, o, { f: vary(300), to: 70, t, type: 'triangle', a: 0.001, d: 0.12, gain: 0.12 });
+  });
+}
+
 /** Gegnerischer Schuss: leiser und dumpfer als die eigenen, damit die eigenen im Vordergrund bleiben */
 function enemyShot(pan = 0): void {
   if (!gate('enemyShot', 110)) return;
@@ -435,7 +445,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, turretShot, enemyShot, missile, hit, explosion, shield, hull, alarm, boss, pickup, fail,
+  shot, turretShot, heavyShot, enemyShot, missile, hit, explosion, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 

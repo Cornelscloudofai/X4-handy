@@ -1,9 +1,11 @@
 // Ausrüstung für das Kampf-Minispiel: welches Schiff du fliegst, welche Waffen und Türme es trägt, welcher Schild.
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
-export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'dragon' | 'cobra' | 'argon';
+export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'dragon' | 'cobra' | 'klapperschlange' | 'argon';
 export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson';
 export type TurretId = 'puls' | 'neutron' | 'tau' | 'plasma' | 'boson';
+/** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
+export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron';
 export type ShieldId = 'leicht' | 'schwer';
 /** Spezialfähigkeit auf der Taste über der Feuertaste */
 export type SpecialId = 'dash' | 'sprint' | 'overdrive' | 'torpedo' | 'escort';
@@ -12,9 +14,10 @@ export type SpecialId = 'dash' | 'sprint' | 'overdrive' | 'torpedo' | 'escort';
 export interface X4Data {
   /** Hülle */
   hull: number;
-  /** Triebwerke und Schilde (Anzahl, Größe wie die Schiffsklasse) */
+  /** Triebwerke und Schilde (Anzahl, Größe wie die Schiffsklasse); Zerstörer: zusätzlich M-Schilde */
   engines: number;
   shields: number;
+  mShields?: number;
   /** Waffenplätze vorn (Bordkanonen), eigene Raketenwerfer-Plätze (seit 9.0) und Türme */
   weapons: number;
   launchers: number;
@@ -26,10 +29,26 @@ export interface X4Data {
   dragYaw: number;
 }
 
+/**
+ * Schwerer L-Turm an der Bordwand (Zerstörer): nur das Kanonenrohr ist zu sehen. Es dreht sich unter einer erhöhten
+ * Panzerplatte des Rumpfs („Flügel“) und liegt über dem tieferen Rumpf – gezeichnet wird Rumpf, Rohr, dann der
+ * Flügel noch einmal obendrauf. Alle Lagen als Anteile der Bildgröße (Mitte = 0, Bug oben).
+ */
+export interface LMount {
+  /** Drehpunkt des Rohrs (liegt unter dem Flügel) */
+  x: number;
+  y: number;
+  /** Schwenkbereich in Grad: 0 = geradeaus, negativ = nach innen (über den Bug), positiv = nach außen und hinten */
+  min: number;
+  max: number;
+  /** Umriss des Flügels, der das Rohr verdeckt */
+  cover: [number, number][];
+}
+
 export interface ShipDef {
   name: string;
   /** Klasse für die Anzeige */
-  cls: 'S' | 'M';
+  cls: 'S' | 'M' | 'L';
   role: string;
   desc: string;
   x4: X4Data;
@@ -43,10 +62,16 @@ export interface ShipDef {
   delay: number;
   /** Bordkanonen: seitliche Lage in Bildpunkten, Bug oben */
   guns: number[];
-  /** Größe der Waffenplätze (S oder M) – bestimmt die Werte der gewählten Waffe */
-  gunSize: 's' | 'm';
+  /** Größe der Waffenplätze (S, M oder L) – bestimmt die Werte der gewählten Waffe */
+  gunSize: GunSize;
+  /** Mündung der Bordkanonen vor der Schiffsmitte (Anteil der Zeichengröße; sonst 0,3) */
+  gunFwd?: number;
   /** Türme (Lage relativ zur Schiffsmitte, Bug oben) – zielen frei */
   turrets: [number, number][];
+  /** Sockeldurchmesser der M-Türme (Anteil der Zeichengröße; sonst 0,1) */
+  turretD?: number;
+  /** schwere L-Türme an der Bordwand (Zerstörer) */
+  lMounts?: LMount[];
   /** Trefferradius und Zeichengröße */
   r: number;
   size: number;
@@ -61,9 +86,14 @@ export interface ShipDef {
  * Split-Schilde Mk1: S 740 (lädt 35/s nach 3,5 s), M 3848 (74/s nach 2 s). Waffen und Türme: siehe WEAPONS, TURRETS.
  */
 const MAMBA = { hull: 3600, shield: 2 * 740, regen: 2 * 35, v: 330, dragYaw: 3.3 };
-const SHIELD = { S: { cap: 740, rate: 35, delay: 3.5 }, M: { cap: 3848, rate: 74, delay: 2 } };
-/** Annahme (Drehmoment der Steuerdüsen steht nicht in den Daten): M-Steuerdüsen drehen doppelt so stark wie S */
-const THRUSTER = { S: 1, M: 2 };
+// Annahme L-Schild (Split Mk1): 30 000, lädt 230/s nach 1,5 s – die genauen Werte stehen noch aus.
+const SHIELD = { S: { cap: 740, rate: 35, delay: 3.5 }, M: { cap: 3848, rate: 74, delay: 2 }, L: { cap: 30000, rate: 230, delay: 1.5 } };
+/**
+ * Annahme (Drehmoment der Steuerdüsen steht nicht in den Daten): M-Steuerdüsen drehen doppelt so stark wie S,
+ * L-Steuerdüsen achtmal so stark – sonst wäre der Zerstörer (Drehwiderstand 123) im Minispiel kaum zu lenken.
+ */
+const THRUSTER = { S: 1, M: 2, L: 8 };
+export type GunSize = 's' | 'm' | 'l';
 
 /** Waffenplätze gleichmäßig über die Breite verteilen */
 function spreadGuns(n: number, width: number): number[] {
@@ -73,22 +103,42 @@ function spreadGuns(n: number, width: number): number[] {
 
 type ShipBase = Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hull' | 'shield' | 'regen' | 'delay' | 'gunSize' | 'guns'> & { gunWidth: number; /** Lage der Rohre wie im Bild (sonst gleichmäßig verteilt) */ gunPos?: number[] };
 
-function ship(cls: 'S' | 'M', base: ShipBase): ShipDef {
+function ship(cls: 'S' | 'M' | 'L', base: ShipBase): ShipDef {
   const d = base.x4;
   const { gunWidth, gunPos, ...rest } = base;
+  const m = d.mShields ?? 0;
   return {
     ...rest,
     cls,
     speed: d.v / MAMBA.v,
     turn: (MAMBA.dragYaw / d.dragYaw) * THRUSTER[cls],
     hull: d.hull / MAMBA.hull,
-    shield: (d.shields * SHIELD[cls].cap) / MAMBA.shield,
-    regen: (d.shields * SHIELD[cls].rate) / MAMBA.regen,
+    shield: (d.shields * SHIELD[cls].cap + m * SHIELD.M.cap) / MAMBA.shield,
+    regen: (d.shields * SHIELD[cls].rate + m * SHIELD.M.rate) / MAMBA.regen,
     delay: SHIELD[cls].delay / SHIELD.S.delay,
     guns: gunPos ?? spreadGuns(d.weapons, gunWidth),
-    gunSize: cls === 'M' ? 'm' : 's',
+    gunSize: cls === 'L' ? 'l' : cls === 'M' ? 'm' : 's',
   };
 }
+
+/** Lagen aus einem Schiffsbild (Bildpunkte, Bildgröße img) in Spielpunkte bei Zeichengröße size umrechnen */
+function fromImage(img: number, size: number, pts: [number, number][]): [number, number][] {
+  return pts.map(([x, y]) => [Math.round(((x - img / 2) / img) * size * 10) / 10, Math.round(((y - img / 2) / img) * size * 10) / 10]);
+}
+
+/** L-Türme der linken Seite (Bildpunkte) übernehmen und für die rechte Seite spiegeln */
+function lMounts(img: number, left: { pivot: [number, number]; min: number; max: number; cover: [number, number][] }[]): LMount[] {
+  const f = (v: number) => (v - img / 2) / img;
+  const out: LMount[] = [];
+  for (const side of [1, -1]) for (const m of left) out.push({
+    x: side * f(m.pivot[0]), y: f(m.pivot[1]), min: m.min, max: m.max,
+    cover: m.cover.map(([x, y]) => [side * f(x), f(y)]),
+  });
+  return out;
+}
+
+/** Bildmaße der Klapperschlange (KI-Bild 1254 px, Bug oben) */
+const RS_IMG = 1254, RS_SIZE = 200;
 
 // Split-Militärschiffe nach den X4-Spieldaten 9.0. Verhältnisse von Hülle, Schild, Tempo, Wendigkeit und Bewaffnung
 // wie im Original; die Gegner werden bei stärkeren Schiffen entsprechend zahlreicher und zäher.
@@ -127,6 +177,23 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
     x4: { hull: 33000, engines: 3, shields: 2, weapons: 3, launchers: 0, turrets: 4, missiles: 0, v: 518, dragYaw: 11 },
     gunWidth: 16, gunPos: [-3.7, 0, 3.7], turrets: [[-7.2, -0.4], [7.2, -0.4], [-7.2, 18.5], [7.2, 18.5]], r: 24, size: 92, special: 'escort', sprite: 'split-cobra', fallback: 'split-jaeger-s',
+  }),
+  klapperschlange: ship('L', {
+    name: 'Klapperschlange', role: 'Zerstörer', desc: 'Zerstörer der Split: vier schwere Hauptkanonen im Bug, je zwei schwenkbare L-Türme unter den Schulterplatten, die auch spitz nach vorn über den Bug feuern, dazu zwölf M-Türme. Riesige Hülle und starke Schilde, aber träge. Waffenüberladung: kurz doppelte Feuerrate.',
+    // X4 9.0: 3 L-Triebwerke, 1 L- und 15 M-Schilde, 4 L-Waffen (Hauptbatterie); Türme: hier 4 L (zwei je Seite) und
+    // 12 M; Raketenlager 160, aber kein Werfer – daher ohne Raketen.
+    x4: { hull: 242650, engines: 3, shields: 1, mShields: 15, weapons: 4, launchers: 0, turrets: 16, missiles: 0, v: 217, dragYaw: 123 },
+    gunWidth: 18, gunPos: fromImage(RS_IMG, RS_SIZE, [[572, 0], [600, 0], [653, 0], [681, 0]]).map(([x]) => x), gunFwd: 0.47,
+    // M-Türme auf den runden Luken der Panzerplatten
+    turrets: fromImage(RS_IMG, RS_SIZE, [[565, 307], [689, 307], [565, 387], [689, 387], [557, 580], [697, 580], [549, 692], [705, 692], [541, 792], [713, 792], [538, 919], [716, 919]]),
+    turretD: 0.045,
+    lMounts: lMounts(RS_IMG, [
+      // vorderer Flügel (L-förmige Platte mit schräger Außenfläche), Rohr kommt darunter hervor
+      { pivot: [515, 246], min: -25, max: 140, cover: [[476, 262], [486, 229], [505, 226], [555, 204], [558, 300], [533, 305], [532, 246], [478, 267]] },
+      // hinterer Flügel (sechseckige Platte)
+      { pivot: [505, 440], min: -25, max: 130, cover: [[463, 494], [468, 440], [493, 420], [530, 387], [537, 392], [536, 448]] },
+    ]),
+    r: 46, size: RS_SIZE, special: 'overdrive', sprite: 'split-klapperschlange', fallback: 'split-jaeger-s',
   }),
   argon: ship('S', {
     name: 'Argon-Jäger', role: 'Jäger', desc: 'Der Argon-Jäger aus dem Grafikvergleich – mit den Werten der Mamba.',
@@ -224,6 +291,16 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
+/**
+ * Werte einer Waffe für eine Platzgröße. L-Hauptbatterie (Zerstörer): die Daten fehlen noch – Annahme: aus der
+ * M-Version abgeleitet, dreifacher Schaden je Geschoss, etwas langsamerer Takt und ein Viertel mehr Reichweite.
+ */
+export function weaponGun(w: WeaponDef, size: GunSize): X4Gun {
+  if (size !== 'l') return w[size];
+  const m = w.m;
+  return { ...m, dmg: m.dmg * 3, rate: m.rate * 0.75, life: m.life * 1.25 };
+}
+
 /** Split-Türme (M) für Korvette und Fregatte – Werte aus den Spieldaten 9.0 (Drehtempo in Grad pro Sekunde) */
 export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean }
 export const TURRETS: Record<TurretId, TurretDef> = {
@@ -239,6 +316,23 @@ export const TURRETS: Record<TurretId, TurretDef> = {
     gun: { dmg: 800, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.57, angle: 0.18 } },
 };
 export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
+
+/**
+ * Schwere L-Türme des Zerstörers. Die Werte der Split-L-Türme stehen noch aus – Annahme: wie die M-Türme gleicher Art
+ * mit etwa dreifachem Schaden, größerer Reichweite und langsamerem Schwenken. barrel: Bild des Kanonenrohrs.
+ */
+export interface LTurretDef extends TurretDef { barrel: string }
+export const LTURRETS: Record<LTurretId, LTurretDef> = {
+  plasma: { name: 'Schwerer Plasmaturm', desc: 'Zwei sehr schwere, langsame Plasmageschosse, dann Pause – große Reichweite.', turn: 30, color: '#a6ff6b', w: 5, barrel: 'split-lturm-rohr-plasma-ki',
+    gun: { dmg: 2200, rate: 0.8, amt: 1, mag: 2, reload: 6, v: 1100, life: 6.5, angle: 0.6 } },
+  tau: { name: 'Schwerer Tau-Beschleuniger-Turm', desc: 'Vier Geschosse je Schuss in schneller Folge – verheerend auf mittlere Entfernung.', turn: 70, color: '#ff5a5a', w: 2.6, barrel: 'split-lturm-rohr-tau-ki',
+    gun: { dmg: 125, rate: 2.4, amt: 4, mag: 8, reload: 4.5, v: 2300, life: 1.6, angle: 1 } },
+  boson: { name: 'Schwerer Bosonenlanzen-Turm', desc: 'Blitzschneller, sehr schwerer Lanzenstrahl, der sofort trifft – schwenkt langsam.', turn: 25, color: '#e0c3ff', w: 4, rail: true, barrel: 'split-lturm-rohr-boson-ki',
+    gun: { dmg: 2400, rate: 0.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.7, angle: 0.15 } },
+  neutron: { name: 'Schwerer Neutronen-Gatling-Turm', desc: 'Langer, dichter Geschossstrom, dann nachladen – viel Druck auf Jäger.', turn: 70, color: '#ff8a3d', w: 2.6, barrel: 'split-lturm-rohr-neutron-ki',
+    gun: { dmg: 48, rate: 14, amt: 1, mag: 100, reload: 7, v: 2700, life: 1.7, angle: 0.4 } },
+};
+export const LTURRET_IDS = Object.keys(LTURRETS) as LTurretId[];
 
 /** Schaden pro Sekunde im Dauerbetrieb (mit Salven- bzw. Nachladepausen), in X4-Werten */
 export function sustainedDps(g: X4Gun, beam = false): number {
@@ -281,8 +375,8 @@ export const SPECIALS: Record<SpecialId, { name: string; key: string; cd: number
   escort: { name: 'Begleitjäger', key: 'J', cd: 24 },
 };
 
-export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId }
-export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht' };
+export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId; /** schwere L-Türme (nur Zerstörer) */ lturret?: LTurretId }
+export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'plasma' };
 /** Namen aus früheren Versionen (gespeicherte Ausrüstung) */
 const OLD: Record<string, string> = { impuls: 'puls', splitter: 'schrot' };
 
@@ -295,6 +389,7 @@ function valid(l: Partial<Record<keyof Loadout, string>> | null | undefined): Lo
     weapon: weapon && weapon in WEAPONS ? (weapon as WeaponId) : DEFAULT_LOADOUT.weapon,
     turret: turret && turret in TURRETS ? (turret as TurretId) : DEFAULT_LOADOUT.turret,
     shield: l?.shield && l.shield in SHIELDS ? (l.shield as ShieldId) : DEFAULT_LOADOUT.shield,
+    lturret: l?.lturret && l.lturret in LTURRETS ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,
   };
 }
 
@@ -325,7 +420,8 @@ export function setLoadout(patch: Partial<Loadout>): Loadout {
 /** Kurzbeschreibung für das Menü */
 export function loadoutLabel(l: Loadout = loadout()): string {
   const s = SHIPS[l.ship];
-  return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer` : ''}${s.turrets.length ? ` · ${s.turrets.length} Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
+  const lt = s.lMounts?.length ? ` · ${s.lMounts.length} L-Türme: ${LTURRETS[l.lturret ?? 'plasma'].name}` : '';
+  return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer` : ''}${lt}${s.turrets.length ? ` · ${s.turrets.length} ${s.lMounts?.length ? 'M-' : ''}Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
 }
 
 // ---- Steuerung im Kampf: ein Stick (Drehen + Schub, Feuertaste) oder zwei Sticks (links fliegen, rechts zielen und feuern) ----

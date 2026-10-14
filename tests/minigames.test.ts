@@ -854,6 +854,26 @@ describe('Kampf', () => {
     expect(a.fireId).toBeNull();
   });
 
+  it('Klapperschlange: L-Türme schwenken nur in ihrem Bereich, auch spitz nach vorn über den Bug', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'klapperschlange', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'tau' } }, 'xenon');
+    g.resize(W, H);
+    const a = g as unknown as { px: number; py: number; aimA: number; enemies: { x: number; y: number; vx: number; vy: number; kind: string; hp: number; max: number }[]; pL: { rel: number; cd: number; flash: number }[]; bullets: { from: string }[] };
+    expect(a.pL.length).toBe(4);
+    // bis die ersten Gegner da sind
+    for (let i = 0; i < 2000 && !a.enemies.length; i++) g.update(DT);
+    const e = a.enemies[0];
+    // unverwundbar festhalten, alle anderen Gegner entfernen
+    const hold = (x: number, y: number) => { a.aimA = -Math.PI / 2; e.x = x; e.y = y; e.vx = e.vy = 0; e.hp = e.max = 1e9; a.enemies.length = 0; a.enemies.push(e); };
+    // Ziel genau voraus: die Türme schwenken nach innen (negativ) und feuern
+    let fired = false;
+    for (let i = 0; i < 240; i++) { hold(a.px, a.py - 320); g.update(DT); fired ||= a.pL.some((t) => t.flash > 0); }
+    expect(a.pL.every((t) => t.rel < -0.02 && t.rel >= (-25 * Math.PI) / 180 - 1e-9)).toBe(true);
+    expect(fired).toBe(true);
+    // Ziel genau hinter dem Schiff: außerhalb des Bereichs, die Türme kehren in Ruhestellung zurück
+    for (let i = 0; i < 400; i++) { hold(a.px, a.py + 260); g.update(DT); }
+    expect(a.pL.every((t) => Math.abs(t.rel) < 0.05)).toBe(true);
+  });
+
   it('Turmbilder passen farblich zum Rumpf', () => {
     for (const t of ['puls', 'neutron', 'tau', 'plasma', 'boson']) {
       expect(turretArtName(t, 'split-dragon')).toContain('-hell-');

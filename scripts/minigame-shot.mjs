@@ -32,6 +32,16 @@ await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value=
 await page.waitForTimeout(200);
 await page.screenshot({ path: `${out}/mg-0-loadout.png` });
 if (!(await page.locator('#modal [data-key="turret"]').count())) fail('Cobra: keine Türme wählbar');
+// Zerstörer: schwere L-Türme mit eigenem Rohr wählbar
+await page.click('#modal [data-act="lo-tab"][data-tab="ship"]');
+await page.click('#modal [data-act="loadout-set"][data-value="klapperschlange"]');
+await page.click('#modal [data-act="lo-tab"][data-tab="gear"]');
+await page.waitForTimeout(200);
+if ((await page.locator('#modal [data-key="lturret"]').count()) !== 4) fail('Klapperschlange: L-Türme nicht wählbar');
+await page.click('#modal [data-act="loadout-set"][data-key="lturret"][data-value="boson"]');
+await page.waitForTimeout(200);
+await page.screenshot({ path: `${out}/mg-0-loadout-l.png` });
+if ((await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-ausruestung') ?? '{}').lturret)) !== 'boson') fail('L-Turm-Wahl nicht gespeichert');
 // Mods: Werkstatt öffnen, einen Schadensverstärker bauen – Wert liegt in der Spanne, Modteile werden abgezogen
 await page.click('#modal [data-act="lo-tab"][data-tab="mods"]');
 await page.waitForTimeout(200);
