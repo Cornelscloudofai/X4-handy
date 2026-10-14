@@ -1003,3 +1003,29 @@ describe('Schwere Hauptbatterie und Strahlenturm', () => {
     expect(e.hp).toBeLessThan(1e6);
   });
 });
+
+describe('Turmbefehle', () => {
+  it('M-Türme greifen bei „M“ zuerst das Boot an, auch wenn ein Jäger näher ist; Wischen setzt den Befehl', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'cobra', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
+    g.resize(W, H);
+    const a = g as unknown as { px: number; py: number; aimA: number; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; pTur: { a: number }[]; orders: { m: string }; orderBtns: [string, number, number, number][] };
+    for (let i = 0; i < 2000 && a.enemies.length < 2; i++) g.update(DT);
+    const [e1, e2] = a.enemies;
+    e1.kind = 'jaeger'; e2.kind = 'kanone';
+    // per Wischen nach rechts: „M“
+    const [, bx, by] = a.orderBtns[0];
+    g.pointerDown(7, bx, by);
+    g.pointerMove(7, bx + 60, by);
+    g.pointerUp(7);
+    expect(a.orders.m).toBe('M');
+    for (let i = 0; i < 90; i++) {
+      Object.assign(e1, { x: a.px + 120, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
+      Object.assign(e2, { x: a.px - 200, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
+      a.enemies.length = 0; a.enemies.push(e1, e2);
+      g.update(DT);
+    }
+    // Türme zeigen nach links (zum Boot), nicht nach rechts (zum Jäger)
+    expect(a.pTur.every((t) => Math.cos(t.a) < -0.5)).toBe(true);
+    g.setOrder('m', 'alle');
+  });
+});

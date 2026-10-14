@@ -113,6 +113,23 @@ const F_SPEED = 24;
 const ACCEL = 2.4;
 const DRIFT_DAMP = 0.35;
 const TURN_ONLY = 0.35;
+
+/** Turmbefehle: welche Gegnerklasse die Türme zuerst angreifen (alle = das nächste Ziel) */
+export type TurretOrder = 'alle' | 'S' | 'M' | 'L';
+const ORDER_KEY = 'x4-sektorbau-turmbefehle';
+/** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
+const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', boss: 'L', turret: 'L' };
+/** Auswahl beim Wischen: oben alle, links S, rechts M, unten L */
+const ORDER_DIRS: [TurretOrder, number, number][] = [['alle', 0, -1], ['S', -1, 0], ['M', 1, 0], ['L', 0, 1]];
+function readOrders(): { m: TurretOrder; l: TurretOrder } {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(ORDER_KEY) ?? 'null');
+    const ok = (o: unknown): TurretOrder => (o === 'S' || o === 'M' || o === 'L' ? o : 'alle');
+    return { m: ok(v?.m), l: ok(v?.l) };
+  } catch {
+    return { m: 'alle', l: 'alle' };
+  }
+}
 /** Radius der Steuerkreise (Bildpunkte) */
 const JOY_R = 78;
 /** Rechter Steuerkreis (Zielen/Lenken und Feuern) – größer für feineres Zielen */
@@ -343,6 +360,9 @@ export class ShooterGame implements MiniGame {
   private lt: GameGun | null = null;
   private lTurn = 1;
   private lTurType: LTurretId = 'plasma';
+  /** Turmbefehle der M- und L-Türme (gemerkt) und ein laufendes Wischen am Befehlsknopf */
+  orders = readOrders();
+  private orderDrag: { id: number; which: 'm' | 'l'; x0: number; y0: number; pick: TurretOrder | null } | null = null;
   /** Strahler: Strahlen dieses Bilds (von – bis) für die Darstellung */
   private beams: [number, number, number, number][] = [];
   /** Strahlentürme: Strahlen dieses Bilds (von – bis) */
@@ -423,6 +443,7 @@ export class ShooterGame implements MiniGame {
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
     ];
     this.ship = SHIPS[lo.ship];
+    if (this.ship.turrets.length) this.controls = [...this.controls, `Turmbefehle: Knopf ${this.ship.lMounts?.length ? '„M“ bzw. „L“' : '„M“'} links halten und wischen – nach oben alle Ziele, links zuerst S-Schiffe (Jäger), rechts M-Schiffe (Boote), unten L-Schiffe (Fregatte, K-Segment); antippen schaltet weiter. Raketen schießen die M-Türme nur bei „alle“ und „S“ ab`];
     // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
     const wOk = weaponFits(WEAPONS[lo.weapon], SHIPS[lo.ship].gunSize);
     const wd = WEAPONS[wOk ? lo.weapon : 'puls'], td = TURRETS[lo.turret];
@@ -546,6 +567,13 @@ export class ShooterGame implements MiniGame {
   private get btnZoomOut(): [number, number, number] { return [this.w - 82, TOP + 124, 15]; }
   private get btnZoomIn(): [number, number, number] { return [this.w - 38, TOP + 124, 15]; }
   private get btnDash(): [number, number, number] { return [this.w - 60, this.h - 182, 25]; }
+  /** Befehlsknöpfe der Türme: links über dem Joystick (M oben, L darunter; nur wenn das Schiff solche Türme hat) */
+  private get orderBtns(): ['m' | 'l', number, number, number][] {
+    const out: ['m' | 'l', number, number, number][] = [];
+    if (this.pTur.length) out.push(['m', 74, this.h - (this.pL.length ? 330 : 270), 22]);
+    if (this.pL.length) out.push(['l', 74, this.h - 270, 22]);
+    return out;
+  }
 
   hud(): HudItem[] {
     return [
@@ -570,12 +598,23 @@ export class ShooterGame implements MiniGame {
     if (Math.hypot(x - bx, y - by) < br + 10) { this.fireMissiles(); return; }
     const [dx, dy, dr] = this.btnDash;
     if (Math.hypot(x - dx, y - dy) < dr + 10) { this.doSpecial(); return; }
+    for (const [which, ox, oy, orr] of this.orderBtns) {
+      if (Math.hypot(x - ox, y - oy) < orr + 8) { this.orderDrag = { id, which, x0: ox, y0: oy, pick: null }; sfx.tap(); return; }
+    }
     // zwei Sticks: rechte Hälfte zielt und feuert, linke fliegt
     if (this.ctrl !== 'eins' && x > this.w / 2) { if (!this.aim) this.aim = { id, ox: x, oy: y, kx: 0, ky: 0 }; return; }
     if (!this.joy) this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 };
   }
 
   pointerMove(id: number, x: number, y: number): void {
+    const od = this.orderDrag;
+    if (od?.id === id) {
+      // Richtung des Wischens wählt den Befehl
+      const dx = x - od.x0, dy = y - od.y0;
+      const pick = Math.hypot(dx, dy) < 22 ? null : Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'S' : 'M') : dy < 0 ? 'alle' : 'L';
+      if (pick !== od.pick) { od.pick = pick; if (pick) sfx.tick(); }
+      return;
+    }
     const j = this.joy?.id === id ? this.joy : this.aim?.id === id ? this.aim : null;
     if (!j) return;
     let dx = x - j.ox, dy = y - j.oy;
@@ -592,9 +631,40 @@ export class ShooterGame implements MiniGame {
   }
 
   pointerUp(id: number): void {
+    const od = this.orderDrag;
+    if (od?.id === id) {
+      // gewischt: gewählter Befehl; nur angetippt: weiter zum nächsten
+      const cur = this.orders[od.which];
+      const next = od.pick ?? ORDER_DIRS[(ORDER_DIRS.findIndex(([o]) => o === cur) + 1) % ORDER_DIRS.length][0];
+      this.setOrder(od.which, next);
+      this.orderDrag = null;
+    }
     if (this.joy?.id === id) this.joy = null;
     if (this.aim?.id === id) this.aim = null;
     if (this.fireId === id) this.fireId = null;
+  }
+
+  /** Turmbefehl setzen und merken (auch für Tests) */
+  setOrder(which: 'm' | 'l', o: TurretOrder): void {
+    if (this.orders[which] === o) return;
+    this.orders = { ...this.orders, [which]: o };
+    try { globalThis.localStorage?.setItem(ORDER_KEY, JSON.stringify(this.orders)); } catch { /* Speicher nicht verfügbar */ }
+    vibrate(15);
+    sfx.tick();
+    this.floats.add(this.px, this.py - 50, `${which === 'm' ? 'M-Türme' : 'L-Türme'}: ${o === 'alle' ? 'alle Ziele' : `zuerst ${o}-Schiffe`}`, '#9ffcff', 13);
+  }
+
+  /** Ziel nach Turmbefehl: bevorzugt die gewählte Klasse (sonst das nächste andere Ziel); ok prüft Winkel o. Ä. */
+  private pickTarget(x: number, y: number, range: number, order: TurretOrder, ok: (e: Enemy, d: number) => boolean = () => true): Enemy | null {
+    let best: Enemy | null = null, bd = range, pref: Enemy | null = null, pd = range;
+    for (const e of this.enemies) {
+      if (e.kind === 'boss' && e.shielded) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d >= range || !ok(e, d)) continue;
+      if (d < bd) { bd = d; best = e; }
+      if (order !== 'alle' && ECLASS[e.kind] === order && d < pd) { pd = d; pref = e; }
+    }
+    return pref ?? best;
   }
 
   /** Zoomstufe wechseln (+1 = weiter weg) und merken */
@@ -1291,12 +1361,10 @@ export class ShooterGame implements MiniGame {
       const x = this.px + tx0 * c - ty0 * sn, y = this.py + tx0 * sn + ty0 * c;
       t.cd -= dt;
       let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = range;
-      for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
-      if (!tgt) for (const e of this.enemies) {
-        if (e.kind === 'boss' && e.shielded) continue;
-        const d = Math.hypot(e.x - x, e.y - y);
-        if (d < bd) { bd = d; tgt = e; }
-      }
+      // Raketenabwehr zuerst – nur bei „alle“ und „S“; wer die Türme auf M- oder L-Schiffe ansetzt, gibt sie auf
+      const order = this.orders.m;
+      if (order === 'alle' || order === 'S') for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
+      if (!tgt) { tgt = this.pickTarget(x, y, range, order); if (tgt) bd = Math.hypot(tgt.x - x, tgt.y - y); }
       if (!tgt) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
       const lt = w.beam ? 0 : bd / w.speed;
       const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
@@ -1344,16 +1412,13 @@ export class ShooterGame implements MiniGame {
       t.recoil = Math.max(0, t.recoil - dt * 3.5);
       t.flash = Math.max(0, t.flash - dt);
       const lo = (mt.min * Math.PI) / 180, hi = (mt.max * Math.PI) / 180;
-      let tgt: Enemy | null = null, bd = w.range, want = 0;
-      for (const e of this.enemies) {
-        if (e.kind === 'boss' && e.shielded) continue;
-        const d = Math.hypot(e.x - x, e.y - y);
-        if (d >= bd) continue;
+      // Ziel im Schwenkbereich, nach Turmbefehl
+      const relTo = (e: Enemy, d: number) => {
         const lead = w.rail ? 0 : d / w.speed;
-        const r = wrapA(Math.atan2(e.y + e.vy * lead - y, e.x + e.vx * lead - x) - this.aimA) * side;
-        if (r < lo || r > hi) continue;
-        bd = d; tgt = e; want = r;
-      }
+        return wrapA(Math.atan2(e.y + e.vy * lead - y, e.x + e.vx * lead - x) - this.aimA) * side;
+      };
+      const tgt = this.pickTarget(x, y, w.range, this.orders.l, (e, d) => { const r = relTo(e, d); return r >= lo && r <= hi; });
+      const want = tgt ? relTo(tgt, Math.hypot(tgt.x - x, tgt.y - y)) : 0;
       t.rel = clamp(turnTo(t.rel, tgt ? want : 0, dt * this.lTurn), lo, hi);
       if (!tgt || t.cd > 0 || Math.abs(want - t.rel) > 0.1) continue;
       // Schuss aus der Mündung
@@ -1902,13 +1967,13 @@ export class ShooterGame implements MiniGame {
       ctx.textAlign = 'center';
       ctx.font = '700 26px "Chakra Petch", Barlow, sans-serif';
       ctx.fillStyle = this.bannerText === 'BOSS' ? '#ff9aa4' : this.side === 'xenon' ? '#ff8a96' : '#ffc77a';
-      ctx.fillText(this.bannerText, this.w / 2, TOP + 160);
+      ctx.fillText(this.bannerText, this.w / 2, TOP + 236);
       ctx.font = '500 14px Barlow, sans-serif';
       // lange Zeilen verkleinern, damit sie aufs Handy passen
       const sw = ctx.measureText(this.bannerSub).width;
       if (sw > this.w - 24) ctx.font = `500 ${Math.max(10, Math.floor((14 * (this.w - 24)) / sw))}px Barlow, sans-serif`;
       ctx.fillStyle = 'rgba(228,243,240,0.85)';
-      ctx.fillText(this.bannerSub, this.w / 2, TOP + 184);
+      ctx.fillText(this.bannerSub, this.w / 2, TOP + 260);
       ctx.restore();
     }
     if (this.choosing) this.drawCards(ctx);
@@ -2830,6 +2895,50 @@ export class ShooterGame implements MiniGame {
    * Magazinanzeige rechts unten: Füllstand als Segmente (bei kleinen Magazinen) oder Balken, Schusszahl,
    * beim Nachladen ein bernsteinfarbener Fortschrittsbalken mit Restzeit. Strahlwaffen haben kein Magazin.
    */
+  /** Befehlsknöpfe der Türme; beim Halten klappen die vier Befehle um den Knopf auf (oben alle, links S, rechts M, unten L) */
+  private drawOrders(ctx: CanvasRenderingContext2D): void {
+    const btns = this.orderBtns;
+    if (!btns.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // beim Aufklappen nur der gehaltene Knopf (die Auswahl liegt sonst über dem anderen)
+    const shown = this.orderDrag ? btns.filter(([w]) => w === this.orderDrag!.which) : btns;
+    for (const [which, x, y, r] of shown) {
+      const cur = this.orders[which], open = this.orderDrag?.which === which;
+      ctx.fillStyle = open ? 'rgba(20,48,60,0.92)' : 'rgba(5,14,22,0.78)';
+      ctx.strokeStyle = cur === 'alle' ? 'rgba(110,220,205,0.45)' : 'rgba(255,181,71,0.8)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e4f3f0';
+      ctx.font = '700 13px "Chakra Petch", Barlow, sans-serif';
+      ctx.fillText(which === 'm' ? 'M' : 'L', x, y - 5);
+      ctx.fillStyle = cur === 'alle' ? 'rgba(169,195,198,0.85)' : '#ffb547';
+      ctx.font = '600 9px "Chakra Petch", Barlow, sans-serif';
+      ctx.fillText(cur === 'alle' ? 'ALLE' : `→ ${cur}`, x, y + 8);
+      if (!open) continue;
+      // aufgeklappte Auswahl
+      const pick = this.orderDrag!.pick;
+      for (const [o, dx, dy] of ORDER_DIRS) {
+        const bx = x + dx * 52, by = y + dy * 52, on = pick === o, active = cur === o;
+        ctx.fillStyle = on ? 'rgba(255,181,71,0.9)' : 'rgba(5,14,22,0.88)';
+        ctx.strokeStyle = active ? '#ffb547' : 'rgba(110,220,205,0.5)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(bx, by, 19, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = on ? '#1a1206' : '#e4f3f0';
+        ctx.font = `700 ${o === 'alle' ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
+        ctx.fillText(o === 'alle' ? 'ALLE' : o, bx, by);
+      }
+    }
+    ctx.restore();
+  }
+
   private drawAmmo(ctx: CanvasRenderingContext2D): void {
     const w = this.wpn;
     if (!w.mag || w.beam) return;
@@ -2924,6 +3033,7 @@ export class ShooterGame implements MiniGame {
       }
     }
     this.drawAmmo(ctx);
+    this.drawOrders(ctx);
     for (const [btn, label, can] of [[this.btnZoomOut, '−', this.zoomGoal > ZOOMS[ZOOMS.length - 1]], [this.btnZoomIn, '+', this.zoomGoal < ZOOMS[0]]] as const) {
       ctx.fillStyle = 'rgba(5,14,22,0.78)';
       ctx.strokeStyle = can ? 'rgba(110,220,205,0.55)' : 'rgba(110,220,205,0.18)';
