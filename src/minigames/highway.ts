@@ -17,6 +17,9 @@ import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, starsFor, TOP,
   type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
+import { playOneOf, type GameTrack } from '../audio/music';
+import overtakerUrl from '../assets/music/fracht-slowly-overtaker.mp3';
+import chillWayUrl from '../assets/music/fracht-slow-way-ist-chill-way.mp3';
 
 /** Spuren des Highways */
 const LANES = 5;
@@ -109,6 +112,14 @@ export class HighwayGame implements MiniGame {
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
   /** Wertung zum Nachlesen: Sterne nach Reisezeit, Punkte für Tempo, Feldverstärker, Ausfahrt und übriges Δv */
+  /** Musik: je Runde „Slowly Overtaker“ oder „Slow way ist chill way“ (abwechselnd), pausiert mit dem Spiel */
+  private track: GameTrack | null = null;
+  phase(p: 'play' | 'pause' | 'end'): void {
+    if (p === 'play') { if (this.track) this.track.resume(); else this.track = playOneOf('fracht', [overtakerUrl, chillWayUrl], 0.75); }
+    else if (p === 'pause') this.track?.pause();
+    else { this.track?.stop(3); this.track = null; }
+  }
+
   get rules(): Rules {
     const t = this.targets().map((v) => Math.floor(v));
     return {
@@ -345,7 +356,8 @@ export class HighwayGame implements MiniGame {
     }
     this.time += dt;
     // Triebwerk: wird mit dem Tempo heller
-    sustain('hw-engine', 'engine', 0.3 + 0.6 * Math.min(1, Math.max(0, me.vy - V_MIN) / (V_MAX + 200 - V_MIN)));
+    // Triebwerk leiser als früher: die Musik steht im Vordergrund
+    sustain('hw-engine', 'engine', 0.12 + 0.3 * Math.min(1, Math.max(0, me.vy - V_MIN) / (V_MAX + 200 - V_MIN)));
     // Steuerung: links/rechts = Seitenschub, beide = Gegenschub nach vorn
     let l: boolean, rr: boolean;
     if (this.auto) ({ l, r: rr } = this.auto);

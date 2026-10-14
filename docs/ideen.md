@@ -27,5 +27,9 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 ## Musik in den Minispielen
 
 - Gasströme: Musik mit Takt-Effekten (Taktkarte, scripts/analyze-beats.mjs) – erste Probe mit „Celestial Drift“.
+- Kampf: Musik „Invasion“ (126 BPM, 3:03) läuft; Taktkarte `kampf-invasion.beats.json` vorhanden – Takt-Effekte
+  (z. B. Mündungsfeuer/Sterne im Takt, Bosswelle auf kräftigen Abschnitt legen) noch offen.
+- Highway und Frachtraum: „Slowly Overtaker“ (103,5 BPM, 2:59) und „Slow way ist chill way“ (105,5 BPM, 3:04) laufen
+  abwechselnd je Runde; Taktkarten vorhanden, Takt-Effekte (z. B. Highway-Schlieren im Takt) noch offen.
 - Weitere Minispiele mit eigener Musik und Takt-Effekten (Kampf: Lage-abhängig, Boss; Highway: Schlieren im Takt;
   Erzader: Funken im Rhythmus) – sobald Lieder da sind.

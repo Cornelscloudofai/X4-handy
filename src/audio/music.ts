@@ -122,3 +122,13 @@ export function playGameTrack(url: string, level = 0.8): GameTrack {
   }
   return track;
 }
+
+/** Mehrere Lieder für ein Minispiel: jede Runde eines davon, möglichst nicht dasselbe wie in der Runde davor */
+const lastPick = new Map<string, string>();
+export function playOneOf(key: string, urls: string[], level = 0.8): GameTrack {
+  const prev = lastPick.get(key);
+  const pool = urls.length > 1 ? urls.filter((u) => u !== prev) : urls;
+  const url = pool[Math.floor(Math.random() * pool.length)];
+  lastPick.set(key, url);
+  return playGameTrack(url, level);
+}

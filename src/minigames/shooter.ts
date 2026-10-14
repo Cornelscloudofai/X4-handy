@@ -8,6 +8,8 @@
 // Endlos-Modus: Wellen ohne Ende, alle fünf Wellen ein Boss.
 import { sfx } from '../ui/sound';
 import { sustain } from '../audio/ambience';
+import { playGameTrack, type GameTrack } from '../audio/music';
+import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { DMG_SCALE, LTURRETS, weaponFits, enemyBars, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
@@ -259,6 +261,14 @@ export class ShooterGame implements MiniGame {
   readonly mutator: Mutator | null;
   readonly goals: Goal[];
   /** Wertung zum Nachlesen: Sterne nach Frachter-Hülle (Endlos: nach Wellen), Punkte für Abschüsse und das Ziel */
+  /** Kampfmusik „Invasion“: startet mit dem Spiel, pausiert mit ihm und blendet am Ende aus */
+  private track: GameTrack | null = null;
+  phase(p: 'play' | 'pause' | 'end'): void {
+    if (p === 'play') { if (this.track) this.track.resume(); else this.track = playGameTrack(invasionUrl, 0.7); }
+    else if (p === 'pause') this.track?.pause();
+    else { this.track?.stop(3); this.track = null; }
+  }
+
   get rules(): Rules {
     const bounty = this.mutator?.id === 'bounty' ? ' (Kopfgeld: ×1,5)' : '';
     const foes = this.side === 'pirate'
