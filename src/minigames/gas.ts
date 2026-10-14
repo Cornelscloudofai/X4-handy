@@ -20,10 +20,12 @@ import {
   type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
 
-const DURATION = 50;
+/** Eine Runde dauert so lange wie das Lied (Celestial Drift, 3:48) */
+const DURATION = Math.round((trackBeats as { duration: number }).duration);
 const UNITS = 50;
-/** Gesicherter Wert für 1/2/3 Sterne */
-const GOALS: Record<Level, [number, number, number]> = { 1: [14, 24, 34], 2: [12, 21, 30], 3: [10, 18, 26], 4: [9, 15, 22], 5: [8, 13, 20] };
+/** Gesicherter Wert für 1/2/3 Sterne – ursprünglich für 50 s, mit der Rundenlänge hochgerechnet */
+const GOALS_50: Record<Level, [number, number, number]> = { 1: [14, 24, 34], 2: [12, 21, 30], 3: [10, 18, 26], 4: [9, 15, 22], 5: [8, 13, 20] };
+const GOALS = Object.fromEntries(Object.entries(GOALS_50).map(([l, g]) => [l, g.map((v) => Math.round(v * (DURATION / 50) * 0.92))])) as Record<Level, [number, number, number]>;
 /** Andocken nur langsamer als (px/s) */
 const DOCK_SPEED = 120;
 /** Reinheit für eine „reine Ladung“ */
@@ -416,8 +418,9 @@ export class GasGame implements MiniGame {
     if (fs != null) this.funnel += clamp(fs - this.funnel, -1.2 * dt, 1.2 * dt);
     else if (this.size) this.funnel = clamp(this.funnel - this.size.ky * 1.1 * dt, 0, 1);
     // Sauger (größerer Trichter = tiefer und kräftiger) und Triebwerk nach Tempo
-    sustain('gas-suck', 'suction', 0.25 + 0.45 * this.funnel + (this.catching > 0 ? 0.2 : 0));
-    sustain('gas-engine', 'engine', Math.min(1, Math.hypot(this.vx, this.vy) / 270) * 0.8);
+    // kein Dauerrauschen mehr: die Musik steht im Vordergrund; das Triebwerk nur leise und nur bei Fahrt
+    const sp = Math.min(1, Math.hypot(this.vx, this.vy) / 270);
+    if (sp > 0.15) sustain('gas-engine', 'engine', sp * 0.35);
     // Fliegen: linker Stick, Trägheit; großer Trichter macht träge
     const maxV = 270 * (1 - 0.45 * this.funnel);
     const mx = this.auto ? this.auto.mx : this.move?.kx ?? 0, my = this.auto ? this.auto.my : this.move?.ky ?? 0;
@@ -798,6 +801,13 @@ export class GasGame implements MiniGame {
   private drawStreams(ctx: CanvasRenderingContext2D, t: number): void {
     const art = this.art!;
     // Strombett: breites, schwaches Leuchten entlang der Kurve; Ankündigung am Einstieg
+    const spans = new Map<Stream, [number, number]>();
+    for (const f of this.flakes) {
+      if (f.kind === 'spark') continue;
+      const sp = spans.get(f.s);
+      if (!sp) spans.set(f.s, [f.u, f.u]);
+      else { sp[0] = Math.min(sp[0], f.u); sp[1] = Math.max(sp[1], f.u); }
+    }
     for (const s of this.streams) {
       const col = s.kind === 'foreign' ? FOREIGN : s.kind === 'gold' ? GOLD : this.color;
       if (s.warn > 0) {
@@ -828,13 +838,16 @@ export class GasGame implements MiniGame {
         continue;
       }
       const fade = clamp(Math.min(s.life, 1.5) / 1.5, 0.15, 1);
+      // Strombett nur dort, wo schon Gas fließt – der Weg voraus bleibt unsichtbar
+      const span = spans.get(s);
+      if (!span) continue;
       ctx.save();
       ctx.globalCompositeOperation = s.kind === 'foreign' ? 'source-over' : 'lighter';
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.beginPath();
-      for (let i = 0; i <= 24; i++) {
-        const [x, y] = this.streamPoint(s, i / 24, 0);
+      for (let i = 0; i <= 16; i++) {
+        const [x, y] = this.streamPoint(s, span[0] + ((span[1] - span[0]) * i) / 16, 0);
         i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       }
       // Strombett leuchtet auf dem Schlag auf und schwillt mit dem Bass (nicht beim Fremdgas)
