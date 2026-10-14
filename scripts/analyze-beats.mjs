@@ -1,5 +1,5 @@
 // Musikstück analysieren und eine Taktkarte schreiben: Tempo (BPM), Zeitpunkt jedes Schlags, welche Schläge eine
-// „Eins“ sind (4/4), Lautstärkeverlauf getrennt nach Bass, Mitten und Höhen (15 Werte je Sekunde, 0–255) und
+// „Eins“ sind (4/4), wie kräftig jeder Schlag ist, Lautstärkeverlauf getrennt nach Bass, Mitten und Höhen (15 Werte je Sekunde, 0–255) und
 // Abschnitte nach Energie (ruhig, mittel, kräftig). Dekodiert wird im Browser (Web Audio), ohne weitere Werkzeuge.
 // node scripts/analyze-beats.mjs <stück.mp3> <ausgabe.json>
 import { chromium } from 'playwright';
@@ -69,6 +69,15 @@ const res = await page.evaluate(async (b64) => {
   const bassOn = (t) => { const fr = Math.round(t * fps); let s = 0; for (let k = -2; k <= 2; k++) { const j = fr + k; if (j > 0 && j < frames) s += Math.max(0, lg(eB[j]) - lg(eB[j - 1])); } return s; };
   const phaseScore = [0, 1, 2, 3].map((p) => beats.reduce((a, t, i) => a + (i % 4 === p ? bassOn(t) : 0), 0));
   const phase = phaseScore.indexOf(Math.max(...phaseScore));
+  // Stärke jedes Schlags (0–255, auf das 95. Perzentil normiert): wie kräftig dort wirklich angeschlagen wird –
+  // daraus blinkt die Grafik unterschiedlich hell (Doppelschläge, Betonungen, leise Takte)
+  const hitAt = (t) => { const fr = Math.round(t * fps); let s = 0; for (let k = -2; k <= 2; k++) { const j = fr + k; if (j >= 0 && j < frames) s = Math.max(s, on[j]); } return s; };
+  const rawHits = beats.map(hitAt);
+  const hs = [...rawHits].sort((x, y) => x - y), h95 = hs[Math.floor(hs.length * 0.95)] || 1;
+  const hits = rawHits.map((v) => Math.min(255, Math.round((v / h95) * 230)));
+  // Betonung je Taktposition (Mittel über alle Takte, stärkste = 1)
+  const groove = [0, 1, 2, 3].map((p) => { let s = 0, c = 0; for (let i = 0; i < beats.length; i++) if ((((i - phase) % 4) + 4) % 4 === p) { s += rawHits[i]; c++; } return s / Math.max(1, c); });
+  const gMax = Math.max(...groove) || 1;
   // Lautstärkeverlauf mit 15 Werten je Sekunde, je Band auf das 95. Perzentil normiert
   const rate = 15, step = fps / rate, len = Math.floor(frames / step);
   const env = (e) => {
@@ -90,7 +99,7 @@ const res = await page.evaluate(async (b64) => {
   for (const s of sections) { const last = merged[merged.length - 1]; if (last && s[0] - last[0] < 6) { last[1] = Math.max(last[1], s[1]); continue; } merged.push(s); }
   return {
     duration: +buf.duration.toFixed(3), bpm: +bpm.toFixed(2), downbeatPhase: phase,
-    beats: beats.map((t) => +t.toFixed(3)), rate,
+    beats: beats.map((t) => +t.toFixed(3)), hits, groove: groove.map((v) => +(v / gMax).toFixed(2)), rate,
     bass: env(eB), mid: env(eM), high: env(eH), sections: merged,
     top: scores.sort((a, b) => b[1] - a[1]).slice(0, 5).map(([b]) => b),
   };
@@ -98,4 +107,4 @@ const res = await page.evaluate(async (b64) => {
 await browser.close();
 const { top, ...out } = res;
 await writeFile(output, JSON.stringify(out));
-console.log(`${input}: ${out.duration} s, ${out.bpm} BPM (Kandidaten ${top.join(', ')}), ${out.beats.length} Schläge, Eins auf Phase ${out.downbeatPhase}, Abschnitte ${JSON.stringify(out.sections)}`);
+console.log(`${input}: ${out.duration} s, ${out.bpm} BPM (Kandidaten ${top.join(', ')}), ${out.beats.length} Schläge, Eins auf Phase ${out.downbeatPhase}, Betonung ${out.groove.join('/')}, Abschnitte ${JSON.stringify(out.sections)}`);

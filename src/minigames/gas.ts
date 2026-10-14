@@ -720,18 +720,33 @@ export class GasGame implements MiniGame {
     ctx.drawImage(this.bgCache, 0, 0, this.w, this.h);
   }
 
-  /** Nebel atmet mit dem Bass und leuchtet auf der „Eins“ auf; funkelnde Sterne aus den Höhen */
+  /**
+   * Nebel atmet mit dem Bass und blitzt so hell, wie die Musik anschlägt (Eins hell, Zwei kurz nach, Drei/Vier leise);
+   * die Takte wechseln sich ab – gerade Takte gehören dem Nebel, ungerade dem Glitzern der Flocken –, und jede
+   * Viertakt-Phrase beginnt mit einer weichen Lichtwelle. Dazu funkelnde Sterne aus den Höhen.
+   */
   private drawPulse(ctx: CanvasRenderingContext2D): void {
     const b = this.beat;
     if (b.index < 0) return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const a = 0.035 * b.bass + 0.06 * b.down + 0.025 * b.pulse + (b.level === 2 ? 0.02 : 0);
+    const nebula = b.bar % 2 === 0 ? 1 : 0.45;
+    const a = 0.035 * b.bass + 0.075 * b.flash * nebula + 0.04 * b.phrase + (b.level === 2 ? 0.02 : 0);
     const g = ctx.createRadialGradient(this.w / 2, this.h * 0.45, 0, this.w / 2, this.h * 0.45, Math.max(this.w, this.h) * 0.75);
     g.addColorStop(0, rgba(this.color, a));
     g.addColorStop(1, rgba(this.color, 0));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.w, this.h);
+    // Phrasenbeginn in lebhaften Abschnitten: Lichtring läuft von der Mitte nach außen
+    if (b.phrase > 0.05 && b.level > 0) {
+      const R = Math.max(this.w, this.h) * (0.15 + 0.75 * (1 - b.phrase)), cx = this.w / 2, cy = this.h * 0.45;
+      const ring = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, R);
+      ring.addColorStop(0, rgba(this.color, 0));
+      ring.addColorStop(0.7, rgba(this.color, 0.07 * b.phrase));
+      ring.addColorStop(1, rgba(this.color, 0));
+      ctx.fillStyle = ring;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
     for (const w of this.twinkles) {
       if (w.t < 0) continue;
       const k = Math.sin((w.t / 0.7) * Math.PI), r = w.s * (0.6 + k);
@@ -760,7 +775,7 @@ export class GasGame implements MiniGame {
     // Höhen funkeln: bei jedem neuen Schlag ein paar Sterne, je heller die Höhen, desto mehr
     if (b.index !== this.lastBeat) {
       this.lastBeat = b.index;
-      const n = Math.round(b.high * 2.5 + b.level * 0.5);
+      const n = Math.round((b.high * 2.5 + b.level * 0.5) * (b.inBar === 0 ? 1.5 : b.inBar === 1 ? 1 : 0.4));
       for (let k = 0; k < n; k++) this.twinkles.push({ x: Math.random() * this.w, y: TOP + Math.random() * (this.h - TOP), t: 0, s: 1 + Math.random() * 1.5 });
     }
     // kräftiger Abschnitt beginnt: Lichtschauer
@@ -852,7 +867,7 @@ export class GasGame implements MiniGame {
       }
       // Strombett leuchtet auf dem Schlag auf und schwillt mit dem Bass (nicht beim Fremdgas)
       const bt = s.kind === 'foreign' ? 0 : 1;
-      const glow = 1 + bt * (1.4 * this.beat.pulse + 0.8 * this.beat.down);
+      const glow = 1 + bt * (1.8 * this.beat.flash + 0.8 * this.beat.phrase);
       ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.035) * fade * glow);
       ctx.lineWidth = s.width * (1 + bt * 0.12 * this.beat.bass);
       ctx.stroke();
@@ -863,7 +878,8 @@ export class GasGame implements MiniGame {
     }
     // Flocken: Fremdgas trüb und deckend, Gas leuchtend
     ctx.save();
-    const bp = this.beat.pulse, gi = this.beat.index;
+    // Glitzer: in ungeraden Takten jede dritte Flocke, sonst jede fünfte (Gold jede zweite) – mit wechselnden Gruppen
+    const bp = this.beat.flash, gi = this.beat.index, every = this.beat.bar % 2 === 1 ? 3 : 5;
     for (const [fi, f] of this.flakes.entries()) {
       if (f.kind === 'spark') continue;
       const edge = Math.min(1, f.u * 8, (1 - f.u) * 8);
@@ -877,10 +893,9 @@ export class GasGame implements MiniGame {
         ctx.drawImage(art.clouds.foreign[f.v], -s / 2, -s / 2, s, s);
       } else {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.min(1, (f.kind === 'gold' ? 0.7 : 0.5) * edge * (1 + 0.35 * bp + 0.25 * this.beat.down));
+        ctx.globalAlpha = Math.min(1, (f.kind === 'gold' ? 0.7 : 0.5) * edge * (1 + 0.45 * bp + 0.2 * this.beat.phrase));
         ctx.drawImage((f.kind === 'gold' ? art.clouds.gold : art.clouds.gas)[f.v], -s / 2, -s / 2, s, s);
-        // Glitzern: auf jedem Schlag funkelt ein wechselndes Viertel der Flocken (Gold jede zweite) – klein und kurz
-        if (bp > 0.08 && (fi + gi) % (f.kind === 'gold' ? 2 : 4) === 0) {
+        if (bp > 0.08 && (fi + gi) % (f.kind === 'gold' ? 2 : every) === 0) {
           const r = Math.min(7, f.size * (0.06 + 0.1 * bp));
           ctx.globalAlpha = 0.55 * bp * edge;
           ctx.fillStyle = f.kind === 'gold' ? '#fff3c4' : '#ffffff';
