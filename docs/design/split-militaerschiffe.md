@@ -112,7 +112,9 @@ Ausgleich: Die Stärke des Schiffs (Haltbarkeit × Feuerkraft mit der gewählten
 - **L-Türme:** im Minispiel vier (zwei je Seite an den Schulterpanzern) – die Tabelle oben nennt 6 × L; noch zu prüfen.
   Werte der L-Türme fehlen: aus den M-Türmen gleicher Art abgeleitet (etwa dreifacher Schaden, mehr Reichweite,
   langsameres Schwenken). Schwenkbereich −25° (über den Bug) bis 140° bzw. 130° nach hinten.
-- **Hauptbatterie (4 × L):** aus der M-Version der gewählten Waffe abgeleitet – dreifacher Schaden, ¾ Takt, ¼ mehr Reichweite.
+- **Hauptbatterie (4 × L):** aus der M-Version der gewählten Waffe abgeleitet – dreifacher Schaden, ¾ Takt, 2,5-fache Reichweite
+  (höchstens 1.500 Spielpunkte). Dazu zwei eigene schwere Plasmawaffen (Schnellfeuer, Salve) ohne X4-Vorbild.
+- **Strahlenturm (M):** eigener Entwurf nach dem Strahlenemitter – Dauerstrahl, 120 Schaden pro Sekunde (X4-Maß).
 - **L-Schild:** 30 000, lädt 230/s nach 1,5 s (Annahme), dazu die 15 M-Schilde.
 - **L-Steuerdüsen:** achtfaches Drehmoment eines S-Schiffs (Annahme), sonst wäre der Zerstörer kaum zu lenken.
 - **Raketen:** Lager 160, aber kein Werfer – im Minispiel ohne Raketen.

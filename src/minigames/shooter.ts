@@ -10,7 +10,7 @@ import { sfx } from '../ui/sound';
 import { sustain } from '../audio/ambience';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
-import { DMG_SCALE, LTURRETS, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, weaponFits, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -337,6 +337,8 @@ export class ShooterGame implements MiniGame {
   private lTurType: LTurretId = 'plasma';
   /** Strahler: Strahlen dieses Bilds (von – bis) für die Darstellung */
   private beams: [number, number, number, number][] = [];
+  /** Strahlentürme: Strahlen dieses Bilds (von – bis) */
+  private tBeams: [number, number, number, number][] = [];
   private dashVx = 0;
   private dashVy = 0;
   private droneA = 0;
@@ -413,10 +415,12 @@ export class ShooterGame implements MiniGame {
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
     ];
     this.ship = SHIPS[lo.ship];
-    const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret];
+    // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
+    const wOk = weaponFits(WEAPONS[lo.weapon], SHIPS[lo.ship].gunSize);
+    const wd = WEAPONS[wOk ? lo.weapon : 'puls'], td = TURRETS[lo.turret];
     this.mods = cfg.mods ?? (cfg.loadout ? {} : modStats());
     this.wpn = gameGun(weaponGun(wd, this.ship.gunSize), wd);
-    this.wpnId = lo.weapon;
+    this.wpnId = wOk ? lo.weapon : 'puls';
     // Mods: schnellere Geschosse fliegen weiter (gleiche Flugzeit), Fokussierlinse verengt die Streuung
     const mv = 1 + this.m('velocity');
     this.wpn.speed *= mv;
@@ -445,7 +449,7 @@ export class ShooterGame implements MiniGame {
     // 2,5-Fachen zusätzlich zäher und gefährlicher – so bleibt der Kampf mit den Originalwerten fordernd
     const durability = (this.ship.hull + this.ship.shield) / 2;
     // Feuerkraft: Dauerleistung aller Bordkanonen und Türme (X4-Werte), zwei S-Pulslaser der Mamba = 1
-    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + this.ship.turrets.length * effectiveDps(td.gun) + this.pL.length * effectiveDps(ltd.gun)) / (2 * sustainedDps(WEAPONS.puls.s));
+    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + this.ship.turrets.length * effectiveDps(td.gun, td.beam) + this.pL.length * effectiveDps(ltd.gun)) / (2 * sustainedDps(WEAPONS.puls.s));
     // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger
     const power = Math.sqrt(durability * firepower) * Math.min(1, this.ship.speed);
     this.foeCount = clamp(power, 0.5, 2.5);
@@ -1144,6 +1148,7 @@ export class ShooterGame implements MiniGame {
       if (w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; this.reloadLeft = this.reloadMax = this.fireCd; this.reloading = true; }
     }
     this.updateTurrets(dt);
+    if (this.tBeams.length) sustain('turretBeam', 'beam', 0.45);
     this.updateLTurrets(dt);
     // Nachbrand: dringt zum Teil durch fremde Schilde (Annahme: 65 % statt 30 %)
     if (this.burns.length) {
@@ -1244,6 +1249,7 @@ export class ShooterGame implements MiniGame {
 
   /** Eigene Türme (Korvette): zielen frei mit Vorhalt – Raketen zuerst, sonst der nächste Gegner */
   private updateTurrets(dt: number): void {
+    this.tBeams = [];
     if (!this.pTur.length) return;
     const w = this.tw, range = w.range;
     const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
@@ -1259,9 +1265,22 @@ export class ShooterGame implements MiniGame {
         if (d < bd) { bd = d; tgt = e; }
       }
       if (!tgt) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
-      const lt = bd / w.speed;
+      const lt = w.beam ? 0 : bd / w.speed;
       const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
       t.a = wrapA(turnTo(t.a, want, dt * this.turTurn));
+      if (w.beam) {
+        // Dauerstrahl: trifft sofort, solange der Turm auf dem Ziel liegt (Schaden pro Sekunde wie die Bordstrahler)
+        if (Math.abs(wrapA(want - t.a)) > 0.08) continue;
+        const dps = (this.baseDmg * w.dmg) / TIME / this.tempo;
+        this.tBeams.push([x + Math.cos(t.a) * 6, y + Math.sin(t.a) * 6, tgt.x, tgt.y]);
+        if (this.eMissiles.includes(tgt as EMissile)) {
+          const m = tgt as EMissile;
+          m.hp -= dps * dt;
+          if (m.hp <= 0) { this.explode(m.x, m.y, '#ff8a5c', 0.5, false); this.gain(30, m.x, m.y, 'Raketen abgeschossen'); }
+        } else this.damageEnemy(tgt as Enemy, dps * dt, 0.3);
+        if (Math.random() < 0.3) this.fx.add({ x: tgt.x, y: tgt.y, color: '#bffff6', size: 1.4, max: 0.15 });
+        continue;
+      }
       if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < 0.15) {
         for (let p = 0; p < w.pellets; p++) {
           const a = t.a + (this.r() - 0.5) * 2 * w.jitter;
@@ -1912,6 +1931,24 @@ export class ShooterGame implements MiniGame {
         ctx.stroke();
         ctx.strokeStyle = rgba('#ffffff', 0.95 * k);
         ctx.lineWidth = 1.2 + 1.2 * k;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // Strahlentürme: dünner, flackernder Dauerstrahl
+    if (this.tBeams.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (const [x1, y1, x2, y2] of this.tBeams) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = rgba(this.tw.color, 0.28);
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        ctx.strokeStyle = rgba('#e8ffff', 0.75 + 0.25 * Math.random());
+        ctx.lineWidth = 1.2;
         ctx.stroke();
       }
       ctx.restore();

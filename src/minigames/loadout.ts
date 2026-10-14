@@ -2,8 +2,8 @@
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
 export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'dragon' | 'cobra' | 'klapperschlange' | 'argon';
-export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson';
-export type TurretId = 'puls' | 'neutron' | 'tau' | 'plasma' | 'boson';
+export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'schnellplasma' | 'plasmasalve';
+export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson';
 /** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
 export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron';
 export type ShieldId = 'leicht' | 'schwer';
@@ -208,16 +208,18 @@ export const SHIP_IDS = Object.keys(SHIPS) as ShipId[];
  * Salve bzw. Magazin (Schüsse, 0 = Dauerfeuer) und Pause danach (s), Geschosstempo (m/s), Flugzeit (s),
  * Streuung (Grad). Strahl: Schaden pro Sekunde.
  */
-export interface X4Gun { dmg: number; rate: number; amt: number; mag: number; reload: number; v: number; life: number; angle: number }
+export interface X4Gun { dmg: number; rate: number; amt: number; mag: number; reload: number; v: number; life: number; angle: number; /** Strahl: Reichweite in Spielpunkten (sonst 416) */ beamRange?: number }
 
 export interface WeaponDef {
   name: string;
-  /** Split-eigene Waffe oder allgemeine Waffe (von vielen Völkern gebaut) */
-  group: 'split' | 'allgemein';
+  /** Split-eigene Waffe, allgemeine Waffe (von vielen Völkern gebaut) oder schwere Waffe nur für L-Waffenplätze */
+  group: 'split' | 'allgemein' | 'schwer';
   desc: string;
   /** Werte für S- und M-Waffenplätze */
   s: X4Gun;
   m: X4Gun;
+  /** eigene Werte für L-Waffenplätze (sonst aus der M-Version abgeleitet) */
+  l?: X4Gun;
   /** Strahl statt Geschossen; haftende Geschosse mit Nachbrand (Thermal-Desintegrator); Lanze: trifft sofort als Blitzstrahl */
   beam?: boolean;
   sticky?: boolean;
@@ -227,6 +229,9 @@ export interface WeaponDef {
   color: string;
   w: number;
 }
+
+/** X4-Takt, der im Minispiel einen Schuss pro Sekunde ergibt (Spielzeit je X4-Sekunde, siehe TIME) */
+const TIME_RATE = 0.26 * 6;
 
 // Annahmen, wo die Daten nichts hergeben (siehe docs/design/split-militaerschiffe.md):
 // – Plasmakanone: die Nachladezeit fehlt; sie feuert so schnell, wie ihre Kühlung es erlaubt (Hitze ÷ Kühlung).
@@ -288,24 +293,52 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     s: { dmg: 750, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.55, angle: 0.23 },
     m: { dmg: 1150, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.59, angle: 0.23 },
   },
+  // Schwere Hauptbatterie (nur L): eigene Entwürfe ohne X4-Vorbild. Takt so gewählt, dass im Minispiel etwa ein Schuss
+  // pro Sekunde fällt (Schnellfeuer) bzw. drei Schuss in einer Sekunde, dann drei Sekunden Pause (Salve).
+  schnellplasma: {
+    name: 'Schnellfeuer-Plasmakanone', group: 'schwer', color: '#a6ff6b', w: 5,
+    desc: 'Schwere Plasmakugeln im Sekundentakt, ohne Nachladen – große Reichweite, schneller als die normale Plasmakanone.',
+    s: { dmg: 900, rate: TIME_RATE, amt: 1, mag: 0, reload: 0, v: 1500, life: 7.3, angle: 0.5 },
+    m: { dmg: 900, rate: TIME_RATE, amt: 1, mag: 0, reload: 0, v: 1500, life: 7.3, angle: 0.5 },
+    l: { dmg: 900, rate: TIME_RATE, amt: 1, mag: 0, reload: 0, v: 1500, life: 7.3, angle: 0.5 },
+  },
+  plasmasalve: {
+    name: 'Plasma-Salvenkanone', group: 'schwer', color: '#c8ff6b', w: 5,
+    desc: 'Drei schwere Plasmakugeln kurz hintereinander, dann drei Sekunden nachladen – viel Wucht auf einen Schlag.',
+    s: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * 1), v: 1500, life: 7.3, angle: 0.4 },
+    m: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * 1), v: 1500, life: 7.3, angle: 0.4 },
+    l: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * 1), v: 1500, life: 7.3, angle: 0.4 },
+  },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
 /**
  * Werte einer Waffe für eine Platzgröße. L-Hauptbatterie (Zerstörer): die Daten fehlen noch – Annahme: aus der
- * M-Version abgeleitet, dreifacher Schaden je Geschoss, etwas langsamerer Takt und ein Viertel mehr Reichweite.
+ * M-Version abgeleitet, dreifacher Schaden je Geschoss, etwas langsamerer Takt und 2,5-fache Reichweite (höchstens
+ * 1.500 Spielpunkte – etwa wie der schwere Bosonenlanzen-Turm); Nahkampfwaffen bleiben so kürzer als Plasma.
  */
 export function weaponGun(w: WeaponDef, size: GunSize): X4Gun {
   if (size !== 'l') return w[size];
+  if (w.l) return w.l;
   const m = w.m;
-  return { ...m, dmg: m.dmg * 3, rate: m.rate * 0.75, life: m.life * 1.25 };
+  if (w.beam) return { ...m, dmg: m.dmg * 3, beamRange: 416 * 2.5 };
+  const reach = m.v * m.life * RANGE_SCALE;
+  return { ...m, dmg: m.dmg * 3, rate: m.rate * 0.75, life: m.life * Math.min(2.5, L_MAX_RANGE / reach) };
+}
+
+/** Waffe passt auf diesen Waffenplatz (schwere Waffen nur auf L-Plätze) */
+export function weaponFits(w: WeaponDef, size: GunSize): boolean {
+  return w.group !== 'schwer' || size === 'l';
 }
 
 /** Split-Türme (M) für Korvette und Fregatte – Werte aus den Spieldaten 9.0 (Drehtempo in Grad pro Sekunde) */
-export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean }
+export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean }
 export const TURRETS: Record<TurretId, TurretDef> = {
   puls: { name: 'Pulsturm', desc: 'Schnell schwenkend und genau, wenig Schaden – gut gegen Raketen und Jäger.', turn: 180, color: '#7ffff0', w: 2,
     gun: { dmg: 18, rate: 3.8, amt: 1, mag: 8, reload: 2.4, v: 5000, life: 0.7, angle: 0.17 } },
+  // Strahlenturm: wie der Strahlenemitter (M) als Dauerstrahl; trifft sofort, solange er auf dem Ziel liegt
+  strahl: { name: 'Strahlenturm', desc: 'Dauerstrahl: trifft sofort, solange er auf dem Ziel liegt – wenig Schaden pro Sekunde, aber nie daneben; gut gegen Jäger und Raketen.', turn: 150, color: '#9ffcff', w: 2, beam: true,
+    gun: { dmg: 120, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0 } },
   neutron: { name: 'Neutronen-Gatling-Turm', desc: 'Langer Dauerstrom, dann acht Sekunden nachladen.', turn: 140, color: '#ff8a3d', w: 2,
     gun: { dmg: 18, rate: 18, amt: 1, mag: 80, reload: 8, v: 2500, life: 1.4, angle: 0.45 } },
   tau: { name: 'Tau-Beschleuniger-Turm', desc: 'Vier Geschosse je Schuss, kurze Reichweite.', turn: 160, color: '#ff5a5a', w: 2.2,
@@ -357,8 +390,10 @@ export const TIME = 0.26 * 6;
 export const DMG_SCALE = (0.5 / 0.26) * TIME / sustainedDps(WEAPONS.puls.s);
 /** Reichweite: 3500 m Pulslaser = 416 Bildpunkte; Geschosstempo verdichtet (Wurzel), sonst wären Plasma zu langsam und Bosonen zu schnell */
 const RANGE_SCALE = 416 / 3500;
+/** größte Reichweite der L-Hauptbatterie (Spielpunkte) */
+const L_MAX_RANGE = 1500;
 export function gameSpeed(v: number): number { return 640 * Math.sqrt(v / 5000); }
-export function gameRange(g: X4Gun, beam = false): number { return beam ? 416 : g.v * g.life * RANGE_SCALE; }
+export function gameRange(g: X4Gun, beam = false): number { return beam ? g.beamRange ?? 416 : g.v * g.life * RANGE_SCALE; }
 
 export interface ShieldDef { name: string; desc: string; cap: number; regen: number; delay: number }
 export const SHIELDS: Record<ShieldId, ShieldDef> = {
@@ -386,7 +421,7 @@ function valid(l: Partial<Record<keyof Loadout, string>> | null | undefined): Lo
   const weapon = OLD[l?.weapon ?? ''] ?? l?.weapon, turret = OLD[l?.turret ?? ''] ?? l?.turret;
   return {
     ship: l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship,
-    weapon: weapon && weapon in WEAPONS ? (weapon as WeaponId) : DEFAULT_LOADOUT.weapon,
+    weapon: weapon && weapon in WEAPONS && weaponFits(WEAPONS[weapon as WeaponId], SHIPS[l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship].gunSize) ? (weapon as WeaponId) : DEFAULT_LOADOUT.weapon,
     turret: turret && turret in TURRETS ? (turret as TurretId) : DEFAULT_LOADOUT.turret,
     shield: l?.shield && l.shield in SHIELDS ? (l.shield as ShieldId) : DEFAULT_LOADOUT.shield,
     lturret: l?.lturret && l.lturret in LTURRETS ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,

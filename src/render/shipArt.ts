@@ -218,6 +218,8 @@ const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; p
 /** Name des Turmbilds, dessen Farbe am besten zum Rumpf des Schiffs passt (ohne Laden – auch für Tests) */
 export function turretArtName(type: string, shipBase: string): string | null {
   const hull = HULL[shipBase] ?? HULL['split-jaeger-s'];
+  // Strahlenturm: noch ohne eigenes Bild – schlankes Rohr wie der Pulsturm
+  if (type === 'strahl') type = 'puls';
   let best: string | null = null, bd = Infinity;
   for (const t of TURRET_ART) {
     if (t.type !== type) continue;

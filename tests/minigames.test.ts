@@ -966,3 +966,40 @@ describe('Wertung: Sterne und Punkte nachvollziehbar', () => {
     expect(r.breakdown!.some(([k]) => k === 'Abschüsse')).toBe(true);
   }, 30000);
 });
+
+describe('Schwere Hauptbatterie und Strahlenturm', () => {
+  it('L-Hauptbatterie reicht mindestens doppelt so weit wie M (höchstens 1.500)', async () => {
+    const { WEAPONS: W8, WEAPON_IDS: IDS, weaponGun, gameRange } = await import('../src/minigames/loadout');
+    for (const id of IDS) {
+      const w = W8[id];
+      if (w.group === 'schwer') continue;
+      const m = gameRange(w.m, w.beam), l = gameRange(weaponGun(w, 'l'), w.beam);
+      expect(l).toBeGreaterThanOrEqual(Math.min(2 * m, 1400));
+      expect(l).toBeLessThanOrEqual(1501);
+    }
+  });
+
+  it('schwere Waffen nur auf L-Plätzen; die Salve feuert drei Schuss, dann Pause', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'mamba', weapon: 'plasmasalve', turret: 'puls', shield: 'leicht' } }, 'xenon');
+    expect((g as unknown as { wpnId: string }).wpnId).toBe('puls');
+    const k = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'klapperschlange', weapon: 'plasmasalve', turret: 'puls', shield: 'leicht' } }, 'xenon');
+    k.resize(W, H);
+    const a = k as unknown as { wpn: { mag: number; interval: number; reload: number; range: number } };
+    expect(a.wpn.mag).toBe(3);
+    expect(a.wpn.interval).toBeCloseTo(1 / 3, 2);
+    expect(a.wpn.reload).toBeCloseTo(3, 2);
+    expect(a.wpn.range).toBeGreaterThan(1100);
+  });
+
+  it('Strahlenturm trifft als Dauerstrahl', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'cobra', weapon: 'puls', turret: 'strahl', shield: 'leicht' } }, 'xenon');
+    g.resize(W, H);
+    const a = g as unknown as { px: number; py: number; enemies: { x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; tBeams: unknown[] };
+    for (let i = 0; i < 2000 && !a.enemies.length; i++) g.update(DT);
+    const e = a.enemies[0];
+    let beams = 0;
+    for (let i = 0; i < 120; i++) { e.x = a.px + 150; e.y = a.py; e.vx = e.vy = 0; e.hp = e.max = 1e6; a.enemies.length = 0; a.enemies.push(e); g.update(DT); beams += a.tBeams.length ? 1 : 0; }
+    expect(beams).toBeGreaterThan(30);
+    expect(e.hp).toBeLessThan(1e6);
+  });
+});

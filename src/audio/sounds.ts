@@ -231,6 +231,9 @@ const GUNS: Record<string, { s: string; rate: number; gain: number; w: number; f
   tau: { s: 'es-tau', rate: 1, gain: 0.55, w: 0.12, f: 75, len: 0.2, dur: 1.1 },
   thermal: { s: 'es-thermal', rate: 0.96, gain: 0.55, w: 0.12, f: 80, len: 0.16 },
   boson: { s: 'es-boson', rate: 0.95, gain: 0.6, w: 0.1, f: 60, len: 0.25, dur: 1.3 },
+  // schwere Plasmawaffen der L-Hauptbatterie: tiefer als die normale Plasmakanone
+  schnellplasma: { s: 'es-plasma', rate: 0.8, gain: 0.6, w: 0.16, f: 60, len: 0.22, dur: 0.9 },
+  plasmasalve: { s: 'es-plasma', rate: 0.74, gain: 0.62, w: 0.18, f: 55, len: 0.24, dur: 0.8 },
 };
 
 /**
