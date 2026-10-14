@@ -79,8 +79,8 @@ export function beatAt(map: BeatMap, t: number, decay = 7): Beat {
   const pos = i - map.downbeatPhase, inBar = ((pos % 4) + 4) % 4, bar = Math.floor(pos / 4);
   const down = i >= 0 && inBar === 0 ? pulse : 0;
   // Stärke des Schlags aus der Musik (ohne Messung: mittlere Betonung der Taktposition)
-  const strength = i < 0 ? 0 : map.hits ? (map.hits[i] ?? 0) / 255 : (map.groove?.[inBar] ?? 1);
-  const flash = i < 0 ? 0 : Math.exp(-since * FLASH_DECAY[inBar]) * FLASH_WEIGHT[inBar] * Math.pow(strength, 1.3);
+  const strength = i < 0 ? 0 : map.hits ? Math.min(1, (map.hits[i] ?? 0) / 200) : (map.groove?.[inBar] ?? 1);
+  const flash = i < 0 ? 0 : Math.exp(-since * FLASH_DECAY[inBar]) * FLASH_WEIGHT[inBar] * Math.pow(strength, 1.1);
   const phrase = i >= 0 && inBar === 0 && bar % 4 === 0 ? Math.exp(-since * 2.2) * Math.max(0.4, strength) : 0;
   const s = lastAtOrBefore(map.sections as unknown as number[], t, (k) => map.sections[k][0]);
   return {

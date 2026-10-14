@@ -505,7 +505,7 @@ export class GasGame implements MiniGame {
         this.sparksCaught++;
         this.charge += 0.15;
         this.fx.burst(f.x, f.y, SPARK, 6, 120, 1.2, 'spark', 0.25);
-        sfx.hit();
+        sfx.zap(this.charge, (this.x / this.w) * 2 - 1);
         if (this.charge >= 1) this.overload();
         continue;
       }
@@ -742,8 +742,8 @@ export class GasGame implements MiniGame {
     if (b.index < 0) return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const nebula = b.bar % 2 === 0 ? 1 : 0.45;
-    const a = 0.035 * b.bass + 0.075 * b.flash * nebula + 0.04 * b.phrase + (b.level === 2 ? 0.02 : 0);
+    const nebula = b.bar % 2 === 0 ? 1 : 0.6;
+    const a = 0.045 * b.bass + 0.17 * b.flash * nebula + 0.08 * b.phrase + (b.level === 2 ? 0.03 : 0);
     const g = ctx.createRadialGradient(this.w / 2, this.h * 0.45, 0, this.w / 2, this.h * 0.45, Math.max(this.w, this.h) * 0.75);
     g.addColorStop(0, rgba(this.color, a));
     g.addColorStop(1, rgba(this.color, 0));
@@ -754,7 +754,7 @@ export class GasGame implements MiniGame {
       const R = Math.max(this.w, this.h) * (0.15 + 0.75 * (1 - b.phrase)), cx = this.w / 2, cy = this.h * 0.45;
       const ring = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, R);
       ring.addColorStop(0, rgba(this.color, 0));
-      ring.addColorStop(0.7, rgba(this.color, 0.07 * b.phrase));
+      ring.addColorStop(0.7, rgba(this.color, 0.12 * b.phrase));
       ring.addColorStop(1, rgba(this.color, 0));
       ctx.fillStyle = ring;
       ctx.fillRect(0, 0, this.w, this.h);
@@ -983,7 +983,7 @@ export class GasGame implements MiniGame {
       }
       // Strombett leuchtet auf dem Schlag auf und schwillt mit dem Bass (nicht beim Fremdgas)
       const bt = s.kind === 'foreign' ? 0 : 1;
-      const glow = 1 + bt * (1.8 * this.beat.flash + 0.8 * this.beat.phrase);
+      const glow = 1 + bt * (2.6 * this.beat.flash + 1.0 * this.beat.phrase);
       ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.035) * fade * glow);
       ctx.lineWidth = s.width * (1 + bt * 0.12 * this.beat.bass);
       ctx.stroke();

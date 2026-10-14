@@ -292,6 +292,22 @@ function hit(pan = 0): void {
   });
 }
 
+/**
+ * Funke eingefangen (Gasströme): leises elektrisches Knistern – zwei, drei feine Knackser im hohen Bereich und ein
+ * zarter, kurzer Summton; level (0–1, Ladung des Sammlers) hebt den Ton etwas an, damit man das Aufladen hört
+ */
+function zap(level = 0, pan = 0): void {
+  if (!gate('zap', 70)) return;
+  play('sfx', { pan: pan * 0.5, verb: 0.12, gain: 0.8 }, (g, o, t) => {
+    const out = filt(g, o, 'lowpass', 7000);
+    const n = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) noise(g, out, { t: t + i * vary(0.022, 0.3), type: 'bandpass', f: vary(5200, 0.2), q: 4, a: 0.0005, d: vary(0.012, 0.3), gain: 0.18 });
+    const f = vary(880 + 440 * Math.min(1, level), 0.04);
+    tone(g, out, { type: 'triangle', f, to: f * 0.92, t, a: 0.003, d: 0.07, gain: 0.2 });
+    tone(g, out, { f: f * 2.01, t: t + 0.005, a: 0.002, d: 0.04, gain: 0.05 });
+  });
+}
+
 /** Explosion nach Größe: fünf Aufnahmen von klein bis groß, Boss mit langem Nachgrollen */
 function explosion(size = 1, pan = 0): void {
   const s = Math.max(0.3, Math.min(4, size));
@@ -448,7 +464,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, turretShot, heavyShot, enemyShot, missile, hit, explosion, shield, hull, alarm, boss, pickup, fail,
+  shot, turretShot, heavyShot, enemyShot, missile, hit, zap, explosion, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 
@@ -465,7 +481,7 @@ export const SOUND_DEMO: [string, () => void][] = [
   ['Schiff startet', launch], ['Andocken', dock], ['Auftrag angenommen', accept],
   ['Puls-Laser', () => shot('puls')], ['Bolzen', () => shot('bolzen')], ['Splitter', () => shot('schrot')], ['Plasma', () => shot('plasma')],
   ['Neutron', () => shot('neutron')], ['Tau', () => shot('tau')], ['Thermal', () => shot('thermal')], ['Boson', () => shot('boson')], ['Gegnerschuss', () => enemyShot()], ['Rakete', missile],
-  ['Treffer', () => hit()], ['Explosion klein', () => explosion(0.6)], ['Explosion groß', () => explosion(3)], ['Schild', shield], ['Hülle', hull],
+  ['Treffer', () => hit()], ['Funke', () => zap(0.5)], ['Explosion klein', () => explosion(0.6)], ['Explosion groß', () => explosion(3)], ['Schild', shield], ['Hülle', hull],
   ['Neue Welle', alarm], ['Boss', boss], ['Aufsammeln', pickup], ['Niederlage', fail],
   ['Strahlwaffe', demoLoop('es-strahl-schleife')], ['Bergbaulaser', demoLoop('es-bergbaulaser-schleife')], ['Triebwerk', demoLoop('es-triebwerk-schleife')], ['Traktorstrahl', demoLoop('es-traktorstrahl')],
   ['Gestein bricht', crack], ['Kristall', crystal], ['Ventil', valve], ['Fluss', flow], ['Schub', boost], ['Tor', chime], ['Steuerdüse', () => thrust()], ['Container', place],
