@@ -185,7 +185,7 @@ const ENDLESS_GOALS: GoalDef[] = [
 export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS];
 
 /** Zoomstufen des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick); per Taste wählbar, wird gemerkt */
-const ZOOMS = [0.72, 0.58, 0.46, 0.36];
+const ZOOMS = [1.2, 0.95, 0.72, 0.58, 0.46, 0.36, 0.27, 0.2];
 const ZOOM_KEY = 'x4-sektorbau-kampfzoom';
 function readZoom(): number {
   try {
@@ -1800,8 +1800,10 @@ export class ShooterGame implements MiniGame {
     if (this.outcome !== 'freighter') { this.drawFreighter(ctx, t); this.drawFreighterTurrets(ctx); }
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
     this.drawBeams(ctx, t);
+    // Geschosse über den Schiffen: die Türme liegen oben auf dem Rumpf, ihre Schüsse fliegen darüber hinweg
+    if (this.outcome !== 'player') this.drawPlayer(ctx, t);
     this.drawShots(ctx);
-    if (this.outcome !== 'player') { this.drawPlayer(ctx, t); this.drawLock(ctx); }
+    if (this.outcome !== 'player') this.drawLock(ctx);
     this.fx.draw(ctx);
     this.floats.draw(ctx);
     ctx.restore();
@@ -1865,6 +1867,25 @@ export class ShooterGame implements MiniGame {
   }
 
   private drawShots(ctx: CanvasRenderingContext2D): void {
+    // Bosonenlanze: kurz aufblitzender Strahl (über den Schiffen, wie die Geschosse)
+    if (this.rails.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (const r of this.rails) {
+        const k = r.t / 0.22;
+        ctx.beginPath();
+        ctx.moveTo(r.x1, r.y1);
+        ctx.lineTo(r.x2, r.y2);
+        ctx.strokeStyle = rgba(r.color, 0.45 * k);
+        ctx.lineWidth = 2 + 7 * k;
+        ctx.stroke();
+        ctx.strokeStyle = rgba('#ffffff', 0.95 * k);
+        ctx.lineWidth = 1.2 + 1.2 * k;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
@@ -2346,25 +2367,6 @@ export class ShooterGame implements MiniGame {
       ctx.arc(dx, dy, 4.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-    }
-    // Bosonenlanze: kurz aufblitzender Strahl
-    if (this.rails.length) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.lineCap = 'round';
-      for (const r of this.rails) {
-        const k = r.t / 0.22;
-        ctx.beginPath();
-        ctx.moveTo(r.x1, r.y1);
-        ctx.lineTo(r.x2, r.y2);
-        ctx.strokeStyle = rgba(r.color, 0.45 * k);
-        ctx.lineWidth = 2 + 7 * k;
-        ctx.stroke();
-        ctx.strokeStyle = rgba('#ffffff', 0.95 * k);
-        ctx.lineWidth = 1.2 + 1.2 * k;
-        ctx.stroke();
-      }
-      ctx.restore();
     }
     // Strahler: Strahlen unter dem Schiff
     if (this.beams.length) {
