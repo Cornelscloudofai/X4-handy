@@ -149,6 +149,7 @@ export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameRe
 function close(r: GameResult | null): void {
   const s = cur;
   if (!s) return;
+  s.game.phase?.('end');
   cancelAnimationFrame(s.raf);
   s.root.remove();
   cur = null;
@@ -251,6 +252,7 @@ function setPhase(p: Phase): void {
   const s = cur;
   if (!s) return;
   s.phase = p;
+  s.game.phase?.(p === 'play' ? 'play' : p === 'end' ? 'end' : 'pause');
   const layer = s.root.querySelector<HTMLElement>('.mg-layer')!;
   s.root.classList.toggle('playing', p === 'play');
   if (p === 'play') {

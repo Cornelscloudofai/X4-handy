@@ -7,6 +7,7 @@ import { drawFighterVector } from '../minigames/shooter';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
+import { musicFx } from '../audio/rhythm';
 import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
 
 let vectorUrl = '';
@@ -1515,7 +1516,9 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const tabs = `<div class="segment mg-tabs">${([['games', 'Spiele'], ['daily', 'Täglich'], ['combat', 'Kampf']] as const).map(([id, l]) => `<button class="${tab === id ? 'on' : ''}" ${act('mg-tab', { tab: id })}>${l}</button>`).join('')}</div>`;
       const gamesTab = `<p class="lead">Zum Ausprobieren. Jede zweite Runde bringt eine Besonderheit mit mehr Punkten; Nebenziele geben Abzeichen. Mit Sternen schaltest du je Spiel Stufe 4 und 5 frei.</p>
         <div class="section"><h3>Schwierigkeit</h3><div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${m.level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div></div>
-        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>`;
+        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>
+        <div class="section"><h3>Musik-Effekte</h3><div class="segment">${([true, false] as const).map((on) => `<button class="${musicFx() === on ? 'on' : ''}" ${act('mg-musicfx', { on: on ? '1' : '0' })}>${on ? 'An' : 'Aus'}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">Gasströme mit eigener Musik: Gasflocken glitzern auf dem Schlag, der Nebel atmet mit dem Bass, im kräftigen Teil ein Lichtschauer. Bei „Bewegung reduzieren“ bleibt alles ruhig.</p></div>`;
       const dailyTab = `<div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
         <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>`;
       const combatTab = `<div class="section"><h3>Dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SHIPS[loadout().ship].name)} – ${esc(SHIPS[loadout().ship].role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div>${icon('chev', 20, 'chev')}</div></div></div>

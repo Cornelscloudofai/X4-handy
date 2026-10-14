@@ -38,6 +38,7 @@ import { initLifecycle, meterPeak, preloadSamples, renderOffline, setLevel, setM
 import { nextMood, renderMood, setNear, setScene, setSectorMood } from '../audio/ambience';
 import { SOUND_DEMO } from '../audio/sounds';
 import { sceneChanged as musicScene } from '../audio/music';
+import { setMusicFx } from '../audio/rhythm';
 import { initDragLists, isDragging } from './dragList';
 import { defaultSellModal, shipClass } from './sellView';
 import { buyOffers, defaultBuyModal } from './buyView';
@@ -1020,6 +1021,11 @@ function onClick(e: MouseEvent): void {
       case 'mg-back': ui.modal = lastMg ?? { type: 'minigames', level: 1, gear: 1, tab: 'combat' }; refresh(); break;
       case 'mg-controls': {
         setControlMode(d.mode as ControlMode);
+        refresh();
+        break;
+      }
+      case 'mg-musicfx': {
+        setMusicFx(d.on === '1');
         refresh();
         break;
       }

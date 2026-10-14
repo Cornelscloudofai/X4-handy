@@ -8,6 +8,10 @@
 import { WARES } from '../data/wares';
 import { sfx } from '../ui/sound';
 import { sustain } from '../audio/ambience';
+import { playGameTrack, type GameTrack } from '../audio/music';
+import { beatAt, musicFx, NO_BEAT, type Beat, type BeatMap } from '../audio/rhythm';
+import trackUrl from '../assets/music/gas-celestial-drift.mp3';
+import trackBeats from '../assets/music/gas-celestial-drift.beats.json';
 import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
@@ -148,6 +152,13 @@ export class GasGame implements MiniGame {
   private stun = 0;
   private shake = 0;
   private flash = 0;
+  /** Musik und ihr Takt: Gasflocken glitzern auf dem Schlag, der Nebel atmet mit dem Bass, Höhen funkeln als Sterne */
+  private track: GameTrack | null = null;
+  private beatClock = 0;
+  private beat: Beat = NO_BEAT;
+  private lastBeat = -1;
+  private lastLevel = 0;
+  private twinkles: { x: number; y: number; t: number; s: number }[] = [];
   private nextGas = 0;
   private nextForeign = 4;
   private nextGold = 14;
@@ -393,6 +404,7 @@ export class GasGame implements MiniGame {
       return;
     }
     this.time += dt;
+    this.beatClock += dt;
     this.score.update(dt);
     this.stun = Math.max(0, this.stun - dt);
     this.dockWarn = Math.max(0, this.dockWarn - dt);
@@ -705,9 +717,64 @@ export class GasGame implements MiniGame {
     ctx.drawImage(this.bgCache, 0, 0, this.w, this.h);
   }
 
+  /** Nebel atmet mit dem Bass und leuchtet auf der „Eins“ auf; funkelnde Sterne aus den Höhen */
+  private drawPulse(ctx: CanvasRenderingContext2D): void {
+    const b = this.beat;
+    if (b.index < 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const a = 0.035 * b.bass + 0.06 * b.down + 0.025 * b.pulse + (b.level === 2 ? 0.02 : 0);
+    const g = ctx.createRadialGradient(this.w / 2, this.h * 0.45, 0, this.w / 2, this.h * 0.45, Math.max(this.w, this.h) * 0.75);
+    g.addColorStop(0, rgba(this.color, a));
+    g.addColorStop(1, rgba(this.color, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.w, this.h);
+    for (const w of this.twinkles) {
+      if (w.t < 0) continue;
+      const k = Math.sin((w.t / 0.7) * Math.PI), r = w.s * (0.6 + k);
+      ctx.fillStyle = rgba('#ffffff', 0.55 * k);
+      ctx.beginPath();
+      ctx.moveTo(w.x, w.y - r * 2); ctx.lineTo(w.x + r * 0.35, w.y); ctx.lineTo(w.x, w.y + r * 2); ctx.lineTo(w.x - r * 0.35, w.y); ctx.closePath();
+      ctx.moveTo(w.x - r * 2, w.y); ctx.lineTo(w.x, w.y + r * 0.35); ctx.lineTo(w.x + r * 2, w.y); ctx.lineTo(w.x, w.y - r * 0.35); ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Musik: startet mit dem Spiel, pausiert mit ihm und blendet am Ende aus */
+  phase(p: 'play' | 'pause' | 'end'): void {
+    if (p === 'play') { if (this.track) this.track.resume(); else this.track = playGameTrack(trackUrl, 0.8); }
+    else if (p === 'pause') this.track?.pause();
+    else { this.track?.stop(3); this.track = null; }
+  }
+
+  /** Taktwerte für dieses Bild (aus, wenn Musik-Effekte abgeschaltet sind oder Bewegung reduziert ist) */
+  private updateBeat(dt: number): void {
+    const calm = typeof document !== 'undefined' && document.documentElement.classList.contains('calm');
+    if (!musicFx() || calm) { this.beat = NO_BEAT; return; }
+    this.beat = beatAt(trackBeats as unknown as BeatMap, this.track?.time() ?? this.beatClock);
+    const b = this.beat;
+    // Höhen funkeln: bei jedem neuen Schlag ein paar Sterne, je heller die Höhen, desto mehr
+    if (b.index !== this.lastBeat) {
+      this.lastBeat = b.index;
+      const n = Math.round(b.high * 2.5 + b.level * 0.5);
+      for (let k = 0; k < n; k++) this.twinkles.push({ x: Math.random() * this.w, y: TOP + Math.random() * (this.h - TOP), t: 0, s: 1 + Math.random() * 1.5 });
+    }
+    // kräftiger Abschnitt beginnt: Lichtschauer
+    if (b.level === 2 && this.lastLevel < 2 && b.sectionT < 1) for (let k = 0; k < 18; k++) this.twinkles.push({ x: Math.random() * this.w, y: TOP + Math.random() * (this.h - TOP), t: -Math.random() * 0.8, s: 1.2 + Math.random() * 1.6 });
+    this.lastLevel = b.level;
+    for (const w of this.twinkles) w.t += dt;
+    this.twinkles = this.twinkles.filter((w) => w.t < 0.7);
+  }
+
+  private lastDraw = 0;
+
   draw(ctx: CanvasRenderingContext2D, now: number): void {
     const t = now / 1000;
+    this.updateBeat(this.lastDraw ? Math.min(0.1, t - this.lastDraw) : 0.016);
+    this.lastDraw = t;
     this.drawBackground(ctx);
+    this.drawPulse(ctx);
     if (!this.art) this.makeArt();
     ctx.save();
     if (this.shake > 0 && !document.documentElement.classList.contains('calm')) ctx.translate((Math.random() - 0.5) * 9 * this.shake, (Math.random() - 0.5) * 9 * this.shake);
@@ -770,17 +837,21 @@ export class GasGame implements MiniGame {
         const [x, y] = this.streamPoint(s, i / 24, 0);
         i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       }
-      ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.035) * fade);
-      ctx.lineWidth = s.width;
+      // Strombett leuchtet auf dem Schlag auf und schwillt mit dem Bass (nicht beim Fremdgas)
+      const bt = s.kind === 'foreign' ? 0 : 1;
+      const glow = 1 + bt * (1.4 * this.beat.pulse + 0.8 * this.beat.down);
+      ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.035) * fade * glow);
+      ctx.lineWidth = s.width * (1 + bt * 0.12 * this.beat.bass);
       ctx.stroke();
-      ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.05) * fade);
+      ctx.strokeStyle = rgba(col, (s.kind === 'foreign' ? 0.05 : 0.05) * fade * glow);
       ctx.lineWidth = s.width * 0.35;
       ctx.stroke();
       ctx.restore();
     }
     // Flocken: Fremdgas trüb und deckend, Gas leuchtend
     ctx.save();
-    for (const f of this.flakes) {
+    const bp = this.beat.pulse, gi = this.beat.index;
+    for (const [fi, f] of this.flakes.entries()) {
       if (f.kind === 'spark') continue;
       const edge = Math.min(1, f.u * 8, (1 - f.u) * 8);
       ctx.save();
@@ -793,8 +864,18 @@ export class GasGame implements MiniGame {
         ctx.drawImage(art.clouds.foreign[f.v], -s / 2, -s / 2, s, s);
       } else {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = (f.kind === 'gold' ? 0.7 : 0.5) * edge;
+        ctx.globalAlpha = Math.min(1, (f.kind === 'gold' ? 0.7 : 0.5) * edge * (1 + 0.35 * bp + 0.25 * this.beat.down));
         ctx.drawImage((f.kind === 'gold' ? art.clouds.gold : art.clouds.gas)[f.v], -s / 2, -s / 2, s, s);
+        // Glitzern: auf jedem Schlag funkelt ein wechselndes Viertel der Flocken (Gold jede zweite) – klein und kurz
+        if (bp > 0.08 && (fi + gi) % (f.kind === 'gold' ? 2 : 4) === 0) {
+          const r = Math.min(7, f.size * (0.06 + 0.1 * bp));
+          ctx.globalAlpha = 0.55 * bp * edge;
+          ctx.fillStyle = f.kind === 'gold' ? '#fff3c4' : '#ffffff';
+          ctx.beginPath();
+          ctx.moveTo(0, -r * 2); ctx.lineTo(r * 0.3, 0); ctx.lineTo(0, r * 2); ctx.lineTo(-r * 0.3, 0); ctx.closePath();
+          ctx.moveTo(-r * 2, 0); ctx.lineTo(0, r * 0.3); ctx.lineTo(r * 2, 0); ctx.lineTo(0, -r * 0.3); ctx.closePath();
+          ctx.fill();
+        }
       }
       ctx.restore();
     }

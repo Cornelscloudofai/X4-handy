@@ -64,7 +64,61 @@ onSoundscapeStart(() => {
   void playTitle();
 });
 
-/** Im Minispiel tritt die Titelmusik zurück */
+/** Im Minispiel tritt die Titelmusik zurück; außerhalb endet die Minispielmusik */
 export function sceneChanged(scene: string): void {
   if (scene === 'minigame') stopTrack(2);
+  else gameTrack?.stop(2);
+}
+
+/** Musik eines Minispiels: läuft in Schleife, lässt sich anhalten und fortsetzen und kennt ihre Position im Stück */
+export interface GameTrack {
+  /** Position im Stück (s) – null, solange es noch lädt oder der Ton aus ist */
+  time(): number | null;
+  pause(): void;
+  resume(): void;
+  stop(fade?: number): void;
+}
+
+let gameTrack: GameTrack | null = null;
+
+export function playGameTrack(url: string, level = 0.8): GameTrack {
+  gameTrack?.stop(0.5);
+  let src: AudioBufferSourceNode | null = null, out: GainNode | null = null, buf: AudioBuffer | null = null;
+  let t0 = 0, offset = 0, paused = false, stopped = false;
+  const c = liveContext();
+  const begin = (from: number) => {
+    const g = graph();
+    if (!g || !buf || stopped) return;
+    out = voiceOut(g, 'music', {});
+    src = g.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(out);
+    const t = g.ctx.currentTime + 0.05;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.exponentialRampToValueAtTime(level, t + 1.2);
+    src.start(t, from % buf.duration);
+    t0 = t - (from % buf.duration);
+  };
+  const halt = (fade: number) => {
+    const g = liveContext();
+    if (!src || !out || !g) return;
+    out.gain.cancelScheduledValues(g.currentTime);
+    out.gain.setTargetAtTime(0, g.currentTime, fade / 3);
+    src.stop(g.currentTime + fade + 0.2);
+    src = null;
+    out = null;
+  };
+  const track: GameTrack = {
+    time: () => (src && c && buf ? (c.currentTime - t0) % buf.duration : paused ? offset : null),
+    pause: () => { if (!src || !c || !buf) { paused = true; return; } offset = (c.currentTime - t0) % buf.duration; paused = true; halt(0.3); },
+    resume: () => { if (!paused) return; paused = false; begin(offset); },
+    stop: (fade = 1.5) => { stopped = true; halt(fade); if (gameTrack === track) { gameTrack = null; setTrackActive(false); } },
+  };
+  gameTrack = track;
+  if (settings.on && c) {
+    setTrackActive(true);
+    void load(url).then((b) => { buf = b; if (b && !paused) begin(0); });
+  }
+  return track;
 }

@@ -98,6 +98,8 @@ export interface MiniGame {
   result(): GameResult | null;
   /** Ergebnis bei vorzeitigem Abbruch */
   abort(): GameResult;
+  /** Rahmen meldet Spielen, Pause und Ende (z. B. für die Musik) */
+  phase?(p: 'play' | 'pause' | 'end'): void;
 }
 
 /** Zufallszahlen mit Startwert (mulberry32) */
