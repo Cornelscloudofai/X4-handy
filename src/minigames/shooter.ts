@@ -38,6 +38,8 @@ interface Enemy {
   /** Laserstrahl: Restzeit (aufladen, dann feuern), Richtung, angesammelter Schaden am Frachter */
   beamT?: number; beamA?: number; beamAcc?: number;
   shielded: boolean;
+  /** Großziel mitten in einer Welle (kleinere Fregatte bzw. K-Segment), kein Endboss */
+  mini?: boolean;
   inside?: boolean;
 }
 /** Waffe in Spielwerten (aus den X4-Werten umgerechnet) */
@@ -239,8 +241,8 @@ export class ShooterGame implements MiniGame {
   get rules(): Rules {
     const bounty = this.mutator?.id === 'bounty' ? ' (Kopfgeld: ×1,5)' : '';
     const foes = this.side === 'pirate'
-      ? `Abschüsse: Jäger 100, Raketenboot 200, Kanonenboot und Schildträger 250, Geschützturm 200, Fregatte 1.500${bounty}`
-      : `Abschüsse: Xenon N 60, Xenon M und Schirmdrohne 250, Geschützturm 200, K-Segment 1.500${bounty}`;
+      ? `Abschüsse: Jäger 100, Raketenboot 200, Kanonenboot und Schildträger 250, Geschützturm 200, Fregatte 1.500 (als Großziel mitten in der Welle 750)${bounty}`
+      : `Abschüsse: Xenon N 60, Xenon M und Schirmdrohne 250, Geschützturm 200, K-Segment 1.500 (als Großziel 750)${bounty}`;
     return {
       stars: this.mode === 'endless'
         ? ['4 Wellen überstehen', '7 Wellen überstehen', '10 Wellen überstehen']
@@ -248,6 +250,7 @@ export class ShooterGame implements MiniGame {
       points: [
         foes,
         'Abgeschossene Rakete 30, gesprengte Mine 20',
+        'Stärkeres Schiff: Gegner bleiben gleich stark, es kommen aber mehr, in mehr Gruppen, schwerere Typen, Großziele und eine längere Route – mehr Punkte',
         this.mode === 'endless' ? 'Jede überstandene Welle: 300 × Wellennummer' : 'Am Sprungtor: 1.000 fürs Ankommen, dazu bis 2.000 nach Frachter-Hülle (100 % = 2.000)',
         'Kombo: jeder Abschuss kurz nach dem letzten erhöht den Faktor um 0,5 (bis ×6); nach 2,5 s ohne Abschuss fällt er auf ×1',
         ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
@@ -324,7 +327,12 @@ export class ShooterGame implements MiniGame {
   private ammo = 0;
   /** Gegner bei starken Schiffen: Anzahl (Faktor) sowie Hülle und Schaden (Faktor) */
   private foeCount = 1;
-  private foeMul = 1;
+  /** Stärke des eigenen Schiffs (Mamba = 1): bestimmt Menge und Mischung der Gegner, nicht ihre Werte */
+  private power = 1;
+  /** Jäger, die gleichzeitig auf dich anfliegen dürfen (die übrigen kreisen in Abstand) */
+  private attackCap = 2;
+  /** Wellen bis zum Sprungtor: große Schiffe fliegen eine längere Route */
+  private nWaves = NORMAL_WAVES;
   /** Türme des eigenen Schiffs: Pause und Richtung */
   private pTur: { cd: number; a: number; mag: number }[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
@@ -452,8 +460,12 @@ export class ShooterGame implements MiniGame {
     const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + this.ship.turrets.length * effectiveDps(td.gun, td.beam) + this.pL.length * effectiveDps(ltd.gun)) / (2 * sustainedDps(WEAPONS.puls.s));
     // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger
     const power = Math.sqrt(durability * firepower) * Math.min(1, this.ship.speed);
-    this.foeCount = clamp(power, 0.5, 2.5);
-    this.foeMul = Math.max(1, power / this.foeCount);
+    // Gegner haben feste Werte (nur die Stufe macht sie zäher). Ein starkes Schiff bekommt dafür mehr Gegner,
+    // mehr Gruppen gleichzeitig, eine schwerere Mischung, Großziele mitten in der Welle und eine längere Route.
+    this.power = power;
+    this.foeCount = clamp(Math.sqrt(power), 0.6, 3.6);
+    this.attackCap = clamp(Math.round(1 + Math.sqrt(power)), 2, 6);
+    this.nWaves = NORMAL_WAVES + (power >= 3.5 ? 1 : 0) + (power >= 10 ? 1 : 0);
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
     this.score = new Score(this.mutator?.mult ?? 1, 6);
@@ -495,10 +507,10 @@ export class ShooterGame implements MiniGame {
    * einer Fregatte hinaus (Gegnerfaktor 2) trifft der gesteigerte Gegnerschaden ihn nicht (sonst hätte der Zerstörer
    * keine Chance, ihn zu schützen).
    */
-  private get fScale(): number { return Math.min(this.foeMul, 2) / this.foeMul; }
-  private get enemyDmg(): number { return (this.level >= 5 ? 1.3 : this.level >= 3 ? 1.15 : 1) * this.foeMul; }
-  private get totalWaves(): number { return this.mode === 'endless' ? Infinity : NORMAL_WAVES; }
-  private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : i === NORMAL_WAVES - 1; }
+  private get fScale(): number { return 1; }
+  private get enemyDmg(): number { return this.level >= 5 ? 1.3 : this.level >= 3 ? 1.15 : 1; }
+  private get totalWaves(): number { return this.mode === 'endless' ? Infinity : this.nWaves; }
+  private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : i === this.nWaves - 1; }
 
   resize(w: number, h: number): void {
     const first = this.w === 1;
@@ -508,7 +520,7 @@ export class ShooterGame implements MiniGame {
     // große Karte, unabhängig vom Bildschirm: der Frachter fliegt von unten nach oben zum Tor
     if (first) {
       this.WW = MAP_W;
-      this.WH = MAP_PAD * 2 + LEG * (this.mode === 'endless' ? 5 : NORMAL_WAVES);
+      this.WH = MAP_PAD * 2 + LEG * (this.mode === 'endless' ? 5 : this.nWaves);
       this.fX = this.WW / 2;
       this.fY = this.fGoal = this.WH - MAP_PAD;
       this.px = this.fX;
@@ -751,6 +763,9 @@ export class ShooterGame implements MiniGame {
     const pool: EKind[] = this.side === 'pirate'
       ? (i === 0 ? ['jaeger'] : i === 1 ? ['jaeger', 'jaeger', 'rakete', 'schild'] : ['jaeger', 'jaeger', 'rakete', 'kanone', 'schild'])
       : (i === 0 ? ['n'] : i === 1 ? ['n', 'n', 'm', 'xs'] : ['n', 'n', 'm', 'xs']);
+    // starke Schiffe: schwerere Mischung (mehr Kanonen-/Raketenboote bzw. Xenon M), ab der ersten Welle
+    const heavy = this.side === 'pirate' ? (['kanone', 'rakete'] as EKind[]) : (['m'] as EKind[]);
+    for (let h = 0; h < Math.min(4, Math.floor((this.power - 1) / 2.5)); h++) pool.push(...heavy);
     const out: EKind[] = [];
     let shields = 0;
     while (budget > 0.9) {
@@ -759,6 +774,14 @@ export class ShooterGame implements MiniGame {
       if (k === 'schild' || k === 'xs') shields++;
       out.push(k);
       budget -= SPEC[k].cost;
+    }
+    // nicht zu viele auf einmal: statt immer mehr kleiner Jäger lieber größere Schiffe
+    const small: EKind = this.side === 'pirate' ? 'jaeger' : 'n';
+    while (out.length > 34) {
+      const a = out.indexOf(small), b = out.indexOf(small, a + 1);
+      if (a < 0 || b < 0) break;
+      out.splice(b, 1);
+      out[a] = heavy[Math.floor(this.r() * heavy.length)];
     }
     return out;
   }
@@ -785,7 +808,8 @@ export class ShooterGame implements MiniGame {
     } else {
       // Gegner in zwei bis drei Gruppen aus verschiedenen Richtungen; die späteren kommen einige Sekunden danach
       const kinds = this.waveKinds(this.wave);
-      const groups = kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1;
+      // starke Schiffe: mehr Gruppen (jede mit eigenen Anflügen), die von mehr Seiten kommen
+      const groups = Math.min(6, (kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1) + Math.max(0, Math.floor(Math.sqrt(this.power)) - 1));
       const per = Math.ceil(kinds.length / groups);
       const first = Math.floor(this.r() * 5);
       for (let g = 0; g < groups; g++) {
@@ -793,9 +817,12 @@ export class ShooterGame implements MiniGame {
         if (!part.length) continue;
         const from = (first + g * 2) % 5;
         if (g === 0) this.spawnGroup(part, from);
-        else this.reinforce.push({ t: 6 + g * 5 + this.r() * 3, kinds: part, from });
+        else this.reinforce.push({ t: 6 + g * (groups > 3 ? 3.5 : 5) + this.r() * 3, kinds: part, from });
       }
-      this.bannerText = this.mode === 'endless' ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${NORMAL_WAVES}`;
+      // Großziele mitten in der Welle (ab Fregatten-Stärke): eine kleinere Fregatte bzw. ein K-Segment mit Türmen
+      const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : this.power >= 3.5 && this.wave >= 1 ? 1 : 0;
+      for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5) });
+      this.bannerText = this.mode === 'endless' ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${this.nWaves}`;
       this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
@@ -815,7 +842,7 @@ export class ShooterGame implements MiniGame {
 
   private makeEnemy(kind: EKind, x: number, y: number): Enemy {
     const s = SPEC[kind];
-    const hp = s.hp * HP_MUL[this.level] * this.foeMul * (this.mode === 'endless' ? 1 + this.wave * 0.06 : 1);
+    const hp = s.hp * HP_MUL[this.level] * (this.mode === 'endless' ? 1 + this.wave * 0.06 : 1);
     return { kind, x, y, vx: 0, vy: 0, hp, max: hp, cd: 1 + this.r() * 1.5, r: s.r, target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
   }
 
@@ -831,18 +858,22 @@ export class ShooterGame implements MiniGame {
     }
   }
 
-  private spawnBoss(): void {
-    // weit voraus auf der Route
-    const b = this.makeEnemy('boss', this.fX + (this.r() - 0.5) * 400, Math.max(120, this.fY - 1100));
-    b.ang = Math.PI / 2;
-    b.hp = b.max = SPEC.boss.hp * HP_MUL[this.level] * this.foeMul * (this.mode === 'endless' ? 1 + this.wave * 0.05 : 1);
+  /** Boss weit voraus auf der Route – oder als Großziel (mini) mitten in einer Welle aus einer Anflugrichtung */
+  private spawnBoss(mini = false, from = 0): void {
+    const [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120, this.fY - 1100)];
+    const b = this.makeEnemy('boss', x, y);
+    b.ang = mini ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
+    b.hp = b.max = SPEC.boss.hp * HP_MUL[this.level] * (mini ? 0.55 : 1) * (this.mode === 'endless' ? 1 + this.wave * 0.05 : 1);
     b.r = 34;
+    b.mini = mini;
     this.enemies.push(b);
-    const offs: [number, number, ('laser' | 'plasma')?][] = this.side === 'pirate'
+    const all: [number, number, ('laser' | 'plasma')?][] = this.side === 'pirate'
       // auf den drei Sockeln im Bild der Fregatte (Flügelenden links/rechts, Heckmitte); ab Stufe 4 ein vierter auf dem Bug
       ? [[-53, 4], [54, 4], [0, 30], ...(this.level >= 4 ? [[0, -40] as [number, number]] : [])]
       // auf den vier Sockeln des K-Segments: Laser auf den Flügeln, Plasma auf Bug und Heck
       : [[-61, 17, 'laser'], [61, 17, 'laser'], [0, -46, 'plasma'], [0, 39, 'plasma']];
+    // Großziel: nur die beiden Flügeltürme
+    const offs = mini ? all.slice(0, 2) : all;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
       t.parent = b; t.ox = ox; t.oy = oy; t.weapon = weapon;
@@ -850,7 +881,7 @@ export class ShooterGame implements MiniGame {
       if (weapon) t.cd = 1.5 + this.r() * 2;
       this.enemies.push(t);
     }
-    this.bossT = 0;
+    if (!mini) this.bossT = 0;
   }
 
   /** Punkt im Abschnitt um die Route voraus, nicht direkt auf Frachter oder Jäger */
@@ -907,14 +938,16 @@ export class ShooterGame implements MiniGame {
     this.waveT += dt;
     if (this.bossT >= 0) this.bossT += dt;
     this.updateFreighter(dt);
-    const due = this.reinforce.find((g) => this.waveT >= g.t);
+    // höchstens rund 45 Gegner zugleich – weitere Gruppen warten, bis Platz ist
+    const due = this.enemies.length < 45 ? this.reinforce.find((g) => this.waveT >= g.t) : undefined;
     if (this.pendingSpawn >= 0) {
       this.pendingSpawn -= dt;
       if (this.pendingSpawn < 0) { this.pendingSpawn = -1; this.spawnWave(); }
     } else if (due) {
-      this.spawnGroup(due.kinds, due.from);
+      if (due.kinds[0] === 'boss') this.spawnBoss(true, due.from);
+      else this.spawnGroup(due.kinds, due.from);
       this.reinforce = this.reinforce.filter((g) => g !== due);
-      this.floats.add(this.px, this.py - 40, 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
+      this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? 'Piratenfregatte im Anflug!' : 'K-Segment im Anflug!') : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
       sfx.alarm();
     } else if (this.wave >= 0 && this.enemies.length === 0 && !this.reinforce.length) {
       // Welle besiegt
@@ -1422,7 +1455,9 @@ export class ShooterGame implements MiniGame {
           sp = s.speed * 1.15;
         } else {
           const attackers = onP ? this.enemies.filter((q) => q !== e && q.target === 'p' && (q.kind === 'jaeger' || q.kind === 'n') && (q.runT ?? 0) > 0).length : 0;
-          if (onP && attackers >= 2 && d < 420) {
+          // je Gruppe höchstens zwei zugleich, insgesamt je nach Stärke deines Schiffs mehr (mehr Gruppen = mehr Druck)
+          const mates = onP && e.grp != null ? this.enemies.filter((q) => q !== e && q.grp === e.grp && q.target === 'p' && (q.runT ?? 0) > 0).length : 0;
+          if (onP && (attackers >= this.attackCap || mates >= 2) && d < 420) {
             // warten: seitlich um den Jäger kreisen
             want = Math.atan2(dy, dx) + e.dir * (d < 260 ? 2.1 : 1.4);
             sp = s.speed * 0.8;
@@ -1722,8 +1757,8 @@ export class ShooterGame implements MiniGame {
     if (!byPlayer) return;
     this.kills++;
     this.score.bump(0.5, 2.5);
-    this.gain(SPEC[e.kind].pts * (this.mutator?.id === 'bounty' ? 1.5 : 1), e.x, e.y, e.kind === 'boss' ? 'Boss' : e.kind === 'turret' ? 'Geschütztürme' : 'Abschüsse');
-    if (e.kind === 'boss') {
+    this.gain(SPEC[e.kind].pts * (e.mini ? 0.5 : 1) * (this.mutator?.id === 'bounty' ? 1.5 : 1), e.x, e.y, e.kind === 'boss' ? (e.mini ? 'Großziele' : 'Boss') : e.kind === 'turret' ? 'Geschütztürme' : 'Abschüsse');
+    if (e.kind === 'boss' && !e.mini) {
       this.bossKills++;
       setGoal(this.goals, 'boss30', this.bossT < 30);
       this.bossT = -1;
@@ -2772,11 +2807,11 @@ export class ShooterGame implements MiniGame {
       ctx.fillText(`WELLE ${Math.max(1, this.wave + 1)}${this.isBossWave(Math.max(0, this.wave)) ? ' · BOSS' : ''}`, x, y);
     } else {
       ctx.fillText('STRECKE', x, y);
-      for (let i = 0; i < NORMAL_WAVES; i++) {
+      for (let i = 0; i < this.nWaves; i++) {
         const bx = x + 58 + i * 26;
         const doneW = i < this.wave || (i === this.wave && this.enemies.length === 0 && this.wave >= 0);
         ctx.fillStyle = doneW ? '#5ff0d8' : i === this.wave ? '#ffb547' : 'rgba(110,220,205,0.2)';
-        if (i === NORMAL_WAVES - 1) { ctx.beginPath(); ctx.arc(bx + 8, y - 4, 5, 0, Math.PI * 2); ctx.fill(); }
+        if (i === this.nWaves - 1) { ctx.beginPath(); ctx.arc(bx + 8, y - 4, 5, 0, Math.PI * 2); ctx.fill(); }
         else ctx.fillRect(bx, y - 6, 20, 4);
       }
     }
