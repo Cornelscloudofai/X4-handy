@@ -2,6 +2,17 @@
 
 Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 
+## Gasströme: tanzende Gassammeldrohnen zum Höhepunkt des Liedes (vorgemerkt)
+
+- „Celestial Drift“ klingt verspielt und tänzerisch; im letzten Drittel liegt der Höhepunkt des Liedes.
+- Zu diesem Zeitpunkt (genaue Sekunde liefert der Spieler nach) erscheinen **zwei Gassammeldrohnen** im Bild:
+  fliegen auf das eigene Schiff zu, umkreisen es, entfernen sich etwas, tänzeln miteinander herum, fliegen verspielt
+  umher und verschwinden dann wieder.
+- Reine Begleitung/Show, passend zur Musik (Bewegung ggf. an Takt und Lautstärke aus der Taktkarte koppeln).
+- Offen: nur bei diesem Lied (an den Liedzeitpunkt gebunden) oder als zufälliges Ereignis; bei anderen Liedern im
+  Gas-Minispiel soll es nicht (bzw. nicht so) passieren. Ob die Drohnen Einfluss aufs Spiel haben (z. B. kleiner
+  Bonus) oder nur Zierde sind.
+
 ## Radio auf der Sektorkarte (vorgemerkt)
 
 - Neben dem generativen Klangteppich (Ambiente, bleibt Standard) ein **Radio** mit eigenen Liedern für die Sektorkarte
