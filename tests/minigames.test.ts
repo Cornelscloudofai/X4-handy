@@ -1293,6 +1293,28 @@ describe('Kampf: Raketen, Raketenarten und der Bomber Wolf', () => {
     expect(t.cd).toBeGreaterThan(2);
   });
 
+  it('Lenkung auf Abfangkurs: Lenkraketen treffen ein quer fliegendes Ziel zügig, statt es zu umkreisen', () => {
+    for (const [missile, maxT] of [['lenk', 2.5], ['stoer', 2.5]] as const) {
+      const g = make({ ship: 'wolf', missile });
+      const e = dummy(g, 'jaeger', -300, -500);
+      // Ziel fliegt quer mit Jäger-Tempo
+      const hits: number[] = [];
+      g.fireMissiles();
+      const n0 = g.missiles.length;
+      let t = 0;
+      for (let i = 0; i < 400 && g.missiles.length; i++) {
+        e.x += 180 * DT;
+        e.vx = 180; e.vy = 0;
+        const before = g.missiles.length;
+        g.update(DT);
+        t += DT;
+        for (let k = g.missiles.length; k < before; k++) hits.push(t);
+      }
+      expect(hits.length, missile).toBe(n0);
+      expect(Math.max(...hits), missile).toBeLessThan(maxT);
+    }
+  });
+
   it('Wolf ist wählbar und gilt als S-Schiff mit Bild-Werferlagen', async () => {
     const { SHIPS } = await import('../src/minigames/loadout');
     expect(SHIP_IDS).toContain('wolf');

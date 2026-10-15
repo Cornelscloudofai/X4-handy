@@ -1957,10 +1957,19 @@ export class ShooterGame implements MiniGame {
       if (m.target && !this.enemies.includes(m.target)) m.target = this.enemies.find((e) => !(e.kind === 'boss' && e.shielded)) ?? null;
       if (m.target) {
         const dx = m.target.x - m.x, dy = m.target.y - m.y, d = Math.hypot(dx, dy) || 1;
-        m.vx += (dx / d) * m.def.acc * dt;
-        m.vy += (dy / d) * m.def.acc * dt;
-        const v = Math.hypot(m.vx, m.vy);
-        if (v > m.def.v) { m.vx *= m.def.v / v; m.vy *= m.def.v / v; }
+        // Lenkung: die Rakete dreht ihren Flugvektor (begrenzte Drehrate) auf den Abfangpunkt – dort, wo das Ziel
+        // ankommt, wenn sie es erreicht – statt nur dorthin zu beschleunigen (das ließ sie um das Ziel kreisen)
+        let v = Math.hypot(m.vx, m.vy) || 1;
+        const t = Math.min(2, d / Math.max(200, v));
+        const ix = m.target.x + m.target.vx * t - m.x, iy = m.target.y + m.target.vy * t - m.y;
+        const cur = Math.atan2(m.vy, m.vx), err = wrapA(Math.atan2(iy, ix) - cur);
+        const turn = m.def.turn * (m.mini ? 1.3 : 1) * dt;
+        const na = cur + clamp(err, -turn, turn);
+        // weit vom Kurs (Ziel seitlich oder hinter ihr): Gas weg, damit der Wendekreis enger wird
+        const want = Math.abs(err) > 1.2 ? m.def.v * 0.55 : m.def.v;
+        v = v < want ? Math.min(want, v + m.def.acc * dt) : Math.max(want, v - m.def.acc * 1.5 * dt);
+        m.vx = Math.cos(na) * v;
+        m.vy = Math.sin(na) * v;
         // Schwarmrakete trifft erst als Lenkköpfe (vorher fliegt sie durch)
         if (d < m.target.r + 4 && m.split == null) { this.missileHit(m, m.target); continue; }
       }
