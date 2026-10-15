@@ -20,8 +20,12 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 
 ## Kampf-Minispiel: offene Punkte
 
-- Gegnerstärke mit dem Entwicklungswerkzeug (Minispiele → Kampf, Version 181) kalibrieren; gefundene Faktoren danach
-  fest in ENEMY_HULL/ENEMY_SHIELD übernehmen und das Werkzeug ggf. ausblenden.
+- Gegnerstärke: Entwicklungswerkzeug (Minispiele → Kampf und Pausenmenü, ×0,25–×100) bleibt vorerst; Entscheidung,
+  wie die Stärke am Ende gelöst wird, ergibt sich beim Spielen. Bekannt: in X4 haben Gegner dieselben Werte wie
+  Spielerschiffe; Umrechnung 1 X4-Schaden = 0,0287 Spielpunkte (Mamba 3.600 Hülle → 103, S-Schild 740 → 21).
+  Gemessen an X4 sind kleine Gegner etwa ×3, M-Gegner etwa ×6–9 zu schwach. Möglicher Weg: je Gegnertyp ein X4-Schiff
+  zuordnen (Piratenjäger ≈ Mamba, Kanonenboot ≈ Cobra, Xenon-Werte nachschlagen), Regler als Feinabstimmung;
+  dann Gegnerzahl/Wellen und Rundendauer mitprüfen.
 - Verdoppelte L-Schadensstufe der Schnellfeuerwaffen ggf. zurücknehmen.
 - Eigenes Bild für den Strahlenturm (Prompt schreiben).
 
