@@ -12,6 +12,8 @@ import { HIGHWAY_GOALS, HIGHWAY_MUTATORS, HighwayGame } from './highway';
 import { ORBIT_GOALS, ORBIT_MUTATORS, OrbitGame } from './orbit';
 import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
 import { earnParts, partsFor } from './mods';
+import { setEnemyTune } from './loadout';
+import { refreshTunePanel, tunePanel } from './tunePanel';
 import { artPic } from '../ui/menuArt';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, totalStars, UNLOCK, type RecordOutcome } from './records';
 
@@ -187,6 +189,15 @@ function bindInput(s: Session): void {
   const up = (e: PointerEvent) => s.game.pointerUp(e.pointerId, ...pos(e));
   s.canvas.addEventListener('pointerup', up);
   s.canvas.addEventListener('pointercancel', up);
+  // Entwicklungswerkzeug im Pausenmenü des Kampfs: Regler wirken sofort auf alle Gegner im Feld
+  s.root.addEventListener('input', (e) => {
+    const el = e.target as HTMLInputElement;
+    if (el.dataset?.change !== 'enemy-tune' || !(s.game instanceof ShooterGame)) return;
+    setEnemyTune({ [el.dataset.key === 'shield' ? 'shield' : 'hull']: Math.round(Number(el.value) * 100) / 100 });
+    s.game.retune();
+    refreshTunePanel(s.root, s.cfg.level);
+    e.stopPropagation();
+  });
   s.root.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-mg]');
     if (!b || cur !== s) return;
@@ -196,6 +207,13 @@ function bindInput(s: Session): void {
       case 'pause': if (s.phase === 'play') setPhase('pause'); break;
       case 'quit': close(s.phase === 'end' ? s.result : null); break;
       case 'abort': finish(s, s.game.abort()); break;
+      case 'tune-reset': {
+        setEnemyTune({ hull: 1, shield: 1 });
+        if (s.game instanceof ShooterGame) s.game.retune();
+        for (const r of s.root.querySelectorAll<HTMLInputElement>('input[data-change="enemy-tune"]')) r.value = '1';
+        refreshTunePanel(s.root, s.cfg.level);
+        break;
+      }
       case 'again': {
         const { kind, opts, onDone, replay } = s;
         onDone?.(s.result);
@@ -275,6 +293,7 @@ function setPhase(p: Phase): void {
       <div class="mg-actions"><button class="btn ghost" data-mg="quit">Zurück</button><button class="btn primary" data-mg="start">Start</button></div></div>`;
   } else if (p === 'pause') {
     layer.innerHTML = `<div class="mg-card"><small class="eyebrow">Pause</small><h2>${esc(g.title)}</h2>
+      ${g instanceof ShooterGame ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
       ${rulesBox(g.rules, s.kind, mode, true)}
       <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button></div></div>`;

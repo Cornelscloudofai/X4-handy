@@ -3,12 +3,13 @@ import { wareIcon, wareMark } from './wareIcons';
 import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } from '../minigames/host';
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
 import type { Level } from '../minigames/common';
-import { drawFighterVector, enemyStatTable } from '../minigames/shooter';
+import { drawFighterVector } from '../minigames/shooter';
+import { tunePanel } from '../minigames/tunePanel';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { musicFx } from '../audio/rhythm';
-import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, enemyTune, TUNE_MIN, TUNE_MAX, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
+import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1913,17 +1914,10 @@ export { SPEEDS };
 
 /** Entwicklungswerkzeug im Kampf-Reiter: Hülle und Schild aller Gegner stufenlos skalieren, mit den Werten, die im Spiel herauskommen */
 function tuneSection(level: 1 | 2 | 3 | 4 | 5): string {
-  const t = enemyTune();
-  const fmt = (v: number) => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const slider = (key: 'hull' | 'shield', label: string) => `<div class="tune-row"><span class="tune-label">${label}</span>
-    <input type="range" min="${TUNE_MIN}" max="${TUNE_MAX}" step="0.05" value="${t[key]}" data-change="enemy-tune" data-key="${key}" aria-label="${label}-Faktor">
-    <b class="tune-val">×${fmt(t[key])}</b></div>`;
-  const rows = enemyStatTable(level, t).map((r) => `<tr><td>${esc(r.name)}</td><td>${Math.round(r.hp)}</td><td>${Math.round(r.sh)}</td><td>${Math.round(r.hp + r.sh)}</td></tr>`).join('');
-  return `<div class="section"><h3>Entwicklung: Gegnerstärke</h3>
-    ${slider('hull', 'Hülle')}${slider('shield', 'Schild')}
-    <div class="small muted" style="margin:10px 0 4px">Werte im Spiel auf Stufe</div>
-    <div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div>
-    <table class="tune-table"><thead><tr><th>Gegner</th><th>Hülle</th><th>Schild</th><th>Zusammen</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="small muted" style="margin:8px 0 0">Gilt ab der nächsten Runde für alle Gegner (auch Boss, Großziele und Geschütztürme). Im Endlos-Modus kommen je Welle +6 % dazu (Boss +5 %). Der Schild lädt nach 3 s ohne Treffer mit 25 % je Sekunde nach.</p>
-    ${t.hull !== 1 || t.shield !== 1 ? `<button class="btn" style="margin-top:8px" ${act('mg-tune-reset')}>Auf ×1 zurücksetzen</button>` : ''}</div>`;
+  return tunePanel(level, {
+    levelPicker: `<div class="small muted" style="margin:10px 0 4px">Werte im Spiel auf Stufe</div>
+    <div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div>`,
+    reset: act('mg-tune-reset'),
+    note: 'Gilt sofort, auch mitten im Kampf: im Pausenmenü stehen dieselben Regler. Im Endlos-Modus kommen je Welle +6 % dazu (Boss +5 %). Der Schild lädt nach 3 s ohne Treffer mit 25 % je Sekunde nach.',
+  });
 }

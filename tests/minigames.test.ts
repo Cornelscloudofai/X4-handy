@@ -1053,4 +1053,24 @@ describe('Entwicklungswerkzeug Gegnerstärke', () => {
     expect(enemyTune()).toEqual({ hull: 1, shield: 1 });
     if (!had) delete (globalThis as { localStorage?: unknown }).localStorage;
   });
+
+  it('im laufenden Kampf verstellt: Gegner im Feld passen sich anteilig an', async () => {
+    const { setEnemyTune } = await import('../src/minigames/loadout');
+    const had = 'localStorage' in globalThis, store = new Map<string, string>();
+    if (!had) (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) };
+    setEnemyTune({ hull: 1, shield: 1 });
+    const g = new ShooterGame(cfg(1, 7), 'pirate');
+    const a = g as unknown as { enemies: { hp: number; max: number; sh: number; shMax: number }[] };
+    for (let i = 0; i < 3000 && !a.enemies.length; i++) g.update(DT);
+    const e = a.enemies[0];
+    e.hp = e.max / 2;
+    const max0 = e.max, sh0 = e.shMax;
+    setEnemyTune({ hull: 3, shield: 0.5 });
+    g.retune();
+    expect(e.max).toBeCloseTo(max0 * 3, 6);
+    expect(e.hp / e.max).toBeCloseTo(0.5, 6);
+    expect(e.shMax).toBeCloseTo(sh0 * 0.5, 6);
+    setEnemyTune({ hull: 1, shield: 1 });
+    if (!had) delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
 });

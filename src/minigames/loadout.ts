@@ -506,6 +506,11 @@ export const TUNE_MIN = 0.25;
 export const TUNE_MAX = 5;
 export interface EnemyTune { hull: number; shield: number }
 const clampTune = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(TUNE_MAX, Math.max(TUNE_MIN, v)) : 1);
+let tuneVer = 0;
+/** zählt jede Änderung hoch – ein laufender Kampf passt seine Gegner an, sobald sich die Zahl ändert */
+export function enemyTuneVersion(): number {
+  return tuneVer;
+}
 export function enemyTune(): EnemyTune {
   try {
     const raw = globalThis.localStorage?.getItem(TUNE_KEY);
@@ -518,6 +523,7 @@ export function enemyTune(): EnemyTune {
 export function setEnemyTune(t: Partial<EnemyTune>): void {
   const cur = enemyTune();
   const next = { hull: clampTune(t.hull ?? cur.hull), shield: clampTune(t.shield ?? cur.shield) };
+  if (next.hull !== cur.hull || next.shield !== cur.shield) tuneVer++;
   try {
     globalThis.localStorage?.setItem(TUNE_KEY, JSON.stringify(next));
   } catch {

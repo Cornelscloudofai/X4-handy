@@ -12,7 +12,7 @@ import { playGameTrack, type GameTrack } from '../audio/music';
 import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
-import { DMG_SCALE, LTURRETS, weaponFits, enemyBars, enemyTune, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -383,6 +383,7 @@ export class ShooterGame implements MiniGame {
   private barAlpha = enemyBars();
   /** Gegnerstärke aus dem Entwicklungswerkzeug (beim Start der Runde gelesen) */
   private tune = enemyTune();
+  private tuneVer = enemyTuneVersion();
   /** Türme des eigenen Schiffs: Pause und Richtung */
   private pTur: { cd: number; a: number; mag: number }[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
@@ -1478,7 +1479,24 @@ export class ShooterGame implements MiniGame {
     return [this.px + Math.cos(a) * r, this.py + Math.sin(a) * r];
   }
 
+  /**
+   * Gegnerstärke wurde (z. B. im Pausenmenü) verstellt: alle Gegner im Feld im selben Verhältnis anpassen –
+   * angeschlagene bleiben anteilig angeschlagen
+   */
+  retune(): void {
+    const v = enemyTuneVersion();
+    if (v === this.tuneVer) return;
+    this.tuneVer = v;
+    const t = enemyTune(), rh = t.hull / this.tune.hull, rs = t.shield / this.tune.shield;
+    this.tune = t;
+    for (const e of this.enemies) { e.hp *= rh; e.max *= rh; e.sh *= rs; e.shMax *= rs; }
+  }
+
+  /** aktuelle Stufe (für die Werte-Tabelle im Pausenmenü) */
+  get tuneLevel(): Level { return this.level; }
+
   private updateEnemies(dt: number): void {
+    this.retune();
     // Schilde laden nach 3 s ohne Treffer wieder auf (ein Viertel je Sekunde)
     for (const e of this.enemies) {
       e.shT += dt;
