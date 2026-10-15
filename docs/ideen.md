@@ -2,6 +2,46 @@
 
 Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 
+## Kampf abwechslungsreicher machen (vorgemerkt, nach den Kha'ak angehen)
+
+Vorgeschlagene Reihenfolge: 1. Elite-Gegner + Rollen Abfangjäger/Bomber, 2. Raketenabwehr der Gegner + Raketenwarnung,
+3. Missionen „Station verteidigen“ und „Konvoi“, 4. Flügelleute mit Befehlen.
+
+**1. Gegner, die Taktik erzwingen**
+- Rollen: Abfangjäger binden gezielt den Spieler, gleichzeitig greifen Bomber den Frachter an (Zwickmühle).
+- Elite-Gegner mit Eigenschaften (farbiger Rand): „Gepanzert“ (Schild doppelt, langsam), „Flink“ (weicht Raketen aus),
+  „Splitter“ (zerfällt beim Abschuss in zwei kleine), „Kommandant“ (gibt nahen Gegnern Schild; zuerst abschießen löst
+  die Gruppe auf), „Rächer“ (explodiert beim Tod). Wenige je Welle, mehr auf höheren Stufen.
+- Raketenabwehr: manche Gegner schießen Raketen ab, andere werfen Täuschkörper (Störrakete legt die Abwehr lahm).
+- Xenon passen sich an: viel Raketen → mehr Abwehr in späteren Wellen; nur Bordkanonen → mehr Schildträger.
+
+**2. Neue Missionstypen**
+- Station verteidigen (Angriffe aus allen Richtungen, Stationstürme mit Fundstücken reparieren).
+- Konvoi: drei Frachter, nicht alle zu retten – entscheiden, wen man schützt (Belohnung je Frachter).
+- Überfall: Rollentausch, selbst einen Piratenkonvoi vor dem Tor abfangen.
+- Bergung unter Beschuss: Container aus einem Wrackfeld bergen (Traktorstrahl wie im Frachtraum-Minispiel).
+- Xenon-Nest: festes Ziel spuckt Drohnen aus – erst Brutöffnungen, dann Kern.
+- Flucht: beschädigter Frachter, überleben bis der Sprungantrieb geladen ist.
+
+**3. Umgebung als Mitspieler** (Asteroiden und Minen gibt es schon)
+- Nebel: Radar und Zielhilfe kürzer, Gegner tauchen erst nah auf (Hinterhalte).
+- Sonnenwind oder Schwerkraftquelle: alles driftet, Raketen werden abgelenkt.
+- Wracks und Stationstrümmer als Deckung (nur Raketen kommen um die Ecke).
+- Highway-Ringe als Abkürzung quer über die Karte, für Spieler und Gegner.
+
+**4. Flügelleute mit Befehlen** (Wischmenü wie bei den Turmbefehlen): ein bis zwei Begleitjäger – „Greift mein Ziel an“,
+„Schützt den Frachter“, „Folgt mir“, „Jagt die Bomber“; können abgeschossen werden, zwischen den Wellen reparieren.
+
+**5. Spannung und Rückmeldung**
+- Raketenwarnung: Ton und Pfeil am Bildschirmrand aus der Anflugrichtung.
+- Kampfmusik „Invasion“ im Takt (Taktkarte liegt bereit): zieht bei Gefahr an, Boss auf dem kräftigen Abschnitt.
+- Kurze Zeitlupe beim Bossabschuss oder knappen Ausweichen.
+
+**6. Feldzug (größer)**: kleine Sektorkarte mit Abzweigungen wie ein Roguelite – Missionen, Händler (Raketen,
+Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere Kämpfe erhalten.
+
+**Schiffe** später als Belohnung, z. B. ein Split-Träger mit eigenen Jägern, sobald es Missionen gibt, in denen er glänzt.
+
 ## Gasströme: tanzende Gassammeldrohnen (umgesetzt, Version 177)
 
 - Umgesetzt mit `gasdrohne-b-ki` (Greifarme) ab 1:57 für 16 Takte, nur bei „Celestial Drift“, reine Zierde.
