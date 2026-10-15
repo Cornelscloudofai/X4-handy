@@ -1092,8 +1092,22 @@ describe('Kampf: Schwärme kleiner Schiffe', () => {
     const z = make('klapperschlange', 'xenon');
     expect(z.swarmSize(0)).toBeGreaterThanOrEqual(10);
     expect(z.swarmSize(4)).toBeGreaterThan(z.swarmSize(0));
-    expect(z.swarmSize(9)).toBeLessThanOrEqual(24);
+    expect(z.swarmSize(9)).toBeLessThanOrEqual(40);
     expect(make('cobra', 'pirate').swarmSize(0)).toBeGreaterThanOrEqual(6);
+  });
+  it('starke Schiffe: mehrere Schwärme gleichzeitig aus verschiedenen Richtungen, je mindestens sechs Schiffe', () => {
+    const z = make('klapperschlange', 'xenon');
+    expect(z.swarms(0).length).toBeGreaterThanOrEqual(2);
+    expect(z.swarms(4).length).toBe(3);
+    for (const i of [0, 2, 4]) { expect(z.swarms(i).reduce((a, b) => a + b, 0)).toBe(z.swarmSize(i)); expect(Math.min(...z.swarms(i))).toBeGreaterThanOrEqual(6); }
+    expect(make('mamba', 'xenon').swarms(0)).toEqual([]);
+    // im Spiel: die Schwärme stehen gemeinsam in der Warteschlange, alle innerhalb von zwei Sekunden, verschiedene Richtungen
+    const g = z as unknown as { update(dt: number): void; reinforce: { t: number; from: number; swarm?: boolean }[]; wave: number };
+    for (let k = 0; k < 4000 && g.wave < 0; k++) g.update(DT);
+    const sw = g.reinforce.filter((r) => r.swarm);
+    expect(sw.length).toBe(z.swarms(0).length);
+    expect(Math.max(...sw.map((r) => r.t)) - Math.min(...sw.map((r) => r.t))).toBeLessThan(2);
+    expect(new Set(sw.map((r) => r.from)).size).toBe(sw.length);
   });
   it('Zerstörer gegen Xenon: in der ersten Welle mehr Xenon N als Xenon M', () => {
     const g = make('klapperschlange', 'xenon') as unknown as { waveKinds(i: number): string[]; swarmSize(i: number): number };
