@@ -33,6 +33,8 @@ interface Enemy {
   brk?: number; brkA?: number; shots?: number; runT?: number;
   /** Gruppe, mit der der Gegner angeflogen kam */
   grp?: number;
+  /** gehört zu einem Schwarm kleiner Schiffe: greift mit mehr Schiffen zugleich an */
+  swarm?: boolean;
   /** Boss-Teile: Eltern und Versatz */
   parent?: Enemy; ox?: number; oy?: number;
   /** Xenon-Türme: Laserstrahl (zielt, lädt auf, feuert einen Strahl) oder dicke Plasmakugeln */
@@ -446,7 +448,7 @@ export class ShooterGame implements MiniGame {
   private choosing: Card[] | null = null;
   private pendingSpawn = -1;
   /** Verstärkung einer Welle: kommt einige Sekunden später von anderer Seite */
-  private reinforce: { t: number; kinds: EKind[]; from: number }[] = [];
+  private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean }[] = [];
   private shake = 0;
   private fx = new Particles();
   private floats = new Floaters();
@@ -860,10 +862,31 @@ export class ShooterGame implements MiniGame {
 
   // ---------- Wellen ----------
 
-  private waveKinds(i: number): EKind[] {
+  /** Gesamtstärke einer Welle (Punkte, die auf Gegner verteilt werden) */
+  private waveBudget(i: number): number {
     const swarm = this.mutator?.id === 'swarm' ? 1.45 : 1;
     // mit einem starken Schiff schicken die Gegner mehr Schiffe
-    let budget = (5 + i * 3 + this.level * 1.6) * swarm * this.foeCount * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
+    return (5 + i * 3 + this.level * 1.6) * swarm * this.foeCount * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
+  }
+
+  /**
+   * Anteil der Welle, der als eigener Schwarm kleiner Schiffe (Xenon N bzw. Piratenjäger) kommt: erst ab einem
+   * stärkeren Schiff (dort wird die übrige Mischung schwerer), wächst langsam mit der Stärke, höchstens 55 %
+   */
+  private swarmShare(): number {
+    return this.power < 2.5 ? 0 : clamp(0.35 + 0.05 * Math.log2(this.power), 0.35, 0.55);
+  }
+
+  /** Größe des Schwarms in Welle i (0 = keiner), höchstens 24 Schiffe */
+  swarmSize(i: number): number {
+    const share = this.swarmShare();
+    if (!share) return 0;
+    const small: EKind = this.side === 'pirate' ? 'jaeger' : 'n';
+    return clamp(Math.round((this.waveBudget(i) * share) / SPEC[small].cost), 6, 24);
+  }
+
+  private waveKinds(i: number): EKind[] {
+    let budget = this.waveBudget(i) * (1 - this.swarmShare());
     const pool: EKind[] = this.side === 'pirate'
       ? (i === 0 ? ['jaeger'] : i === 1 ? ['jaeger', 'jaeger', 'rakete', 'schild'] : ['jaeger', 'jaeger', 'rakete', 'kanone', 'schild'])
       : (i === 0 ? ['n'] : i === 1 ? ['n', 'n', 'm', 'xs'] : ['n', 'n', 'm', 'xs']);
@@ -926,8 +949,11 @@ export class ShooterGame implements MiniGame {
       // Großziele mitten in der Welle (ab Fregatten-Stärke): eine kleinere Fregatte bzw. ein K-Segment mit Türmen
       const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : this.power >= 3.5 && this.wave >= 1 ? 1 : 0;
       for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5) });
+      // Schwarm kleiner Schiffe aus einer eigenen Richtung, kurz nach der ersten Gruppe
+      const sw = this.swarmSize(this.wave);
+      if (sw) this.reinforce.push({ t: 3 + this.r() * 3, kinds: new Array<EKind>(sw).fill(this.side === 'pirate' ? 'jaeger' : 'n'), from: (first + 1) % 5, swarm: true });
       this.bannerText = this.mode === 'endless' ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${this.nWaves}`;
-      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
+      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (sw ? ` · Schwarm aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
   }
@@ -950,13 +976,16 @@ export class ShooterGame implements MiniGame {
     return { kind, x, y, vx: 0, vy: 0, hp, max: hp, sh, shMax: sh, shT: 9, shFlash: 0, cd: 1 + this.r() * 1.5, r: s.r, target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
   }
 
-  private spawnGroup(list: EKind[], from: number): void {
+  private spawnGroup(list: EKind[], from: number, swarm = false): void {
     const [x0, y0] = this.farPoint(from);
     const grp = ++this.grpN;
+    // Schwarm: lockere Wolke statt Ring, je größer, desto weiter gestreut
+    const spread = swarm ? 40 + Math.sqrt(list.length) * 22 : 50;
     for (const [i, kind] of list.entries()) {
-      const a = (i / list.length) * Math.PI * 2;
-      const e = this.makeEnemy(kind, x0 + Math.cos(a) * 50, y0 + Math.sin(a) * 50);
+      const a = swarm ? this.r() * Math.PI * 2 : (i / list.length) * Math.PI * 2, rr = swarm ? spread * Math.sqrt(this.r()) : spread;
+      const e = this.makeEnemy(kind, x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr);
       e.grp = grp;
+      if (swarm) e.swarm = true;
       e.ang = Math.atan2(this.fY - e.y, this.fX - e.x);
       this.enemies.push(e);
     }
@@ -1051,9 +1080,9 @@ export class ShooterGame implements MiniGame {
       if (this.pendingSpawn < 0) { this.pendingSpawn = -1; this.spawnWave(); }
     } else if (due) {
       if (due.kinds[0] === 'boss') this.spawnBoss(true, due.from);
-      else this.spawnGroup(due.kinds, due.from);
+      else this.spawnGroup(due.kinds, due.from, due.swarm);
       this.reinforce = this.reinforce.filter((g) => g !== due);
-      this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? 'Piratenfregatte im Anflug!' : 'K-Segment im Anflug!') : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
+      this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? 'Piratenfregatte im Anflug!' : 'K-Segment im Anflug!') : due.swarm ? `Schwarm im Anflug! (${due.kinds.length})` : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
       sfx.alarm();
     } else if (this.wave >= 0 && this.enemies.length === 0 && !this.reinforce.length) {
       // Welle besiegt
@@ -1581,7 +1610,8 @@ export class ShooterGame implements MiniGame {
           const attackers = onP ? this.enemies.filter((q) => q !== e && q.target === 'p' && (q.kind === 'jaeger' || q.kind === 'n') && (q.runT ?? 0) > 0).length : 0;
           // je Gruppe höchstens zwei zugleich, insgesamt je nach Stärke deines Schiffs mehr (mehr Gruppen = mehr Druck)
           const mates = onP && e.grp != null ? this.enemies.filter((q) => q !== e && q.grp === e.grp && q.target === 'p' && (q.runT ?? 0) > 0).length : 0;
-          if (onP && (attackers >= this.attackCap || mates >= 2) && d < 420) {
+          // Schwärme greifen breiter an: bis zu fünf aus dem Schwarm zugleich, dazu drei über der Gesamtgrenze
+          if (onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) || mates >= (e.swarm ? 5 : 2)) && d < 420) {
             // warten: seitlich um den Jäger kreisen
             want = Math.atan2(dy, dx) + e.dir * (d < 260 ? 2.1 : 1.4);
             sp = s.speed * 0.8;

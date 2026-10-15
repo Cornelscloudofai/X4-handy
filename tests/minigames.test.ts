@@ -1083,3 +1083,21 @@ describe('Entwicklungswerkzeug Gegnerstärke', () => {
     if (!had) delete (globalThis as { localStorage?: unknown }).localStorage;
   });
 });
+
+describe('Kampf: Schwärme kleiner Schiffe', () => {
+  const make = (ship: 'mamba' | 'cobra' | 'klapperschlange', side: 'pirate' | 'xenon') =>
+    new ShooterGame({ ...cfg(3, 5), loadout: { ship, weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'tau' } } as never, side);
+  it('Mamba ohne eigenen Schwarm, stärkere Schiffe mit wachsenden Schwärmen (höchstens 24)', () => {
+    expect(make('mamba', 'xenon').swarmSize(0)).toBe(0);
+    const z = make('klapperschlange', 'xenon');
+    expect(z.swarmSize(0)).toBeGreaterThanOrEqual(10);
+    expect(z.swarmSize(4)).toBeGreaterThan(z.swarmSize(0));
+    expect(z.swarmSize(9)).toBeLessThanOrEqual(24);
+    expect(make('cobra', 'pirate').swarmSize(0)).toBeGreaterThanOrEqual(6);
+  });
+  it('Zerstörer gegen Xenon: in der ersten Welle mehr Xenon N als Xenon M', () => {
+    const g = make('klapperschlange', 'xenon') as unknown as { waveKinds(i: number): string[]; swarmSize(i: number): number };
+    const k = g.waveKinds(0), n = k.filter((x) => x === 'n').length + g.swarmSize(0), m = k.filter((x) => x === 'm').length;
+    expect(n).toBeGreaterThan(m * 2);
+  });
+});
