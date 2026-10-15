@@ -1115,3 +1115,36 @@ describe('Kampf: Schwärme kleiner Schiffe', () => {
     expect(n).toBeGreaterThan(m * 2);
   });
 });
+
+describe('Kampf: PC-Steuerung mit Maus und Tastatur', () => {
+  it('Schiff dreht zur Maus, W fliegt vorwärts, A seitwärts, Linksklick feuert, Berührung schaltet zurück', () => {
+    const g = new ShooterGame(cfg(1, 3), 'pirate');
+    g.resize(1280, 800);
+    const a = g as unknown as { px: number; py: number; pvx: number; pvy: number; aimA: number; camX: number; camY: number; zoom: number; pc: boolean; fireId: number | null };
+    g.update(DT);
+    // Maus rechts vom Schiff (Bildschirmkoordinaten aus Weltposition)
+    const sx = (a.px + 400 - a.camX) * a.zoom, sy = (a.py - a.camY) * a.zoom;
+    g.mouse('move', sx, sy, -1);
+    expect(a.pc).toBe(true);
+    for (let i = 0; i < 120; i++) { g.mouse('move', (a.px + 400 - a.camX) * a.zoom, (a.py - a.camY) * a.zoom, -1); g.update(DT); }
+    expect(Math.abs(a.aimA)).toBeLessThan(0.15);
+    expect(g.key('KeyW', true, false)).toBe(true);
+    for (let i = 0; i < 40; i++) g.update(DT);
+    expect(a.pvx).toBeGreaterThan(40);
+    g.key('KeyW', false, false);
+    const vy0 = a.pvy;
+    g.key('KeyA', true, false);
+    for (let i = 0; i < 40; i++) g.update(DT);
+    g.key('KeyA', false, false);
+    expect(a.pvy).toBeLessThan(vy0 - 10); // links strafen bei Blick nach rechts = nach oben
+    g.mouse('down', sx, sy, 0);
+    g.update(DT);
+    expect(a.fireId).not.toBeNull();
+    g.mouse('up', sx, sy, 0);
+    g.update(DT);
+    expect(a.fireId).toBeNull();
+    expect(g.key('KeyQ', true, false)).toBe(false);
+    g.pointerDown(1, 100, 600);
+    expect(a.pc).toBe(false);
+  });
+});

@@ -139,6 +139,9 @@ function readOrders(): { m: TurretOrder; l: TurretOrder } {
 /** Radius der Steuerkreise (Bildpunkte) */
 const JOY_R = 78;
 /** Rechter Steuerkreis (Zielen/Lenken und Feuern) – größer für feineres Zielen */
+/** Zeiger-Kennung der Maus (PC-Steuerung) */
+const MOUSE_ID = 77;
+const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const AIM_R = 108;
 /** Zwei Sticks: rechts ab diesem Ausschlag wird gefeuert; Schub seitwärts ein Viertel, rückwärts ein Drittel */
 const AIM_FIRE = 0.55;
@@ -284,6 +287,8 @@ export class ShooterGame implements MiniGame {
     if (p === 'play') { if (this.track) this.track.resume(); else this.track = playGameTrack(invasionUrl, 0.7); }
     else if (p === 'pause') this.track?.pause();
     else { this.track?.stop(3); this.track = null; }
+    // keine Taste und kein Feuer „hängen“ lassen, wenn das Spiel unterbrochen wird
+    if (p !== 'play') { this.keys.clear(); this.mouseFire = false; }
   }
 
   get rules(): Rules {
@@ -336,6 +341,17 @@ export class ShooterGame implements MiniGame {
   private aimA = -Math.PI / 2;
   /** Finger auf der Feuertaste (99 = Autopilot) */
   private fireId: number | null = null;
+  /**
+   * PC-Steuerung (Maus und Tastatur): schaltet sich ein, sobald Maus oder Tastatur benutzt werden, und wieder aus,
+   * sobald der Bildschirm berührt wird. Das Schiff dreht sich zur Maus; W/A/S/D (oder Pfeiltasten) geben Schub
+   * aus Sicht des Schiffs – vorwärts, rückwärts und seitwärts.
+   */
+  private pc = false;
+  private pcT = 0;
+  private keys = new Set<string>();
+  private mouseX = -1;
+  private mouseY = -1;
+  private mouseFire = false;
   /** Nachladen des Magazins: verbleibende und gesamte Zeit (Sekunden) – für die Anzeige */
   private reloadLeft = 0;
   private reloadMax = 1;
@@ -624,6 +640,7 @@ export class ShooterGame implements MiniGame {
   // ---------- Eingabe ----------
 
   pointerDown(id: number, x: number, y: number): void {
+    if (id !== MOUSE_ID && this.pc) { this.pc = false; this.keys.clear(); this.mouseFire = false; }
     if (this.choosing) { this.pickCardAt(x, y); return; }
     const [fbx, fby, fbr] = this.btnFire;
     if (this.ctrl === 'eins' && Math.hypot(x - fbx, y - fby) < fbr + 12) { this.fireId = id; return; }
@@ -678,6 +695,52 @@ export class ShooterGame implements MiniGame {
     if (this.joy?.id === id) this.joy = null;
     if (this.aim?.id === id) this.aim = null;
     if (this.fireId === id) this.fireId = null;
+  }
+
+  /** PC-Steuerung einschalten (Hinweis zur Belegung erscheint dann einige Sekunden) */
+  private usePc(): void {
+    if (!this.pc) { this.pc = true; this.pcT = 0; this.joy = null; this.aim = null; if (this.fireId !== 99) this.fireId = null; }
+  }
+
+  /** Liegt an dieser Stelle ein Knopf der Oberfläche (Zoom, Raketen, Spezial, Turmbefehle)? */
+  private onButton(x: number, y: number): boolean {
+    const near = (b: readonly [number, number, number], pad: number) => Math.hypot(x - b[0], y - b[1]) < b[2] + pad;
+    return near(this.btnZoomOut, 8) || near(this.btnZoomIn, 8) || near(this.btnMissile, 10) || near(this.btnDash, 10) || this.orderBtns.some(([, ox, oy, orr]) => Math.hypot(x - ox, y - oy) < orr + 8);
+  }
+
+  /** PC: Maus – zielen mit der Position, Linksklick feuert (gehalten), Rechtsklick Raketen, Mitte Spezialfähigkeit */
+  mouse(kind: 'down' | 'move' | 'up', x: number, y: number, button: number): void {
+    this.usePc();
+    this.mouseX = x;
+    this.mouseY = y;
+    if (kind === 'move') { if (this.orderDrag?.id === MOUSE_ID) this.pointerMove(MOUSE_ID, x, y); return; }
+    if (kind === 'up') {
+      if (button === 0) this.mouseFire = false;
+      if (this.orderDrag?.id === MOUSE_ID) this.pointerUp(MOUSE_ID);
+      return;
+    }
+    if (this.choosing || (button === 0 && this.onButton(x, y))) { this.pointerDown(MOUSE_ID, x, y); return; }
+    if (button === 0) this.mouseFire = true;
+    else if (button === 2) this.fireMissiles();
+    else if (button === 1) this.doSpecial();
+  }
+
+  /** PC: Tastatur – W/A/S/D bzw. Pfeiltasten Schub, Leertaste Spezialfähigkeit, R Raketen, +/− Zoom */
+  key(code: string, down: boolean, repeat: boolean): boolean {
+    if (code === '*') { this.keys.clear(); this.mouseFire = false; return false; }
+    if (!down) { this.keys.delete(code); return MOVE_KEYS.has(code); }
+    if (MOVE_KEYS.has(code)) { this.usePc(); this.keys.add(code); return true; }
+    if (repeat) return code === 'Space' || code === 'KeyR';
+    if (code === 'Space') { this.usePc(); this.doSpecial(); return true; }
+    if (code === 'KeyR') { this.usePc(); this.fireMissiles(); return true; }
+    if (code === 'Equal' || code === 'NumpadAdd') { this.setZoom(-1); return true; }
+    if (code === 'Minus' || code === 'NumpadSubtract') { this.setZoom(1); return true; }
+    return false;
+  }
+
+  /** PC: Mausrad zoomt (vom Bildschirm weg = weiter heraus) */
+  wheel(dy: number): void {
+    if (Math.abs(dy) > 2) this.setZoom(dy > 0 ? 1 : -1);
   }
 
   /** Turmbefehl setzen und merken (auch für Tests) */
@@ -1210,7 +1273,26 @@ export class ShooterGame implements MiniGame {
     const j = this.joy;
     const defl = j ? Math.min(1, Math.hypot(j.kx, j.ky)) : 0;
     let thr: number, thrA = this.aimA, eff = 1;
-    if (this.ctrl !== 'eins' && j?.id !== 99) {
+    if (this.pc && j?.id !== 99) {
+      // PC: Schiff dreht sich (mit seiner Wendigkeit) zur Maus; W/A/S/D geben Schub aus Sicht des Schiffs
+      this.pcT += dt;
+      if (this.mouseX >= 0) {
+        const wx = this.camX + this.mouseX / this.zoom, wy = this.camY + this.mouseY / this.zoom;
+        if (Math.hypot(wx - this.px, wy - this.py) > 8) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(wy - this.py, wx - this.px), this.turnRate * dt));
+      }
+      if (this.fireId !== 99) this.fireId = this.mouseFire ? MOUSE_ID : null;
+      const k = this.keys;
+      const fx = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+      const fy = (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0);
+      thr = fx || fy ? 1 : 0;
+      if (thr) {
+        // wie der linke Stick bei zwei Sticks: oben = geradeaus, zur Seite = seitwärts, unten = rückwärts
+        const rel = Math.atan2(fy, fx) + Math.PI / 2;
+        thrA = wrapA(this.aimA + rel);
+        const c = Math.cos(rel);
+        eff = c >= 0 ? SIDE_THRUST + (1 - SIDE_THRUST) * c * c : SIDE_THRUST + (BACK_THRUST - SIDE_THRUST) * c * c;
+      }
+    } else if (this.ctrl !== 'eins' && j?.id !== 99) {
       // zwei Sticks: rechts bestimmt die Blickrichtung (weit ausgelenkt: feuern), links der Schub in jede Richtung –
       // auch seitwärts und rückwärts, dort schwächer
       const a = this.aim, ad = a ? Math.min(1, Math.hypot(a.kx, a.ky)) : 0;
@@ -3123,6 +3205,19 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
   }
 
+  /** PC: Belegung der Tasten – nach dem Umschalten deutlich, danach nur noch blass unten links */
+  private drawPcHint(ctx: CanvasRenderingContext2D): void {
+    const a = this.pcT < 10 ? 0.85 : this.pcT < 12 ? 0.85 - (this.pcT - 10) * 0.3 : 0.25;
+    const lines = ['W/A/S/D  fliegen (vor, zurück, seitwärts)', 'Maus  zielen · Linksklick  feuern', `Rechtsklick / R  Raketen · Leertaste  ${SPECIALS[this.ship.special].name}`, 'Mausrad  Zoom'];
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#a9c3c6';
+    for (const [i, l] of lines.entries()) ctx.fillText(l, 14, this.h - 18 - (lines.length - 1 - i) * 15);
+    ctx.restore();
+  }
+
   private drawControls(ctx: CanvasRenderingContext2D, t: number): void {
     const stick = (j: { ox: number; oy: number; kx: number; ky: number }, inner: number, dashed: boolean, color: string, R = JOY_R) => {
       ctx.strokeStyle = rgba(color, 0.35);
@@ -3143,7 +3238,8 @@ export class ShooterGame implements MiniGame {
       ctx.fill();
     };
     const j = this.joy;
-    if (j && j.id !== 99) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
+    if (this.pc) this.drawPcHint(ctx);
+    if (j && j.id !== 99 && !this.pc) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
     if (this.aim) {
       stick(this.aim, AIM_FIRE, true, this.fireId !== null ? '#ffb547' : '#3fe0c5', AIM_R);
       // Feuerschwelle leuchtet beim Überschreiten kurz auf
@@ -3186,13 +3282,13 @@ export class ShooterGame implements MiniGame {
     ctx.textAlign = 'center';
     ctx.fillText('ZOOM', this.w - 60, TOP + 152);
     const [fbx, fby, fbr] = this.btnFire;
-    if (this.ctrl === 'eins' && this.fireId !== null && this.fireId !== 99) {
+    if (this.ctrl === 'eins' && !this.pc && this.fireId !== null && this.fireId !== 99) {
       ctx.fillStyle = 'rgba(127,255,240,0.25)';
       ctx.beginPath();
       ctx.arc(fbx, fby, fbr, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (this.ctrl === 'eins') drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', 'F', t);
+    if (this.ctrl === 'eins' && !this.pc) drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', 'F', t);
     const [bx, by, br] = this.btnMissile;
     if (this.launchers.length) {
       drawButton(ctx, bx, by, br, this.ammo > 0 ? 1 - this.missileCd / this.missileCdMax : 0, '#ffb547', 'R', t);

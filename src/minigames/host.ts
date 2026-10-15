@@ -173,20 +173,40 @@ function resize(): void {
 
 window.addEventListener('resize', () => resize());
 document.addEventListener('visibilitychange', () => { if (document.hidden && cur?.phase === 'play') setPhase('pause'); });
+// PC: Tastatur an das laufende Spiel (gedrückt nur im Spiel, losgelassen immer, damit keine Taste „hängt“)
+window.addEventListener('keydown', (e) => {
+  if (cur?.phase !== 'play' || !cur.game.key || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (cur.game.key(e.code, true, e.repeat)) e.preventDefault();
+});
+window.addEventListener('keyup', (e) => { cur?.game.key?.(e.code, false, false); });
+window.addEventListener('blur', () => { cur?.game.key?.('*', false, false); });
 
 function bindInput(s: Session): void {
   const pos = (e: PointerEvent): [number, number] => {
     const r = s.canvas.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top];
   };
+  // PC: Spiele mit eigener Maussteuerung bekommen Mausereignisse samt Taste (Bewegung auch ohne gedrückte Taste) –
+  // nur bei echter Maus (feiner Hauptzeiger); auf Touch-Geräten bleiben es Sticks, auch wenn ein Browser Berührungen
+  // als Mausereignisse meldet
+  const fine = typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;
+  const mouse = (e: PointerEvent) => fine && e.pointerType === 'mouse' && !!s.game.mouse;
   s.canvas.addEventListener('pointerdown', (e) => {
     if (s.phase !== 'play') return;
     s.canvas.setPointerCapture?.(e.pointerId);
-    s.game.pointerDown(e.pointerId, ...pos(e));
+    if (mouse(e)) s.game.mouse!('down', ...pos(e), e.button);
+    else s.game.pointerDown(e.pointerId, ...pos(e));
     e.preventDefault();
   });
-  s.canvas.addEventListener('pointermove', (e) => { if (s.phase === 'play') s.game.pointerMove(e.pointerId, ...pos(e)); });
-  const up = (e: PointerEvent) => s.game.pointerUp(e.pointerId, ...pos(e));
+  s.canvas.addEventListener('pointermove', (e) => {
+    if (s.phase !== 'play') return;
+    if (mouse(e)) s.game.mouse!('move', ...pos(e), -1);
+    else s.game.pointerMove(e.pointerId, ...pos(e));
+  });
+  const up = (e: PointerEvent) => { if (mouse(e)) s.game.mouse!('up', ...pos(e), e.button); else s.game.pointerUp(e.pointerId, ...pos(e)); };
+  s.canvas.addEventListener('contextmenu', (e) => { if (s.game.mouse) e.preventDefault(); });
+  s.canvas.addEventListener('wheel', (e) => { if (s.phase === 'play' && s.game.wheel) { s.game.wheel(e.deltaY); e.preventDefault(); } }, { passive: false });
+  if (s.game.mouse && fine) s.canvas.style.cursor = 'crosshair';
   s.canvas.addEventListener('pointerup', up);
   s.canvas.addEventListener('pointercancel', up);
   // Entwicklungswerkzeug im Pausenmenü des Kampfs: Regler wirken sofort auf alle Gegner im Feld

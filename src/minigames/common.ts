@@ -94,6 +94,12 @@ export interface MiniGame {
   pointerDown(id: number, x: number, y: number): void;
   pointerMove(id: number, x: number, y: number): void;
   pointerUp(id: number, x: number, y: number): void;
+  /** PC: Maus (Taste 0 links, 1 Mitte, 2 rechts) – ersetzt bei Mausbedienung die Zeiger-Aufrufe */
+  mouse?(kind: 'down' | 'move' | 'up', x: number, y: number, button: number): void;
+  /** PC: Taste gedrückt/losgelassen (KeyboardEvent.code); true = gehört dem Spiel */
+  key?(code: string, down: boolean, repeat: boolean): boolean;
+  /** PC: Mausrad (positiv = vom Bildschirm weg gedreht) */
+  wheel?(dy: number): void;
   /** Ergebnis, sobald das Spiel vorbei ist */
   result(): GameResult | null;
   /** Ergebnis bei vorzeitigem Abbruch */
