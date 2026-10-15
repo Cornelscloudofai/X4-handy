@@ -49,8 +49,9 @@ const parts0 = await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sek
 await page.click('#modal [data-act="mod-craft"][data-id="verstaerker"][data-q="1"]');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${out}/mg-0-mods.png` });
+// Spanne grundlegend: regulär 6–12 %, in der Testphase der Mods 12–25 %
 const modSaved = await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-mods') ?? 'null'));
-if (!modSaved?.slots?.weapon || modSaved.parts !== parts0 - 3 || modSaved.slots.weapon.value < 0.06 || modSaved.slots.weapon.value > 0.12) fail(`Mod-Bau fehlerhaft: ${JSON.stringify(modSaved)}`);
+if (!modSaved?.slots?.weapon || modSaved.parts !== parts0 - 3 || modSaved.slots.weapon.value < 0.06 || modSaved.slots.weapon.value > 0.25) fail(`Mod-Bau fehlerhaft: ${JSON.stringify(modSaved)}`);
 if (!(await page.locator('#modal .lo-chip-weapon.set').count())) fail('Eingebauter Mod erscheint nicht im Hangar');
 await page.click('#modal [data-act="mod-remove"][data-slot="weapon"]');
 await page.click('#modal [data-act="lo-tab"][data-tab="ship"]');

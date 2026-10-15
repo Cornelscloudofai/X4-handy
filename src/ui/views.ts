@@ -7,7 +7,7 @@ import { drawFighterVector } from '../minigames/shooter';
 import { tunePanel } from '../minigames/tunePanel';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
-import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
+import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
 import { musicFx } from '../audio/rhythm';
 import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
 
@@ -1621,7 +1621,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
           ${md ? `<span class="mod-slot-val">${esc(fmtStat(MODS[md.id].stat, md.value))}</span>` : ''}</button>`;
       };
       const detail = cur ? (() => {
-        const d = MODS[cur.id], q = QUALITY[cur.q], [a, b] = d.range[cur.q];
+        const d = MODS[cur.id], q = QUALITY[cur.q], [a, b] = modRange(cur.id, cur.q);
         return `<div class="mod-detail" style="--q:${q.color}">
           <div class="mod-head"><b>${esc(d.name)}</b><span class="mod-q">${q.name}</span></div>
           <div class="mod-main">${esc(fmtStat(d.stat, cur.value))}</div>
@@ -1629,7 +1629,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
             <span class="lo">${esc(fmtStat(d.stat, a))}</span><span class="hi">${esc(fmtStat(d.stat, b))}</span></div>
           <p class="small muted" style="margin:6px 0 0">Gewürfelt: ${Math.round(cur.roll * 100)} % der Spanne${cur.roll > 0.85 ? ' – ein Spitzenwert!' : cur.roll < 0.2 ? ' – eher schwach' : ''}</p>
           ${cur.bonus.length || d.cost ? `<ul class="mod-fx">${cur.bonus.map((x) => `<li class="pos">${esc(fmtStat(x.stat, x.value))}</li>`).join('')}${d.cost ? `<li class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</li>` : ''}</ul>` : ''}
-          <div class="card-actions" style="margin-top:10px"><button class="btn small" ${act('mod-remove', { slot })}>${icon('trash', 16)}Zerlegen (+${Math.floor(q.cost / 4)} Modteile)</button></div></div>`;
+          <div class="card-actions" style="margin-top:10px"><button class="btn small" ${act('mod-remove', { slot })}>${icon('trash', 16)}Zerlegen (+${refundOf(cur.q)} Modteile)</button></div></div>`;
       })() : `<div class="mod-detail empty"><p class="small muted" style="margin:0">Kein Mod im Platz „${SLOT_INFO[slot].name}“. Bau unten einen – der Wert wird beim Bau ausgewürfelt.</p></div>`;
       const recipes = MOD_IDS.filter((id) => MODS[id].slot === slot).map((id) => {
         const d = MODS[id];

@@ -26,6 +26,8 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
   Gemessen an X4 sind kleine Gegner etwa ×3, M-Gegner etwa ×6–9 zu schwach. Möglicher Weg: je Gegnertyp ein X4-Schiff
   zuordnen (Piratenjäger ≈ Mamba, Kanonenboot ≈ Cobra, Xenon-Werte nachschlagen), Regler als Feinabstimmung;
   dann Gegnerzahl/Wellen und Rundendauer mitprüfen.
+- Mods: Testphase mit stark angehobenen Werten (außergewöhnlich bis +100 %, Zusatzeffekte ×2,5, volle Rückgabe beim
+  Zerlegen) – später fürs Balancing anpassen (Schalter MOD_TEST in src/minigames/mods.ts; ohne ihn alte Spannen, ¼ zurück).
 - Verdoppelte L-Schadensstufe der Schnellfeuerwaffen ggf. zurücknehmen.
 - Eigenes Bild für den Strahlenturm (Prompt schreiben).
 

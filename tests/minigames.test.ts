@@ -4,7 +4,7 @@ import { GasGame } from '../src/minigames/gas';
 import { CargoGame } from '../src/minigames/cargo';
 import { HighwayGame } from '../src/minigames/highway';
 import { OrbitGame, elements } from '../src/minigames/orbit';
-import { MODS, QUALITY, START_PARTS, craft, earnParts, modState, modStats, partsFor, remove as removeMod, resetMods } from '../src/minigames/mods';
+import { MODS, QUALITY, START_PARTS, craft, earnParts, modRange, modState, modStats, partsFor, refundOf, remove as removeMod, resetMods } from '../src/minigames/mods';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame } from '../src/minigames/shooter';
@@ -728,8 +728,9 @@ describe('Schiffsmodifikationen', () => {
     const r = rng(7);
     const m1 = craft('verstaerker', 1, r)!;
     expect(modState().parts).toBe(START_PARTS - QUALITY[1].cost);
-    expect(m1.value).toBeGreaterThanOrEqual(0.06);
-    expect(m1.value).toBeLessThanOrEqual(0.12);
+    const [lo1, hi1] = modRange('verstaerker', 1);
+    expect(m1.value).toBeGreaterThanOrEqual(lo1);
+    expect(m1.value).toBeLessThanOrEqual(hi1);
     expect(m1.bonus.length).toBe(0);
     // zu wenig Teile: nichts passiert
     expect(craft('zellen', 3, r)).toBeNull();
@@ -737,22 +738,25 @@ describe('Schiffsmodifikationen', () => {
     const m3 = craft('zellen', 3, r)!;
     expect(m3.bonus.length).toBe(2);
     expect(m3.bonus.every((b) => b.stat !== 'shield')).toBe(true);
-    // ein neuer Mod ersetzt den alten im selben Platz
+    // ein neuer Mod ersetzt den alten im selben Platz – der alte wird zerlegt, seine Modteile kommen zurück
+    const pBefore = modState().parts;
     craft('kuehlung', 2, r);
     expect(modState().slots.weapon?.id).toBe('kuehlung');
+    expect(modState().parts).toBe(pBefore - QUALITY[2].cost + refundOf(1));
     // Rumpfmods haben ihren Preis
     craft('panzer', 1, r);
     const st = modStats();
     expect(st.hull).toBeGreaterThan(0.1);
     expect(st.speed).toBeLessThan(0);
-    // Zerlegen gibt ein Viertel der Kosten zurück
+    // Zerlegen gibt Modteile zurück (Testphase: alle)
     const p0 = modState().parts;
-    expect(removeMod('chassis')).toBe(Math.floor(QUALITY[1].cost / 4));
-    expect(modState().parts).toBe(p0 + Math.floor(QUALITY[1].cost / 4));
+    expect(removeMod('chassis')).toBe(refundOf(1));
+    expect(modState().parts).toBe(p0 + refundOf(1));
     expect(modState().slots.chassis).toBeUndefined();
     expect(partsFor(3, 'normal')).toBe(3);
     expect(partsFor(2, 'daily')).toBe(4);
     for (const d of Object.values(MODS)) for (const q of [1, 2, 3] as const) expect(d.range[q][0]).toBeLessThan(d.range[q][1]);
+    for (const id of Object.keys(MODS)) for (const q of [1, 2] as const) expect(modRange(id, q)[1]).toBeLessThanOrEqual(modRange(id, (q + 1) as 2 | 3)[1]);
     resetMods();
   });
 
@@ -1146,5 +1150,16 @@ describe('Kampf: PC-Steuerung mit Maus und Tastatur', () => {
     expect(g.key('KeyQ', true, false)).toBe(false);
     g.pointerDown(1, 100, 600);
     expect(a.pc).toBe(false);
+  });
+});
+
+describe('Schiffsmodifikationen: Testphase', () => {
+  it('außergewöhnlich bis +100 % (weniger-ist-besser bis −75 %), Zerlegen gibt alles zurück', async () => {
+    const { MOD_TEST, REFUND } = await import('../src/minigames/mods');
+    if (!MOD_TEST) return;
+    expect(REFUND).toBe(1);
+    expect(modRange('verstaerker', 3)).toEqual([0.5, 1]);
+    expect(modRange('fokus', 3)[1]).toBe(0.75);
+    expect(refundOf(3)).toBe(QUALITY[3].cost);
   });
 });

@@ -62,6 +62,31 @@ export const MODS: Record<string, ModDef> = {
 };
 export const MOD_IDS = Object.keys(MODS);
 
+/**
+ * Testphase (zum Ausprobieren, später fürs Balancing anpassen): Spannen kräftig angehoben – außergewöhnlich bis
+ * +100 % (bei „weniger ist besser“ bis −75 %, mehr wäre sinnlos), Zusatzeffekte 2,5-fach, Zerlegen gibt alle Modteile
+ * zurück. Mit MOD_TEST = false gelten wieder die Spannen aus MODS, Zusatzeffekte einfach und ein Viertel zurück.
+ */
+export const MOD_TEST = true;
+const TEST_RANGE: Record<ModQuality, [number, number]> = { 1: [0.12, 0.25], 2: [0.25, 0.5], 3: [0.5, 1] };
+const TEST_RANGE_LOWER: Record<ModQuality, [number, number]> = { 1: [0.12, 0.25], 2: [0.25, 0.45], 3: [0.45, 0.75] };
+const TEST_MISSILES: Record<ModQuality, [number, number]> = { 1: [2, 4], 2: [4, 8], 3: [8, 15] };
+const BONUS_BOOST = MOD_TEST ? 2.5 : 1;
+/** Anteil der Modteile, der beim Zerlegen zurückkommt */
+export const REFUND = MOD_TEST ? 1 : 0.25;
+
+/** Spanne des Hauptwerts eines Mods je Güte (in der Testphase angehoben) */
+export function modRange(id: string, q: ModQuality): [number, number] {
+  const d = MODS[id];
+  if (!MOD_TEST) return d.range[q];
+  return d.stat === 'missiles' ? TEST_MISSILES[q] : LOWER_BETTER.includes(d.stat) ? TEST_RANGE_LOWER[q] : TEST_RANGE[q];
+}
+
+/** Modteile, die beim Zerlegen eines Mods dieser Güte zurückkommen */
+export function refundOf(q: ModQuality): number {
+  return Math.floor(QUALITY[q].cost * REFUND);
+}
+
 /** Zusatzeffekte je Platz (höhere Güte: 1 oder 2 davon, kleiner als der Hauptwert) */
 const BONUS: Record<ModSlot, [ModStat, number, number][]> = {
   weapon: [['dmg', 0.03, 0.08], ['rate', 0.03, 0.07], ['velocity', 0.05, 0.12], ['spread', 0.08, 0.2]],
@@ -139,7 +164,7 @@ export function craft(id: string, q: ModQuality, r: () => number = Math.random):
   const s = modState();
   if (!def || s.parts < QUALITY[q].cost) return null;
   s.parts -= QUALITY[q].cost;
-  const [lo, hi] = def.range[q];
+  const [lo, hi] = modRange(id, q);
   // Glockenkurve (Mittel aus zwei Würfen): Spitzenwerte sind selten
   const roll = (r() + r()) / 2;
   const value = def.stat === 'missiles' ? Math.round(lo + (hi - lo) * roll) : Math.round((lo + (hi - lo) * roll) * 1000) / 1000;
@@ -147,9 +172,12 @@ export function craft(id: string, q: ModQuality, r: () => number = Math.random):
   const bonus: Mod['bonus'] = [];
   for (let k = 0; k < QUALITY[q].bonus && pool.length; k++) {
     const [st, a, b] = pool.splice(Math.floor(r() * pool.length), 1)[0];
-    bonus.push({ stat: st, value: Math.round((a + (b - a) * r()) * 1000) / 1000 });
+    bonus.push({ stat: st, value: Math.round((a + (b - a) * r()) * BONUS_BOOST * 1000) / 1000 });
   }
   const mod: Mod = { id, q, value, roll, bonus };
+  // ein Mod im selben Platz wird dabei zerlegt – seine Modteile kommen wie beim Ausbauen zurück
+  const old = s.slots[def.slot];
+  if (old) s.parts += refundOf(old.q);
   s.slots[def.slot] = mod;
   save();
   return mod;
@@ -161,7 +189,7 @@ export function remove(slot: ModSlot): number {
   const m = s.slots[slot];
   if (!m) return 0;
   delete s.slots[slot];
-  const back = Math.floor(QUALITY[m.q].cost / 4);
+  const back = refundOf(m.q);
   s.parts += back;
   save();
   return back;
@@ -196,7 +224,7 @@ export function fmtStat(stat: ModStat, v: number): string {
 
 /** Spanne eines Mods als Text */
 export function fmtRange(id: string, q: ModQuality): string {
-  const d = MODS[id], [a, b] = d.range[q];
+  const d = MODS[id], [a, b] = modRange(id, q);
   if (d.stat === 'missiles') return `+${a}–${b}`;
   return `${LOWER_BETTER.includes(d.stat) ? '−' : '+'}${Math.round(a * 100)}–${Math.round(b * 100)} %`;
 }
