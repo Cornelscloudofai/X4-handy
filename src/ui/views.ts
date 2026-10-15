@@ -3,12 +3,12 @@ import { wareIcon, wareMark } from './wareIcons';
 import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } from '../minigames/host';
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
 import type { Level } from '../minigames/common';
-import { drawFighterVector } from '../minigames/shooter';
+import { drawFighterVector, enemyStatTable } from '../minigames/shooter';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modState, modStats, type ModSlot, type ModStat } from '../minigames/mods';
 import { musicFx } from '../audio/rhythm';
-import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
+import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, enemyTune, TUNE_MIN, TUNE_MAX, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1526,6 +1526,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : controlMode() === 'zwei' ? 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zeigen, wohin der Jäger blickt; über den Ring hinaus wird gefeuert.' : 'Links fliegen wie bei zwei Sticks. Rechts lenken wie ein Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung; über den Ring hinaus wird gefeuert.'} Beim Überschreiten des Rings leuchtet er auf, klickt leise und vibriert, wo das Gerät es zulässt.</p></div>
         <div class="section"><h3>Anzeige über den Gegnern</h3><div class="segment">${ENEMY_BAR_STEPS.map((v, i) => `<button class="${enemyBars() === v ? 'on' : ''}" ${act('mg-bars', { v: String(v) })}>${['Aus', 'Dezent', 'Mittel', 'Deutlich'][i]}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Zwei feine Linien über jedem Gegner: oben der Schild (hellblau, lädt nach 3 s ohne Treffer wieder auf), darunter die Hülle. Unbeschädigte Gegner noch blasser.</p></div>
+        ${tuneSection(m.level)}
         <div class="section"><h3>Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
       const hero = `<div class="page-hero" style="${artStyle('more-games')}">${artPic('more-games', 'page-hero-art')}<div><b>${MINI_KINDS.length} Minispiele</b><span>★ ${MINI_KINDS.reduce((n, k) => n + totalStars(k), 0)} von ${MINI_KINDS.length * 15} · ${modState().parts} Modteile</span></div></div>`;
@@ -1909,3 +1910,20 @@ function welcomeModal(): string {
 }
 
 export { SPEEDS };
+
+/** Entwicklungswerkzeug im Kampf-Reiter: Hülle und Schild aller Gegner stufenlos skalieren, mit den Werten, die im Spiel herauskommen */
+function tuneSection(level: 1 | 2 | 3 | 4 | 5): string {
+  const t = enemyTune();
+  const fmt = (v: number) => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const slider = (key: 'hull' | 'shield', label: string) => `<div class="tune-row"><span class="tune-label">${label}</span>
+    <input type="range" min="${TUNE_MIN}" max="${TUNE_MAX}" step="0.05" value="${t[key]}" data-change="enemy-tune" data-key="${key}" aria-label="${label}-Faktor">
+    <b class="tune-val">×${fmt(t[key])}</b></div>`;
+  const rows = enemyStatTable(level, t).map((r) => `<tr><td>${esc(r.name)}</td><td>${Math.round(r.hp)}</td><td>${Math.round(r.sh)}</td><td>${Math.round(r.hp + r.sh)}</td></tr>`).join('');
+  return `<div class="section"><h3>Entwicklung: Gegnerstärke</h3>
+    ${slider('hull', 'Hülle')}${slider('shield', 'Schild')}
+    <div class="small muted" style="margin:10px 0 4px">Werte im Spiel auf Stufe</div>
+    <div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div>
+    <table class="tune-table"><thead><tr><th>Gegner</th><th>Hülle</th><th>Schild</th><th>Zusammen</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="small muted" style="margin:8px 0 0">Gilt ab der nächsten Runde für alle Gegner (auch Boss, Großziele und Geschütztürme). Im Endlos-Modus kommen je Welle +6 % dazu (Boss +5 %). Der Schild lädt nach 3 s ohne Treffer mit 25 % je Sekunde nach.</p>
+    ${t.hull !== 1 || t.shield !== 1 ? `<button class="btn" style="margin-top:8px" ${act('mg-tune-reset')}>Auf ×1 zurücksetzen</button>` : ''}</div>`;
+}

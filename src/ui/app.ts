@@ -27,7 +27,7 @@ import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, typ
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
 import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
-import { loadout, setControlMode, setEnemyBars, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
+import { loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
@@ -122,7 +122,7 @@ export function start(): void {
   initLifecycle();
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-order-price', 'sell-order-keep', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-order-price', 'sell-order-keep', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density', 'enemy-tune'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -1029,6 +1029,11 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
+      case 'mg-tune-reset': {
+        setEnemyTune({ hull: 1, shield: 1 });
+        refresh();
+        break;
+      }
       case 'mg-bars': {
         setEnemyBars(Number(d.v));
         refresh();
@@ -1502,6 +1507,12 @@ function onChange(e: Event): void {
   }
   if (field === 'sell-repeat' && ui.modal?.type === 'sell') {
     ui.modal = { ...ui.modal, repeat: (el as unknown as HTMLInputElement).checked };
+    refresh();
+    return;
+  }
+  if (field === 'enemy-tune') {
+    const key = el.dataset.key === 'shield' ? 'shield' : 'hull';
+    setEnemyTune({ [key]: Math.round(Number(el.value) * 100) / 100 });
     refresh();
     return;
   }

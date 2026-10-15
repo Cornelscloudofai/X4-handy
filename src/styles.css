@@ -1234,3 +1234,13 @@ h3 .count { margin-right: auto; display: inline-grid; place-items: center; min-w
 .demo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .demo-grid .btn { justify-content: flex-start; gap: 8px; text-align: left; }
 .demo-grid .num { min-width: 18px; font-size: 11.5px; }
+
+/* Entwicklungswerkzeug Gegnerstärke (Minispiele → Kampf) */
+.tune-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.tune-row input[type="range"] { flex: 1; min-width: 0; }
+.tune-label { width: 52px; font-size: 13px; color: var(--muted, #9fb3c8); }
+.tune-val { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+.tune-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tune-table th, .tune-table td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.tune-table th:first-child, .tune-table td:first-child { text-align: left; }
+.tune-table th { font-weight: 600; color: var(--muted, #9fb3c8); font-size: 12px; }

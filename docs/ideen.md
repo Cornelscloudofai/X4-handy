@@ -20,7 +20,8 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 
 ## Kampf-Minispiel: offene Punkte
 
-- Eindruck zu Gegnerschilden und -hülle (Version 173) abwarten; ggf. nur schwere Gegnertypen weiter anheben.
+- Gegnerstärke mit dem Entwicklungswerkzeug (Minispiele → Kampf, Version 181) kalibrieren; gefundene Faktoren danach
+  fest in ENEMY_HULL/ENEMY_SHIELD übernehmen und das Werkzeug ggf. ausblenden.
 - Verdoppelte L-Schadensstufe der Schnellfeuerwaffen ggf. zurücknehmen.
 - Eigenes Bild für den Strahlenturm (Prompt schreiben).
 

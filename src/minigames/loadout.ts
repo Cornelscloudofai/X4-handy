@@ -499,3 +499,28 @@ export function setEnemyBars(v: number): void {
     /* Speicher nicht verfügbar */
   }
 }
+
+// ---- Entwicklung: Gegnerstärke stufenlos nachregeln (Faktor auf Hülle und Schild aller Gegner), gemerkt ----
+const TUNE_KEY = 'x4-sektorbau-gegnerstaerke';
+export const TUNE_MIN = 0.25;
+export const TUNE_MAX = 5;
+export interface EnemyTune { hull: number; shield: number }
+const clampTune = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(TUNE_MAX, Math.max(TUNE_MIN, v)) : 1);
+export function enemyTune(): EnemyTune {
+  try {
+    const raw = globalThis.localStorage?.getItem(TUNE_KEY);
+    const v = raw ? (JSON.parse(raw) as Partial<EnemyTune>) : {};
+    return { hull: clampTune(v.hull), shield: clampTune(v.shield) };
+  } catch {
+    return { hull: 1, shield: 1 };
+  }
+}
+export function setEnemyTune(t: Partial<EnemyTune>): void {
+  const cur = enemyTune();
+  const next = { hull: clampTune(t.hull ?? cur.hull), shield: clampTune(t.shield ?? cur.shield) };
+  try {
+    globalThis.localStorage?.setItem(TUNE_KEY, JSON.stringify(next));
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}

@@ -12,7 +12,7 @@ import { playGameTrack, type GameTrack } from '../audio/music';
 import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
-import { DMG_SCALE, LTURRETS, weaponFits, enemyBars, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, weaponFits, enemyBars, enemyTune, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -225,6 +225,21 @@ function readZoom(): number {
 /** Normale Runde: drei Wellen und der Boss */
 const NORMAL_WAVES = 4;
 const HP_MUL: Record<Level, number> = { 1: 1, 2: 1.15, 3: 1.3, 4: 1.45, 5: 1.6 };
+
+/**
+ * Hülle und Schild eines Gegners, wie er im Spiel erscheint: Grundwert × Hüllen-/Schildfaktor × Stufe × Faktor aus
+ * dem Entwicklungswerkzeug (Minispiele → Kampf → Gegnerstärke); Großziele haben 55 % der Boss-Werte
+ */
+export function enemyStats(kind: EKind, level: Level, opt: { mini?: boolean; extra?: number; tune?: { hull: number; shield: number } } = {}): { hp: number; sh: number } {
+  const t = opt.tune ?? enemyTune(), k = HP_MUL[level] * (opt.mini ? 0.55 : 1) * (opt.extra ?? 1);
+  return { hp: SPEC[kind].hp * ENEMY_HULL * k * t.hull, sh: SPEC[kind].sh * ENEMY_SHIELD * k * t.shield };
+}
+
+/** Übersicht für das Entwicklungswerkzeug: alle Gegnertypen einer Stufe */
+export function enemyStatTable(level: Level, tune?: { hull: number; shield: number }): { name: string; hp: number; sh: number }[] {
+  const kinds: [EKind, string, boolean?][] = [['n', 'Xenon N'], ['jaeger', 'Piratenjäger'], ['rakete', 'Raketenboot'], ['schild', 'Schildträger'], ['xs', 'Schirmdrohne'], ['m', 'Xenon M'], ['kanone', 'Kanonenboot'], ['turret', 'Geschützturm'], ['boss', 'Großziel', true], ['boss', 'Boss']];
+  return kinds.map(([kind, name, mini]) => ({ name, ...enemyStats(kind, level, { mini, tune }) }));
+}
 /** Größe des Schiffsbilds in Bildpunkten (das Bild hat Rand, das Schiff selbst ist etwa 85 % davon) */
 const SPRITE_SIZE = 46;
 /**
@@ -366,6 +381,8 @@ export class ShooterGame implements MiniGame {
   private nWaves = NORMAL_WAVES;
   /** Deckkraft der Hülle/Schild-Anzeige über den Gegnern (Einstellung, 0 = aus) */
   private barAlpha = enemyBars();
+  /** Gegnerstärke aus dem Entwicklungswerkzeug (beim Start der Runde gelesen) */
+  private tune = enemyTune();
   /** Türme des eigenen Schiffs: Pause und Richtung */
   private pTur: { cd: number; a: number; mag: number }[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
@@ -928,8 +945,7 @@ export class ShooterGame implements MiniGame {
 
   private makeEnemy(kind: EKind, x: number, y: number): Enemy {
     const s = SPEC[kind];
-    const k = HP_MUL[this.level] * (this.mode === 'endless' ? 1 + this.wave * 0.06 : 1);
-    const hp = s.hp * ENEMY_HULL * k, sh = s.sh * ENEMY_SHIELD * k;
+    const { hp, sh } = enemyStats(kind, this.level, { extra: this.mode === 'endless' ? 1 + this.wave * 0.06 : 1, tune: this.tune });
     return { kind, x, y, vx: 0, vy: 0, hp, max: hp, sh, shMax: sh, shT: 9, shFlash: 0, cd: 1 + this.r() * 1.5, r: s.r, target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
   }
 
@@ -950,9 +966,9 @@ export class ShooterGame implements MiniGame {
     const [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120, this.fY - 1100)];
     const b = this.makeEnemy('boss', x, y);
     b.ang = mini ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
-    const bk = HP_MUL[this.level] * (mini ? 0.55 : 1) * (this.mode === 'endless' ? 1 + this.wave * 0.05 : 1);
-    b.hp = b.max = SPEC.boss.hp * ENEMY_HULL * bk;
-    b.sh = b.shMax = SPEC.boss.sh * ENEMY_SHIELD * bk;
+    const bs = enemyStats('boss', this.level, { mini, extra: this.mode === 'endless' ? 1 + this.wave * 0.05 : 1, tune: this.tune });
+    b.hp = b.max = bs.hp;
+    b.sh = b.shMax = bs.sh;
     b.r = 34;
     b.mini = mini;
     this.enemies.push(b);

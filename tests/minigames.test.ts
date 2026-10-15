@@ -1029,3 +1029,28 @@ describe('Turmbefehle', () => {
     g.setOrder('m', 'alle');
   });
 });
+
+describe('Entwicklungswerkzeug Gegnerstärke', () => {
+  it('Faktor wirkt auf Hülle und Schild getrennt, ×1 entspricht den Grundwerten', async () => {
+    const { enemyStats, enemyStatTable } = await import('../src/minigames/shooter');
+    const base = enemyStats('jaeger', 1, { tune: { hull: 1, shield: 1 } });
+    expect(Math.round(base.hp)).toBe(33);
+    expect(Math.round(base.sh)).toBe(13);
+    const t = enemyStats('jaeger', 1, { tune: { hull: 2.5, shield: 0.5 } });
+    expect(t.hp).toBeCloseTo(base.hp * 2.5, 6);
+    expect(t.sh).toBeCloseTo(base.sh * 0.5, 6);
+    const boss = enemyStatTable(5, { hull: 1, shield: 1 }).find((r) => r.name === 'Boss')!;
+    expect(Math.round(boss.hp)).toBe(792);
+  });
+
+  it('gemerkter Faktor wird begrenzt und gilt für neue Gegner', async () => {
+    const { setEnemyTune, enemyTune, TUNE_MAX } = await import('../src/minigames/loadout');
+    const had = 'localStorage' in globalThis, store = new Map<string, string>();
+    if (!had) (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) };
+    setEnemyTune({ hull: 99, shield: 2 });
+    expect(enemyTune()).toEqual({ hull: TUNE_MAX, shield: 2 });
+    setEnemyTune({ hull: 1, shield: 1 });
+    expect(enemyTune()).toEqual({ hull: 1, shield: 1 });
+    if (!had) delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+});
