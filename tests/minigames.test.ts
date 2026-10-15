@@ -1047,11 +1047,20 @@ describe('Entwicklungswerkzeug Gegnerstärke', () => {
     const { setEnemyTune, enemyTune, TUNE_MAX } = await import('../src/minigames/loadout');
     const had = 'localStorage' in globalThis, store = new Map<string, string>();
     if (!had) (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) };
-    setEnemyTune({ hull: 99, shield: 2 });
+    setEnemyTune({ hull: 500, shield: 2 });
     expect(enemyTune()).toEqual({ hull: TUNE_MAX, shield: 2 });
     setEnemyTune({ hull: 1, shield: 1 });
     expect(enemyTune()).toEqual({ hull: 1, shield: 1 });
     if (!had) delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+
+  it('Regler läuft logarithmisch von ×0,25 bis ×100, ×1 und ×100 genau erreichbar', async () => {
+    const { tuneFromSlider, tuneToSlider } = await import('../src/minigames/loadout');
+    expect(tuneFromSlider(0)).toBe(0.25);
+    expect(tuneFromSlider(1000)).toBe(100);
+    expect(tuneFromSlider(tuneToSlider(1))).toBeCloseTo(1, 6);
+    expect(tuneFromSlider(tuneToSlider(10))).toBeCloseTo(10, 6);
+    expect(tuneFromSlider(tuneToSlider(37.5))).toBeCloseTo(37.5, 6);
   });
 
   it('im laufenden Kampf verstellt: Gegner im Feld passen sich anteilig an', async () => {

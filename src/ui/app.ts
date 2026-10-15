@@ -27,6 +27,7 @@ import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, typ
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
 import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
+import { tuneFromSlider } from '../minigames/tunePanel';
 import { loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
@@ -1512,7 +1513,7 @@ function onChange(e: Event): void {
   }
   if (field === 'enemy-tune') {
     const key = el.dataset.key === 'shield' ? 'shield' : 'hull';
-    setEnemyTune({ [key]: Math.round(Number(el.value) * 100) / 100 });
+    setEnemyTune({ [key]: tuneFromSlider(Number(el.value)) });
     refresh();
     return;
   }

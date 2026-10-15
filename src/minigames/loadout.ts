@@ -503,7 +503,7 @@ export function setEnemyBars(v: number): void {
 // ---- Entwicklung: Gegnerstärke stufenlos nachregeln (Faktor auf Hülle und Schild aller Gegner), gemerkt ----
 const TUNE_KEY = 'x4-sektorbau-gegnerstaerke';
 export const TUNE_MIN = 0.25;
-export const TUNE_MAX = 5;
+export const TUNE_MAX = 100;
 export interface EnemyTune { hull: number; shield: number }
 const clampTune = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(TUNE_MAX, Math.max(TUNE_MIN, v)) : 1);
 let tuneVer = 0;
@@ -529,4 +529,17 @@ export function setEnemyTune(t: Partial<EnemyTune>): void {
   } catch {
     /* Speicher nicht verfügbar */
   }
+}
+
+// Der Regler läuft logarithmisch (0–1000): von ×0,25 bis ×100 bleibt jeder Bereich gleich fein einstellbar –
+// ×1 liegt etwa bei einem Viertel, ×10 etwa bei zwei Dritteln des Wegs
+const SPAN = Math.log(TUNE_MAX / TUNE_MIN);
+export function tuneToSlider(v: number): number {
+  return Math.round((Math.log(v / TUNE_MIN) / SPAN) * 1000);
+}
+/** Reglerstellung → Faktor, auf handliche Stufen gerundet (unter ×10 auf 0,05, darüber auf 0,5) */
+export function tuneFromSlider(p: number): number {
+  const v = TUNE_MIN * Math.exp((Math.max(0, Math.min(1000, p)) / 1000) * SPAN);
+  const step = v < 10 ? 0.05 : 0.5;
+  return Math.min(TUNE_MAX, Math.max(TUNE_MIN, Math.round(v / step) * step));
 }

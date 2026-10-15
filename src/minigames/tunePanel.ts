@@ -2,7 +2,8 @@
 // die im Spiel herauskommen. Steht im Minispiel-Menü (Reiter Kampf) und im Pausenmenü eines laufenden Kampfs.
 import { esc } from '../ui/dom';
 import type { Level } from './common';
-import { enemyTune, TUNE_MAX, TUNE_MIN, type EnemyTune } from './loadout';
+import { enemyTune, tuneToSlider, type EnemyTune } from './loadout';
+export { tuneFromSlider, tuneToSlider } from './loadout';
 import { enemyStatTable } from './shooter';
 
 const fmt = (v: number) => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -13,7 +14,7 @@ export function tuneRows(level: Level, t: EnemyTune = enemyTune()): string {
 }
 
 export function tuneValue(v: number): string {
-  return `×${fmt(v)}`;
+  return `×${v >= 10 ? v.toLocaleString('de-DE', { maximumFractionDigits: 1 }) : fmt(v)}`;
 }
 
 /**
@@ -23,7 +24,7 @@ export function tuneValue(v: number): string {
 export function tunePanel(level: Level, o: { levelPicker?: string; reset: string; note: string }): string {
   const t = enemyTune();
   const slider = (key: 'hull' | 'shield', label: string) => `<div class="tune-row"><span class="tune-label">${label}</span>
-    <input type="range" min="${TUNE_MIN}" max="${TUNE_MAX}" step="0.05" value="${t[key]}" data-change="enemy-tune" data-key="${key}" aria-label="${label}-Faktor">
+    <input type="range" min="0" max="1000" step="1" value="${tuneToSlider(t[key])}" data-change="enemy-tune" data-key="${key}" aria-label="${label}-Faktor">
     <b class="tune-val" data-key="${key}">${tuneValue(t[key])}</b></div>`;
   return `<div class="section tune-panel"><h3>Entwicklung: Gegnerstärke</h3>
     ${slider('hull', 'Hülle')}${slider('shield', 'Schild')}

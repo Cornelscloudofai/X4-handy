@@ -13,7 +13,7 @@ import { ORBIT_GOALS, ORBIT_MUTATORS, OrbitGame } from './orbit';
 import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
 import { earnParts, partsFor } from './mods';
 import { setEnemyTune } from './loadout';
-import { refreshTunePanel, tunePanel } from './tunePanel';
+import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, totalStars, UNLOCK, type RecordOutcome } from './records';
 
@@ -193,7 +193,7 @@ function bindInput(s: Session): void {
   s.root.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
     if (el.dataset?.change !== 'enemy-tune' || !(s.game instanceof ShooterGame)) return;
-    setEnemyTune({ [el.dataset.key === 'shield' ? 'shield' : 'hull']: Math.round(Number(el.value) * 100) / 100 });
+    setEnemyTune({ [el.dataset.key === 'shield' ? 'shield' : 'hull']: tuneFromSlider(Number(el.value)) });
     s.game.retune();
     refreshTunePanel(s.root, s.cfg.level);
     e.stopPropagation();
@@ -210,7 +210,7 @@ function bindInput(s: Session): void {
       case 'tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
         if (s.game instanceof ShooterGame) s.game.retune();
-        for (const r of s.root.querySelectorAll<HTMLInputElement>('input[data-change="enemy-tune"]')) r.value = '1';
+        for (const r of s.root.querySelectorAll<HTMLInputElement>('input[data-change="enemy-tune"]')) r.value = String(tuneToSlider(1));
         refreshTunePanel(s.root, s.cfg.level);
         break;
       }
