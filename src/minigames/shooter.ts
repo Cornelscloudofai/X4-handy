@@ -12,7 +12,7 @@ import { playGameTrack, type GameTrack } from '../audio/music';
 import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
-import { DMG_SCALE, LTURRETS, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -93,10 +93,12 @@ function gameGun(g: X4Gun, o: { beam?: boolean; sticky?: boolean; rail?: boolean
 }
 
 interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** haftet und brennt nach (Thermal-Desintegrator) */ sticky?: boolean }
-interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number }
+/** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
+interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean }
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
 interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p' }
-interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile'; life: number }
+/** Fundstücke; „ammo“ = Munitionskiste (selten): füllt das Raketenlager ganz */
+interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile' | 'ammo'; life: number }
 interface Rock { x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches der vier Asteroidenbilder */ v: number }
 interface Mine { x: number; y: number; vx: number; vy: number; armed: number; hp: number }
 interface Card { id: string; name: string; desc: string; max: number }
@@ -387,6 +389,7 @@ export class ShooterGame implements MiniGame {
   /** Waffenplätze: mit Bordkanone bzw. mit Raketenwerfer (seitliche Lage) */
   private guns: number[] = [];
   private launchers: number[] = [];
+  private mDef: MissileDef = MISSILES.lenk;
   /** Raketen im Lager */
   private ammo = 0;
   /** Gegner bei starken Schiffen: Anzahl (Faktor) sowie Hülle und Schaden (Faktor) */
@@ -524,13 +527,19 @@ export class ShooterGame implements MiniGame {
     }
     // Bordkanonen auf allen Waffenplätzen; Raketenwerfer haben (seit X4 9.0) eigene Plätze – nur bei manchen Schiffen
     this.guns = [...this.ship.guns];
-    this.launchers = this.ship.x4.launchers ? [0] : [];
-    this.ammo = this.ship.x4.missiles + (this.ship.x4.launchers ? Math.round(this.m('missiles')) : 0);
+    // jeder Raketenwerfer feuert aus seiner Lage im Bild (sonst aus der Mitte)
+    this.launchers = this.ship.x4.launchers ? this.ship.launcherPos ?? new Array<number>(this.ship.x4.launchers).fill(0) : [];
+    this.mDef = MISSILES[lo.missile ?? 'lenk'];
+    this.ammo = this.ammoMax;
     // Stärke des Schiffs gegenüber der Mamba (Haltbarkeit × Feuerkraft): die Gegner werden zahlreicher, ab dem
     // 2,5-Fachen zusätzlich zäher und gefährlicher – so bleibt der Kampf mit den Originalwerten fordernd
     const durability = (this.ship.hull + this.ship.shield) / 2;
     // Feuerkraft: Dauerleistung aller Bordkanonen und Türme (X4-Werte), zwei S-Pulslaser der Mamba = 1
-    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + this.ship.turrets.length * effectiveDps(td.gun, td.beam) + this.pL.length * effectiveDps(ltd.gun)) / (2 * sustainedDps(WEAPONS.puls.s));
+    // Raketen zählen mit: Salvenschaden je Nachladezeit, in X4-Schaden umgerechnet (eine Lenkrakete ≈ Bosonenlanze S),
+    // nur zu einem Drittel – das Lager ist begrenzt
+    const mX4 = MISSILE_DMG * this.mDef.dmg * (this.mDef.split ?? 1) / (DMG_SCALE * 6);
+    const missileDps = this.launchers.length ? ((this.launchers.length * 2 / this.mDef.slots) * mX4) / (this.missileCdMax / TIME) / 3 : 0;
+    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + this.ship.turrets.length * effectiveDps(td.gun, td.beam) + this.pL.length * effectiveDps(ltd.gun) + missileDps) / (2 * sustainedDps(WEAPONS.puls.s));
     // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger
     const power = Math.sqrt(durability * firepower) * Math.min(1, this.ship.speed);
     // Gegner haben feste Werte (nur die Stufe macht sie zäher). Ein starkes Schiff bekommt dafür mehr Gegner,
@@ -573,7 +582,13 @@ export class ShooterGame implements MiniGame {
   /** Schaden je Geschoss einer Bordkanone (Strahl: pro Sekunde) */
   private get damage(): number { return this.baseDmg * this.wpn.dmg; }
   private get shieldMax(): number { return [40, 70, 100][this.gear.shield - 1] * (1 + 0.4 * this.c('shield')) * (this.mutator?.id === 'glass' ? 0.5 : 1) * this.ship.shield * this.sh.cap * (1 + this.m('shield')); }
-  private get missileCdMax(): number { return 8 * Math.pow(0.8, this.c('mreload')); }
+  private get missileCdMax(): number { return 8 * (this.ship.missileReload ?? 1) * Math.pow(0.8, this.c('mreload')); }
+  /** Raketenlager (mit Mod „Erweitertes Raketenlager“) */
+  private get ammoMax(): number { return this.ship.x4.launchers ? this.ship.x4.missiles + Math.round(this.m('missiles')) : 0; }
+  /** Schaden einer Rakete: etwa wie die Bosonenlanze, wächst mit der Ausrüstungsstufe wie die Bordwaffen */
+  private get missileDmg(): number { return MISSILE_DMG * ([6, 8, 11][this.gear.weapon - 1] / 6) * this.mDef.dmg; }
+  /** Raketen je Salve: zwei je Werfer (Verbesserung „Große Salve“: mehr) */
+  private get salvo(): number { return this.launchers.length * 2 + 2 * this.c('missiles'); }
   private get dashCdMax(): number { return SPECIALS[this.ship.special].cd * Math.pow(0.75, this.c('dash')) * (1 - this.m('special')); }
   /**
    * Schaden am Frachter: der Frachter wird nicht stärker, wenn du ein stärkeres Schiff fliegst – über die Stärke
@@ -808,28 +823,37 @@ export class ShooterGame implements MiniGame {
     this.fireId = null;
   }
 
-  private fireMissiles(): void {
+  /** Raketensalve: zwei je Werfer aus dem Lager; free = Raketenschwarm (ohne Nachladen abzuwarten, doppelte Salve) */
+  private fireMissiles(free = false): boolean {
     // Raketen nur mit Raketenwerfern und solange das Lager reicht
-    if (this.missileCd > 0 || this.outcome || this.choosing || !this.launchers.length || this.ammo <= 0) return;
-    this.missileCd = this.missileCdMax;
+    if ((!free && this.missileCd > 0) || this.outcome || this.choosing || !this.launchers.length || this.ammo < this.mDef.slots) return false;
+    if (!free) this.missileCd = this.missileCdMax;
     this.missilesUsed++;
     setGoal(this.goals, 'nomissile', false);
     const targets = [...this.enemies].filter((e) => !e.shielded || e.kind !== 'boss').sort((a, b) => Math.hypot(a.x - this.px, a.y - this.py) - Math.hypot(b.x - this.px, b.y - this.py));
-    // je Raketenwerfer zwei Raketen pro Salve (Verbesserung: mehr), aus dem Lager
-    const n = Math.min(this.ammo, this.launchers.length * 2 + 2 * this.c('missiles'));
-    this.ammo -= n;
-    const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
+    // schwere Raketen belegen zwei Lagerplätze
+    const n = Math.min(Math.floor(this.ammo / this.mDef.slots), this.salvo * (free ? 2 : 1));
+    this.ammo -= n * this.mDef.slots;
+    const c = Math.cos(this.aimA), sn = Math.sin(this.aimA), spread = free ? 0.9 : 0.4;
     for (let k = 0; k < n; k++) {
-      const a = this.aimA + (k - (n - 1) / 2) * 0.4;
+      const a = this.aimA + (k - (n - 1) / 2) * spread / Math.max(1, n / 6);
       const gx = this.launchers[k % this.launchers.length];
-      this.missiles.push({ x: this.px - sn * gx, y: this.py + c * gx, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, target: targets[k % Math.max(1, targets.length)] ?? null, life: 3.2 });
+      this.missiles.push({ x: this.px - sn * gx, y: this.py + c * gx, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, target: targets[k % Math.max(1, targets.length)] ?? null, life: 3.2 * (380 / this.mDef.v), def: this.mDef, dmg: this.missileDmg, split: this.mDef.split ? 0.28 : undefined });
     }
     sfx.missile();
+    return true;
   }
 
   /** Spezialfähigkeit des Schiffs: Ausweichen, Waffenüberladung oder Schildüberladung */
   private doSpecial(): void {
     if (this.dashCd > 0 || this.outcome || this.choosing) return;
+    if (this.ship.special === 'salvo') {
+      // Raketenschwarm: sofort eine doppelte Salve im weiten Fächer, auch während des Nachladens
+      if (!this.fireMissiles(true)) { this.floats.add(this.px, this.py - 30, 'Keine Raketen', '#ff5c6c', 13); return; }
+      this.dashCd = this.dashCdMax;
+      this.floats.add(this.px, this.py - 30, 'Raketenschwarm', '#ffb547', 13);
+      return;
+    }
     if (this.ship.special === 'overdrive') {
       this.odT = 3;
       this.dashCd = this.dashCdMax;
@@ -1032,6 +1056,12 @@ export class ShooterGame implements MiniGame {
       this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (sw ? ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
+    // Nachschub vom Frachter nach jeder überstandenen Welle: ein Viertel des Raketenlagers
+    if (this.wave > 0 && this.launchers.length && this.ammo < this.ammoMax) {
+      const add = Math.min(this.ammoMax - this.ammo, Math.max(2, Math.round(this.ammoMax * 0.25)));
+      this.ammo += add;
+      this.floats.add(this.px, this.py - 56, `Nachschub: +${add} Raketen`, '#ffd27a', 13);
+    }
   }
 
   /**
@@ -1903,11 +1933,23 @@ export class ShooterGame implements MiniGame {
       if (m.target && !this.enemies.includes(m.target)) m.target = this.enemies.find((e) => !(e.kind === 'boss' && e.shielded)) ?? null;
       if (m.target) {
         const dx = m.target.x - m.x, dy = m.target.y - m.y, d = Math.hypot(dx, dy) || 1;
-        m.vx += (dx / d) * 900 * dt;
-        m.vy += (dy / d) * 900 * dt;
+        m.vx += (dx / d) * m.def.acc * dt;
+        m.vy += (dy / d) * m.def.acc * dt;
         const v = Math.hypot(m.vx, m.vy);
-        if (v > 380) { m.vx *= 380 / v; m.vy *= 380 / v; }
-        if (d < m.target.r + 4) { this.damageEnemy(m.target, 34); this.fx.burst(m.x, m.y, '#ffd27a', 12, 180, 1.8, 'spark', 0.35); continue; }
+        if (v > m.def.v) { m.vx *= m.def.v / v; m.vy *= m.def.v / v; }
+        // Schwarmrakete trifft erst als Lenkköpfe (vorher fliegt sie durch)
+        if (d < m.target.r + 4 && m.split == null) { this.missileHit(m, m.target); continue; }
+      }
+      // Schwarmrakete: kurz nach dem Start in kleine Lenkköpfe zerfallen, die sich verschiedene Ziele suchen
+      if (m.split != null && (m.split -= dt) <= 0) {
+        const near = [...this.enemies].filter((e) => !(e.kind === 'boss' && e.shielded)).sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y));
+        const k0 = Math.floor(this.r() * 3);
+        for (let k = 0; k < (m.def.split ?? 0); k++) {
+          const a = Math.atan2(m.vy, m.vx) + (k - 1.5) * 0.5;
+          km.push({ x: m.x, y: m.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, target: near[(k0 + k) % Math.max(1, near.length)] ?? null, life: 2.6, def: m.def, dmg: m.dmg, mini: true });
+        }
+        this.fx.burst(m.x, m.y, '#ffd27a', 6, 120, 1.2, 'spark', 0.2);
+        continue;
       }
       m.x += m.vx * dt;
       m.y += m.vy * dt;
@@ -1978,7 +2020,9 @@ export class ShooterGame implements MiniGame {
         this.loot++;
         if (p.kind === 'repair') { this.fHull = Math.min(this.fMax, this.fHull + this.fMax * 0.08); this.hull = Math.min(100, this.hull + 20); this.floats.add(this.px, this.py - 20, 'Reparatur', '#6be38f', 13); }
         else if (p.kind === 'shield') { this.shield = this.shieldMax; this.floats.add(this.px, this.py - 20, 'Schild voll', '#7fd8ff', 13); }
-        else { this.missileCd = 0; this.ammo = Math.min(this.ship.x4.missiles, this.ammo + Math.max(4, Math.round(this.ship.x4.missiles * 0.25))); this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Raketen nachgeladen' : 'Raketen (kein Werfer)', '#ffd27a', 13); }
+        else if (p.kind === 'ammo') { this.missileCd = 0; this.ammo = this.ammoMax; this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Munitionskiste: Raketenlager voll' : 'Munition (kein Werfer)', '#ffd27a', 13); }
+        // Raketen-Fundstück: die Hälfte des Lagers (mindestens vier), Werfer sofort bereit
+        else { this.missileCd = 0; this.ammo = Math.min(this.ammoMax, this.ammo + Math.max(4, Math.round(this.ammoMax * 0.5))); this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Raketen nachgeladen' : 'Raketen (kein Werfer)', '#ffd27a', 13); }
         sfx.pickup();
       }
     }
@@ -1991,6 +2035,20 @@ export class ShooterGame implements MiniGame {
   }
 
   /** bypass: Anteil des Schadens, der durch fremde Schilde dringt (Thermal-Desintegrator: teilweise) */
+  /** Raketentreffer: Schaden, bei schweren Raketen Druckwelle, bei Störraketen Schild aus */
+  private missileHit(m: Missile, e: Enemy): void {
+    const def = m.def;
+    this.damageEnemy(e, m.dmg);
+    // Störrakete: Schild weg; geladen wird erst wieder nach stun Sekunden (sonst nach 3 s ohne Treffer)
+    if (def.stun && !(e.kind === 'boss' && e.shielded)) { e.sh = 0; e.shT = 3 - def.stun; e.shFlash = 0.4; }
+    if (def.splash) {
+      const [rad, f] = def.splash;
+      for (const q of [...this.enemies]) if (q !== e && Math.hypot(q.x - m.x, q.y - m.y) < rad + q.r) this.damageEnemy(q, m.dmg * f);
+      this.explode(m.x, m.y, '#ffb070', 1.2, false);
+    }
+    this.fx.burst(m.x, m.y, def.stun ? '#8fe0ff' : '#ffd27a', m.mini ? 7 : 12, 180, 1.8, 'spark', 0.35);
+  }
+
   private damageEnemy(e: Enemy, dmg: number, bypass = 0.3): void {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
     let d = e.shielded ? dmg * bypass : dmg;
@@ -2025,7 +2083,9 @@ export class ShooterGame implements MiniGame {
     const chance = this.mutator?.id === 'bounty' ? 0.3 : 0.14;
     if (e.kind !== 'turret' && this.r() < chance) {
       const kinds: Pickup['kind'][] = ['repair', 'shield', 'missile'];
-      this.pickups.push({ x: e.x, y: e.y, kind: kinds[Math.floor(this.r() * 3)], life: 12 });
+      // selten (jedes zehnte Fundstück, nur mit Raketenwerfern): Munitionskiste
+      const kind = this.launchers.length && this.r() < 0.1 ? 'ammo' : kinds[Math.floor(this.r() * 3)];
+      this.pickups.push({ x: e.x, y: e.y, kind, life: 12 });
     }
   }
 
@@ -2284,11 +2344,23 @@ export class ShooterGame implements MiniGame {
     }
     ctx.restore();
     if (ownMissile) for (const m of this.missiles) {
-      const size = 20;
+      // Größe nach Raketenart: schwere größer, Lenkköpfe der Schwarmrakete klein; Störrakete mit blauem Schein
+      const size = m.mini ? 11 : m.def.size;
       ctx.save();
       ctx.translate(m.x, m.y);
+      if (m.def.stun) {
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.7);
+        g.addColorStop(0, rgba('#8fe0ff', 0.55));
+        g.addColorStop(1, rgba('#8fe0ff', 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
       ctx.rotate(Math.atan2(m.vy, m.vx) + Math.PI / 2);
-      ctx.fillStyle = rgba(ownKind === 'argon' ? '#7fe8ff' : '#ffb070', 0.6 + 0.3 * Math.random());
+      ctx.fillStyle = rgba(ownKind === 'argon' ? '#7fe8ff' : m.def.color, 0.6 + 0.3 * Math.random());
       ctx.beginPath();
       ctx.moveTo(-1.8, size * 0.46); ctx.lineTo(1.8, size * 0.46); ctx.lineTo(0, size * 0.46 + 4 + Math.random() * 5);
       ctx.closePath();
@@ -2428,7 +2500,7 @@ export class ShooterGame implements MiniGame {
 
   private drawPickup(ctx: CanvasRenderingContext2D, p: Pickup, t: number): void {
     if (p.life < 3 && Math.sin(t * 16) < 0) return;
-    const col = p.kind === 'repair' ? '#6be38f' : p.kind === 'shield' ? '#7fd8ff' : '#ffd27a';
+    const col = p.kind === 'repair' ? '#6be38f' : p.kind === 'shield' ? '#7fd8ff' : p.kind === 'ammo' ? '#ff9a4a' : '#ffd27a';
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(t * 1.5);
@@ -2445,7 +2517,7 @@ export class ShooterGame implements MiniGame {
     ctx.font = '700 10px "Chakra Petch", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(p.kind === 'repair' ? '+' : p.kind === 'shield' ? 'S' : 'R', 0, 0.5);
+    ctx.fillText(p.kind === 'repair' ? '+' : p.kind === 'shield' ? 'S' : p.kind === 'ammo' ? 'R+' : 'R', 0, 0.5);
     ctx.restore();
   }
 

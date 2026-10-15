@@ -44,6 +44,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'split-chimera-ki': { xs: [-0.137, -0.082, 0.081, 0.137], y: 0.34, color: '#ff9a4a' },
   'split-dragon-ki': { xs: [0], y: 0.385, color: '#ff9a4a' },
   'split-cobra-ki': { xs: [-0.08, 0, 0.083], y: 0.384, color: '#ff9a4a' },
+  'split-wolf-ki': { xs: [-0.124, 0.123], y: 0.389, color: '#ff9a4a' },
   'split-klapperschlange-ki': { xs: [-0.1, 0, 0.1], y: 0.455, color: '#ff9a4a' },
   // Miner und Frachter auf der Sektorkarte
   'split-alligator-min-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },

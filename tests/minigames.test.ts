@@ -1163,3 +1163,107 @@ describe('Schiffsmodifikationen: Testphase', () => {
     expect(refundOf(3)).toBe(QUALITY[3].cost);
   });
 });
+
+describe('Kampf: Raketen, Raketenarten und der Bomber Wolf', () => {
+  type M = { x: number; y: number; vx: number; vy: number; target: unknown; life: number; dmg: number; mini?: boolean; def: { name: string } };
+  type E = { x: number; y: number; vx: number; vy: number; hp: number; max: number; sh: number; shMax: number; shT: number; kind: string; r: number };
+  type G = {
+    update(dt: number): void; ammo: number; ammoMax: number; missileCd: number; missileCdMax: number; missiles: M[]; enemies: E[]; launchers: number[];
+    missileDmg: number; damage: number; fireMissiles(free?: boolean): boolean; doSpecial(): void; dashCd: number; pickups: { x: number; y: number; kind: string; life: number }[];
+    px: number; py: number; spawnWave(): void; wave: number; power: number;
+  };
+  const make = (lo: Partial<Loadout>, side: 'pirate' | 'xenon' = 'pirate') => {
+    const g = new ShooterGame({ ...cfg(1, 4), loadout: { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', ...lo } } as never, side);
+    g.resize(390, 844);
+    return g as unknown as G;
+  };
+  // Gegner, der still vor dem Jäger steht
+  const dummy = (g: G, kind = 'jaeger', dx = 0, dy = -160): E => {
+    for (let i = 0; i < 3000 && !g.enemies.length; i++) g.update(DT);
+    const e = g.enemies[0];
+    g.enemies.length = 0;
+    Object.assign(e, { kind, x: g.px + dx, y: g.py + dy, vx: 0, vy: 0, hp: 1e6, max: 1e6, sh: 100, shMax: 100, shT: 0 });
+    g.enemies.push(e);
+    g.missileCd = 0;
+    return e;
+  };
+
+  it('eine Lenkrakete trifft etwa so hart wie die Bosonenlanze (S) – deutlich mehr als bisher (34)', () => {
+    const g = make({ missile: 'lenk' });
+    const boson = make({ weapon: 'boson' });
+    expect(g.missileDmg).toBeGreaterThan(100);
+    expect(g.missileDmg / boson.damage).toBeGreaterThan(0.8);
+    expect(g.missileDmg / boson.damage).toBeLessThan(1.25);
+    // mit besserer Ausrüstung mehr
+    const top = new ShooterGame({ ...cfg(1, 4, { gear: 3 }), loadout: { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht' } } as never, 'pirate') as unknown as G;
+    expect(top.missileDmg).toBeGreaterThan(g.missileDmg * 1.5);
+  });
+
+  it('Fundstücke: Raketen +50 % (mindestens 4), Munitionskiste füllt das Lager; Nachschub je Welle +25 %', () => {
+    const g = make({ ship: 'wolf' });
+    expect(g.ammoMax).toBe(40);
+    g.ammo = 0;
+    g.pickups.push({ x: g.px, y: g.py, kind: 'missile', life: 5 });
+    g.update(DT);
+    expect(g.ammo).toBe(20);
+    g.pickups.push({ x: g.px, y: g.py, kind: 'ammo', life: 5 });
+    g.update(DT);
+    expect(g.ammo).toBe(40);
+    g.ammo = 0;
+    for (let i = 0; i < 3000 && g.wave < 0; i++) g.update(DT);
+    g.spawnWave();
+    expect(g.ammo).toBe(10);
+  });
+
+  it('Wolf: drei Werfer, sechs Raketen je Salve, halbe Nachladezeit, Raketenschwarm feuert zwölf ohne zu warten', () => {
+    const g = make({ ship: 'wolf' });
+    const mamba = make({});
+    expect(g.launchers).toHaveLength(3);
+    expect(g.missileCdMax).toBeCloseTo(mamba.missileCdMax / 2, 6);
+    dummy(g);
+    expect(g.fireMissiles()).toBe(true);
+    expect(g.missiles).toHaveLength(6);
+    expect(g.ammo).toBe(34);
+    expect(g.fireMissiles()).toBe(false); // lädt nach
+    g.dashCd = 0;
+    g.doSpecial();
+    expect(g.missiles).toHaveLength(18);
+    expect(g.ammo).toBe(22);
+    // starke Raketen zählen bei der Gegnerstärke mit
+    expect(g.power).toBeGreaterThan(1);
+  });
+
+  it('Raketenarten: schwere (2 Plätze, Druckwelle), Schwarm (zerfällt in 4), Stör (Schild aus und bleibt 5 s unten)', () => {
+    const heavy = make({ ship: 'wolf', missile: 'schwer' });
+    const e = dummy(heavy);
+    heavy.fireMissiles();
+    expect(heavy.ammo).toBe(40 - 12);
+    const near = { ...e, x: e.x + 30, hp: 1e6, max: 1e6 };
+    heavy.enemies.push(near as E);
+    for (let i = 0; i < 200 && heavy.missiles.length; i++) heavy.update(DT);
+    expect(near.hp + near.sh).toBeLessThan(1e6 + 100); // Druckwelle hat den Nachbarn getroffen
+
+    const sw = make({ ship: 'wolf', missile: 'schwarm' });
+    dummy(sw, 'jaeger', 0, -600);
+    sw.fireMissiles();
+    expect(sw.missiles).toHaveLength(6);
+    for (let i = 0; i < 25; i++) sw.update(DT);
+    expect(sw.missiles.filter((m) => m.mini).length).toBe(24);
+
+    const st = make({ missile: 'stoer' });
+    const t = dummy(st);
+    st.fireMissiles();
+    for (let i = 0; i < 200 && st.missiles.length; i++) st.update(DT);
+    expect(t.sh).toBe(0);
+    for (let i = 0; i < Math.round(3.5 / DT); i++) st.update(DT);
+    expect(t.sh).toBe(0); // nach 3,5 s noch immer unten (normal: lädt nach 3 s wieder)
+  });
+
+  it('Wolf ist wählbar und gilt als S-Schiff mit Bild-Werferlagen', async () => {
+    const { SHIPS } = await import('../src/minigames/loadout');
+    expect(SHIP_IDS).toContain('wolf');
+    expect(SHIPS.wolf.cls).toBe('S');
+    expect(SHIPS.wolf.special).toBe('salvo');
+    expect(SHIPS.wolf.launcherPos).toHaveLength(SHIPS.wolf.x4.launchers);
+  });
+});

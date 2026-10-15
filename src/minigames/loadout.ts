@@ -1,14 +1,15 @@
 // Ausrüstung für das Kampf-Minispiel: welches Schiff du fliegst, welche Waffen und Türme es trägt, welcher Schild.
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
-export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'dragon' | 'cobra' | 'klapperschlange' | 'argon';
+export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'wolf' | 'dragon' | 'cobra' | 'klapperschlange' | 'argon';
 export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'schnellplasma' | 'plasmasalve';
 export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson';
 /** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
 export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron';
 export type ShieldId = 'leicht' | 'schwer';
 /** Spezialfähigkeit auf der Taste über der Feuertaste */
-export type SpecialId = 'dash' | 'sprint' | 'overdrive' | 'torpedo' | 'escort';
+export type SpecialId = 'dash' | 'sprint' | 'overdrive' | 'torpedo' | 'escort' | 'salvo';
+export type MissileId = 'lenk' | 'schwer' | 'schwarm' | 'stoer';
 
 /** Werte aus den X4-Spieldaten, Version 9.0 (siehe docs/design/split-militaerschiffe.md) */
 export interface X4Data {
@@ -72,6 +73,10 @@ export interface ShipDef {
   turretD?: number;
   /** schwere L-Türme an der Bordwand (Zerstörer) */
   lMounts?: LMount[];
+  /** Raketenwerfer: seitliche Lage in Spielpunkten wie im Bild (sonst alle in der Mitte) */
+  launcherPos?: number[];
+  /** Nachladezeit der Raketenwerfer im Verhältnis zu den anderen Schiffen (Bomber: schneller) */
+  missileReload?: number;
   /** Trefferradius und Zeichengröße */
   r: number;
   size: number;
@@ -194,6 +199,14 @@ export const SHIPS: Record<ShipId, ShipDef> = {
       { pivot: [505, 440], min: -25, max: 130, cover: [[463, 494], [468, 440], [493, 420], [530, 387], [537, 392], [536, 448]] },
     ]),
     r: 46, size: RS_SIZE, special: 'overdrive', sprite: 'split-klapperschlange', fallback: 'split-jaeger-s',
+  }),
+  // Eigener Entwurf (kein Schiff aus den X4-Daten): Bomber der Split. Werte angenommen – zwischen Mamba und Asp,
+  // dafür drei Raketenwerfer (Flügel links/rechts, Rückenschacht), großes Raketenlager und schnelles Nachladen.
+  wolf: ship('S', {
+    name: 'Wolf', role: 'Bomber', desc: 'Bomber der Split (eigener Entwurf): drei Raketenwerfer – je einer in den Flügeln und ein Schacht im Rücken –, Lager für 40 Raketen, lädt doppelt so schnell nach. Nur eine Bordkanone, etwas träger. Raketenschwarm: sofort eine doppelte Salve, auch während des Nachladens.',
+    x4: { hull: 4200, engines: 2, shields: 1, weapons: 1, launchers: 3, turrets: 0, missiles: 40, v: 300, dragYaw: 3.8 },
+    gunWidth: 0, gunPos: [0], gunFwd: 0.46, turrets: [], r: 13, size: 50, special: 'salvo', sprite: 'split-wolf', fallback: 'split-jaeger-s',
+    launcherPos: [-12.5, 0, 12.4], missileReload: 0.5,
   }),
   argon: ship('S', {
     name: 'Argon-Jäger', role: 'Jäger', desc: 'Der Argon-Jäger aus dem Grafikvergleich – mit den Werten der Mamba.',
@@ -410,10 +423,44 @@ export const SPECIALS: Record<SpecialId, { name: string; key: string; cd: number
   overdrive: { name: 'Waffenüberladung', key: 'Ü', cd: 12 },
   torpedo: { name: 'Torpedo', key: 'T', cd: 9 },
   escort: { name: 'Begleitjäger', key: 'J', cd: 24 },
+  salvo: { name: 'Raketenschwarm', key: 'S', cd: 15 },
 };
 
-export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId; /** schwere L-Türme (nur Zerstörer) */ lturret?: LTurretId }
-export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'plasma' };
+/**
+ * Raketenarten (für alle Schiffe mit Raketenwerfer, in der Ausrüstung wählbar). Schaden als Vielfaches von
+ * MISSILE_DMG – eine Lenkrakete trifft etwa so hart wie die Bosonenlanze (S) und wächst wie die Bordwaffen mit der
+ * Ausrüstungsstufe. Werte zum Ausprobieren.
+ */
+export const MISSILE_DMG = 130;
+export interface MissileDef {
+  name: string;
+  desc: string;
+  /** Schaden je Treffer (Anteil von MISSILE_DMG) */
+  dmg: number;
+  /** Höchsttempo und Lenkkraft */
+  v: number;
+  acc: number;
+  /** Lagerplätze je Rakete */
+  slots: number;
+  /** Flächenschaden (Radius, Anteil des Schadens) */
+  splash?: [number, number];
+  /** zerfällt kurz nach dem Start in so viele kleine Lenkköpfe */
+  split?: number;
+  /** löscht den Schild des Ziels und hält ihn so lange (s) unten */
+  stun?: number;
+  color: string;
+  size: number;
+}
+export const MISSILES: Record<MissileId, MissileDef> = {
+  lenk: { name: 'Lenkrakete', desc: 'Schnell und wendig, folgt ihrem Ziel – der Allrounder.', dmg: 1, v: 380, acc: 900, slots: 1, color: '#ffb070', size: 20 },
+  schwer: { name: 'Schwere Rakete', desc: 'Doppelter Schaden und eine Druckwelle, die Nachbarn mittrifft – langsamer, dreht träge und belegt zwei Lagerplätze.', dmg: 2, v: 260, acc: 480, slots: 2, splash: [70, 0.5], color: '#ff7a3a', size: 26 },
+  schwarm: { name: 'Schwarmrakete', desc: 'Zerfällt kurz nach dem Start in vier kleine Lenkköpfe, die sich verschiedene Ziele suchen – gegen Schwärme.', dmg: 0.35, v: 430, acc: 1150, slots: 1, split: 4, color: '#ffd27a', size: 16 },
+  stoer: { name: 'Störrakete', desc: 'Wenig Schaden, aber sie löscht den Schild des Ziels und hält ihn fünf Sekunden unten – gegen Schildträger und zähe Gegner.', dmg: 0.45, v: 400, acc: 1000, slots: 1, stun: 5, color: '#8fe0ff', size: 20 },
+};
+export const MISSILE_IDS = Object.keys(MISSILES) as MissileId[];
+
+export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId; /** schwere L-Türme (nur Zerstörer) */ lturret?: LTurretId; /** Raketenart (nur Schiffe mit Raketenwerfer) */ missile?: MissileId }
+export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'plasma', missile: 'lenk' };
 /** Namen aus früheren Versionen (gespeicherte Ausrüstung) */
 const OLD: Record<string, string> = { impuls: 'puls', splitter: 'schrot' };
 
@@ -427,6 +474,7 @@ function valid(l: Partial<Record<keyof Loadout, string>> | null | undefined): Lo
     turret: turret && turret in TURRETS ? (turret as TurretId) : DEFAULT_LOADOUT.turret,
     shield: l?.shield && l.shield in SHIELDS ? (l.shield as ShieldId) : DEFAULT_LOADOUT.shield,
     lturret: l?.lturret && l.lturret in LTURRETS ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,
+    missile: l?.missile && l.missile in MISSILES ? (l.missile as MissileId) : DEFAULT_LOADOUT.missile,
   };
 }
 
@@ -458,7 +506,7 @@ export function setLoadout(patch: Partial<Loadout>): Loadout {
 export function loadoutLabel(l: Loadout = loadout()): string {
   const s = SHIPS[l.ship];
   const lt = s.lMounts?.length ? ` · ${s.lMounts.length} L-Türme: ${LTURRETS[l.lturret ?? 'plasma'].name}` : '';
-  return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer` : ''}${lt}${s.turrets.length ? ` · ${s.turrets.length} ${s.lMounts?.length ? 'M-' : ''}Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
+  return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer (${MISSILES[l.missile ?? 'lenk'].name})` : ''}${lt}${s.turrets.length ? ` · ${s.turrets.length} ${s.lMounts?.length ? 'M-' : ''}Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
 }
 
 // ---- Steuerung im Kampf: ein Stick (Drehen + Schub, Feuertaste) oder zwei Sticks (links fliegen, rechts zielen und feuern) ----

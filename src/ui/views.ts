@@ -9,7 +9,7 @@ import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, sp
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
 import { musicFx } from '../audio/rhythm';
-import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
+import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, MISSILES, MISSILE_IDS, MISSILE_DMG, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1608,6 +1608,9 @@ export function modalHtml(state: GameState, ui: UIState): string {
           <p class="small muted" style="margin:0 0 8px">Je zwei an den Schultern, unter den Panzerplatten: schwenken nach außen und hinten und spitz nach vorn über den Bug. Jede Waffe hat ihr eigenes Rohr. Werte angenommen (aus den M-Türmen abgeleitet).</p>
           <div class="box rows">${LTURRET_IDS.map((id) => { const t = LTURRETS[id], url = spriteUrl(t.barrel); return `<div class="row tap" ${act('loadout-set', { key: 'lturret', value: id })}>${url ? `<span class="lo-barrel"><img src="${url}" alt=""></span>` : ''}<div class="grow"><div class="title" style="font-weight:500">${esc(t.name)}</div><div class="sub wrap">${esc(t.desc)}</div><div class="sub wrap lo-data">${esc(`${gunData(t.gun)} · schwenkt ${t.turn}°/s`)}</div></div>${(lo.lturret ?? 'plasma') === id ? icon('check', 20, 'pos') : '<span class="lo-radio"></span>'}</div>`; }).join('')}</div></div>` : ''}
         ${ship.turrets.length ? `<div class="section"><h3>${ship.lMounts?.length ? 'M-Türme' : 'Türme'} (${ship.turrets.length} × M, Split)</h3>${choice('turret', lo.turret, TURRET_IDS, TURRETS, (id) => { const t = TURRETS[id as keyof typeof TURRETS]; return `${gunData(t.gun, t.beam)} · schwenkt ${t.turn}°/s`; })}</div>` : ''}
+        ${ship.x4.launchers ? `<div class="section"><h3>Raketen (${ship.x4.launchers} × Werfer, Lager ${ship.x4.missiles})</h3>
+          <p class="small muted" style="margin:0 0 8px">Je Werfer zwei Raketen pro Salve${ship.missileReload && ship.missileReload < 1 ? `, Nachladen ${Math.round(8 * ship.missileReload)} s statt 8 s` : ', Nachladen 8 s'}. Nachschub: Raketen-Fundstück füllt das halbe Lager, die seltene Munitionskiste das ganze, nach jeder Welle bringt der Frachter ein Viertel.</p>
+          ${choice('missile', lo.missile ?? 'lenk', MISSILE_IDS, MISSILES, (id) => { const d = MISSILES[id as keyof typeof MISSILES]; return `${d.split ? `${d.split} × ` : ''}${Math.round(MISSILE_DMG * d.dmg)} Schaden${d.splash ? ' + Druckwelle' : ''}${d.stun ? ` · Schild ${d.stun} s aus` : ''} · ${d.slots > 1 ? `${d.slots} Lagerplätze` : '1 Lagerplatz'}`; })}</div>` : ''}
         <div class="section"><h3>Schild</h3>${choice('shield', lo.shield, SHIELD_IDS, SHIELDS)}</div>`;
       // Mod-Werkstatt
       const slot: ModSlot = m.slot ?? 'weapon';

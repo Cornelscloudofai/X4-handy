@@ -119,3 +119,11 @@ Ausgleich: Die Stärke des Schiffs (Haltbarkeit × Feuerkraft mit der gewählten
 - **L-Schild:** 30 000, lädt 230/s nach 1,5 s (Annahme), dazu die 15 M-Schilde.
 - **L-Steuerdüsen:** achtfaches Drehmoment eines S-Schiffs (Annahme), sonst wäre der Zerstörer kaum zu lenken.
 - **Raketen:** Lager 160, aber kein Werfer – im Minispiel ohne Raketen.
+
+## Wolf (Bomber, eigener Entwurf – nicht aus den X4-Daten)
+
+Annahmen für das Minispiel: S-Klasse, Hülle 4.200, ein S-Schild, zwei Triebwerke, ein Waffenplatz (Bug), drei
+Raketenwerfer (linker und rechter Flügel, Rückenschacht – Lagen aus dem Bild), Raketenlager 40, Tempo 300 m/s,
+Drehwiderstand 3,8, Nachladen der Werfer in der Hälfte der üblichen Zeit. Spezialfähigkeit Raketenschwarm.
+Raketen allgemein: eine Lenkrakete ≈ Schaden der Bosonenlanze (S); Arten Lenk-, Schwere, Schwarm- und Störrakete
+(Werte zum Ausprobieren).
