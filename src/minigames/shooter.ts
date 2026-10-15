@@ -1979,7 +1979,7 @@ export class ShooterGame implements MiniGame {
         const k0 = Math.floor(this.r() * 3);
         for (let k = 0; k < (m.def.split ?? 0); k++) {
           const a = Math.atan2(m.vy, m.vx) + (k - 1.5) * 0.5;
-          km.push({ x: m.x, y: m.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, target: near[(k0 + k) % Math.max(1, near.length)] ?? null, life: m.def.life, def: m.def, dmg: m.dmg, mini: true });
+          km.push({ x: m.x, y: m.y, vx: Math.cos(a) * 360, vy: Math.sin(a) * 360, target: near[(k0 + k) % Math.max(1, near.length)] ?? null, life: m.def.life, def: m.def, dmg: m.dmg, mini: true });
         }
         this.fx.burst(m.x, m.y, '#ffd27a', 6, 120, 1.2, 'spark', 0.2);
         continue;
