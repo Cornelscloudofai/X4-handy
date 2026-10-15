@@ -830,7 +830,7 @@ export class ShooterGame implements MiniGame {
     if (!free) this.missileCd = this.missileCdMax;
     this.missilesUsed++;
     setGoal(this.goals, 'nomissile', false);
-    const targets = [...this.enemies].filter((e) => !e.shielded || e.kind !== 'boss').sort((a, b) => Math.hypot(a.x - this.px, a.y - this.py) - Math.hypot(b.x - this.px, b.y - this.py));
+    const targets = this.missileTargets();
     // schwere Raketen belegen zwei Lagerplätze
     const n = Math.min(Math.floor(this.ammo / this.mDef.slots), this.salvo * (free ? 2 : 1));
     this.ammo -= n * this.mDef.slots;
@@ -838,10 +838,34 @@ export class ShooterGame implements MiniGame {
     for (let k = 0; k < n; k++) {
       const a = this.aimA + (k - (n - 1) / 2) * spread / Math.max(1, n / 6);
       const gx = this.launchers[k % this.launchers.length];
-      this.missiles.push({ x: this.px - sn * gx, y: this.py + c * gx, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, target: targets[k % Math.max(1, targets.length)] ?? null, life: 3.2 * (380 / this.mDef.v), def: this.mDef, dmg: this.missileDmg, split: this.mDef.split ? 0.28 : undefined });
+      this.missiles.push({ x: this.px - sn * gx, y: this.py + c * gx, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, target: targets[k % Math.max(1, targets.length)] ?? null, life: this.mDef.split ? 0.5 : this.mDef.life, def: this.mDef, dmg: this.missileDmg, split: this.mDef.split ? 0.28 : undefined });
     }
     sfx.missile();
     return true;
+  }
+
+  /**
+   * Ziele einer Salve nach Art der Rakete: Lenkrakete nimmt, was vor dem Bug liegt (bis an ihre Reichweite), schwere
+   * Raketen große Ziele zuerst, Störraketen Ziele mit Schild zuerst, Schwarmraketen einfach die nächsten
+   */
+  private missileTargets(): Enemy[] {
+    const d = (e: Enemy) => Math.hypot(e.x - this.px, e.y - this.py);
+    const all = this.enemies.filter((e) => !(e.kind === 'boss' && e.shielded));
+    const byDist = (a: Enemy, b: Enemy) => d(a) - d(b);
+    const def = this.mDef, reach = def.v * def.life * 0.9;
+    if (def.lock === 'aim') {
+      const ahead = all.filter((e) => d(e) < reach && Math.abs(wrapA(Math.atan2(e.y - this.py, e.x - this.px) - this.aimA)) < 0.6).sort(byDist);
+      return ahead.length ? ahead : all.sort(byDist);
+    }
+    if (def.lock === 'big') {
+      const rank = { L: 0, M: 1, S: 2 } as const;
+      return all.filter((e) => d(e) < reach).sort((a, b) => rank[ECLASS[a.kind]] - rank[ECLASS[b.kind]] || byDist(a, b));
+    }
+    if (def.lock === 'shield') {
+      const shielded = (e: Enemy) => (e.sh > 1 || e.kind === 'schild' || e.kind === 'xs' ? 0 : 1);
+      return all.filter((e) => d(e) < reach).sort((a, b) => shielded(a) - shielded(b) || byDist(a, b));
+    }
+    return all.sort(byDist);
   }
 
   /** Spezialfähigkeit des Schiffs: Ausweichen, Waffenüberladung oder Schildüberladung */
@@ -1946,7 +1970,7 @@ export class ShooterGame implements MiniGame {
         const k0 = Math.floor(this.r() * 3);
         for (let k = 0; k < (m.def.split ?? 0); k++) {
           const a = Math.atan2(m.vy, m.vx) + (k - 1.5) * 0.5;
-          km.push({ x: m.x, y: m.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, target: near[(k0 + k) % Math.max(1, near.length)] ?? null, life: 2.6, def: m.def, dmg: m.dmg, mini: true });
+          km.push({ x: m.x, y: m.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, target: near[(k0 + k) % Math.max(1, near.length)] ?? null, life: m.def.life, def: m.def, dmg: m.dmg, mini: true });
         }
         this.fx.burst(m.x, m.y, '#ffd27a', 6, 120, 1.2, 'spark', 0.2);
         continue;
@@ -2038,7 +2062,19 @@ export class ShooterGame implements MiniGame {
   /** Raketentreffer: Schaden, bei schweren Raketen Druckwelle, bei Störraketen Schild aus */
   private missileHit(m: Missile, e: Enemy): void {
     const def = m.def;
-    this.damageEnemy(e, m.dmg);
+    // Wirkung je Zielklasse (schwere Raketen gegen große Ziele stark, gegen Jäger schwach)
+    let dmg = m.dmg * (def.vs?.[ECLASS[e.kind]] ?? 1);
+    // kleine Ladungen (Schwarm): nur ein Teil wirkt auf den Schild, der Rest verpufft
+    if (def.vsShield != null && e.sh > 0 && !e.shielded) {
+      const onShield = Math.min(e.sh, dmg * def.vsShield);
+      e.sh -= onShield;
+      e.shFlash = 0.18;
+      dmg -= onShield / def.vsShield;
+    }
+    if (dmg > 0) this.damageEnemy(e, dmg);
+    else e.shT = 0;
+    // Störrakete: Waffen kurz gestört
+    if (def.jam) e.cd = Math.max(e.cd, def.jam);
     // Störrakete: Schild weg; geladen wird erst wieder nach stun Sekunden (sonst nach 3 s ohne Treffer)
     if (def.stun && !(e.kind === 'boss' && e.shielded)) { e.sh = 0; e.shT = 3 - def.stun; e.shFlash = 0.4; }
     if (def.splash) {

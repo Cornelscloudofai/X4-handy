@@ -1259,6 +1259,40 @@ describe('Kampf: Raketen, Raketenarten und der Bomber Wolf', () => {
     expect(t.sh).toBe(0); // nach 3,5 s noch immer unten (normal: lädt nach 3 s wieder)
   });
 
+  it('jede Rakete hat ihre Rolle: Reichweite, Zielwahl, Zielklassen, Schilde, Störung', async () => {
+    const { MISSILES } = await import('../src/minigames/loadout');
+    const reach = (id: keyof typeof MISSILES) => MISSILES[id].v * MISSILES[id].life;
+    expect(reach('lenk')).toBeGreaterThan(reach('schwarm') * 3);
+    expect(reach('lenk')).toBeGreaterThan(reach('schwer'));
+    // Lenkrakete nimmt das Ziel vor dem Bug, auch wenn ein anderes näher (hinter dem Schiff) ist
+    const g = make({ missile: 'lenk' }) as unknown as G & { aimA: number };
+    const far = dummy(g, 'jaeger', 0, -1500);
+    const behind = { ...far, x: g.px, y: g.py + 200 } as E;
+    g.enemies.push(behind);
+    g.aimA = -Math.PI / 2;
+    g.fireMissiles();
+    expect(g.missiles.every((m) => m.target === far)).toBe(true);
+    // schwere Rakete: gegen Jäger schwach, gegen Boote stark
+    const hv = make({ missile: 'schwer', ship: 'wolf' });
+    const jg = dummy(hv, 'jaeger', 0, -200);
+    jg.sh = 0;
+    hv.fireMissiles();
+    for (let i = 0; i < 300 && hv.missiles.length; i++) hv.update(DT);
+    const vsS = 1e6 - jg.hp;
+    const hv2 = make({ missile: 'schwer', ship: 'wolf' });
+    const kb = dummy(hv2, 'kanone', 0, -200);
+    kb.sh = 0;
+    hv2.fireMissiles();
+    for (let i = 0; i < 300 && hv2.missiles.length; i++) hv2.update(DT);
+    expect(1e6 - kb.hp).toBeGreaterThan(vsS * 2.5);
+    // Störrakete stört die Waffen
+    const st = make({ missile: 'stoer' });
+    const t = dummy(st) as E & { cd: number };
+    st.fireMissiles();
+    for (let i = 0; i < 300 && st.missiles.length; i++) st.update(DT);
+    expect(t.cd).toBeGreaterThan(2);
+  });
+
   it('Wolf ist wählbar und gilt als S-Schiff mit Bild-Werferlagen', async () => {
     const { SHIPS } = await import('../src/minigames/loadout');
     expect(SHIP_IDS).toContain('wolf');

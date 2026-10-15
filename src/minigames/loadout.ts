@@ -435,27 +435,43 @@ export const MISSILE_DMG = 130;
 export interface MissileDef {
   name: string;
   desc: string;
+  /** Rolle in einem Satz (Menü) */
+  role: string;
   /** Schaden je Treffer (Anteil von MISSILE_DMG) */
   dmg: number;
-  /** Höchsttempo und Lenkkraft */
+  /** Höchsttempo, Lenkkraft und Flugzeit (s) – zusammen die Reichweite */
   v: number;
   acc: number;
+  life: number;
   /** Lagerplätze je Rakete */
   slots: number;
+  /** Zielwahl: aim = was vor dem Bug liegt (auch weit weg), near = die nächsten, big = große Ziele zuerst, shield = Ziele mit Schild zuerst */
+  lock: 'aim' | 'near' | 'big' | 'shield';
+  /** Schaden je Zielklasse (S Jäger, M Boote, L Großziele und Türme) */
+  vs?: Partial<Record<'S' | 'M' | 'L', number>>;
+  /** Anteil des Schadens, der auf einen Schild wirkt (Rest verpufft) */
+  vsShield?: number;
   /** Flächenschaden (Radius, Anteil des Schadens) */
   splash?: [number, number];
-  /** zerfällt kurz nach dem Start in so viele kleine Lenkköpfe */
+  /** zerfällt kurz nach dem Start in so viele kleine Lenkköpfe (Flugzeit der Lenkköpfe: life) */
   split?: number;
   /** löscht den Schild des Ziels und hält ihn so lange (s) unten */
   stun?: number;
+  /** stört die Waffen des Ziels so lange (s) */
+  jam?: number;
   color: string;
   size: number;
 }
+/**
+ * Jede Rakete hat ihren Einsatzzweck – keine ist immer die beste:
+ * Lenkrakete weit und sicher gegen Einzelziele, Schwere Rakete gegen Boote und Großziele (gegen Jäger schwach),
+ * Schwarmrakete auf kurze Entfernung gegen viele kleine Ziele (an Schilden schwach), Störrakete als Werkzeug.
+ */
 export const MISSILES: Record<MissileId, MissileDef> = {
-  lenk: { name: 'Lenkrakete', desc: 'Schnell und wendig, folgt ihrem Ziel – der Allrounder.', dmg: 1, v: 380, acc: 900, slots: 1, color: '#ffb070', size: 20 },
-  schwer: { name: 'Schwere Rakete', desc: 'Doppelter Schaden und eine Druckwelle, die Nachbarn mittrifft – langsamer, dreht träge und belegt zwei Lagerplätze.', dmg: 2, v: 260, acc: 480, slots: 2, splash: [70, 0.5], color: '#ff7a3a', size: 26 },
-  schwarm: { name: 'Schwarmrakete', desc: 'Zerfällt kurz nach dem Start in vier kleine Lenkköpfe, die sich verschiedene Ziele suchen – gegen Schwärme.', dmg: 0.35, v: 430, acc: 1150, slots: 1, split: 4, color: '#ffd27a', size: 16 },
-  stoer: { name: 'Störrakete', desc: 'Wenig Schaden, aber sie löscht den Schild des Ziels und hält ihn fünf Sekunden unten – gegen Schildträger und zähe Gegner.', dmg: 0.45, v: 400, acc: 1000, slots: 1, stun: 5, color: '#8fe0ff', size: 20 },
+  lenk: { name: 'Lenkrakete', role: 'Weit und sicher gegen Einzelziele', desc: 'Größte Reichweite: sucht sich, was vor dem Bug liegt – auch weit draußen – und trifft fast immer. Gegen viele kleine Ziele zu wenige.', dmg: 1, v: 400, acc: 1000, life: 6.5, slots: 1, lock: 'aim', color: '#ffb070', size: 20 },
+  schwer: { name: 'Schwere Rakete', role: 'Panzerbrecher gegen Boote und Großziele', desc: 'Doppelter Schaden, gegen Boote, Türme und Großziele noch mehr, dazu eine Druckwelle. Sucht große Ziele zuerst. Langsam und träge: wendige Jäger weichen aus und nehmen nur wenig Schaden. Belegt zwei Lagerplätze.', dmg: 2, v: 250, acc: 420, life: 6, slots: 2, lock: 'big', vs: { S: 0.5, M: 1.4, L: 1.6 }, splash: [70, 0.5], color: '#ff7a3a', size: 26 },
+  schwarm: { name: 'Schwarmrakete', role: 'Nahbereich gegen Schwärme', desc: 'Zerfällt nach dem Start in vier Lenkköpfe, die sich verschiedene Ziele suchen – stark gegen Schwärme kleiner Schiffe. Geringe Reichweite, und Schilde halten die kleinen Ladungen gut ab.', dmg: 0.35, v: 430, acc: 1150, life: 1.1, slots: 1, lock: 'near', split: 4, vsShield: 0.5, color: '#ffd27a', size: 16 },
+  stoer: { name: 'Störrakete', role: 'Werkzeug: Schilde und Waffen ausschalten', desc: 'Kaum Schaden, aber sie löscht den Schild des Ziels für fünf Sekunden und stört drei Sekunden lang seine Waffen. Sucht Ziele mit Schild zuerst – ideal vor einer Salve aus den Bordkanonen.', dmg: 0.3, v: 420, acc: 1050, life: 4, slots: 1, lock: 'shield', stun: 5, jam: 3, color: '#8fe0ff', size: 20 },
 };
 export const MISSILE_IDS = Object.keys(MISSILES) as MissileId[];
 
