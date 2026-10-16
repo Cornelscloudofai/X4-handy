@@ -1,5 +1,5 @@
 // Bild (z. B. aus einem KI-Bildgenerator) als Sprite übernehmen: Hintergrund freistellen (falls nicht schon
-// transparent: schwarzer Rand wird von außen her entfernt, dunkle Stellen im Schiff bleiben), auf 512 px
+// transparent: schwarzer bzw. weißer Rand wird von außen her entfernt, dunkle/helle Stellen im Schiff bleiben), auf 512 px
 // in hoher Qualität als WebP nach src/assets/sprites/<name>.webp schreiben – Standard 1024 px (volle Auflösung der
 // KI-Bilder), kleinere Vorlagen bleiben in ihrer Originalgröße.
 // node scripts/import-sprite.mjs <eingabe.png> <name> [vorschau.png|-] [größe]
@@ -32,7 +32,10 @@ const r = await page.evaluate(async ([src, SIZE]) => {
   if (corners.some((v) => v > 200)) {
     // Hintergrund deckend: von den Rändern her alle sehr dunklen, zusammenhängenden Punkte entfernen
     keyed = true;
-    const lum = (p) => Math.max(a[p * 4], a[p * 4 + 1], a[p * 4 + 2]);
+    // heller Hintergrund (weiß): Helligkeit umkehren, dann gilt dieselbe Freistellung wie bei Schwarz
+    const cl = [0, W - 1, (H - 1) * W, H * W - 1].map((p) => Math.min(a[p * 4], a[p * 4 + 1], a[p * 4 + 2]));
+    const white = cl.filter((v) => v > 200).length >= 3;
+    const lum = white ? (p) => 255 - Math.min(a[p * 4], a[p * 4 + 1], a[p * 4 + 2]) : (p) => Math.max(a[p * 4], a[p * 4 + 1], a[p * 4 + 2]);
     const seen = new Uint8Array(W * H);
     const stack = [];
     for (let x = 0; x < W; x++) stack.push(x, (H - 1) * W + x);

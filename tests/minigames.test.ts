@@ -1326,13 +1326,14 @@ describe('Kampf: Raketen, Raketenarten und der Bomber Wolf', () => {
 
 describe('Kampf: Kha’ak', () => {
   type E = { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number; sh: number; shMax: number; shT: number; cl?: number; kyT?: number; jumpCd?: number; ang: number; r: number; weapon?: string; parent?: unknown; target: string; brood?: number; broodT?: number; cd: number };
-  type G = ShooterGame & {
+  type G = {
+    resize(w: number, h: number): void; update(dt: number): void; swarmSize(i: number): number;
     enemies: E[]; clusters: Map<number, unknown>; px: number; py: number; fx1: number; fy1: number; shield: number; shieldMax: number;
     spawnCluster(n: number, x: number, y: number): void; damageEnemy(e: E, dmg: number): void; fireKyon(e: E, a: number, dmg: number): void;
     spawnBoss(mini?: boolean): void; rails: { color: string }[]; enemyDmg: number; dashT: number;
   };
   const make = (level: Level = 1) => {
-    const g = new ShooterGame(cfg(level, 4), 'khaak') as G;
+    const g = new ShooterGame(cfg(level, 4), 'khaak') as unknown as G;
     g.resize(W, H);
     for (let i = 0; i < 3000 && !g.enemies.length; i++) g.update(DT);
     g.enemies.length = 0;
@@ -1357,7 +1358,7 @@ describe('Kampf: Kha’ak', () => {
   });
 
   it('nur Kha’ak-Schiffe, Späher immer in Clustern', () => {
-    const g = new ShooterGame(cfg(1, 4), 'khaak') as G;
+    const g = new ShooterGame(cfg(1, 4), 'khaak') as unknown as G;
     g.resize(W, H);
     for (let i = 0; i < 60 * 12; i++) g.update(DT);
     expect(g.enemies.length).toBeGreaterThan(0);
@@ -1426,25 +1427,33 @@ describe('Kampf: Kha’ak', () => {
     expect(e.jumpCd).toBeGreaterThan(3);
   });
 
-  it('Korvette entlässt Späher-Cluster (höchstens zwei)', () => {
+  it('Korvette entlässt aus beiden Brutkästen je einen kleinen Späher-Cluster', () => {
     const g = make();
     g.spawnCluster(1, g.px + 900, g.py - 900);
     const e = g.enemies[0];
     Object.assign(e, { kind: 'kk', cl: undefined, hp: 1e6, max: 1e6, broodT: 0.01 });
     g.update(DT);
     expect(g.enemies.filter((q) => q.kind === 'ks').length).toBe(4);
+    expect(g.clusters.size).toBe(2);
     expect(e.brood).toBe(1);
   });
 
-  it('Brutschiff: Kyon-Türme und Brutkammern, Brut nur bei wenigen Spähern', () => {
+  it('Brutschiff: Kyon-Türme und Brutkästen, die Jäger ausbrüten (nur bei wenigen Jägern)', () => {
     const g = make();
     g.spawnBoss();
     const turrets = g.enemies.filter((e) => e.parent);
     expect(turrets.map((t) => t.weapon).sort()).toEqual(['brut', 'brut', 'laser', 'laser']);
     for (const t of turrets) if (t.weapon === 'brut') t.cd = 0;
     g.update(DT);
-    const ks = g.enemies.filter((e) => e.kind === 'ks').length;
-    expect(ks).toBeGreaterThanOrEqual(4);
-    expect(ks).toBeLessThanOrEqual(10);
+    expect(g.enemies.filter((e) => e.kind === 'kj')).toHaveLength(4);
+    for (let i = 0; i < 3; i++) { for (const t of turrets) if (t.weapon === 'brut') t.cd = 0; g.update(DT); }
+    expect(g.enemies.filter((e) => e.kind === 'kj').length).toBeLessThanOrEqual(6);
+  });
+
+  it('Zerstörer als Großziel: zwei Kyon-Türme an Bug und Heck', () => {
+    const g = make();
+    g.spawnBoss(true);
+    const t = g.enemies.filter((e) => e.parent);
+    expect(t.map((q) => q.weapon)).toEqual(['laser', 'laser']);
   });
 });

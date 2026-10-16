@@ -1234,10 +1234,11 @@ export class ShooterGame implements MiniGame {
       : this.side === 'xenon'
         // auf den vier Sockeln des K-Segments: Laser auf den Flügeln, Plasma auf Bug und Heck
         ? [[-61, 17, 'laser'], [61, 17, 'laser'], [0, -46, 'plasma'], [0, 39, 'plasma']]
-        // Kha'ak-Brutschiff: Kyon-Türme (Strahl wie der Xenon-Laser) vorn seitlich, Brutkammern hinten
-        : [[-50, 10, 'laser'], [50, 10, 'laser'], [-34, -30, 'brut'], [34, -30, 'brut']];
-    // Großziel: nur die beiden Flügeltürme
-    const offs = mini ? all.slice(0, 2) : all;
+        // Kha'ak-Brutschiff: Kyon-Türme (Strahl wie der Xenon-Laser) auf den runden Sockeln links und rechts,
+        // Brutkästen auf den beiden Brutkammern vorn
+        : [[-47, -2, 'laser'], [47, -2, 'laser'], [-25, -27, 'brut'], [25, -27, 'brut']];
+    // Großziel: nur die beiden Flügeltürme; Kha'ak-Zerstörer: Kyon-Türme auf den Sockelpaaren an Bug und Heck
+    const offs = mini ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : all.slice(0, 2)) : all;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
       t.parent = b; t.ox = ox; t.oy = oy; t.weapon = weapon;
@@ -1814,10 +1815,18 @@ export class ShooterGame implements MiniGame {
         if (e.weapon === 'laser') { this.updateLaser(e, dt, fx, fy); continue; }
         e.cd -= dt;
         if (e.weapon === 'brut') {
-          // Brutkammer: entlässt alle paar Sekunden einen kleinen Späher-Cluster
+          // Brutkasten des Brutschiffs: entlässt alle paar Sekunden zwei Kha'ak-Jäger (solange nur wenige unterwegs sind)
           if (e.cd <= 0) {
-            e.cd = 8 + this.r() * 2;
-            if (this.broodRoom()) { this.spawnCluster(this.level >= 4 ? 5 : 4, e.x, e.y); this.fx.add({ x: e.x, y: e.y, color: '#c77dff', size: 4, kind: 'ring', max: 0.5 }); }
+            e.cd = 12 + this.r() * 2;
+            if (this.enemies.length < 56 && this.enemies.filter((q) => q.kind === 'kj').length < 4) {
+              for (let q = 0; q < 2; q++) {
+                const j = this.makeEnemy('kj', e.x + (q - 0.5) * 14, e.y);
+                const a = p.ang + (q - 0.5) * 1.2;
+                j.ang = a; j.vx = Math.cos(a) * 200; j.vy = Math.sin(a) * 200; j.target = 'p';
+                this.enemies.push(j);
+              }
+              this.fx.add({ x: e.x, y: e.y, color: '#c77dff', size: 4, kind: 'ring', max: 0.5 });
+            }
           }
           continue;
         }
@@ -1872,12 +1881,22 @@ export class ShooterGame implements MiniGame {
         e.aimedT = aimed ? (e.aimedT ?? 0) + dt : Math.max(0, (e.aimedT ?? 0) - dt);
         if (e.jumpCd <= 0 && (e.jumpReq || e.aimedT > 0.6)) this.phaseJump(e);
       }
-      // Korvette: alle 10 s ein kleiner Späher-Cluster aus der Brutkammer (höchstens zweimal)
+      // Korvette: alle 10 s aus jedem ihrer zwei Brutkästen ein kleiner Späher-Cluster (höchstens zweimal)
       if (e.kind === 'kk') {
         e.broodT = (e.broodT ?? 3 + this.r() * 3) - dt;
         if (e.broodT <= 0 && (e.brood ?? 0) < 2) {
           e.broodT = 10;
-          if (this.broodRoom()) { e.brood = (e.brood ?? 0) + 1; this.spawnCluster(4, e.x, e.y); this.fx.add({ x: e.x, y: e.y, color: '#c77dff', size: 3, kind: 'ring', max: 0.4 }); }
+          if (this.broodRoom()) {
+            e.brood = (e.brood ?? 0) + 1;
+            // Brutöffnungen im Bild: seitlich hinten (Bildanteil ±0,18 quer, 0,16 hinter der Mitte)
+            const size = e.r * 3.5, a = e.ang + Math.PI / 2, c = Math.cos(a), sn = Math.sin(a);
+            for (const sx of [-0.18, 0.18]) {
+              const ox = sx * size, oy = 0.16 * size;
+              const bx = e.x + ox * c - oy * sn, by = e.y + ox * sn + oy * c;
+              this.spawnCluster(2, bx, by);
+              this.fx.add({ x: bx, y: by, color: '#c77dff', size: 2, kind: 'ring', max: 0.4 });
+            }
+          }
         }
       }
       // Abfangen: wer dem Jäger nahe kommt, kämpft mit ihm; Raketen- und Kanonenboote bleiben stur am Frachter
@@ -2091,7 +2110,8 @@ export class ShooterGame implements MiniGame {
     const toP = this.r() < 0.55;
     const tx = toP ? this.px : fx, ty = toP ? this.py : fy;
     if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < LASER_LEN - 20) {
-      e.cd = (this.level >= 4 ? 3 : 3.8) + this.r();
+      // Kha'ak-Kyon-Türme laden etwas länger nach (das Brutschiff bringt dafür Jäger mit)
+      e.cd = (this.level >= 4 ? 3 : 3.8) + this.r() + (this.side === 'khaak' ? 1.5 : 0);
       e.beamT = LASER_CHARGE + LASER_FIRE;
       e.beamA = Math.atan2(ty - e.y, tx - e.x);
       e.beamAcc = 0;
@@ -2965,8 +2985,9 @@ export class ShooterGame implements MiniGame {
       ctx.arc(0, 0, e.kind === 'boss' ? e.r * (xen || kh ? 2.4 : 2.1) : e.r + 7, 0, Math.PI * 2);
       ctx.stroke();
     }
-    ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
-    const spr = enemySprite(e.weapon ? `turret-${e.weapon}` : e.kind, this.side === 'pirate' ? 'pirat' : this.side);
+    // Brutkästen drehen nicht, sie sitzen fest auf dem Rumpf
+    ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.weapon === 'brut' ? e.parent!.ang + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
+    const spr = enemySprite(e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && kh ? 'boss-mini' : e.kind, this.side === 'pirate' ? 'pirat' : this.side);
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
       const size = e.r * spr.scale;

@@ -40,6 +40,12 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   // Kha'ak: keine sichtbaren Triebwerke
   'khaak-spaeher-ki': { xs: [], y: 0, color: '#c77dff' },
   'khaak-jaeger-ki': { xs: [], y: 0, color: '#c77dff' },
+  'khaak-abfangjaeger-ki': { xs: [], y: 0, color: '#c77dff' },
+  'khaak-korvette-ki': { xs: [], y: 0, color: '#c77dff' },
+  'khaak-zerstoerer-ki': { xs: [], y: 0, color: '#c77dff' },
+  'khaak-brutschiff-ki': { xs: [], y: 0, color: '#c77dff' },
+  'khaak-turm-ki': { xs: [], y: 0, color: '#c77dff' },
+  'khaak-brutkasten-ki': { xs: [], y: 0, color: '#c77dff' },
   // Split-Militärschiffe (Kampf: dein Schiff)
   'split-jaguar-ki': { xs: [0], y: 0.35, color: '#ff9a4a' },
   'split-asp-ki': { xs: [-0.078, 0.074], y: 0.35, color: '#ff9a4a' },
@@ -174,9 +180,17 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   // Xenon-Türme: der runde Sockel ist der Drehpunkt; beim Plasmaturm liegt er unter der Bildmitte (oy)
   'xenon:turret-laser': { name: 'xenon-turm-laser-ki', scale: 4.8 },
   'xenon:turret-plasma': { name: 'xenon-turm-plasma-ki', scale: 2.8, oy: 0.11 },
-  // Kha'ak (weitere Bilder folgen; bis dahin violette Neon-Zeichnung)
+  // Kha'ak: Späher, Jäger, Abfangjäger (lange Raute), Korvette mit zwei Brutöffnungen
   ks: { name: 'khaak-spaeher-ki', scale: 4.4 },
   kj: { name: 'khaak-jaeger-ki', scale: 3.6 },
+  ka: { name: 'khaak-abfangjaeger-ki', scale: 3.3 },
+  kk: { name: 'khaak-korvette-ki', scale: 3.5 },
+  // Brutschiff (Boss, 163 px) und Zerstörer (Großziel, 146 px); Türme und Brutkästen sitzen auf ihren Sockeln (siehe shooter.ts)
+  'khaak:boss': { name: 'khaak-brutschiff-ki', scale: 4.8 },
+  'khaak:boss-mini': { name: 'khaak-zerstoerer-ki', scale: 4.3 },
+  // Kyon-Turm: Drehpunkt ist die runde Scheibe unter der Bildmitte
+  'khaak:turret-laser': { name: 'khaak-turm-ki', scale: 3.1, oy: 0.07 },
+  'khaak:turret-brut': { name: 'khaak-brutkasten-ki', scale: 2.3 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */

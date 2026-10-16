@@ -5,8 +5,8 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 ## Kha’ak (umgesetzt als eigenes Minispiel „Kha’ak-Invasion“)
 
 - Umgesetzt: Späher-Cluster, Kyon-Strahl (Schilde ×1,5), Phasensprung der Abfangjäger, Korvette mit Brut, Brutschiff als Boss.
-- Bilder vorhanden: Späher, Jäger. Noch ausstehend (bis dahin violette Neon-Zeichnung): Abfangjäger, Korvette,
-  Brutschiff (Boss), Kyon-Turm, Brutkammer – ohne sichtbare Flügel und Triebwerke.
+- Alle Bilder vorhanden: Späher, Jäger, Abfangjäger, Korvette (2 Brutkästen → Späher), Zerstörer (Großziel),
+  Brutschiff (Boss, Brutkästen → Jäger), Kyon-Turm, Brutkasten.
 - Balance (Autopilot): Stufe 1–2 schaffbar, Stufe 3 deutlich härter als Xenon – nach eigenem Spielen nachjustieren.
 
 ## Kampf abwechslungsreicher machen (vorgemerkt, nach den Kha'ak angehen)
