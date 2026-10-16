@@ -44,7 +44,7 @@ interface Enemy {
   /** Xenon-Türme: Laserstrahl (zielt, lädt auf, feuert einen Strahl) oder dicke Plasmakugeln; Kha'ak-Brutkammer */
   weapon?: 'laser' | 'plasma' | 'brut';
   /** Kha'ak: Cluster (fliegt geschlossen bis kurz vor dem Ziel) und Platz darin */
-  cl?: number; slotX?: number; slotY?: number;
+  cl?: number; slotX?: number; slotY?: number; slotFlip?: boolean;
   /** Kha'ak: Kyon-Strahl lädt (Restzeit) */
   kyT?: number;
   /** Kha'ak-Abfangjäger: Zeit im Visier, Abklingzeit und Auslöser des Phasensprungs */
@@ -169,37 +169,43 @@ function wrapA(a: number): number {
   while (a <= -Math.PI) a += Math.PI * 2;
   return a;
 }
+/** Abstand der Schiffe im Kha'ak-Cluster (Kantenlänge eines Dreiecks): so dicht, dass sich die Schiffe berühren */
+const CLUSTER_GAP: Partial<Record<EKind, number>> = { ks: 14, kj: 24 };
+
 /**
- * Plätze eines Kha'ak-Clusters (x quer, y nach hinten; Spitze vorn, Mitte im Schwerpunkt): Dreieckszahlen
- * (3, 6, 10 … 28) als volles Dreieck, eins mehr (4, 7) als Dreieck mit einem Schiff in der Mitte
+ * Aufbau eines Kha'ak-Clusters wie ein in Dreiecke geteiltes großes Dreieck (x quer, y nach hinten, Spitze vorn,
+ * Mitte im Schwerpunkt der Schiffe): die Schiffe sitzen Kante an Kante in den aufrechten Dreiecken, die umgedrehten
+ * Lücken dazwischen füllt Kristallmasse. Dreieckszahlen (3, 6, 10 … 28) ergeben ein volles Dreieck; übrige Schiffe
+ * (4 = 3 + 1, 7 = 6 + 1) sitzen umgedreht in der mittleren Lücke – vier kleine Dreiecke bilden so ein großes.
  */
-export function clusterSlots(n: number, gap: number): [number, number][] {
+export function clusterLayout(n: number, gap: number): { ships: { x: number; y: number; flip: boolean }[]; mass: [number, number][][] } {
   const h = gap * Math.sqrt(3) / 2;
-  const tri = (rows: number): [number, number][] => {
-    const out: [number, number][] = [];
-    for (let i = 0; i < rows; i++) for (let j = 0; j <= i; j++) out.push([(j - i / 2) * gap, i * h]);
-    return out;
-  };
   let k = 1;
-  while ((k * (k + 1)) / 2 < n - 1) k++;
-  const T = (k * (k + 1)) / 2;
-  let pts: [number, number][];
-  if (T === n) pts = tri(k);
-  else if (T === n - 1) {
-    // kleines Dreieck um eine Mitte: etwas weiter gestellt, damit die Mitte Platz hat
-    pts = tri(k).map(([x, y]) => [x * 1.5, y * 1.5] as [number, number]);
-    const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
-    pts.push([0, cy]);
-  } else {
-    // andere Größen: Reihen von vorn auffüllen, die letzte mittig
-    pts = [];
-    for (let i = 0; pts.length < n; i++) {
-      const m = Math.min(i + 1, n - pts.length);
-      for (let j = 0; j < m; j++) pts.push([(j - (m - 1) / 2) * gap, i * h]);
-    }
+  while (((k + 1) * (k + 2)) / 2 <= n) k++;
+  // mehr Übrige als Lücken: eine Reihe mehr
+  if (n - (k * (k + 1)) / 2 > (k * (k - 1)) / 2) k++;
+  const ships: { x: number; y: number; flip: boolean }[] = [];
+  for (let i = 0; i < k && ships.length < n; i++) for (let j = 0; j <= i && ships.length < n; j++) ships.push({ x: (j - i / 2) * gap, y: i * h, flip: false });
+  // Lücken (umgedrehte Dreiecke), die mittleren zuerst
+  const holes: { x: number; y: number; v: [number, number][] }[] = [];
+  for (let i = 1; i < k; i++) for (let j = 0; j < i; j++) {
+    const xu = (j - i / 2) * gap, y = i * h;
+    holes.push({ x: xu + gap / 2, y: y - h / 3, v: [[xu, y - (2 * h) / 3], [xu + gap, y - (2 * h) / 3], [xu + gap / 2, y + h / 3]] });
   }
-  const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
-  return pts.slice(0, n).map(([x, y]) => [x, y - cy]);
+  const cy0 = (k - 1) * h * (2 / 3);
+  holes.sort((a, b) => Math.abs(a.x) - Math.abs(b.x) || Math.abs(a.y - cy0) - Math.abs(b.y - cy0));
+  const used = new Set<number>();
+  for (let q = 0; ships.length < n && q < holes.length; q++) { ships.push({ x: holes[q].x, y: holes[q].y, flip: true }); used.add(q); }
+  const cy = ships.reduce((a, p) => a + p.y, 0) / ships.length;
+  return {
+    ships: ships.map((p) => ({ ...p, y: p.y - cy })),
+    mass: holes.filter((_, q) => !used.has(q)).map((hl) => hl.v.map(([x, y]) => [x, y - cy] as [number, number])),
+  };
+}
+
+/** nur die Plätze (x, y, umgedreht) – für Tests und Übersicht */
+export function clusterSlots(n: number, gap: number): [number, number, boolean][] {
+  return clusterLayout(n, gap).ships.map((p) => [p.x, p.y, p.flip]);
 }
 
 /**
@@ -520,7 +526,7 @@ export class ShooterGame implements MiniGame {
   private gateY = 0;
   private grpN = 0;
   /** Kha'ak-Cluster: Mitte, Tempo, Drehung der Wabe, Flugrichtung */
-  private clusters = new Map<number, { x: number; y: number; vx: number; vy: number; ang: number; kind: EKind }>();
+  private clusters = new Map<number, { x: number; y: number; vx: number; vy: number; ang: number; kind: EKind; mass: [number, number][][] }>();
   private fHull = 400;
   private readonly fMax = 400;
   private fFlash = 0;
@@ -1243,13 +1249,14 @@ export class ShooterGame implements MiniGame {
   spawnCluster(n: number, x0: number, y0: number, kind: EKind = 'ks'): void {
     const id = ++this.grpN;
     const tA = Math.atan2(this.fY - y0, this.fX - x0);
-    this.clusters.set(id, { x: x0, y: y0, vx: 0, vy: 0, ang: tA, kind });
+    const lay = clusterLayout(n, CLUSTER_GAP[kind] ?? SPEC[kind].r * 2);
+    this.clusters.set(id, { x: x0, y: y0, vx: 0, vy: 0, ang: tA, kind, mass: lay.mass });
     const c = Math.cos(tA + Math.PI / 2), sn = Math.sin(tA + Math.PI / 2);
-    for (const [sx, sy] of clusterSlots(n, SPEC[kind].r * 2.6)) {
-      const e = this.makeEnemy(kind, x0 + sx * c - sy * sn, y0 + sx * sn + sy * c);
+    for (const p of lay.ships) {
+      const e = this.makeEnemy(kind, x0 + p.x * c - p.y * sn, y0 + p.x * sn + p.y * c);
       e.cl = id; e.grp = id; e.swarm = true;
-      e.slotX = sx; e.slotY = sy;
-      e.ang = tA;
+      e.slotX = p.x; e.slotY = p.y; e.slotFlip = p.flip;
+      e.ang = p.flip ? wrapA(tA + Math.PI) : tA;
       this.enemies.push(e);
     }
   }
@@ -1264,9 +1271,19 @@ export class ShooterGame implements MiniGame {
     const c = this.clusters.get(id);
     if (!c) return;
     this.clusters.delete(id);
+    // die Kristallmasse zwischen den Schiffen zerspringt
+    const ca = Math.cos(c.ang + Math.PI / 2), sa = Math.sin(c.ang + Math.PI / 2);
+    for (const tri of c.mass) {
+      const mx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3, my = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+      const wx = c.x + mx * ca - my * sa, wy = c.y + mx * sa + my * ca;
+      this.fx.burst(wx, wy, '#6b3fa0', 3, 140, 1.4, 'chunk', 0.7);
+      this.fx.burst(wx, wy, '#d9a6ff', 2, 180, 0.8, 'spark', 0.3);
+    }
+    if (c.mass.length) sfx.crack();
     for (const e of this.enemies) {
       if (e.cl !== id) continue;
       e.cl = undefined;
+      e.slotFlip = undefined;
       const a = Math.hypot(e.slotX ?? 0, e.slotY ?? 0) > 1 ? Math.atan2(e.y - c.y, e.x - c.x) : c.ang;
       e.vx = c.vx + Math.cos(a) * 260; e.vy = c.vy + Math.sin(a) * 260;
       e.ang = a;
@@ -1936,10 +1953,11 @@ export class ShooterGame implements MiniGame {
         if (c) {
           const cr = Math.cos(c.ang + Math.PI / 2), sr = Math.sin(c.ang + Math.PI / 2);
           const gx = c.x + e.slotX! * cr - e.slotY! * sr, gy = c.y + e.slotX! * sr + e.slotY! * cr;
-          e.vx = c.vx + (gx - e.x) * 4; e.vy = c.vy + (gy - e.y) * 4;
+          // fest im Verbund: Platz genau halten
+          e.vx = c.vx + (gx - e.x) * 12; e.vy = c.vy + (gy - e.y) * 12;
           e.x = clamp(e.x + e.vx * dt, 20, this.WW - 20);
           e.y = clamp(e.y + e.vy * dt, 20, this.WH - 20);
-          e.ang = wrapA(turnTo(e.ang, c.ang, TURN[e.kind] * dt));
+          e.ang = wrapA(turnTo(e.ang, e.slotFlip ? c.ang + Math.PI : c.ang, TURN[e.kind] * 3 * dt));
           continue;
         }
         e.cl = undefined;
@@ -2544,6 +2562,7 @@ export class ShooterGame implements MiniGame {
     for (const m of this.mines) this.drawMine(ctx, m, t);
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.outcome !== 'freighter') { this.drawFreighter(ctx, t); this.drawFreighterTurrets(ctx); }
+    this.drawClusterMass(ctx, t);
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
     this.drawBeams(ctx, t);
     // Geschosse über den Schiffen: die Türme liegen oben auf dem Rumpf, ihre Schüsse fliegen darüber hinweg
@@ -2576,6 +2595,53 @@ export class ShooterGame implements MiniGame {
     if (this.choosing) this.drawCards(ctx);
   }
 
+  /**
+   * Kha'ak-Cluster: dunkle Kristallmasse in den Lücken zwischen den Schiffen (umgedrehte Dreiecke), mit violett
+   * glimmenden Kanten – sie hält den Verbund zusammen und zerspringt, sobald er aufbricht
+   */
+  private drawClusterMass(ctx: CanvasRenderingContext2D, t: number): void {
+    if (!this.clusters.size) return;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    for (const c of this.clusters.values()) {
+      if (!c.mass.length) continue;
+      const ca = Math.cos(c.ang + Math.PI / 2), sa = Math.sin(c.ang + Math.PI / 2);
+      ctx.beginPath();
+      for (const tri of c.mass) {
+        for (const [i, [x, y]] of tri.entries()) {
+          const wx = c.x + x * ca - y * sa, wy = c.y + x * sa + y * ca;
+          if (i) ctx.lineTo(wx, wy); else ctx.moveTo(wx, wy);
+        }
+        ctx.closePath();
+      }
+      ctx.fillStyle = '#1c1028';
+      ctx.fill();
+      // Facetten: von jeder Ecke ein feiner Grat zur Mitte
+      ctx.strokeStyle = rgba('#3a2552', 0.9);
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      for (const tri of c.mass) {
+        const mx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3, my = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+        const cx = c.x + mx * ca - my * sa, cy = c.y + mx * sa + my * ca;
+        for (const [x, y] of tri) { ctx.moveTo(cx, cy); ctx.lineTo(c.x + x * ca - y * sa, c.y + x * sa + y * ca); }
+      }
+      ctx.stroke();
+      // glimmende Kanten (Kyon-Adern)
+      ctx.beginPath();
+      for (const tri of c.mass) {
+        for (const [i, [x, y]] of tri.entries()) {
+          const wx = c.x + x * ca - y * sa, wy = c.y + x * sa + y * ca;
+          if (i) ctx.lineTo(wx, wy); else ctx.moveTo(wx, wy);
+        }
+        ctx.closePath();
+      }
+      ctx.strokeStyle = rgba('#b45cff', 0.45 + 0.2 * Math.sin(t * 4 + c.x * 0.01));
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   /** Laserstrahlen der Xenon-Türme (Kha'ak: Kyon-Türme, violett): erst dünne, blinkende Ziellinie, dann der Strahl */
   private drawBeams(ctx: CanvasRenderingContext2D, t: number): void {
     ctx.save();
@@ -2583,18 +2649,6 @@ export class ShooterGame implements MiniGame {
     ctx.lineCap = 'round';
     const kh = this.side === 'khaak';
     const [c1, c2, c3] = kh ? ['#a855f7', '#c98cff', '#f6ecff'] : ['#ff3b4a', '#ff7a84', '#fff0f0'];
-    // Kha'ak-Cluster: feine Kristallfäden zwischen benachbarten Spähern
-    if (this.clusters.size) {
-      ctx.strokeStyle = rgba('#b45cff', 0.22 + 0.08 * Math.sin(t * 5));
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      const inCl = this.enemies.filter((e) => e.cl != null);
-      for (const [i, a] of inCl.entries()) for (let j = i + 1; j < inCl.length; j++) {
-        const b = inCl[j];
-        if (a.cl === b.cl && Math.hypot(a.x - b.x, a.y - b.y) < a.r * 3.3) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
-      }
-      ctx.stroke();
-    }
     // Kyon-Strahl lädt: dünne, flackernde Ziellinie entlang der Blickrichtung
     for (const e of this.enemies) {
       if (e.kyT == null) continue;

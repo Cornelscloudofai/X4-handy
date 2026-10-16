@@ -7,7 +7,7 @@ import { OrbitGame, elements } from '../src/minigames/orbit';
 import { MODS, QUALITY, START_PARTS, craft, earnParts, modRange, modState, modStats, partsFor, refundOf, remove as removeMod, resetMods } from '../src/minigames/mods';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
-import { ShooterGame, clusterSlots, jaegerClusters, khaakClusters } from '../src/minigames/shooter';
+import { ShooterGame, clusterLayout, clusterSlots, jaegerClusters, khaakClusters } from '../src/minigames/shooter';
 import { turretArtName } from '../src/render/shipArt';
 import { SHIP_IDS, TURRET_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
 import { Score, pickGoals, rng, type GameResult, type Level, type MiniGame, type Mode } from '../src/minigames/common';
@@ -1378,9 +1378,18 @@ describe('Kampf: Kha’ak', () => {
       expect(Math.abs(tip[0][0])).toBeLessThan(1e-9);
       // symmetrisch: zu jedem Platz gibt es den gespiegelten
       for (const [x, y] of p) expect(p.some(([x2, y2]) => Math.abs(x2 + x) < 1e-6 && Math.abs(y2 - y) < 1e-6)).toBe(true);
-      // Schiffe überlappen nicht
-      for (const [i, a] of p.entries()) for (const b of p.slice(i + 1)) expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeGreaterThan(8);
+      // dicht an dicht: Nachbarn berühren sich (Abstand der Mitten benachbarter Dreiecke gap/√3), überlappen aber nicht
+      for (const [i, a] of p.entries()) for (const b of p.slice(i + 1)) expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeGreaterThan(10 / Math.sqrt(3) - 1e-6);
+      for (const a of p) expect(Math.min(...p.filter((b) => b !== a).map((b) => Math.hypot(a[0] - b[0], a[1] - b[1])))).toBeLessThan(10.01);
     }
+    // wie im Rätselbild: 4 = drei aufrechte und ein umgedrehtes Dreieck, 7 = sechs plus eins umgedreht, 28 = volles Dreieck
+    expect(clusterSlots(4, 10).filter((q) => q[2])).toHaveLength(1);
+    expect(clusterSlots(7, 10).filter((q) => q[2])).toHaveLength(1);
+    expect(clusterSlots(28, 10).filter((q) => q[2])).toHaveLength(0);
+    // Lücken füllt Kristallmasse: 4 hat keine, 7 zwei, 28 alle 21 umgedrehten Dreiecke
+    expect(clusterLayout(4, 10).mass).toHaveLength(0);
+    expect(clusterLayout(7, 10).mass).toHaveLength(2);
+    expect(clusterLayout(28, 10).mass).toHaveLength(21);
     // 28: sieben Reihen (volles Dreieck)
     expect(new Set(clusterSlots(28, 10).map((q) => q[1].toFixed(3))).size).toBe(7);
     expect(khaakClusters(40, 3, true)).toEqual([28, 7, 4]);
