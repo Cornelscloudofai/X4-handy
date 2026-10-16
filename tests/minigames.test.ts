@@ -1366,37 +1366,35 @@ describe('Kampf: Kha’ak', () => {
     expect(g.swarmSize(0)).toBeGreaterThanOrEqual(4);
   });
 
-  it('Cluster-Größen: Späher 4, 7 oder 28, Jäger höchstens 7 – immer als Dreieck', () => {
-    for (const n of [4, 7, 28]) {
-      const p = clusterSlots(n, 10);
+  it('Cluster-Größen: Späher 4, 9 oder 25, Jäger höchstens 9 – lückenlos gefüllte Dreiecke', () => {
+    for (const n of [4, 9, 25]) {
+      const lay = clusterLayout(n, 10), p = lay.ships;
       expect(p).toHaveLength(n);
-      // Schwerpunkt in der Mitte, Spitze vorn (kleinstes y) genau ein Schiff, mittig
-      expect(Math.abs(p.reduce((a, q) => a + q[1], 0) / n)).toBeLessThan(1e-9);
-      const front = Math.min(...p.map((q) => q[1]));
-      const tip = p.filter((q) => Math.abs(q[1] - front) < 1e-6);
+      // keine Lücke: alle umgedrehten Felder sind mit (rückwärts fliegenden) Schiffen besetzt
+      expect(lay.mass).toHaveLength(0);
+      const k = Math.sqrt(n);
+      expect(p.filter((q) => q.flip)).toHaveLength((k * (k - 1)) / 2);
+      expect(Math.abs(p.reduce((a, q) => a + q.y, 0) / n)).toBeLessThan(1e-9);
+      // Spitze vorn: genau ein Schiff ganz vorn, mittig, vorwärts
+      const front = Math.min(...p.map((q) => q.y));
+      const tip = p.filter((q) => Math.abs(q.y - front) < 1e-6);
       expect(tip).toHaveLength(1);
-      expect(Math.abs(tip[0][0])).toBeLessThan(1e-9);
-      // symmetrisch: zu jedem Platz gibt es den gespiegelten
-      for (const [x, y] of p) expect(p.some(([x2, y2]) => Math.abs(x2 + x) < 1e-6 && Math.abs(y2 - y) < 1e-6)).toBe(true);
-      // dicht an dicht: Nachbarn berühren sich (Abstand der Mitten benachbarter Dreiecke gap/√3), überlappen aber nicht
-      for (const [i, a] of p.entries()) for (const b of p.slice(i + 1)) expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeGreaterThan(10 / Math.sqrt(3) - 1e-6);
-      for (const a of p) expect(Math.min(...p.filter((b) => b !== a).map((b) => Math.hypot(a[0] - b[0], a[1] - b[1])))).toBeLessThan(10.01);
+      expect(Math.abs(tip[0].x)).toBeLessThan(1e-9);
+      expect(tip[0].flip).toBe(false);
+      // symmetrisch und dicht: Nachbarn berühren sich, überlappen aber nicht
+      for (const a of p) expect(p.some((b) => Math.abs(b.x + a.x) < 1e-6 && Math.abs(b.y - a.y) < 1e-6 && b.flip === a.flip)).toBe(true);
+      for (const [i, a] of p.entries()) for (const b of p.slice(i + 1)) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(10 / Math.sqrt(3) - 1e-6);
+      for (const a of p) expect(Math.min(...p.filter((b) => b !== a).map((b) => Math.hypot(a.x - b.x, a.y - b.y)))).toBeLessThan(10 / Math.sqrt(3) + 1e-6);
     }
-    // wie im Rätselbild: 4 = drei aufrechte und ein umgedrehtes Dreieck, 7 = sechs plus eins umgedreht, 28 = volles Dreieck
     expect(clusterSlots(4, 10).filter((q) => q[2])).toHaveLength(1);
-    expect(clusterSlots(7, 10).filter((q) => q[2])).toHaveLength(1);
-    expect(clusterSlots(28, 10).filter((q) => q[2])).toHaveLength(0);
-    // Lücken füllt Kristallmasse: 4 hat keine, 7 zwei, 28 alle 21 umgedrehten Dreiecke
-    expect(clusterLayout(4, 10).mass).toHaveLength(0);
+    // andere Anzahlen: übrige Felder füllt Kristallmasse
     expect(clusterLayout(7, 10).mass).toHaveLength(2);
-    expect(clusterLayout(28, 10).mass).toHaveLength(21);
-    // 28: sieben Reihen (volles Dreieck)
-    expect(new Set(clusterSlots(28, 10).map((q) => q[1].toFixed(3))).size).toBe(7);
-    expect(khaakClusters(40, 3, true)).toEqual([28, 7, 4]);
-    expect(khaakClusters(40, 3, false)).toEqual([7, 7, 7]);
+    expect(khaakClusters(40, 3, true)).toEqual([25, 9, 4]);
+    expect(khaakClusters(40, 3, false)).toEqual([9, 9, 9]);
     expect(khaakClusters(5, 2)).toEqual([4]);
-    for (const n of [3, 4, 9, 14, 20, 30]) for (const c of jaegerClusters(n)) expect([4, 7]).toContain(c);
-    expect(jaegerClusters(20)).toEqual([7, 7, 4]);
+    for (const n of [3, 4, 9, 14, 20, 30]) for (const c of jaegerClusters(n)) expect([4, 9]).toContain(c);
+    expect(jaegerClusters(20)).toEqual([9, 9]);
+    expect(jaegerClusters(8)).toEqual([4, 4]);
   });
 
   it('Größen im Verhältnis zur Mamba: Späher etwa ein Drittel, Jäger gut zwei Drittel', () => {
@@ -1412,15 +1410,15 @@ describe('Kampf: Kha’ak', () => {
     expect(kj.r * 2.6 * 0.93).toBeLessThan(34 * 0.8);
   });
 
-  it('starke Schiffe: Jäger in Clustern zu höchstens 7, mehrere zugleich', () => {
+  it('starke Schiffe: Jäger in Clustern zu höchstens 9, mehrere zugleich', () => {
     const g = new ShooterGame({ ...cfg(3, 5), loadout: { ship: 'klapperschlange', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'tau' } } as never, 'khaak') as unknown as G & { reinforce: { kinds: string[]; swarm?: boolean; t: number }[]; spawnWave(): void };
     g.resize(W, H);
-    g.spawnWave(); g.spawnWave();
+    g.spawnWave(); g.spawnWave(); g.spawnWave();
     const jc = g.reinforce.filter((q) => q.swarm && q.kinds[0] === 'kj');
     expect(jc.length).toBeGreaterThanOrEqual(2);
-    for (const q of jc) expect([4, 7]).toContain(q.kinds.length);
+    for (const q of jc) expect([4, 9]).toContain(q.kinds.length);
     const sc = g.reinforce.filter((q) => q.swarm && q.kinds[0] === 'ks');
-    for (const q of sc) expect([4, 7, 28]).toContain(q.kinds.length);
+    for (const q of sc) expect([4, 9, 25]).toContain(q.kinds.length);
   });
 
   it('Cluster fliegt geschlossen und feuert nicht; ein Treffer lässt ihn aufbrechen', () => {

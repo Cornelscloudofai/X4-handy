@@ -174,19 +174,17 @@ const CLUSTER_GAP: Partial<Record<EKind, number>> = { ks: 14, kj: 24 };
 
 /**
  * Aufbau eines Kha'ak-Clusters wie ein in Dreiecke geteiltes großes Dreieck (x quer, y nach hinten, Spitze vorn,
- * Mitte im Schwerpunkt der Schiffe): die Schiffe sitzen Kante an Kante in den aufrechten Dreiecken, die umgedrehten
- * Lücken dazwischen füllt Kristallmasse. Dreieckszahlen (3, 6, 10 … 28) ergeben ein volles Dreieck; übrige Schiffe
- * (4 = 3 + 1, 7 = 6 + 1) sitzen umgedreht in der mittleren Lücke – vier kleine Dreiecke bilden so ein großes.
+ * Mitte im Schwerpunkt der Schiffe): Schiffe sitzen Kante an Kante in den aufrechten Dreiecken und – rückwärts
+ * fliegend – in den umgedrehten dazwischen, so bleibt keine Lücke. Ein volles Dreieck mit Seite k hat k² Felder
+ * (4, 9, 16, 25 …); nur bei anderen Anzahlen bleiben Felder übrig, die Kristallmasse füllt.
  */
 export function clusterLayout(n: number, gap: number): { ships: { x: number; y: number; flip: boolean }[]; mass: [number, number][][] } {
   const h = gap * Math.sqrt(3) / 2;
   let k = 1;
-  while (((k + 1) * (k + 2)) / 2 <= n) k++;
-  // mehr Übrige als Lücken: eine Reihe mehr
-  if (n - (k * (k + 1)) / 2 > (k * (k - 1)) / 2) k++;
+  while (k * k < n) k++;
   const ships: { x: number; y: number; flip: boolean }[] = [];
   for (let i = 0; i < k && ships.length < n; i++) for (let j = 0; j <= i && ships.length < n; j++) ships.push({ x: (j - i / 2) * gap, y: i * h, flip: false });
-  // Lücken (umgedrehte Dreiecke), die mittleren zuerst
+  // umgedrehte Dreiecke zwischen den aufrechten, die mittleren zuerst
   const holes: { x: number; y: number; v: [number, number][] }[] = [];
   for (let i = 1; i < k; i++) for (let j = 0; j < i; j++) {
     const xu = (j - i / 2) * gap, y = i * h;
@@ -209,14 +207,14 @@ export function clusterSlots(n: number, gap: number): [number, number, boolean][
 }
 
 /**
- * Kha'ak-Cluster aus einer Anzahl Schiffe: nur die Größen 4, 7 und (wenn erlaubt) 28 – erst große, dann kleine,
+ * Kha'ak-Cluster aus einer Anzahl Schiffe: nur volle Dreiecke 4, 9 und (wenn erlaubt) 25 – erst große, dann kleine,
  * höchstens max Cluster; ein Rest unter 4 entfällt
  */
 export function khaakClusters(total: number, max: number, big = false): number[] {
   const out: number[] = [];
   let rem = total;
   while (rem >= 4 && out.length < max) {
-    const s = big && rem >= 28 ? 28 : rem >= 7 ? 7 : 4;
+    const s = big && rem >= 25 ? 25 : rem >= 9 ? 9 : 4;
     out.push(s);
     rem -= s;
   }
@@ -224,14 +222,14 @@ export function khaakClusters(total: number, max: number, big = false): number[]
 }
 
 /**
- * Kha'ak-Jäger: Cluster zu 7 (größer nicht), lieber zwei Vierer als ein Siebener mit großem Rest; kleinere Reste
- * fliegen einzeln mit
+ * Kha'ak-Jäger: Cluster zu 9 (größer nicht) oder 4, lieber zwei Vierer als ein Neuner mit großem Rest; kleinere
+ * Reste fliegen einzeln mit
  */
 export function jaegerClusters(n: number): number[] {
   const out: number[] = [];
-  while (n >= 11) { out.push(7); n -= 7; }
-  if (n >= 8) out.push(4, 4);
-  else if (n >= 7) out.push(7);
+  while (n >= 13) { out.push(9); n -= 9; }
+  if (n >= 9) out.push(9);
+  else if (n >= 8) out.push(4, 4);
   else if (n >= 4) out.push(4);
   return out;
 }
@@ -1123,7 +1121,7 @@ export class ShooterGame implements MiniGame {
         : (i === 0 ? ['kj'] : i === 1 ? ['kj', 'kj', 'ka'] : ['kj', 'kj', 'ka', 'kk']);
     // starke Schiffe: schwerere Mischung (mehr Kanonen-/Raketenboote, Xenon M bzw. Abfangjäger/Korvetten), ab der ersten Welle
     const heavy = this.side === 'pirate' ? (['kanone', 'rakete'] as EKind[]) : this.side === 'xenon' ? (['m'] as EKind[]) : (['ka', 'kk'] as EKind[]);
-    // Kha'ak: dazu je Stufe zwei Jäger mehr – sie kommen dann in Clustern zu 7 (mehrere gleichzeitig)
+    // Kha'ak: dazu je Stufe zwei Jäger mehr – sie kommen dann in Clustern zu 9 oder 4 (mehrere gleichzeitig)
     for (let h = 0; h < Math.min(4, Math.floor((this.power - 1) / 2.5)); h++) pool.push(...heavy, ...(this.side === 'khaak' ? ['kj', 'kj'] as EKind[] : []));
     const out: EKind[] = [];
     let shields = 0;
@@ -1167,7 +1165,7 @@ export class ShooterGame implements MiniGame {
     } else {
       // Gegner in zwei bis drei Gruppen aus verschiedenen Richtungen; die späteren kommen einige Sekunden danach
       let kinds = this.waveKinds(this.wave);
-      // Kha'ak-Jäger fliegen in Clustern zu 7 oder 4 (größer nicht); je bis zu drei kommen gleichzeitig aus
+      // Kha'ak-Jäger fliegen in Clustern zu 9 oder 4 (größer nicht); je bis zu drei kommen gleichzeitig aus
       // verschiedenen Richtungen, die nächsten drei gut zehn Sekunden später
       const jCl = this.side === 'khaak' ? jaegerClusters(kinds.filter((k) => k === 'kj').length + this.jaegerSwarm(this.wave)) : [];
       if (jCl.length) {
@@ -1243,7 +1241,7 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Kha'ak-Cluster aus n Schiffen (Späher 4, 7 oder 28, Jäger 4 oder 7): geschlossenes Dreieck mit der Spitze in
+   * Kha'ak-Cluster aus n Schiffen (Späher 4, 9 oder 25, Jäger 4 oder 9): geschlossenes Dreieck mit der Spitze in
    * Flugrichtung, das als Ganzes auf das Ziel zufliegt; erst kurz davor (oder beim ersten Treffer) schwärmen alle aus
    */
   spawnCluster(n: number, x0: number, y0: number, kind: EKind = 'ks'): void {

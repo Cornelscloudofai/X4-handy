@@ -7,8 +7,8 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 - Umgesetzt: Späher-Cluster, Kyon-Strahl (Schilde ×1,5), Phasensprung der Abfangjäger, Korvette mit Brut, Brutschiff als Boss.
 - Alle Bilder vorhanden: Späher, Jäger, Abfangjäger, Korvette (2 Brutkästen → Späher), Zerstörer (Großziel),
   Brutschiff (Boss, Brutkästen → Jäger), Kyon-Turm, Brutkasten.
-- Cluster: Späher 4/7/28 (Dreieck), Jäger höchstens 7, dafür bis zu drei gleichzeitig. Offen: ob Jäger doch auch
-  28er-Cluster bekommen sollen (z. B. gegen sehr starke Schiffe).
+- Cluster: lückenlos geteilte Dreiecke (k² Schiffe, die umgedrehten fliegen rückwärts): Späher 4/9/25, Jäger 4/9,
+  bis zu drei Jäger-Cluster gleichzeitig. Offen: ob Jäger auch 16er/25er bekommen sollen (sehr starke Schiffe).
 - Balance (Autopilot): Stufe 1–2 schaffbar, Stufe 3 deutlich härter als Xenon; Runden länger als bei Xenon
   (150–340 s statt ~160 s) – nach eigenem Spielen nachjustieren.
 
