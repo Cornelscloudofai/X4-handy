@@ -17,7 +17,7 @@ import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tun
 import { artPic } from '../ui/menuArt';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, totalStars, UNLOCK, type RecordOutcome } from './records';
 
-export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon';
+export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon' | 'khaak';
 
 export interface MiniOpts {
   level: Level;
@@ -40,6 +40,7 @@ export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: stri
   orbit: { name: 'Orbit-Andocken', sub: 'Nach Kepler zur Station: Wer aufholen will, muss bremsen', icon: 'trader' },
   pirates: { name: 'Piratenangriff', sub: 'Kampf: Den Frachter bis zum Sprungtor beschützen', icon: 'warn', endless: 'Endloser Geleitschutz: Wie viele Wellen hältst du?' },
   xenon: { name: 'Xenon-Schwarm', sub: 'Kampf: Xenon greifen in Schwärmen an', icon: 'target', endless: 'Endlose Xenon-Abwehr: Wie viele Wellen hältst du?' },
+  khaak: { name: 'Kha’ak-Invasion', sub: 'Kampf: Späher-Cluster, Kyon-Strahlen und ein Brutschiff', icon: 'target', endless: 'Endlose Kha’ak-Invasion: Wie viele Wellen hältst du?' },
 };
 export const MINI_KINDS = Object.keys(MINI_INFO) as MiniKind[];
 
@@ -79,6 +80,7 @@ function create(kind: MiniKind, c: GameCfg): MiniGame {
     case 'orbit': return new OrbitGame(c);
     case 'pirates': return new ShooterGame(c, 'pirate');
     case 'xenon': return new ShooterGame(c, 'xenon');
+    case 'khaak': return new ShooterGame(c, 'khaak');
   }
 }
 

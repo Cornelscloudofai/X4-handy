@@ -16,11 +16,11 @@ await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
-if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 8) fail('Minispiel-Liste unvollständig');
+if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 9) fail('Minispiel-Liste unvollständig');
 // Reiter: Täglich und Kampf
 await page.click('#modal [data-act="mg-tab"][data-tab="daily"]');
 await page.waitForTimeout(200);
-if ((await page.locator('#modal [data-act="mg-daily"]').count()) !== 8) fail('Reiter „Täglich“: Tagesaufgaben fehlen');
+if ((await page.locator('#modal [data-act="mg-daily"]').count()) !== 9) fail('Reiter „Täglich“: Tagesaufgaben fehlen');
 await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
 await page.waitForTimeout(200);
 // Ausrüstung: Schiff und Waffe wählen, Auswahl erscheint im Menü; danach zurück zur Grundausstattung
@@ -235,7 +235,7 @@ await page.click('#minigame [data-mg="abort"]');
 await page.click('#minigame [data-mg="quit"]');
 
 // --- Kampf ---
-for (const kind of ['pirates', 'xenon']) {
+for (const kind of ['pirates', 'xenon', 'khaak']) {
   await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
   await page.waitForTimeout(300);
   await page.click('#minigame [data-mg="start"]');

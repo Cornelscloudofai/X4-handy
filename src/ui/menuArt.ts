@@ -54,6 +54,7 @@ const ART: Record<string, { bg: string; sprite?: string; art?: string }> = {
   orbit: { bg: 'planet-tuerkis', sprite: 'frachter-m-ki' },
   pirates: { bg: 'nebel-rot-tuerkis', sprite: 'pirat-fregatte-ki' },
   xenon: { bg: 'finsternis', sprite: 'xenon-k-ki' },
+  khaak: { bg: 'asteroidenstrom-dunkel', sprite: 'khaak-jaeger-ki' },
 };
 
 export function menuArt(key: string): MenuArt | null {

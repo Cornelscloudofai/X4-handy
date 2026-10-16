@@ -1323,3 +1323,128 @@ describe('Kampf: Raketen, Raketenarten und der Bomber Wolf', () => {
     expect(SHIPS.wolf.launcherPos).toHaveLength(SHIPS.wolf.x4.launchers);
   });
 });
+
+describe('Kampf: Kha’ak', () => {
+  type E = { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number; sh: number; shMax: number; shT: number; cl?: number; kyT?: number; jumpCd?: number; ang: number; r: number; weapon?: string; parent?: unknown; target: string; brood?: number; broodT?: number; cd: number };
+  type G = ShooterGame & {
+    enemies: E[]; clusters: Map<number, unknown>; px: number; py: number; fx1: number; fy1: number; shield: number; shieldMax: number;
+    spawnCluster(n: number, x: number, y: number): void; damageEnemy(e: E, dmg: number): void; fireKyon(e: E, a: number, dmg: number): void;
+    spawnBoss(mini?: boolean): void; rails: { color: string }[]; enemyDmg: number; dashT: number;
+  };
+  const make = (level: Level = 1) => {
+    const g = new ShooterGame(cfg(level, 4), 'khaak') as G;
+    g.resize(W, H);
+    for (let i = 0; i < 3000 && !g.enemies.length; i++) g.update(DT);
+    g.enemies.length = 0;
+    g.clusters.clear();
+    return g;
+  };
+
+  it('eigener Titel und eigene Regeln (im Menü: siehe e2e)', () => {
+    const g = new ShooterGame(cfg(1, 3), 'khaak');
+    expect(g.eyebrow).toBe('Kha’ak');
+    expect(g.rules.points[0]).toContain('Späher');
+  });
+
+  it('Grundausstattung, Stufe 1: mit Autopilot zu gewinnen', () => {
+    let wins = 0;
+    for (let seed = 1; seed <= 3; seed++) {
+      const g = new ShooterGame(cfg(1, seed), 'khaak');
+      g.resize(W, H);
+      if (run(g, () => g.autopilot(), 600).success) wins++;
+    }
+    expect(wins).toBeGreaterThanOrEqual(2);
+  });
+
+  it('nur Kha’ak-Schiffe, Späher immer in Clustern', () => {
+    const g = new ShooterGame(cfg(1, 4), 'khaak') as G;
+    g.resize(W, H);
+    for (let i = 0; i < 60 * 12; i++) g.update(DT);
+    expect(g.enemies.length).toBeGreaterThan(0);
+    for (const e of g.enemies) expect(['ks', 'kj', 'ka', 'kk']).toContain(e.kind);
+    expect(g.swarmSize(0)).toBeGreaterThanOrEqual(5);
+  });
+
+  it('Cluster fliegt geschlossen und feuert nicht; ein Treffer lässt ihn aufbrechen', () => {
+    const g = make();
+    g.spawnCluster(7, g.px, g.py - 1500);
+    expect(g.enemies.filter((e) => e.cl != null)).toHaveLength(7);
+    const before = g.enemies.map((e) => Math.hypot(e.x - g.enemies[0].x, e.y - g.enemies[0].y));
+    for (let i = 0; i < 60; i++) g.update(DT);
+    // Abstände in der Wabe bleiben (bis auf die Drehung) gleich
+    const after = g.enemies.map((e) => Math.hypot(e.x - g.enemies[0].x, e.y - g.enemies[0].y));
+    for (const [i, d] of before.entries()) expect(Math.abs(after[i] - d)).toBeLessThan(6);
+    expect(g.enemies.every((e) => e.cl != null)).toBe(true);
+    g.damageEnemy(g.enemies[3], 1);
+    expect(g.enemies.every((e) => e.cl == null)).toBe(true);
+    expect(g.clusters.size).toBe(0);
+  });
+
+  it('Cluster bricht kurz vor dem Ziel von selbst auf', () => {
+    const g = make();
+    g.spawnCluster(5, g.fx1, g.fy1 - 600);
+    for (let i = 0; i < 60 * 6 && g.clusters.size; i++) g.update(DT);
+    expect(g.clusters.size).toBe(0);
+    expect(g.enemies.some((e) => e.cl != null)).toBe(false);
+  });
+
+  it('Kyon-Strahl trifft sofort entlang der Linie und brennt Schilde 1,5-mal so schnell', () => {
+    const g = make();
+    g.dashT = 0;
+    g.spawnCluster(1, g.px, g.py - 200);
+    const e = g.enemies[0];
+    e.cl = undefined;
+    const sh0 = g.shield;
+    g.fireKyon(e, Math.atan2(g.py - e.y, g.px - e.x), 10);
+    expect(sh0 - g.shield).toBeCloseTo(10 * g.enemyDmg * 1.5, 5);
+    expect(g.rails.at(-1)!.color).toBe('#b45cff');
+    // daneben: kein Treffer
+    const sh1 = g.shield;
+    g.fireKyon(e, Math.atan2(g.py - e.y, g.px - e.x) + 0.6, 10);
+    expect(g.shield).toBe(sh1);
+  });
+
+  it('Kha’ak-Jäger lädt den Strahl erst sichtbar auf, bevor er trifft', () => {
+    const g = make();
+    g.spawnCluster(1, g.px, g.py - 150);
+    const e = g.enemies[0];
+    Object.assign(e, { kind: 'kj', cl: undefined, ang: Math.PI / 2, cd: 0, target: 'p', hp: 1e6, max: 1e6 });
+    let charged = false;
+    for (let i = 0; i < 60 && !g.rails.length; i++) { g.update(DT); if (e.kyT != null) charged = true; }
+    expect(charged).toBe(true);
+  });
+
+  it('Abfangjäger springt nach einem Treffer per Phasensprung zur Seite', () => {
+    const g = make();
+    g.spawnCluster(1, g.px, g.py - 250);
+    const e = g.enemies[0];
+    Object.assign(e, { kind: 'ka', cl: undefined, hp: 1e6, max: 1e6, sh: 0, jumpCd: 0 });
+    const x0 = e.x, y0 = e.y;
+    g.damageEnemy(e, 1);
+    g.update(DT);
+    expect(Math.hypot(e.x - x0, e.y - y0)).toBeGreaterThan(80);
+    expect(e.jumpCd).toBeGreaterThan(3);
+  });
+
+  it('Korvette entlässt Späher-Cluster (höchstens zwei)', () => {
+    const g = make();
+    g.spawnCluster(1, g.px + 900, g.py - 900);
+    const e = g.enemies[0];
+    Object.assign(e, { kind: 'kk', cl: undefined, hp: 1e6, max: 1e6, broodT: 0.01 });
+    g.update(DT);
+    expect(g.enemies.filter((q) => q.kind === 'ks').length).toBe(4);
+    expect(e.brood).toBe(1);
+  });
+
+  it('Brutschiff: Kyon-Türme und Brutkammern, Brut nur bei wenigen Spähern', () => {
+    const g = make();
+    g.spawnBoss();
+    const turrets = g.enemies.filter((e) => e.parent);
+    expect(turrets.map((t) => t.weapon).sort()).toEqual(['brut', 'brut', 'laser', 'laser']);
+    for (const t of turrets) if (t.weapon === 'brut') t.cd = 0;
+    g.update(DT);
+    const ks = g.enemies.filter((e) => e.kind === 'ks').length;
+    expect(ks).toBeGreaterThanOrEqual(4);
+    expect(ks).toBeLessThanOrEqual(10);
+  });
+});

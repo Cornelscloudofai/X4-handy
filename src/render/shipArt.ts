@@ -37,6 +37,9 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'xenon-turm-laser-ki': { xs: [], y: 0, color: '#ff3b4a' },
   'xenon-turm-plasma-ki': { xs: [], y: 0, color: '#ff6a3d' },
   'xenon-k-ki': { xs: [-0.217, -0.115, 0, 0.11, 0.218], y: 0.42, color: '#ff3b4a' },
+  // Kha'ak: keine sichtbaren Triebwerke
+  'khaak-spaeher-ki': { xs: [], y: 0, color: '#c77dff' },
+  'khaak-jaeger-ki': { xs: [], y: 0, color: '#c77dff' },
   // Split-Militärschiffe (Kampf: dein Schiff)
   'split-jaguar-ki': { xs: [0], y: 0.35, color: '#ff9a4a' },
   'split-asp-ki': { xs: [-0.078, 0.074], y: 0.35, color: '#ff9a4a' },
@@ -153,7 +156,7 @@ export function shipSprite(base: string, fallback: string): (FighterSprite & { f
 
 /**
  * Gegner im Kampf-Minispiel: Gegnerart → Bildname (nur KI-Bilder) und Größe im Verhältnis zum Trefferradius.
- * Arten beider Seiten mit gleichem Namen (Boss, Turm) haben ein Präfix: „pirat:“ bzw. „xenon:“.
+ * Arten mehrerer Seiten mit gleichem Namen (Boss, Turm) haben ein Präfix: „pirat:“, „xenon:“ bzw. „khaak:“.
  */
 const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }> = {
   jaeger: { name: 'pirat-jaeger-s-ki', scale: 3.6 },
@@ -171,10 +174,13 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   // Xenon-Türme: der runde Sockel ist der Drehpunkt; beim Plasmaturm liegt er unter der Bildmitte (oy)
   'xenon:turret-laser': { name: 'xenon-turm-laser-ki', scale: 4.8 },
   'xenon:turret-plasma': { name: 'xenon-turm-plasma-ki', scale: 2.8, oy: 0.11 },
+  // Kha'ak (weitere Bilder folgen; bis dahin violette Neon-Zeichnung)
+  ks: { name: 'khaak-spaeher-ki', scale: 4.4 },
+  kj: { name: 'khaak-jaeger-ki', scale: 3.6 },
 };
 
 /** Bild eines Gegners, falls vorhanden und Bilder eingeschaltet (sonst null: Neon-Zeichnung) */
-export function enemySprite(kind: string, side: 'pirat' | 'xenon' = 'pirat'): (FighterSprite & { scale: number; oy: number }) | null {
+export function enemySprite(kind: string, side: 'pirat' | 'xenon' | 'khaak' = 'pirat'): (FighterSprite & { scale: number; oy: number }) | null {
   const def = ENEMY_SPRITES[`${side}:${kind}`] ?? ENEMY_SPRITES[kind];
   if (!def || art === 'vector') return null;
   const img = load(def.name);

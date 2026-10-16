@@ -308,6 +308,27 @@ function zap(level = 0, pan = 0): void {
   });
 }
 
+/** Kha'ak-Kyon-Strahl: heller, gläserner Pfeifton, der rasch abfällt, mit feinem Knistern */
+function kyon(pan = 0): void {
+  if (!gate('kyon', 90)) return;
+  play('sfx', { pan: pan * 0.7, verb: 0.14, gain: 0.8 }, (g, o, t) => {
+    const out = filt(g, o, 'lowpass', 8000);
+    const f = vary(1650, 0.06);
+    tone(g, out, { type: 'triangle', f, to: f * 0.55, t, a: 0.002, d: 0.16, gain: 0.16, glide: 0.14 });
+    tone(g, out, { f: f * 1.5, to: f * 0.8, t, a: 0.002, d: 0.1, gain: 0.06, glide: 0.09 });
+    noise(g, out, { t, type: 'bandpass', f: vary(6000, 0.2), q: 3, a: 0.0005, d: 0.03, gain: 0.12 });
+  });
+}
+
+/** Kha'ak-Phasensprung: kurzes, aufsteigendes Wischen */
+function phase(pan = 0): void {
+  if (!gate('phase', 120)) return;
+  play('sfx', { pan: pan * 0.6, verb: 0.2, gain: 0.8 }, (g, o, t) => {
+    tone(g, o, { type: 'sine', f: vary(300, 0.05), to: 1400, t, a: 0.004, d: 0.14, gain: 0.14, glide: 0.12 });
+    noise(g, filt(g, o, 'highpass', 2500), { t, type: 'bandpass', f: 4000, q: 1, a: 0.01, d: 0.1, gain: 0.08 });
+  });
+}
+
 /** Explosion nach Größe: fünf Aufnahmen von klein bis groß, Boss mit langem Nachgrollen */
 function explosion(size = 1, pan = 0): void {
   const s = Math.max(0.3, Math.min(4, size));
@@ -464,7 +485,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, turretShot, heavyShot, enemyShot, missile, hit, zap, explosion, shield, hull, alarm, boss, pickup, fail,
+  shot, turretShot, heavyShot, enemyShot, missile, hit, zap, kyon, phase, explosion, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 
@@ -481,7 +502,7 @@ export const SOUND_DEMO: [string, () => void][] = [
   ['Schiff startet', launch], ['Andocken', dock], ['Auftrag angenommen', accept],
   ['Puls-Laser', () => shot('puls')], ['Bolzen', () => shot('bolzen')], ['Splitter', () => shot('schrot')], ['Plasma', () => shot('plasma')],
   ['Neutron', () => shot('neutron')], ['Tau', () => shot('tau')], ['Thermal', () => shot('thermal')], ['Boson', () => shot('boson')], ['Gegnerschuss', () => enemyShot()], ['Rakete', missile],
-  ['Treffer', () => hit()], ['Funke', () => zap(0.5)], ['Explosion klein', () => explosion(0.6)], ['Explosion groß', () => explosion(3)], ['Schild', shield], ['Hülle', hull],
+  ['Treffer', () => hit()], ['Funke', () => zap(0.5)], ['Kyon-Strahl', () => kyon()], ['Phasensprung', () => phase()], ['Explosion klein', () => explosion(0.6)], ['Explosion groß', () => explosion(3)], ['Schild', shield], ['Hülle', hull],
   ['Neue Welle', alarm], ['Boss', boss], ['Aufsammeln', pickup], ['Niederlage', fail],
   ['Strahlwaffe', demoLoop('es-strahl-schleife')], ['Bergbaulaser', demoLoop('es-bergbaulaser-schleife')], ['Triebwerk', demoLoop('es-triebwerk-schleife')], ['Traktorstrahl', demoLoop('es-traktorstrahl')],
   ['Gestein bricht', crack], ['Kristall', crystal], ['Ventil', valve], ['Fluss', flow], ['Schub', boost], ['Tor', chime], ['Steuerdüse', () => thrust()], ['Container', place],
