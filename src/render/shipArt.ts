@@ -180,9 +180,9 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   // Xenon-Türme: der runde Sockel ist der Drehpunkt; beim Plasmaturm liegt er unter der Bildmitte (oy)
   'xenon:turret-laser': { name: 'xenon-turm-laser-ki', scale: 4.8 },
   'xenon:turret-plasma': { name: 'xenon-turm-plasma-ki', scale: 2.8, oy: 0.11 },
-  // Kha'ak: Späher, Jäger, Abfangjäger (lange Raute), Korvette mit zwei Brutöffnungen
-  ks: { name: 'khaak-spaeher-ki', scale: 4.4 },
-  kj: { name: 'khaak-jaeger-ki', scale: 3.6 },
+  // Kha'ak: Späher (Schiff ~13 px, ein Drittel der Mamba), Jäger (~24 px), Abfangjäger (lange Raute), Korvette
+  ks: { name: 'khaak-spaeher-ki', scale: 2.25 },
+  kj: { name: 'khaak-jaeger-ki', scale: 2.6 },
   ka: { name: 'khaak-abfangjaeger-ki', scale: 3.3 },
   kk: { name: 'khaak-korvette-ki', scale: 3.5 },
   // Brutschiff (Boss, 163 px) und Zerstörer (Großziel, 146 px); Türme und Brutkästen sitzen auf ihren Sockeln (siehe shooter.ts)

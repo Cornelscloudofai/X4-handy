@@ -7,7 +7,7 @@ import { OrbitGame, elements } from '../src/minigames/orbit';
 import { MODS, QUALITY, START_PARTS, craft, earnParts, modRange, modState, modStats, partsFor, refundOf, remove as removeMod, resetMods } from '../src/minigames/mods';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
-import { ShooterGame } from '../src/minigames/shooter';
+import { ShooterGame, clusterSlots, jaegerClusters, khaakClusters } from '../src/minigames/shooter';
 import { turretArtName } from '../src/render/shipArt';
 import { SHIP_IDS, TURRET_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
 import { Score, pickGoals, rng, type GameResult, type Level, type MiniGame, type Mode } from '../src/minigames/common';
@@ -1329,8 +1329,8 @@ describe('Kampf: Kha’ak', () => {
   type G = {
     resize(w: number, h: number): void; update(dt: number): void; swarmSize(i: number): number;
     enemies: E[]; clusters: Map<number, unknown>; px: number; py: number; fx1: number; fy1: number; shield: number; shieldMax: number;
-    spawnCluster(n: number, x: number, y: number): void; damageEnemy(e: E, dmg: number): void; fireKyon(e: E, a: number, dmg: number): void;
-    spawnBoss(mini?: boolean): void; rails: { color: string }[]; enemyDmg: number; dashT: number;
+    damageEnemy(e: E, dmg: number): void; fireKyon(e: E, a: number, dmg: number): void;
+    spawnBoss(mini?: boolean): void; spawnCluster(n: number, x: number, y: number, kind?: string): void; rails: { color: string }[]; enemyDmg: number; dashT: number;
   };
   const make = (level: Level = 1) => {
     const g = new ShooterGame(cfg(level, 4), 'khaak') as unknown as G;
@@ -1363,7 +1363,55 @@ describe('Kampf: Kha’ak', () => {
     for (let i = 0; i < 60 * 12; i++) g.update(DT);
     expect(g.enemies.length).toBeGreaterThan(0);
     for (const e of g.enemies) expect(['ks', 'kj', 'ka', 'kk']).toContain(e.kind);
-    expect(g.swarmSize(0)).toBeGreaterThanOrEqual(5);
+    expect(g.swarmSize(0)).toBeGreaterThanOrEqual(4);
+  });
+
+  it('Cluster-Größen: Späher 4, 7 oder 28, Jäger höchstens 7 – immer als Dreieck', () => {
+    for (const n of [4, 7, 28]) {
+      const p = clusterSlots(n, 10);
+      expect(p).toHaveLength(n);
+      // Schwerpunkt in der Mitte, Spitze vorn (kleinstes y) genau ein Schiff, mittig
+      expect(Math.abs(p.reduce((a, q) => a + q[1], 0) / n)).toBeLessThan(1e-9);
+      const front = Math.min(...p.map((q) => q[1]));
+      const tip = p.filter((q) => Math.abs(q[1] - front) < 1e-6);
+      expect(tip).toHaveLength(1);
+      expect(Math.abs(tip[0][0])).toBeLessThan(1e-9);
+      // symmetrisch: zu jedem Platz gibt es den gespiegelten
+      for (const [x, y] of p) expect(p.some(([x2, y2]) => Math.abs(x2 + x) < 1e-6 && Math.abs(y2 - y) < 1e-6)).toBe(true);
+      // Schiffe überlappen nicht
+      for (const [i, a] of p.entries()) for (const b of p.slice(i + 1)) expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeGreaterThan(8);
+    }
+    // 28: sieben Reihen (volles Dreieck)
+    expect(new Set(clusterSlots(28, 10).map((q) => q[1].toFixed(3))).size).toBe(7);
+    expect(khaakClusters(40, 3, true)).toEqual([28, 7, 4]);
+    expect(khaakClusters(40, 3, false)).toEqual([7, 7, 7]);
+    expect(khaakClusters(5, 2)).toEqual([4]);
+    for (const n of [3, 4, 9, 14, 20, 30]) for (const c of jaegerClusters(n)) expect([4, 7]).toContain(c);
+    expect(jaegerClusters(20)).toEqual([7, 7, 4]);
+  });
+
+  it('Größen im Verhältnis zur Mamba: Späher etwa ein Drittel, Jäger gut zwei Drittel', () => {
+    const g = make();
+    g.spawnCluster(4, g.px, g.py - 900);
+    g.spawnCluster(4, g.px, g.py - 1200, 'kj' as never);
+    const ks = g.enemies.find((e) => e.kind === 'ks')!, kj = g.enemies.find((e) => e.kind === 'kj')!;
+    expect(ks.r).toBeLessThan(kj.r);
+    // Bildgröße: Späher ~ ein Drittel, Jäger ~ zwei Drittel bis drei Viertel der Mamba (Bild 40 px, Schiff ~34 px)
+    expect(ks.r * 2.25 * 0.73).toBeGreaterThan(34 / 3 - 2);
+    expect(ks.r * 2.25 * 0.73).toBeLessThan(34 / 3 + 3);
+    expect(kj.r * 2.6 * 0.93).toBeGreaterThan(34 * 0.66);
+    expect(kj.r * 2.6 * 0.93).toBeLessThan(34 * 0.8);
+  });
+
+  it('starke Schiffe: Jäger in Clustern zu höchstens 7, mehrere zugleich', () => {
+    const g = new ShooterGame({ ...cfg(3, 5), loadout: { ship: 'klapperschlange', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'tau' } } as never, 'khaak') as unknown as G & { reinforce: { kinds: string[]; swarm?: boolean; t: number }[]; spawnWave(): void };
+    g.resize(W, H);
+    g.spawnWave(); g.spawnWave();
+    const jc = g.reinforce.filter((q) => q.swarm && q.kinds[0] === 'kj');
+    expect(jc.length).toBeGreaterThanOrEqual(2);
+    for (const q of jc) expect([4, 7]).toContain(q.kinds.length);
+    const sc = g.reinforce.filter((q) => q.swarm && q.kinds[0] === 'ks');
+    for (const q of sc) expect([4, 7, 28]).toContain(q.kinds.length);
   });
 
   it('Cluster fliegt geschlossen und feuert nicht; ein Treffer lässt ihn aufbrechen', () => {
@@ -1427,14 +1475,14 @@ describe('Kampf: Kha’ak', () => {
     expect(e.jumpCd).toBeGreaterThan(3);
   });
 
-  it('Korvette entlässt aus beiden Brutkästen je einen kleinen Späher-Cluster', () => {
+  it('Korvette entlässt aus ihren Brutkästen einen Vierer-Cluster Späher', () => {
     const g = make();
     g.spawnCluster(1, g.px + 900, g.py - 900);
     const e = g.enemies[0];
     Object.assign(e, { kind: 'kk', cl: undefined, hp: 1e6, max: 1e6, broodT: 0.01 });
     g.update(DT);
     expect(g.enemies.filter((q) => q.kind === 'ks').length).toBe(4);
-    expect(g.clusters.size).toBe(2);
+    expect(g.clusters.size).toBe(1);
     expect(e.brood).toBe(1);
   });
 

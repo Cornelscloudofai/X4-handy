@@ -169,6 +169,67 @@ function wrapA(a: number): number {
   while (a <= -Math.PI) a += Math.PI * 2;
   return a;
 }
+/**
+ * Plätze eines Kha'ak-Clusters (x quer, y nach hinten; Spitze vorn, Mitte im Schwerpunkt): Dreieckszahlen
+ * (3, 6, 10 … 28) als volles Dreieck, eins mehr (4, 7) als Dreieck mit einem Schiff in der Mitte
+ */
+export function clusterSlots(n: number, gap: number): [number, number][] {
+  const h = gap * Math.sqrt(3) / 2;
+  const tri = (rows: number): [number, number][] => {
+    const out: [number, number][] = [];
+    for (let i = 0; i < rows; i++) for (let j = 0; j <= i; j++) out.push([(j - i / 2) * gap, i * h]);
+    return out;
+  };
+  let k = 1;
+  while ((k * (k + 1)) / 2 < n - 1) k++;
+  const T = (k * (k + 1)) / 2;
+  let pts: [number, number][];
+  if (T === n) pts = tri(k);
+  else if (T === n - 1) {
+    // kleines Dreieck um eine Mitte: etwas weiter gestellt, damit die Mitte Platz hat
+    pts = tri(k).map(([x, y]) => [x * 1.5, y * 1.5] as [number, number]);
+    const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    pts.push([0, cy]);
+  } else {
+    // andere Größen: Reihen von vorn auffüllen, die letzte mittig
+    pts = [];
+    for (let i = 0; pts.length < n; i++) {
+      const m = Math.min(i + 1, n - pts.length);
+      for (let j = 0; j < m; j++) pts.push([(j - (m - 1) / 2) * gap, i * h]);
+    }
+  }
+  const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+  return pts.slice(0, n).map(([x, y]) => [x, y - cy]);
+}
+
+/**
+ * Kha'ak-Cluster aus einer Anzahl Schiffe: nur die Größen 4, 7 und (wenn erlaubt) 28 – erst große, dann kleine,
+ * höchstens max Cluster; ein Rest unter 4 entfällt
+ */
+export function khaakClusters(total: number, max: number, big = false): number[] {
+  const out: number[] = [];
+  let rem = total;
+  while (rem >= 4 && out.length < max) {
+    const s = big && rem >= 28 ? 28 : rem >= 7 ? 7 : 4;
+    out.push(s);
+    rem -= s;
+  }
+  return out.length ? out : [4];
+}
+
+/**
+ * Kha'ak-Jäger: Cluster zu 7 (größer nicht), lieber zwei Vierer als ein Siebener mit großem Rest; kleinere Reste
+ * fliegen einzeln mit
+ */
+export function jaegerClusters(n: number): number[] {
+  const out: number[] = [];
+  while (n >= 11) { out.push(7); n -= 7; }
+  if (n >= 8) out.push(4, 4);
+  else if (n >= 7) out.push(7);
+  else if (n >= 4) out.push(4);
+  return out;
+}
+
 /** Winkel a um höchstens step in Richtung b drehen */
 function turnTo(a: number, b: number, step: number): number {
   const d = wrapA(b - a);
@@ -188,8 +249,10 @@ const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: number; co
   boss: { hp: 450, sh: 300, speed: 45, r: 34, color: '#ffb547', name: 'Boss', pts: 1500, cost: 0 },
   turret: { hp: 90, sh: 30, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
   // Kha'ak: schwache Hülle, kräftige Schilde (Kyon-Kristalle)
-  ks: { hp: 18, sh: 18, speed: 230, r: 9, color: '#c77dff', name: 'Kha’ak-Späher', pts: 70, cost: 1.5 },
-  kj: { hp: 35, sh: 45, speed: 175, r: 11, color: '#a855f7', name: 'Kha’ak-Jäger', pts: 130, cost: 2.5 },
+  // Bildgrößen im Verhältnis zur Mamba (etwa 34 px): Späher ein Drittel, Jäger gut zwei Drittel (siehe shipArt.ts);
+  // die Trefferzone ist etwas größer als das Bild, damit man die Kleinen auch auf dem Handy trifft
+  ks: { hp: 18, sh: 18, speed: 230, r: 8, color: '#c77dff', name: 'Kha’ak-Späher', pts: 70, cost: 1.5 },
+  kj: { hp: 35, sh: 45, speed: 175, r: 10, color: '#a855f7', name: 'Kha’ak-Jäger', pts: 130, cost: 2.5 },
   ka: { hp: 60, sh: 55, speed: 200, r: 13, color: '#d08cff', name: 'Kha’ak-Abfangjäger', pts: 220, cost: 4 },
   kk: { hp: 120, sh: 90, speed: 70, r: 18, color: '#9b5cff', name: 'Kha’ak-Korvette', pts: 300, cost: 5 },
 };
@@ -457,7 +520,7 @@ export class ShooterGame implements MiniGame {
   private gateY = 0;
   private grpN = 0;
   /** Kha'ak-Cluster: Mitte, Tempo, Drehung der Wabe, Flugrichtung */
-  private clusters = new Map<number, { x: number; y: number; vx: number; vy: number; rot: number; ang: number }>();
+  private clusters = new Map<number, { x: number; y: number; vx: number; vy: number; ang: number; kind: EKind }>();
   private fHull = 400;
   private readonly fMax = 400;
   private fFlash = 0;
@@ -1016,12 +1079,20 @@ export class ShooterGame implements MiniGame {
   /** kleinster Gegner der Seite (Schwärme, Begleitschutz, Auffüllen) */
   private get smallKind(): EKind { return this.side === 'pirate' ? 'jaeger' : this.side === 'xenon' ? 'n' : 'ks'; }
 
+  /** Kha'ak: zusätzliche Jäger für die Jäger-Cluster der Welle i (ein Teil des Schwarm-Anteils, ab Stärke 2,5) */
+  jaegerSwarm(i: number): number {
+    if (this.side !== 'khaak' || this.power < 2.5) return 0;
+    return Math.min(21, Math.round((this.waveBudget(i) * this.swarmShare() * 0.7) / SPEC.kj.cost));
+  }
+
   /** Schiffe in allen Schwärmen der Welle i zusammen (0 = keine), höchstens 40 */
   swarmSize(i: number): number {
     const share = this.swarmShare();
     if (!share) return 0;
     const small = this.smallKind;
-    return clamp(Math.round((this.waveBudget(i) * share) / SPEC[small].cost), this.side === 'khaak' ? 5 : 6, 40);
+    // Kha'ak ab Stärke 2,5: die Hälfte des Anteils geht an Jäger-Cluster (jaegerSwarm)
+    const part = this.side === 'khaak' && this.power >= 2.5 ? 0.5 : 1;
+    return clamp(Math.round((this.waveBudget(i) * share * part) / SPEC[small].cost), this.side === 'khaak' ? 4 : 6, 40);
   }
 
   /**
@@ -1032,8 +1103,8 @@ export class ShooterGame implements MiniGame {
     const total = this.swarmSize(i);
     if (!total) return [];
     const max = this.power >= 10 ? 3 : this.power >= 4 ? 2 : 1;
-    // Kha'ak-Cluster: je mindestens fünf Späher, eher mehrere kleine Cluster als ein großer
-    const n = clamp(Math.floor(total / (this.side === 'khaak' ? 5 : 6)), 1, max + (this.side === 'khaak' ? 1 : 0));
+    if (this.side === 'khaak') return khaakClusters(total, max + 1, this.power >= 4);
+    const n = clamp(Math.floor(total / 6), 1, max);
     return Array.from({ length: n }, (_, k) => Math.floor(total / n) + (k < total % n ? 1 : 0));
   }
 
@@ -1046,7 +1117,8 @@ export class ShooterGame implements MiniGame {
         : (i === 0 ? ['kj'] : i === 1 ? ['kj', 'kj', 'ka'] : ['kj', 'kj', 'ka', 'kk']);
     // starke Schiffe: schwerere Mischung (mehr Kanonen-/Raketenboote, Xenon M bzw. Abfangjäger/Korvetten), ab der ersten Welle
     const heavy = this.side === 'pirate' ? (['kanone', 'rakete'] as EKind[]) : this.side === 'xenon' ? (['m'] as EKind[]) : (['ka', 'kk'] as EKind[]);
-    for (let h = 0; h < Math.min(4, Math.floor((this.power - 1) / 2.5)); h++) pool.push(...heavy);
+    // Kha'ak: dazu je Stufe zwei Jäger mehr – sie kommen dann in Clustern zu 7 (mehrere gleichzeitig)
+    for (let h = 0; h < Math.min(4, Math.floor((this.power - 1) / 2.5)); h++) pool.push(...heavy, ...(this.side === 'khaak' ? ['kj', 'kj'] as EKind[] : []));
     const out: EKind[] = [];
     let shields = 0;
     while (budget > 0.9) {
@@ -1088,13 +1160,23 @@ export class ShooterGame implements MiniGame {
       this.spawnGroup(this.side === 'pirate' ? ['jaeger', 'jaeger'] : this.side === 'xenon' ? ['n', 'n', 'n'] : ['ks', 'ks', 'ks', 'ks', 'ks'], 1 + Math.floor(this.r() * 4), this.side === 'khaak');
     } else {
       // Gegner in zwei bis drei Gruppen aus verschiedenen Richtungen; die späteren kommen einige Sekunden danach
-      const kinds = this.waveKinds(this.wave);
+      let kinds = this.waveKinds(this.wave);
+      // Kha'ak-Jäger fliegen in Clustern zu 7 oder 4 (größer nicht); je bis zu drei kommen gleichzeitig aus
+      // verschiedenen Richtungen, die nächsten drei gut zehn Sekunden später
+      const jCl = this.side === 'khaak' ? jaegerClusters(kinds.filter((k) => k === 'kj').length + this.jaegerSwarm(this.wave)) : [];
+      if (jCl.length) {
+        let drop = Math.max(0, jCl.reduce((a, b) => a + b, 0) - this.jaegerSwarm(this.wave));
+        kinds = kinds.filter((k) => k !== 'kj' || drop-- <= 0);
+        const jFirst = Math.floor(this.r() * 5);
+        for (const [k, size] of jCl.entries()) this.reinforce.push({ t: 1 + Math.floor(k / 3) * 12 + (k % 3) * 0.5, kinds: new Array<EKind>(size).fill('kj'), from: (jFirst + (k % 3) * 2) % 5, swarm: true });
+      }
       // starke Schiffe: mehr Gruppen (jede mit eigenen Anflügen), die von mehr Seiten kommen
       const groups = Math.min(6, (kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1) + Math.max(0, Math.floor(Math.sqrt(this.power)) - 1));
       const per = Math.ceil(kinds.length / groups);
       const first = Math.floor(this.r() * 5);
       for (let g = 0; g < groups; g++) {
         const part = kinds.slice(g * per, (g + 1) * per);
+        if (!kinds.length) break;
         if (!part.length) continue;
         const from = (first + g * 2) % 5;
         if (g === 0) this.spawnGroup(part, from);
@@ -1108,7 +1190,7 @@ export class ShooterGame implements MiniGame {
       const swarms = this.swarms(this.wave), sw = swarms.reduce((a, b) => a + b, 0), swT = 3 + this.r() * 2;
       for (const [k, size] of swarms.entries()) this.reinforce.push({ t: swT + k * 0.6, kinds: new Array<EKind>(size).fill(this.smallKind), from: (first + 1 + k * 2) % 5, swarm: true });
       this.bannerText = this.mode === 'endless' ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${this.nWaves}`;
-      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (sw ? this.side === 'khaak' ? ` · ${swarms.length > 1 ? `${swarms.length} Späher-Cluster` : 'Späher-Cluster'} (${sw})` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
+      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
     // Nachschub vom Frachter nach jeder überstandenen Welle: ein Viertel des Raketenlagers
@@ -1140,7 +1222,7 @@ export class ShooterGame implements MiniGame {
   private spawnGroup(list: EKind[], from: number, swarm = false): void {
     const [x0, y0] = this.farPoint(from);
     // Kha'ak-Schwärme fliegen als geschlossener Cluster
-    if (swarm && this.side === 'khaak') { this.spawnCluster(list.length, x0, y0); return; }
+    if (swarm && this.side === 'khaak') { this.spawnCluster(list.length, x0, y0, list[0]); return; }
     const grp = ++this.grpN;
     // Schwarm: lockere Wolke statt Ring, je größer, desto weiter gestreut
     const spread = swarm ? 40 + Math.sqrt(list.length) * 22 : 50;
@@ -1155,21 +1237,18 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Kha'ak-Cluster aus n Spähern: dichte Wabe (Mitte, Ring aus 6, Ring aus 12 …), die als Ganzes langsam dreht und
-   * auf das Ziel zufliegt; erst kurz davor (oder beim ersten Treffer) schwärmen alle aus
+   * Kha'ak-Cluster aus n Schiffen (Späher 4, 7 oder 28, Jäger 4 oder 7): geschlossenes Dreieck mit der Spitze in
+   * Flugrichtung, das als Ganzes auf das Ziel zufliegt; erst kurz davor (oder beim ersten Treffer) schwärmen alle aus
    */
-  spawnCluster(n: number, x0: number, y0: number): void {
+  spawnCluster(n: number, x0: number, y0: number, kind: EKind = 'ks'): void {
     const id = ++this.grpN;
     const tA = Math.atan2(this.fY - y0, this.fX - x0);
-    this.clusters.set(id, { x: x0, y: y0, vx: 0, vy: 0, rot: this.r() * Math.PI * 2, ang: tA });
-    for (let i = 0; i < n; i++) {
-      // Platz: Ring k hat 6k Plätze im Abstand 24·k
-      let ring = 0, idx = i;
-      while (idx >= Math.max(1, ring * 6)) { idx -= Math.max(1, ring * 6); ring++; }
-      const a = ring ? (idx / (ring * 6)) * Math.PI * 2 + ring * 0.3 : 0, rr = ring * 24;
-      const e = this.makeEnemy('ks', x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr);
+    this.clusters.set(id, { x: x0, y: y0, vx: 0, vy: 0, ang: tA, kind });
+    const c = Math.cos(tA + Math.PI / 2), sn = Math.sin(tA + Math.PI / 2);
+    for (const [sx, sy] of clusterSlots(n, SPEC[kind].r * 2.6)) {
+      const e = this.makeEnemy(kind, x0 + sx * c - sy * sn, y0 + sx * sn + sy * c);
       e.cl = id; e.grp = id; e.swarm = true;
-      e.slotX = Math.cos(a) * rr; e.slotY = Math.sin(a) * rr;
+      e.slotX = sx; e.slotY = sy;
       e.ang = tA;
       this.enemies.push(e);
     }
@@ -1208,12 +1287,11 @@ export class ShooterGame implements MiniGame {
       const d = Math.hypot(tx - c.x, ty - c.y);
       if (d < 380 && this.outcome !== 'player') { this.breakCluster(id); continue; }
       c.ang = turnTo(c.ang, Math.atan2(ty - c.y, tx - c.x), 1.2 * dt);
-      const sp = SPEC.ks.speed * 0.62;
+      const sp = SPEC[c.kind].speed * 0.62;
       c.vx += (Math.cos(c.ang) * sp - c.vx) * Math.min(1, dt * 2);
       c.vy += (Math.sin(c.ang) * sp - c.vy) * Math.min(1, dt * 2);
       c.x = clamp(c.x + c.vx * dt, 60, this.WW - 60);
       c.y = clamp(c.y + c.vy * dt, 60, this.WH - 60);
-      c.rot += dt * 0.7;
     }
   }
 
@@ -1815,10 +1893,12 @@ export class ShooterGame implements MiniGame {
         if (e.weapon === 'laser') { this.updateLaser(e, dt, fx, fy); continue; }
         e.cd -= dt;
         if (e.weapon === 'brut') {
-          // Brutkasten des Brutschiffs: entlässt alle paar Sekunden zwei Kha'ak-Jäger (solange nur wenige unterwegs sind)
+          // Brutkasten des Brutschiffs: entlässt alle paar Sekunden zwei Kha'ak-Jäger (solange nur wenige unterwegs sind, höchstens dreimal)
           if (e.cd <= 0) {
             e.cd = 12 + this.r() * 2;
-            if (this.enemies.length < 56 && this.enemies.filter((q) => q.kind === 'kj').length < 4) {
+            // höchstens drei Bruten je Brutkasten, damit der Kampf nicht endlos wird
+            if ((e.brood ?? 0) < 3 && this.enemies.length < 56 && this.enemies.filter((q) => q.kind === 'kj').length < 4) {
+              e.brood = (e.brood ?? 0) + 1;
               for (let q = 0; q < 2; q++) {
                 const j = this.makeEnemy('kj', e.x + (q - 0.5) * 14, e.y);
                 const a = p.ang + (q - 0.5) * 1.2;
@@ -1850,16 +1930,16 @@ export class ShooterGame implements MiniGame {
         }
         continue;
       }
-      // Kha'ak im Cluster: Platz in der drehenden Wabe halten, nicht feuern
+      // Kha'ak im Cluster: Platz im Dreieck halten (Spitze in Flugrichtung), nicht feuern
       if (e.cl != null) {
         const c = this.clusters.get(e.cl);
         if (c) {
-          const cr = Math.cos(c.rot), sr = Math.sin(c.rot);
+          const cr = Math.cos(c.ang + Math.PI / 2), sr = Math.sin(c.ang + Math.PI / 2);
           const gx = c.x + e.slotX! * cr - e.slotY! * sr, gy = c.y + e.slotX! * sr + e.slotY! * cr;
           e.vx = c.vx + (gx - e.x) * 4; e.vy = c.vy + (gy - e.y) * 4;
           e.x = clamp(e.x + e.vx * dt, 20, this.WW - 20);
           e.y = clamp(e.y + e.vy * dt, 20, this.WH - 20);
-          e.ang = wrapA(turnTo(e.ang, c.ang, TURN.ks * dt));
+          e.ang = wrapA(turnTo(e.ang, c.ang, TURN[e.kind] * dt));
           continue;
         }
         e.cl = undefined;
@@ -1881,7 +1961,7 @@ export class ShooterGame implements MiniGame {
         e.aimedT = aimed ? (e.aimedT ?? 0) + dt : Math.max(0, (e.aimedT ?? 0) - dt);
         if (e.jumpCd <= 0 && (e.jumpReq || e.aimedT > 0.6)) this.phaseJump(e);
       }
-      // Korvette: alle 10 s aus jedem ihrer zwei Brutkästen ein kleiner Späher-Cluster (höchstens zweimal)
+      // Korvette: alle 10 s abwechselnd aus einem ihrer zwei Brutkästen ein Vierer-Cluster Späher (höchstens zweimal)
       if (e.kind === 'kk') {
         e.broodT = (e.broodT ?? 3 + this.r() * 3) - dt;
         if (e.broodT <= 0 && (e.brood ?? 0) < 2) {
@@ -1890,12 +1970,10 @@ export class ShooterGame implements MiniGame {
             e.brood = (e.brood ?? 0) + 1;
             // Brutöffnungen im Bild: seitlich hinten (Bildanteil ±0,18 quer, 0,16 hinter der Mitte)
             const size = e.r * 3.5, a = e.ang + Math.PI / 2, c = Math.cos(a), sn = Math.sin(a);
-            for (const sx of [-0.18, 0.18]) {
-              const ox = sx * size, oy = 0.16 * size;
-              const bx = e.x + ox * c - oy * sn, by = e.y + ox * sn + oy * c;
-              this.spawnCluster(2, bx, by);
-              this.fx.add({ x: bx, y: by, color: '#c77dff', size: 2, kind: 'ring', max: 0.4 });
-            }
+            const ox = (e.brood % 2 ? -0.18 : 0.18) * size, oy = 0.16 * size;
+            const bx = e.x + ox * c - oy * sn, by = e.y + ox * sn + oy * c;
+            this.spawnCluster(4, bx, by);
+            this.fx.add({ x: bx, y: by, color: '#c77dff', size: 2, kind: 'ring', max: 0.4 });
           }
         }
       }
@@ -2513,7 +2591,7 @@ export class ShooterGame implements MiniGame {
       const inCl = this.enemies.filter((e) => e.cl != null);
       for (const [i, a] of inCl.entries()) for (let j = i + 1; j < inCl.length; j++) {
         const b = inCl[j];
-        if (a.cl === b.cl && Math.hypot(a.x - b.x, a.y - b.y) < 30) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+        if (a.cl === b.cl && Math.hypot(a.x - b.x, a.y - b.y) < a.r * 3.3) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
       }
       ctx.stroke();
     }
