@@ -27,6 +27,7 @@ import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, typ
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
 import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
+import type { LoView } from './loadoutView';
 import { tuneFromSlider } from '../minigames/tunePanel';
 import { loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
@@ -367,6 +368,8 @@ function renderUI(): void {
   if (modal.dataset.key !== modalKey()) { modal.innerHTML = ''; modal.dataset.key = modalKey(); }
   morph(modal, modalContent);
   modal.hidden = !modalContent;
+  // neue Ansicht im selben Fenster (z. B. Hangar: Platzliste → Auswahl) beginnt oben
+  if (modalTop) { modalTop = false; const b = modal.querySelector('.sheet-body'); if (b) b.scrollTop = 0; }
   if (needFit && ui.modal?.type === 'planDiagram') { needFit = false; requestAnimationFrame(fitEditor); }
   document.documentElement.style.setProperty('--bottom-stack', (ui.modal ? 96 : $('bottom').offsetHeight) + 'px');
   document.documentElement.classList.toggle('calm', ui.reducedMotion);
@@ -400,6 +403,9 @@ function panelKey(): string {
   const p = ui.panel;
   return p ? `${p.type}:${p.id ?? ''}:${p.tab ?? ''}` : '';
 }
+
+/** beim nächsten Zeichnen das Fenster nach oben scrollen */
+let modalTop = false;
 
 function modalKey(): string {
   const m = ui.modal;
@@ -591,6 +597,8 @@ function goBack(): boolean {
     if (ui.modal.type === 'welcome') return true;
     if (ui.modal.type === 'planPick' && ui.modal.back) { ui.modal = { type: 'planDiagram' }; needFit = true; }
     else if (ui.modal.type === 'storage' && ui.modal.back) ui.modal = ui.modal.back;
+    // Hangar: aus einer Auswahl erst zurück zur Platzliste
+    else if (ui.modal.type === 'loadout' && ui.modal.view && ui.modal.view !== 'home') ui.modal = { ...ui.modal, view: 'home' };
     else if ((ui.modal.type === 'loadout' || ui.modal.type === 'shipArt') && lastMg) ui.modal = lastMg;
     else ui.modal = null;
   } else if (ui.placing) ui.placing = null;
@@ -994,13 +1002,13 @@ function onClick(e: MouseEvent): void {
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
       case 'ship-art-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
       case 'loadout-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'loadout' }; refresh(); break;
-      case 'lo-tab': if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, tab: d.tab as 'ship' | 'gear' | 'mods' | 'art', slot: (d.slot as ModSlot) ?? ui.modal.slot }; refresh(); } break;
+      case 'lo-view': if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, view: d.view as LoView, slot: (d.slot as ModSlot) ?? ui.modal.slot }; modalTop = true; refresh(); } break;
       case 'mod-craft': {
         if (ui.modal?.type !== 'loadout') break;
         const mod = craft(d.id!, Number(d.q) as ModQuality);
         if (!mod) { toast('Zu wenig Modteile', 'warn'); break; }
         const slot = MODS[mod.id].slot;
-        ui.modal = { ...ui.modal, slot, fresh: slot, rollN: (ui.modal.rollN ?? 0) + 1 };
+        ui.modal = { ...ui.modal, view: 'mod', slot, fresh: slot, rollN: (ui.modal.rollN ?? 0) + 1 };
         sfx.build();
         refresh();
         setTimeout(() => {

@@ -5,11 +5,12 @@ import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBe
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { tunePanel } from '../minigames/tunePanel';
+import { loadoutView } from './loadoutView';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
-import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
+import { modState } from '../minigames/mods';
 import { musicFx } from '../audio/rhythm';
-import { LTURRET_IDS, LTURRETS, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, MISSILES, MISSILE_IDS, MISSILE_DMG, gameRange, sustainedDps, weaponGun, type ShipId, type X4Gun } from '../minigames/loadout';
+import { SHIPS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1536,120 +1537,9 @@ export function modalHtml(state: GameState, ui: UIState): string {
       return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');
     }
     case 'loadout': {
-      // Schiff, Bordwaffe, Türme, Schild und Darstellung für das Kampf-Minispiel
-      const lo = loadout();
-      const ship = SHIPS[lo.ship];
-      const pic = (id: ShipId) => spriteUrl(SHIPS[id].sprite + '-ki') ?? spriteUrl(SHIPS[id].fallback + '-ki');
-      const bar = (label: string, v: number) => `<div class="lo-bar"><span>${label}</span><i><b style="width:${Math.round(Math.max(0.08, Math.min(1, v)) * 100)}%"></b></i></div>`;
-      // Feuerkraft mit der gewählten Waffe und dem gewählten Turm (Dauerleistung aus den X4-Werten)
-      const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret], ltd = LTURRETS[lo.lturret ?? 'plasma'];
-      const fire = (id: ShipId) => { const d = SHIPS[id]; return d.x4.weapons * sustainedDps(weaponGun(wd, d.gunSize), wd.beam) + d.turrets.length * sustainedDps(td.gun, td.beam) + (d.lMounts?.length ?? 0) * sustainedDps(ltd.gun); };
-      const fireMax = Math.max(...SHIP_IDS.map(fire));
-      const num = (n: number, digits = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: digits });
-      // Datenzeile einer Waffe: Schaden, Takt, Salve/Magazin, Dauerleistung, Reichweite
-      const gunData = (g: X4Gun, beam = false) => beam
-        ? `${num(g.dmg)} Schaden/s · Dauerstrahl`
-        : `${num(g.dmg)}${g.amt > 1 ? ` × ${g.amt}` : ''} Schaden · ${g.mag === 1 ? 'Einzelschuss' : `${num(g.rate, 1)} Schuss/s`}${g.mag > 1 ? ` · ${g.mag}er-Salve, ${num(g.reload, 1)} s Pause` : g.mag === 1 ? `, ${num(g.reload, 1)} s Aufladen` : ''} · ≈ ${num(sustainedDps(g))}/s · ${num((g.v * g.life) / 1000, 1)} km`;
-      const shipRow = (id: ShipId) => {
-        const d = SHIPS[id], on = lo.ship === id, url = pic(id), real = spriteUrl(d.sprite + '-ki');
-        return `<div class="lo-ship ${on ? 'on' : ''}" ${act('loadout-set', { key: 'ship', value: id })}>
-          <div class="lo-pic">${url ? `<img src="${url}" alt="" style="${real ? '' : 'opacity:.45'}">` : ''}${real ? '' : '<small>Bild folgt</small>'}</div>
-          <div class="grow"><div class="title">${esc(d.name)} <span class="muted small">${d.cls} · ${esc(d.role)}</span></div>
-          <div class="sub wrap">${esc(d.desc)}</div>
-          <div class="sub wrap lo-data">Hülle ${num(d.x4.hull)} · ${d.x4.engines} Triebwerk${d.x4.engines > 1 ? 'e' : ''} · ${d.x4.shields} Schild${d.x4.shields > 1 ? 'e' : ''} ${d.cls}${d.x4.mShields ? ` + ${d.x4.mShields} M` : ''} · ${d.x4.weapons} Waffenplätze${d.x4.launchers ? ` · ${d.x4.launchers} Raketenwerfer (${d.x4.missiles} Raketen)` : ' · keine Raketen'}${d.lMounts?.length ? ` · ${d.lMounts.length} L- und ${d.turrets.length} M-Türme` : d.x4.turrets ? ` · ${d.x4.turrets} Türme` : ''} · ${d.x4.v} m/s</div>
-          <div class="lo-bars">${bar('Tempo', d.speed / 1.5)}${bar('Wendigkeit', d.turn / 1.2)}${bar('Hülle', d.hull / 9.2)}${bar('Schild', d.shield / 5.2)}${bar('Feuerkraft', fire(id) / fireMax)}</div></div>
-          ${on ? icon('check', 22, 'pos') : ''}</div>`;
-      };
-      const choice = (key: string, cur: string, ids: string[], defs: Record<string, { name: string; desc: string }>, data?: (id: string) => string) =>
-        `<div class="box rows">${ids.map((id) => `<div class="row tap" ${act('loadout-set', { key, value: id })}><div class="grow"><div class="title" style="font-weight:500">${esc(defs[id].name)}</div><div class="sub wrap">${esc(defs[id].desc)}</div>${data ? `<div class="sub wrap lo-data">${esc(data(id))}</div>` : ''}</div>${cur === id ? icon('check', 20, 'pos') : '<span class="lo-radio"></span>'}</div>`).join('')}</div>`;
-      // Mods: eingebaute Effekte, Netzdiagramm (Grundwerte und mit Mods), Hangar mit Modplätzen
-      const ms = modState(), mx = modStats();
-      const tab = m.tab ?? 'ship';
-      const range = (id: ShipId) => gameRange(weaponGun(wd, SHIPS[id].gunSize), wd.beam);
-      const rangeMax = Math.max(...SHIP_IDS.map(range)) * 1.4;
-      const axes: [string, (id: ShipId, k: number) => number][] = [
-        ['Tempo', (id, k) => (SHIPS[id].speed * (1 + k * (mx.speed ?? 0))) / 1.7],
-        ['Wendigkeit', (id, k) => (SHIPS[id].turn * (1 + k * (mx.turn ?? 0))) / 1.6],
-        ['Hülle', (id, k) => Math.sqrt((SHIPS[id].hull * (1 + k * (mx.hull ?? 0))) / 11)],
-        ['Schild', (id, k) => Math.sqrt((SHIPS[id].shield * SHIELDS[lo.shield].cap * (1 + k * (mx.shield ?? 0))) / 10)],
-        ['Feuerkraft', (id, k) => Math.sqrt((fire(id) * (1 + k * (mx.dmg ?? 0)) * (1 + k * (mx.rate ?? 0))) / (fireMax * 1.6))],
-        ['Reichweite', (id, k) => (range(id) * (1 + k * (mx.velocity ?? 0))) / rangeMax],
-      ];
-      const radar = () => {
-        const W = 220, H = 190, cx = W / 2, cy = H / 2 + 4, R = 66;
-        const pt = (i: number, v: number) => { const a = -Math.PI / 2 + (i / axes.length) * Math.PI * 2; return [cx + Math.cos(a) * R * Math.min(1.15, Math.max(0.06, v)), cy + Math.sin(a) * R * Math.min(1.15, Math.max(0.06, v))]; };
-        const poly = (k: number) => axes.map(([, f], i) => pt(i, f(lo.ship, k)).map((n) => n.toFixed(1)).join(',')).join(' ');
-        const grid = [0.33, 0.66, 1].map((g) => `<polygon points="${axes.map((_, i) => pt(i, g).join(',')).join(' ')}" class="rd-grid"/>`).join('');
-        const spokes = axes.map((_, i) => { const [x, y] = pt(i, 1); return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" class="rd-grid"/>`; }).join('');
-        const labels = axes.map(([l], i) => { const [x, y] = pt(i, 1.32); return `<text x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="middle">${l}</text>`; }).join('');
-        const hasMods = Object.keys(mx).length > 0;
-        return `<svg class="lo-radar" viewBox="0 0 ${W} ${H}" role="img" aria-label="Werte des Schiffs">${grid}${spokes}
-          <polygon points="${poly(0)}" class="rd-base"/>${hasMods ? `<polygon points="${poly(1)}" class="rd-mod"/>` : ''}${labels}</svg>`;
-      };
-      const chip = (slot: ModSlot) => {
-        const md = ms.slots[slot];
-        const q = md ? QUALITY[md.q] : null;
-        return `<button class="lo-chip lo-chip-${slot} ${md ? 'set' : ''}" style="${q ? `--q:${q.color}` : ''}" ${act('lo-tab', { tab: 'mods', slot })}>${icon(SLOT_INFO[slot].icon, 14)}<span>${md ? esc(fmtStat(MODS[md.id].stat, md.value).split(' ').slice(0, 2).join(' ')) : SLOT_INFO[slot].name}</span></button>`;
-      };
-      const hero = `<div class="lo-hero">
-        <div class="lo-hangar">${pic(lo.ship) ? `<img src="${pic(lo.ship)}" alt="">` : ''}
-          <div class="lo-hangar-name"><b>${esc(ship.name)}</b><small>${ship.cls} · ${esc(ship.role)}</small></div>
-          ${SLOTS.map(chip).join('')}</div>
-        <div class="lo-radar-box">${radar()}<div class="lo-legend"><span class="b"></span>Grundwerte${Object.keys(mx).length ? '<span class="m"></span>mit Mods' : ''}</div></div></div>`;
-      const tabs = `<div class="segment lo-tabs">${([['ship', 'Schiff'], ['gear', 'Ausrüstung'], ['mods', `Mods <em>${ms.parts}</em>`], ['art', 'Grafik']] as const).map(([id, l]) => `<button class="${tab === id ? 'on' : ''}" ${act('lo-tab', { tab: id })}>${l}</button>`).join('')}</div>`;
-      const shipTab = `<div class="section"><div class="lo-ships">${SHIP_IDS.map(shipRow).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">Spezialfähigkeit der ${esc(ship.name)}: ${esc(SPECIALS[ship.special].name)} (Taste ${SPECIALS[ship.special].key}).</p></div>`;
-      const gearTab = `<div class="section"><h3>Bordkanonen (${ship.x4.weapons} × ${ship.gunSize.toUpperCase()})</h3>
-          <p class="small muted" style="margin:0 0 8px">Werte aus X4 9.0 (Mk1, ${ship.gunSize.toUpperCase()}-Waffenplatz). Mk-Stufe (Standard bis Spitze) stellst du im Minispiel-Menü ein.</p>
-          <h3 class="lo-sub">Split-Waffen</h3>${choice('weapon', lo.weapon, WEAPON_IDS.filter((id) => WEAPONS[id].group === 'split'), WEAPONS, (id) => gunData(weaponGun(WEAPONS[id as keyof typeof WEAPONS], ship.gunSize)))}
-          ${ship.gunSize === 'l' ? `<h3 class="lo-sub">Schwere Waffen (nur L)</h3>${choice('weapon', lo.weapon, WEAPON_IDS.filter((id) => WEAPONS[id].group === 'schwer'), WEAPONS, (id) => gunData(weaponGun(WEAPONS[id as keyof typeof WEAPONS], ship.gunSize)))}` : ''}
-          <h3 class="lo-sub">Allgemeine Waffen</h3>${choice('weapon', lo.weapon, WEAPON_IDS.filter((id) => WEAPONS[id].group === 'allgemein'), WEAPONS, (id) => { const d = WEAPONS[id as keyof typeof WEAPONS]; return gunData(weaponGun(d, ship.gunSize), d.beam); })}</div>
-        ${ship.lMounts?.length ? `<div class="section"><h3>Schwere Türme (${ship.lMounts.length} × L, Split)</h3>
-          <p class="small muted" style="margin:0 0 8px">Je zwei an den Schultern, unter den Panzerplatten: schwenken nach außen und hinten und spitz nach vorn über den Bug. Jede Waffe hat ihr eigenes Rohr. Werte angenommen (aus den M-Türmen abgeleitet).</p>
-          <div class="box rows">${LTURRET_IDS.map((id) => { const t = LTURRETS[id], url = spriteUrl(t.barrel); return `<div class="row tap" ${act('loadout-set', { key: 'lturret', value: id })}>${url ? `<span class="lo-barrel"><img src="${url}" alt=""></span>` : ''}<div class="grow"><div class="title" style="font-weight:500">${esc(t.name)}</div><div class="sub wrap">${esc(t.desc)}</div><div class="sub wrap lo-data">${esc(`${gunData(t.gun)} · schwenkt ${t.turn}°/s`)}</div></div>${(lo.lturret ?? 'plasma') === id ? icon('check', 20, 'pos') : '<span class="lo-radio"></span>'}</div>`; }).join('')}</div></div>` : ''}
-        ${ship.turrets.length ? `<div class="section"><h3>${ship.lMounts?.length ? 'M-Türme' : 'Türme'} (${ship.turrets.length} × M, Split)</h3>${choice('turret', lo.turret, TURRET_IDS, TURRETS, (id) => { const t = TURRETS[id as keyof typeof TURRETS]; return `${gunData(t.gun, t.beam)} · schwenkt ${t.turn}°/s`; })}</div>` : ''}
-        ${ship.x4.launchers ? `<div class="section"><h3>Raketen (${ship.x4.launchers} × Werfer, Lager ${ship.x4.missiles})</h3>
-          <p class="small muted" style="margin:0 0 8px">Je Werfer zwei Raketen pro Salve${ship.missileReload && ship.missileReload < 1 ? `, Nachladen ${Math.round(8 * ship.missileReload)} s statt 8 s` : ', Nachladen 8 s'}. Nachschub: Raketen-Fundstück füllt das halbe Lager, die seltene Munitionskiste das ganze, nach jeder Welle bringt der Frachter ein Viertel.</p>
-          ${choice('missile', lo.missile ?? 'lenk', MISSILE_IDS, MISSILES, (id) => { const d = MISSILES[id as keyof typeof MISSILES], reach = d.v * d.life + (d.split ? 120 : 0); return `${d.role} · ${d.split ? `${d.split} × ` : ''}${Math.round(MISSILE_DMG * d.dmg)} Schaden${d.vs?.L ? ` (Großziele ×${String(d.vs.L).replace('.', ',')}, Jäger ×${String(d.vs.S).replace('.', ',')})` : ''}${d.splash ? ' + Druckwelle' : ''}${d.vsShield ? ' · an Schilden halb' : ''}${d.stun ? ` · Schild ${d.stun} s aus` : ''}${d.jam ? ` · Waffen ${d.jam} s gestört` : ''} · Reichweite ${reach > 2000 ? 'sehr groß' : reach > 1300 ? 'mittel' : 'kurz'} · ${d.slots > 1 ? `${d.slots} Lagerplätze` : '1 Lagerplatz'}`; })}</div>` : ''}
-        <div class="section"><h3>Schild</h3>${choice('shield', lo.shield, SHIELD_IDS, SHIELDS)}</div>`;
-      // Mod-Werkstatt
-      const slot: ModSlot = m.slot ?? 'weapon';
-      const cur = ms.slots[slot];
-      const modCard = (sl: ModSlot) => {
-        const md = ms.slots[sl];
-        const q = md ? QUALITY[md.q] : null;
-        return `<button class="mod-slot ${sl === slot ? 'on' : ''} ${md ? 'set' : ''}" style="${q ? `--q:${q.color}` : ''}" ${act('lo-tab', { tab: 'mods', slot: sl })}>
-          <span class="mod-slot-ic">${icon(SLOT_INFO[sl].icon, 18)}</span><span class="mod-slot-name">${SLOT_INFO[sl].name}</span>
-          <span class="mod-slot-mod">${md ? esc(MODS[md.id].name) : 'frei'}</span>
-          ${md ? `<span class="mod-slot-val">${esc(fmtStat(MODS[md.id].stat, md.value))}</span>` : ''}</button>`;
-      };
-      const detail = cur ? (() => {
-        const d = MODS[cur.id], q = QUALITY[cur.q], [a, b] = modRange(cur.id, cur.q);
-        return `<div class="mod-detail" style="--q:${q.color}">
-          <div class="mod-head"><b>${esc(d.name)}</b><span class="mod-q">${q.name}</span></div>
-          <div class="mod-main">${esc(fmtStat(d.stat, cur.value))}</div>
-          <div class="mod-roll ${m.fresh === slot ? 'fresh' : ''}" data-key="roll-${slot}-${m.rollN ?? 0}" style="--v:${(cur.roll * 100).toFixed(1)}%"><i class="bar"></i><i class="mk"></i>
-            <span class="lo">${esc(fmtStat(d.stat, a))}</span><span class="hi">${esc(fmtStat(d.stat, b))}</span></div>
-          <p class="small muted" style="margin:6px 0 0">Gewürfelt: ${Math.round(cur.roll * 100)} % der Spanne${cur.roll > 0.85 ? ' – ein Spitzenwert!' : cur.roll < 0.2 ? ' – eher schwach' : ''}</p>
-          ${cur.bonus.length || d.cost ? `<ul class="mod-fx">${cur.bonus.map((x) => `<li class="pos">${esc(fmtStat(x.stat, x.value))}</li>`).join('')}${d.cost ? `<li class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</li>` : ''}</ul>` : ''}
-          <div class="card-actions" style="margin-top:10px"><button class="btn small" ${act('mod-remove', { slot })}>${icon('trash', 16)}Zerlegen (+${refundOf(cur.q)} Modteile)</button></div></div>`;
-      })() : `<div class="mod-detail empty"><p class="small muted" style="margin:0">Kein Mod im Platz „${SLOT_INFO[slot].name}“. Bau unten einen – der Wert wird beim Bau ausgewürfelt.</p></div>`;
-      const recipes = MOD_IDS.filter((id) => MODS[id].slot === slot).map((id) => {
-        const d = MODS[id];
-        const na = d.stat === 'missiles' && !ship.x4.launchers;
-        return `<div class="mod-recipe"><div class="title" style="font-weight:600">${esc(d.name)}</div><div class="sub wrap">${esc(d.desc)}${d.cost ? ` <span class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</span>` : ''}${na ? ' <span class="warn-text">Wirkt nicht bei der ' + esc(ship.name) + '.</span>' : ''}</div>
-          <div class="mod-qs">${([1, 2, 3] as const).map((qq) => { const Q = QUALITY[qq], ok = ms.parts >= Q.cost; return `<button class="mod-qbtn" style="--q:${Q.color}" ${ok ? act('mod-craft', { id, q: String(qq) }) : 'disabled'}><b>${Q.name}</b><span>${esc(fmtRange(id, qq))}${Q.bonus ? ` · +${Q.bonus} Bonus` : ''}</span><em>${Q.cost} ${icon('gift', 13)}</em></button>`; }).join('')}</div></div>`;
-      }).join('');
-      const modsTab = `<div class="section"><div class="mod-parts">${icon('gift', 22)}<div class="grow"><b>${ms.parts} Modteile</b><div class="sub wrap">1 je Stern in jedem Minispiel, Tagesaufgaben und Herausforderungen doppelt${ms.earned ? ` · bisher verdient: ${ms.earned}` : ''}</div></div></div></div>
-        <div class="section"><div class="mod-slots">${SLOTS.map(modCard).join('')}</div>
-          ${Object.keys(mx).length ? `<div class="mod-total"><small>Gesamtwirkung</small>${(Object.entries(mx) as [ModStat, number][]).filter(([, v]) => Math.abs(v) > 1e-6).map(([k, v]) => `<span class="${v > 0 ? 'pos' : 'neg'}">${esc(fmtStat(k, v))}</span>`).join('')}</div>` : ''}</div>
-        <div class="section"><h3>${SLOT_INFO[slot].name}: eingebaut</h3>${detail}</div>
-        <div class="section"><h3>${SLOT_INFO[slot].name}: neu bauen${cur ? ' (ersetzt den eingebauten)' : ''}</h3><div class="mod-recipes">${recipes}</div>
-          <p class="small muted" style="margin:8px 0 0">Wie in X4: Beim Bau wird der Wert innerhalb der Spanne ausgewürfelt – Spitzenwerte sind selten. Höhere Güte bringt Zusatzeffekte. Ein neuer Mod ersetzt den alten.</p></div>`;
-      const artTab = `<div class="section"><h3>Darstellung</h3><div class="segment">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
-        <div class="box rows" style="margin-top:10px"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Grafikvergleich der Jäger</div><div class="sub">KI-Bild, gerendert und gezeichnet nebeneinander</div></div>${icon('chev', 20, 'chev')}</div></div></div>`;
-      const body = hero + tabs + (tab === 'gear' ? gearTab : tab === 'mods' ? modsTab : tab === 'art' ? artTab : shipTab);
-      return modalShell('Dein Schiff', body, `<button class="btn" ${act('mg-back')}>Zurück</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`, 'Hangar');
+      // Hangar: Platzliste und Auswahl je Platz (siehe loadoutView.ts)
+      const v = loadoutView(m);
+      return modalShell(v.title, v.body, v.foot, v.eyebrow);
     }
     case 'shipArt': {
       // Vergleich der Darstellungen des eigenen Jägers: KI-Bild, vorab gerendert (3D), gezeichnet
