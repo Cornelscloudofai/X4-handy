@@ -27,9 +27,9 @@ import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, typ
 import { unlocked } from '../minigames/records';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
 import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
-import type { LoView } from './loadoutView';
+import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutView';
 import { tuneFromSlider } from '../minigames/tunePanel';
-import { loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout } from '../minigames/loadout';
+import { SHIPS, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
@@ -368,8 +368,8 @@ function renderUI(): void {
   if (modal.dataset.key !== modalKey()) { modal.innerHTML = ''; modal.dataset.key = modalKey(); }
   morph(modal, modalContent);
   modal.hidden = !modalContent;
-  // neue Ansicht im selben Fenster (z. B. Hangar: Platzliste → Auswahl) beginnt oben
-  if (modalTop) { modalTop = false; const b = modal.querySelector('.sheet-body'); if (b) b.scrollTop = 0; }
+  // Hangar: Leitlinien zu den Bauteilen, Wischen wechselt das Schiff
+  if (ui.modal?.type === 'loadout') layoutHangar(modal, (dir) => { const btn = modal.querySelector<HTMLElement>(`[data-act="lo-ship"][data-dir="${dir}"]`); btn?.click(); });
   if (needFit && ui.modal?.type === 'planDiagram') { needFit = false; requestAnimationFrame(fitEditor); }
   document.documentElement.style.setProperty('--bottom-stack', (ui.modal ? 96 : $('bottom').offsetHeight) + 'px');
   document.documentElement.classList.toggle('calm', ui.reducedMotion);
@@ -403,9 +403,6 @@ function panelKey(): string {
   const p = ui.panel;
   return p ? `${p.type}:${p.id ?? ''}:${p.tab ?? ''}` : '';
 }
-
-/** beim nächsten Zeichnen das Fenster nach oben scrollen */
-let modalTop = false;
 
 function modalKey(): string {
   const m = ui.modal;
@@ -1002,13 +999,33 @@ function onClick(e: MouseEvent): void {
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
       case 'ship-art-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
       case 'loadout-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'loadout' }; refresh(); break;
-      case 'lo-view': if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, view: d.view as LoView, slot: (d.slot as ModSlot) ?? ui.modal.slot }; modalTop = true; refresh(); } break;
+      case 'lo-view': if (ui.modal?.type === 'loadout') {
+        // Schublade öffnen oder schließen; beim Schließen endet die Vorschau in der Werteleiste
+        const view = d.view as LoView;
+        ui.modal = { ...ui.modal, view, slot: (d.slot as ModSlot) ?? ui.modal.slot, mode: view === 'mod' ? 'mods' : ui.modal.mode, ...(view === 'home' ? { prev: undefined, undo: undefined } : {}) };
+        refresh();
+      } break;
+      case 'lo-mode': if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, mode: d.mode as LoMode, view: 'home', prev: undefined, undo: undefined }; refresh(); } break;
+      case 'lo-ship': if (ui.modal?.type === 'loadout') {
+        const ids = Object.keys(SHIPS) as ShipId[], i = ids.indexOf(loadout().ship);
+        const next = ids[(i + Number(d.dir) + ids.length) % ids.length];
+        ui.modal = { ...ui.modal, prev: hangarStats(), undo: undefined };
+        setLoadout({ ship: next });
+        setShipArt(shipArt(), next === 'argon' ? 'argon' : 'split');
+        sfx.tap();
+        refresh();
+      } break;
+      case 'lo-undo': if (ui.modal?.type === 'loadout' && ui.modal.undo) {
+        setLoadout(ui.modal.undo);
+        ui.modal = { ...ui.modal, prev: hangarStats(), undo: undefined };
+        refresh();
+      } break;
       case 'mod-craft': {
         if (ui.modal?.type !== 'loadout') break;
         const mod = craft(d.id!, Number(d.q) as ModQuality);
         if (!mod) { toast('Zu wenig Modteile', 'warn'); break; }
         const slot = MODS[mod.id].slot;
-        ui.modal = { ...ui.modal, view: 'mod', slot, fresh: slot, rollN: (ui.modal.rollN ?? 0) + 1 };
+        ui.modal = { ...ui.modal, view: 'mod', mode: 'mods', slot, fresh: slot, rollN: (ui.modal.rollN ?? 0) + 1 };
         sfx.build();
         refresh();
         setTimeout(() => {
@@ -1049,6 +1066,13 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'loadout-set': {
+        // Hangar: Werte und Ausrüstung vor dem Einbau merken (Vorschau in der Werteleiste, Rückgängig)
+        if (ui.modal?.type === 'loadout') {
+          const k = String(d.key) as keyof Loadout;
+          if (loadout()[k] === d.value) break;
+          ui.modal = { ...ui.modal, prev: hangarStats(), undo: { [k]: loadout()[k] } as Partial<Loadout> };
+          sfx.build();
+        }
         setLoadout({ [String(d.key)]: d.value } as Partial<Loadout>);
         // Bauart der Raketen und Jäger-Bilder: Argon-Jäger argonisch, alle anderen Split
         if (d.key === 'ship') setShipArt(shipArt(), d.value === 'argon' ? 'argon' : 'split');

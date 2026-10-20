@@ -23,37 +23,44 @@ await page.waitForTimeout(200);
 if ((await page.locator('#modal [data-act="mg-daily"]').count()) !== 9) fail('Reiter „Täglich“: Tagesaufgaben fehlen');
 await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
 await page.waitForTimeout(200);
-// Hangar: Platzliste; Antippen eines Platzes öffnet dessen Auswahl, Antippen eines Eintrags baut sofort ein
-const loView = async (view, slot) => { await page.click(`#modal [data-act="lo-view"][data-view="${view}"]${slot ? `[data-slot="${slot}"]` : ''}`); await page.waitForTimeout(200); };
-const loHome = async () => { await page.click('#modal .lo-back'); await page.waitForTimeout(200); };
+// Hangar: Schiff auf der Plattform, Plaketten an den Bauteilen; Antippen öffnet die Schublade mit Karten, Antippen einer Karte baut sofort ein
+const loView = async (view, slot) => { await page.click(`#modal .hgr-hot[data-view="${view}"]${slot ? `[data-slot="${slot}"]` : ''}`); await page.waitForTimeout(250); };
+const loHome = async () => { await page.click('#modal .lo-back'); await page.waitForTimeout(250); };
+const loShip = async (id) => { await page.click('#modal .hgr-name'); await page.waitForTimeout(250); await page.click(`#modal [data-act="loadout-set"][data-key="ship"][data-value="${id}"]`); await page.waitForTimeout(150); await loHome(); };
 await page.click('#modal [data-act="loadout-open"]');
-await page.waitForTimeout(300);
-if ((await page.locator('#modal .lo-slot').count()) < 7) fail('Hangar: Platzliste unvollständig');
+await page.waitForTimeout(500);
+if ((await page.locator('#modal .hgr-hot').count()) < 3) fail('Hangar: Plaketten fehlen');
+if (!(await page.locator('#modal .hgr-lines polyline').count())) fail('Hangar: keine Leitlinien zu den Bauteilen');
 await page.screenshot({ path: `${out}/mg-0-hangar.png` });
-await loView('ship');
-await page.click('#modal [data-act="loadout-set"][data-value="cobra"]');
-await loHome();
+await loShip('cobra');
 await loView('weapon');
+if (!(await page.locator('#modal .hgr.open').count())) fail('Hangar: Schublade öffnet sich nicht');
 // Vergleich zum Eingebauten: andere Waffen zeigen Änderungen (grün/rot)
 if (!(await page.locator('#modal .lo-d').count())) fail('Waffenwahl: keine Vergleichswerte');
 await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="tau"]');
-await page.waitForTimeout(200);
+await page.waitForTimeout(250);
+if (!(await page.locator('#modal [data-act="lo-undo"]').count())) fail('Kein Rückgängig nach dem Einbau');
 await page.screenshot({ path: `${out}/mg-0-loadout.png` });
 await loHome();
-if (!(await page.locator('#modal [data-act="lo-view"][data-view="turret"]').count())) fail('Cobra: keine Türme wählbar');
-if (!(await page.locator('#modal .lo-slot', { hasText: 'Tau-Beschleuniger' }).count())) fail('Gewählte Waffe erscheint nicht in der Platzliste');
+if (!(await page.locator('#modal .hgr-hot[data-view="turret"]').count())) fail('Cobra: keine Türme wählbar');
+if (!(await page.locator('#modal .hgr-hot', { hasText: 'Tau-Beschleuniger' }).count())) fail('Gewählte Waffe erscheint nicht am Schiff');
+// Schiffswechsel mit den Pfeilen
+await page.click('#modal [data-act="lo-ship"][data-dir="1"]');
+await page.waitForTimeout(200);
+if ((await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-ausruestung') ?? '{}').ship)) === 'cobra') fail('Pfeil wechselt das Schiff nicht');
 // Zerstörer: schwere L-Türme mit eigenem Rohr wählbar
-await loView('ship');
-await page.click('#modal [data-act="loadout-set"][data-value="klapperschlange"]');
-await loHome();
+await loShip('klapperschlange');
 await loView('lturret');
 if ((await page.locator('#modal [data-key="lturret"]').count()) !== 4) fail('Klapperschlange: L-Türme nicht wählbar');
 await page.click('#modal [data-act="loadout-set"][data-key="lturret"][data-value="boson"]');
-await page.waitForTimeout(200);
+await page.waitForTimeout(250);
 await page.screenshot({ path: `${out}/mg-0-loadout-l.png` });
 if ((await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-ausruestung') ?? '{}').lturret)) !== 'boson') fail('L-Turm-Wahl nicht gespeichert');
 await loHome();
-// Mods: Werkstatt des Waffenplatzes öffnen, einen Schadensverstärker bauen – Wert liegt in der Spanne, Modteile werden abgezogen
+// Werkstatt: Sockel „Waffe“ öffnen, einen Schadensverstärker bauen – Wert liegt in der Spanne, Modteile werden abgezogen
+await page.click('#modal [data-act="lo-mode"][data-mode="mods"]');
+await page.waitForTimeout(250);
+if ((await page.locator('#modal .hgr-hot.mod').count()) !== 4) fail('Werkstatt: vier Mod-Sockel fehlen');
 await loView('mod', 'weapon');
 const parts0 = await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-mods') ?? 'null')?.parts ?? 10);
 await page.click('#modal [data-act="mod-craft"][data-id="verstaerker"][data-q="1"]');
@@ -65,14 +72,14 @@ if (!modSaved?.slots?.weapon || modSaved.parts !== parts0 - 3 || modSaved.slots.
 await page.click('#modal [data-act="mod-remove"][data-slot="weapon"]');
 await page.waitForTimeout(200);
 await loHome();
-// Zurück-Taste: aus einer Auswahl erst zur Platzliste
+await page.click('#modal [data-act="lo-mode"][data-mode="gear"]');
+await page.waitForTimeout(200);
+// Zurück-Taste: schließt erst die Schublade, dann den Hangar
 await loView('shield');
 await page.evaluate(() => history.back());
 await page.waitForTimeout(300);
-if (!(await page.locator('#modal .lo-top').count())) fail('Zurück-Taste führt aus der Auswahl nicht zur Platzliste');
-await loView('ship');
-await page.click('#modal [data-act="loadout-set"][data-value="mamba"]');
-await loHome();
+if (!(await page.locator('#modal .hgr:not(.open)').count())) fail('Zurück-Taste schließt die Schublade nicht');
+await loShip('mamba');
 await loView('weapon');
 await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="puls"]');
 await loHome();

@@ -1,22 +1,38 @@
-// Hangar „Dein Schiff“ (Kampf-Minispiel): eine kurze Platzliste wie in X4 – Schiff, Bordkanonen, Türme, Raketen,
-// Schild, vier Modplätze, Darstellung. Antippen eines Platzes öffnet nur dessen Auswahl; jeder Eintrag zeigt die
-// Änderung zum Eingebauten (grün besser, rot schlechter), Antippen baut sofort ein.
+// Hangar „Dein Schiff“ (Kampf-Minispiel): das Schiff steht auf der Landeplattform eines Hangars, die Einbauplätze
+// sind als Plaketten mit Leitlinie zum Bauteil markiert. Antippen öffnet eine Schublade mit Karten (das Schiff
+// bleibt darüber sichtbar); jede Karte zeigt die Änderung zum Eingebauten, Antippen baut sofort ein. Die Werteleiste
+// zeigt die Änderung seit dem letzten Einbau. Zwei Modi: Ausrüstung (Waffen, Raketen, Schild, Türme) und Werkstatt
+// (vier Mod-Sockel). Navigation: höchstens eine Ebene (Hangar → Schublade); Zurück schließt immer zuerst die Schublade.
 import {
   LTURRET_IDS, LTURRETS, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
-  loadout, sustainedDps, weaponGun, type ShipId, type X4Gun,
+  loadout, sustainedDps, weaponGun, type Loadout, type ShipId, type X4Gun,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
 import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
+import hangarDeck from '../assets/hangar/hangar-deck.jpg';
+import werkstattDeck from '../assets/hangar/werkstatt-deck.jpg';
 import { esc } from './dom';
 import { icon } from './icons';
 
 export type LoView = 'home' | 'ship' | 'weapon' | 'turret' | 'lturret' | 'missile' | 'shield' | 'mod' | 'art';
-export interface LoModal { view?: LoView; slot?: ModSlot; fresh?: ModSlot; rollN?: number }
+export type LoMode = 'gear' | 'mods';
+export interface HangarStats { fire: number; hull: number; shield: number; speed: number; range: number }
+export interface LoModal {
+  view?: LoView; slot?: ModSlot; fresh?: ModSlot; rollN?: number;
+  /** Ausrüstung oder Werkstatt */
+  mode?: LoMode;
+  /** Werte vor dem letzten Einbau (für die Vorschau in der Werteleiste) */
+  prev?: HangarStats;
+  /** Ausrüstung vor dem letzten Einbau (Rückgängig) */
+  undo?: Partial<Loadout>;
+}
 
 const act = (a: string, data: Record<string, string | number> = {}) =>
   `data-act="${a}"` + Object.entries(data).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
 const num = (n: number, digits = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: digits });
 const km = (g: X4Gun) => (g.v * g.life) / 1000;
+/** X4-Schildkapazität der Mamba (2 × S à 740) – Schiffswerte sind relativ dazu */
+const MAMBA_SHIELD = 1480;
 
 /** Änderung zum Eingebauten als kleines Etikett: grün besser, rot schlechter (lower = kleiner ist besser) */
 function delta(v: number, cur: number, fmt: (d: number) => string, lower = false): string {
@@ -25,191 +41,264 @@ function delta(v: number, cur: number, fmt: (d: number) => string, lower = false
   const good = lower ? d < 0 : d > 0;
   return `<span class="lo-d ${good ? 'pos' : 'neg'}">${d > 0 ? '+' : '−'}${fmt(Math.abs(d))}</span>`;
 }
-const pctDelta = (v: number, cur: number, lower = false) => (cur > 0 ? delta(v / cur, 1, (d) => `${Math.round(d * 100)} %`, lower) : '');
+const pct = (v: number, cur: number, lower = false) => (cur > 0 ? delta(v / cur, 1, (d) => `${Math.round(d * 100)} %`, lower) : '');
 
 /** Datenzeile einer Waffe: Schaden, Takt, Salve/Magazin, Dauerleistung, Reichweite */
 function gunData(g: X4Gun, beam = false): string {
   return beam
     ? `${num(g.dmg)} Schaden/s · Dauerstrahl`
-    : `${num(g.dmg)}${g.amt > 1 ? ` × ${g.amt}` : ''} Schaden · ${g.mag === 1 ? 'Einzelschuss' : `${num(g.rate, 1)} Schuss/s`}${g.mag > 1 ? ` · ${g.mag}er-Salve, ${num(g.reload, 1)} s Pause` : g.mag === 1 ? `, ${num(g.reload, 1)} s Aufladen` : ''} · ≈ ${num(sustainedDps(g))}/s · ${num(km(g), 1)} km`;
+    : `${num(g.dmg)}${g.amt > 1 ? ` × ${g.amt}` : ''} Schaden · ${g.mag === 1 ? 'Einzelschuss' : `${num(g.rate, 1)} Schuss/s`}${g.mag > 1 ? ` · ${g.mag}er-Salve, ${num(g.reload, 1)} s Pause` : g.mag === 1 ? `, ${num(g.reload, 1)} s Aufladen` : ''} · ${num(km(g), 1)} km`;
 }
 
-/** Ein Eintrag in einer Auswahl: Name, Kennzahlen, Änderungen; der eingebaute zeigt dazu Beschreibung und alle Werte */
-function item(o: { key: string; value: string; on: boolean; name: string; tag?: string; data: string; deltas?: string; desc: string; more?: string; pic?: string }): string {
-  return `<button class="lo-item ${o.on ? 'on' : ''}" ${act('loadout-set', { key: o.key, value: o.value })}>
-    ${o.pic ?? ''}<span class="lo-item-main"><span class="lo-item-name"><b>${esc(o.name)}</b>${o.tag ? `<small>${esc(o.tag)}</small>` : ''}</span>
-    <span class="lo-item-data">${esc(o.data)}</span>${o.deltas ? `<span class="lo-deltas">${o.deltas}</span>` : ''}
-    <span class="lo-item-desc">${esc(o.desc)}</span>${o.on && o.more ? `<span class="lo-item-more">${esc(o.more)}</span>` : ''}</span>
-    ${o.on ? icon('check', 20, 'pos') : '<span class="lo-radio"></span>'}</button>`;
+// ---------- Kartenzeichen (bis eigene Bilder da sind) ----------
+const GLYPH: Record<string, string> = {
+  gun: '<path d="M4 14h11l3-3h2v6h-2l-3-3"/><path d="M7 14v4"/>',
+  gatling: '<path d="M4 10h12M4 13h12M4 16h12"/><path d="M16 9h3v8h-3"/>',
+  beam: '<path d="M3 12h18"/><path d="M3 9h4M3 15h4"/><circle cx="5" cy="12" r="2"/>',
+  scatter: '<path d="M4 12l16-6M4 12h16M4 12l16 6"/>',
+  lance: '<path d="M2 12h20"/><path d="M16 8l6 4-6 4"/>',
+  plasma: '<circle cx="15" cy="12" r="5"/><path d="M2 12h8"/>',
+  rocket: '<path d="M12 3c3 3 4 7 3 12h-6C8 10 9 6 12 3z"/><path d="M9 15l-2 4M15 15l2 4M12 15v5"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/>',
+  turret: '<circle cx="12" cy="14" r="6"/><path d="M12 8V2"/>',
+  mod: '<path d="M12 2l3 5h6l-3 5 3 5h-6l-3 5-3-5H3l3-5-3-5h6z"/>',
+  engine: '<path d="M8 4h8v8l-4 8-4-8z"/>',
+  hull: '<path d="M4 8l8-5 8 5v8l-8 5-8-5z"/>',
+  ship: '<path d="M12 2l4 9 5 4-9 3-9-3 5-4z"/>',
+};
+const glyph = (k: string, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[k] ?? GLYPH.gun}</svg>`;
+const WEAPON_LOOK: Record<string, [string, string]> = {
+  puls: ['gun', '#3fe0c5'], bolzen: ['gun', '#9fe870'], schrot: ['scatter', '#ffb547'], strahl: ['beam', '#5fb4ff'], plasma: ['plasma', '#ff6a3d'],
+  neutron: ['gatling', '#7fd8ff'], tau: ['scatter', '#ffd27a'], thermal: ['gun', '#ff8a5c'], boson: ['lance', '#c58bff'],
+  plasmaschnell: ['plasma', '#ff8a3d'], plasmasalve: ['plasma', '#ff5c3d'],
+};
+const MISSILE_LOOK: Record<string, string> = { lenk: '#ffb070', schwer: '#ff7a3a', schwarm: '#ffd27a', stoer: '#8fe0ff' };
+
+/** Werte des Schiffs mit Bewaffnung und Mods (für Werteleiste und Vergleich) */
+export function hangarStats(lo: Loadout = loadout()): HangarStats {
+  const d = SHIPS[lo.ship], mx = modStats();
+  const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret], ltd = LTURRETS[lo.lturret ?? 'plasma'];
+  const g = weaponGun(wd, d.gunSize);
+  const m = (k: ModStat) => 1 + (mx[k] ?? 0);
+  return {
+    fire: (d.x4.weapons * sustainedDps(g, wd.beam) + d.turrets.length * sustainedDps(td.gun, td.beam) + (d.lMounts?.length ?? 0) * sustainedDps(ltd.gun)) * m('dmg') * m('rate'),
+    hull: d.x4.hull * m('hull'),
+    shield: d.shield * MAMBA_SHIELD * SHIELDS[lo.shield].cap * m('shield'),
+    speed: d.x4.v * m('speed'),
+    range: (wd.beam ? 1.6 : km(g)) * m('velocity'),
+  };
 }
 
-export function loadoutView(m: LoModal): { title: string; eyebrow: string; body: string; foot: string } {
-  const view: LoView = m.view ?? 'home';
+/** Lage der Bauteile im Schiffsbild (Anteile des Bildes, Bug oben) */
+function anchors(id: ShipId): Record<string, [number, number]> {
+  const d = SHIPS[id], s = d.size;
+  const gx = d.guns.length ? Math.min(...d.guns.map(Math.abs)) : 0;
+  const t = d.turrets[0] ?? [0, 0];
+  return {
+    weapon: [0.5 - Math.min(0.2, (gx / s) * 0.87), 0.5 - (d.gunFwd ?? 0.3) * 0.87],
+    missile: [0.5 + Math.min(0.2, ((d.launcherPos?.[d.launcherPos.length - 1] ?? 0) / s) * 0.87), 0.5],
+    turret: [0.5 + (t[0] / s) * 0.87, 0.5 + (t[1] / s) * 0.87],
+    lturret: [0.36, 0.42],
+    shield: [0.3, 0.6],
+    engine: [0.5, 0.86],
+    chassis: [0.64, 0.55],
+    // Mod-Sockel der Werkstatt
+    'mod-weapon': [0.5, 0.3], 'mod-engine': [0.5, 0.84], 'mod-shield': [0.32, 0.6], 'mod-chassis': [0.68, 0.6],
+  };
+}
+
+// ---------- Ansicht ----------
+export function loadoutView(m: LoModal): string {
   const lo = loadout();
   const ship = SHIPS[lo.ship];
-  const ms = modState(), mx = modStats();
+  const mode: LoMode = m.mode ?? (m.view === 'mod' ? 'mods' : 'gear');
+  const view: LoView = m.view ?? 'home';
+  const open = view !== 'home';
+  const ms = modState();
+  const st = hangarStats(lo);
   const pic = (id: ShipId) => spriteUrl(SHIPS[id].sprite + '-ki') ?? spriteUrl(SHIPS[id].fallback + '-ki');
   const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret], ltd = LTURRETS[lo.lturret ?? 'plasma'];
   const missile = MISSILES[lo.missile ?? 'lenk'];
-  const gun = (id: ShipId) => weaponGun(wd, SHIPS[id].gunSize);
-  // Feuerkraft eines Schiffs mit der gewählten Bewaffnung (Dauerleistung aus den X4-Werten)
-  const fire = (id: ShipId) => { const d = SHIPS[id]; return d.x4.weapons * sustainedDps(weaponGun(wd, d.gunSize), wd.beam) + d.turrets.length * sustainedDps(td.gun, td.beam) + (d.lMounts?.length ?? 0) * sustainedDps(ltd.gun); };
-  const modded = (v: number, ...keys: ModStat[]) => keys.reduce((a, k) => a * (1 + (mx[k] ?? 0)), v);
-  const foot = (back: boolean) => `<button class="btn" ${back ? act('lo-view', { view: 'home' }) : act('mg-back')}>Zurück</button><button class="btn primary" ${act('ship-art-try')}>Im Kampf ausprobieren</button>`;
-  // Kopf einer Auswahl: zurück zur Platzliste und kurze Erklärung (der Titel steht schon oben im Fenster)
-  const head = (_title: string, sub: string) => `<div class="lo-pick-head"><button class="lo-back" ${act('lo-view', { view: 'home' })}>${icon('back', 18)}<span>Übersicht</span></button><small>${esc(sub)}</small></div>`;
-  const qColor = (sl: ModSlot) => { const md = ms.slots[sl]; return md ? QUALITY[md.q].color : ''; };
+  const g = weaponGun(wd, ship.gunSize);
 
-  if (view === 'home') {
-    const dps = modded(fire(lo.ship), 'dmg', 'rate');
-    const range = km(gun(lo.ship)) * (1 + (mx.velocity ?? 0));
-    const kpi = (label: string, value: string, mod: boolean) => `<div class="lo-kpi ${mod ? 'mod' : ''}"><small>${label}</small><b>${value}</b></div>`;
-    const top = `<div class="lo-top">
-      <div class="lo-top-pic">${pic(lo.ship) ? `<img src="${pic(lo.ship)}" alt="">` : ''}</div>
-      <div class="lo-top-info"><div class="lo-top-name"><b>${esc(ship.name)}</b><small>${ship.cls} · ${esc(ship.role)} · ${esc(SPECIALS[ship.special].name)} (${SPECIALS[ship.special].key})</small></div>
-        <div class="lo-kpis">${kpi('Feuerkraft', `${num(dps)}/s`, !!(mx.dmg || mx.rate))}${kpi('Hülle', num(modded(ship.x4.hull, 'hull')), !!mx.hull)}${kpi('Tempo', `${num(modded(ship.x4.v, 'speed'))} m/s`, !!mx.speed)}${kpi('Reichweite', `${num(range, 1)} km`, !!mx.velocity)}</div></div></div>`;
-    const row = (o: { view: LoView; slot?: ModSlot; ic: string; label: string; value: string; sub?: string; cls?: string; color?: string; empty?: boolean }) =>
-      `<button class="lo-slot ${o.cls ?? ''} ${o.empty ? 'empty' : ''}" ${o.color ? `style="--q:${o.color}"` : ''} ${act('lo-view', o.slot ? { view: o.view, slot: o.slot } : { view: o.view })}>
-        <span class="lo-slot-ic">${icon(o.ic, 18)}</span><span class="lo-slot-txt"><small>${esc(o.label)}</small><b>${esc(o.value)}</b>${o.sub ? `<em>${esc(o.sub)}</em>` : ''}</span>${icon('chev', 18, 'chev')}</button>`;
-    const g = gun(lo.ship);
-    const arms = [
-      row({ view: 'weapon', ic: 'target', label: `Bordkanonen · ${ship.x4.weapons} × ${ship.gunSize.toUpperCase()}`, value: wd.name, sub: `≈ ${num(ship.x4.weapons * sustainedDps(g, wd.beam))}/s · ${wd.beam ? 'Dauerstrahl' : `${num(km(g), 1)} km`}` }),
-      ship.lMounts?.length ? row({ view: 'lturret', ic: 'target', label: `Schwere Türme · ${ship.lMounts.length} × L`, value: ltd.name, sub: `≈ ${num(ship.lMounts.length * sustainedDps(ltd.gun))}/s · ${num(km(ltd.gun), 1)} km` }) : '',
-      ship.turrets.length ? row({ view: 'turret', ic: 'target', label: `${ship.lMounts?.length ? 'M-Türme' : 'Türme'} · ${ship.turrets.length} × M`, value: td.name, sub: `≈ ${num(ship.turrets.length * sustainedDps(td.gun, td.beam))}/s · schwenkt ${td.turn}°/s` }) : '',
-      ship.x4.launchers ? row({ view: 'missile', ic: 'up', label: `Raketen · ${ship.x4.launchers} × Werfer, Lager ${ship.x4.missiles}`, value: missile.name, sub: missile.role }) : '',
-    ].join('');
-    const mods = SLOTS.map((sl) => {
+  // Plaketten am Schiff
+  type Hot = { view: LoView; slot?: ModSlot; key: string; ic: string; label: string; value: string; cls?: string; color?: string };
+  const hots: Hot[] = mode === 'gear'
+    ? [
+      { view: 'weapon', key: 'weapon', ic: WEAPON_LOOK[lo.weapon]?.[0] ?? 'gun', label: `Kanonen ${ship.x4.weapons}×${ship.gunSize.toUpperCase()}`, value: wd.name },
+      ...(ship.lMounts?.length ? [{ view: 'lturret' as LoView, key: 'lturret', ic: 'turret', label: `L-Türme ${ship.lMounts.length}×`, value: ltd.name }] : []),
+      ...(ship.turrets.length ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `${ship.lMounts?.length ? 'M-Türme' : 'Türme'} ${ship.turrets.length}×`, value: td.name }] : []),
+      ...(ship.x4.launchers ? [{ view: 'missile' as LoView, key: 'missile', ic: 'rocket', label: `Raketen ${ship.x4.launchers}×`, value: missile.name }] : []),
+      { view: 'shield', key: 'shield', ic: 'shield', label: `Schild ${ship.x4.shields}×${ship.cls}${ship.x4.mShields ? `+${ship.x4.mShields}×M` : ''}`, value: SHIELDS[lo.shield].name },
+    ]
+    : SLOTS.map((sl) => {
       const md = ms.slots[sl];
-      return row({ view: 'mod', slot: sl, ic: SLOT_INFO[sl].icon, label: `Mod · ${SLOT_INFO[sl].name}`, value: md ? `${MODS[md.id].name} (${QUALITY[md.q].name})` : 'frei', sub: md ? fmtStat(MODS[md.id].stat, md.value) : undefined, cls: `lo-slot-mod lo-slot-mod-${sl} ${md ? 'set' : ''}`, color: qColor(sl), empty: !md });
-    }).join('');
-    const total = (Object.entries(mx) as [ModStat, number][]).filter(([, v]) => Math.abs(v) > 1e-6);
-    const body = `${top}
-      <div class="section"><h3>Schiff</h3><div class="lo-slots">${row({ view: 'ship', ic: 'fleet', label: `${ship.cls}-Klasse · ${ship.role}`, value: ship.name, sub: `Hülle ${num(ship.x4.hull)} · ${ship.x4.v} m/s · ${ship.x4.weapons} Waffenplätze${ship.x4.launchers ? ` · ${ship.x4.launchers} Werfer` : ''}${ship.turrets.length ? ` · ${ship.turrets.length + (ship.lMounts?.length ?? 0)} Türme` : ''}` })}</div></div>
-      <div class="section"><h3>Bewaffnung</h3><div class="lo-slots">${arms}</div></div>
-      <div class="section"><h3>Abwehr</h3><div class="lo-slots">${row({ view: 'shield', ic: 'energy', label: `Schild · ${ship.x4.shields} × ${ship.cls}${ship.x4.mShields ? ` + ${ship.x4.mShields} × M` : ''}`, value: SHIELDS[lo.shield].name, sub: SHIELDS[lo.shield].desc })}</div></div>
-      <div class="section"><h3>Mods <span class="lo-parts">${icon('gift', 13)} ${ms.parts} Modteile</span></h3><div class="lo-slots">${mods}</div>
-        ${total.length ? `<div class="mod-total"><small>Gesamtwirkung</small>${total.map(([k, v]) => `<span class="${v > 0 ? 'pos' : 'neg'}">${esc(fmtStat(k, v))}</span>`).join('')}</div>` : ''}</div>
-      <div class="section"><h3>Darstellung</h3><div class="lo-slots">${row({ view: 'art', ic: 'star', label: 'Grafik im Kampf', value: shipArt() === 'ai' ? 'KI-Bild' : shipArt() === 'render' ? 'Gerendert' : 'Gezeichnet' })}</div></div>`;
-    return { eyebrow: 'Hangar', title: 'Dein Schiff', body, foot: foot(false) };
-  }
+      return { view: 'mod' as LoView, slot: sl, key: `mod-${sl}`, ic: ({ weapon: 'gun', engine: 'engine', shield: 'shield', chassis: 'hull' } as const)[sl], label: `Sockel ${SLOT_INFO[sl].name}`, value: md ? `${MODS[md.id].name} ${fmtStat(MODS[md.id].stat, md.value).split(' ')[0]}` : 'frei', cls: `mod ${md ? 'set' : 'free'}`, color: md ? QUALITY[md.q].color : '' };
+    });
+  const curKey = view === 'mod' ? `mod-${m.slot ?? 'weapon'}` : view;
+  const anc = anchors(lo.ship);
+  const hotHtml = hots.map((h) => `<button class="hgr-hot lo-slot ${h.cls ?? ''} ${open && curKey === h.key ? 'on' : ''}" data-anchor="${anc[h.key]?.join(',') ?? '0.5,0.5'}" ${h.color ? `style="--q:${h.color}"` : ''} ${act('lo-view', h.slot ? { view: h.view, slot: h.slot } : { view: h.view })}>
+      <i>${glyph(h.ic, 16)}</i><span><small>${esc(h.label)}</small><b>${esc(h.value)}</b></span></button>`).join('');
 
+  // Werteleiste: Änderung seit dem letzten Einbau als grüner/roter Abschnitt
+  const maxOf = (k: keyof HangarStats) => Math.max(...SHIP_IDS.map((id) => hangarStats({ ...lo, ship: id })[k])) * (k === 'range' ? 1.4 : 1.15);
+  const gaugeHtml = (compact: boolean) => ([['fire', 'Feuerkraft', (v: number) => `${num(v)}/s`], ['hull', 'Hülle', (v: number) => num(v)], ['shield', 'Schild', (v: number) => num(v)], ['speed', 'Tempo', (v: number) => `${num(v)} m/s`], ['range', 'Reichweite', (v: number) => `${num(v, 1)} km`]] as const).map(([k, label, fmt]) => {
+    const max = maxOf(k), f = (v: number) => Math.max(3, Math.min(100, Math.sqrt(v / max) * 100));
+    const cur = st[k], old = m.prev ? m.prev[k] : cur;
+    const up = cur > old * 1.001, down = cur < old * 0.999, lo2 = Math.min(f(cur), f(old)), hi = Math.max(f(cur), f(old));
+    return `<div class="hgr-g ${up ? 'up' : down ? 'down' : ''}"><span>${label}</span><div class="hgr-bar"><b style="width:${lo2.toFixed(1)}%"></b><u style="left:${lo2.toFixed(1)}%;width:${(hi - lo2).toFixed(1)}%"></u></div><em>${fmt(cur)}</em></div>`;
+  }).join('') + (compact ? '' : '');
+
+  // ---------- Schublade ----------
+  const card = (o: { key: string; value: string; on: boolean; name: string; big: string; sm: string; ds?: string; ic?: string; color?: string; img?: string }) =>
+    `<button class="hgr-card ${o.on ? 'on' : ''}" style="--c:${o.color ?? 'var(--teal)'}" ${act('loadout-set', { key: o.key, value: o.value })}>
+      ${o.on ? '<span class="hgr-badge">Eingebaut</span>' : ''}<span class="hgr-art">${o.img ? `<img src="${o.img}" alt="">` : glyph(o.ic ?? 'gun', 34)}</span>
+      <span class="hgr-nm">${esc(o.name)}</span><span class="hgr-big">${esc(o.big)}</span><span class="hgr-sm">${esc(o.sm)}</span><span class="hgr-ds">${o.on ? '' : o.ds ?? ''}</span></button>`;
+  let title = '', sub = '', body = '';
   if (view === 'ship') {
-    const cur = SHIPS[lo.ship], curFire = fire(lo.ship);
-    const shipItem = (id: ShipId) => {
-      const d = SHIPS[id], url = pic(id), real = spriteUrl(d.sprite + '-ki');
-      return item({
-        key: 'ship', value: id, on: lo.ship === id, name: d.name, tag: d.role,
-        pic: `<span class="lo-thumb">${url ? `<img src="${url}" alt="" style="${real ? '' : 'opacity:.45'}">` : ''}</span>`,
-        data: `Hülle ${num(d.x4.hull)} · ${d.x4.v} m/s · ≈ ${num(fire(id))}/s · ${d.x4.weapons} Waffen${d.x4.launchers ? ` · ${d.x4.launchers} Werfer` : ''}${d.turrets.length ? ` · ${d.turrets.length + (d.lMounts?.length ?? 0)} Türme` : ''}`,
-        deltas: lo.ship === id ? '' : `${pctDelta(d.x4.hull, cur.x4.hull) ? `<i>Hülle</i>${pctDelta(d.x4.hull, cur.x4.hull)}` : ''}${delta(d.x4.v, cur.x4.v, (x) => `${num(x)} m/s`) ? `<i>Tempo</i>${delta(d.x4.v, cur.x4.v, (x) => `${num(x)} m/s`)}` : ''}${pctDelta(fire(id), curFire) ? `<i>Feuerkraft</i>${pctDelta(fire(id), curFire)}` : ''}`,
-        desc: d.desc,
-        more: `Spezialfähigkeit: ${SPECIALS[d.special].name} (Taste ${SPECIALS[d.special].key}) · ${d.x4.engines} Triebwerk${d.x4.engines > 1 ? 'e' : ''} · ${d.x4.shields} Schild${d.x4.shields > 1 ? 'e' : ''} ${d.cls}${d.x4.mShields ? ` + ${d.x4.mShields} M` : ''}${d.x4.launchers ? ` · ${d.x4.missiles} Raketen im Lager` : ''}`,
-      });
-    };
-    const group = (cls: 'S' | 'M' | 'L', name: string) => { const ids = SHIP_IDS.filter((id) => SHIPS[id].cls === cls); return ids.length ? `<h3 class="lo-sub">${name}</h3><div class="lo-items">${ids.map(shipItem).join('')}</div>` : ''; };
-    const body = `${head('Schiff', 'Feuerkraft mit deiner aktuellen Bewaffnung · Änderungen zum Eingebauten')}${group('S', 'S – Jäger')}${group('M', 'M – Korvetten und Fregatten')}${group('L', 'L – Zerstörer')}`;
-    return { eyebrow: 'Hangar', title: 'Schiff wählen', body, foot: foot(true) };
-  }
-
-  if (view === 'weapon') {
-    const n = ship.x4.weapons, size = ship.gunSize;
-    const curG = weaponGun(wd, size), curDps = n * sustainedDps(curG, wd.beam), curKm = wd.beam ? 0 : km(curG);
-    const wItem = (id: (typeof WEAPON_IDS)[number]) => {
-      const d = WEAPONS[id], g = weaponGun(d, size), dps = n * sustainedDps(g, d.beam);
-      return item({
-        key: 'weapon', value: id, on: lo.weapon === id, name: d.name,
-        data: `≈ ${num(dps)}/s gesamt · ${d.beam ? 'Dauerstrahl' : `${num(km(g), 1)} km`}`,
-        deltas: lo.weapon === id ? '' : `${delta(dps, curDps, (x) => `${num(x)}/s`)}${!d.beam && !wd.beam ? delta(km(g), curKm, (x) => `${num(x, 1)} km`) : ''}`,
-        desc: d.desc, more: gunData(g, d.beam),
-      });
-    };
-    const group = (grp: string, name: string) => { const ids = WEAPON_IDS.filter((id) => WEAPONS[id].group === grp); return ids.length ? `<h3 class="lo-sub">${name}</h3><div class="lo-items">${ids.map(wItem).join('')}</div>` : ''; };
-    const body = `${head('Bordkanonen', `${n} × ${size.toUpperCase()}-Waffenplatz · Werte aus X4 9.0 (Mk1); die Mk-Stufe stellst du im Minispiel-Menü ein`)}
-      ${group('split', 'Split-Waffen')}${size === 'l' ? group('schwer', 'Schwere Waffen (nur L)') : ''}${group('allgemein', 'Allgemeine Waffen')}`;
-    return { eyebrow: 'Hangar', title: 'Bordkanonen', body, foot: foot(true) };
-  }
-
-  if (view === 'turret') {
+    const cur = hangarStats(lo);
+    title = 'Schiff'; sub = 'Feuerkraft mit deiner Bewaffnung · seitlich blättern';
+    const cards = (cls: 'S' | 'M' | 'L') => SHIP_IDS.filter((id) => SHIPS[id].cls === cls).map((id) => {
+      const d = SHIPS[id], s2 = hangarStats({ ...lo, ship: id });
+      return card({ key: 'ship', value: id, on: lo.ship === id, name: `${d.name} · ${d.cls}`, big: `${num(s2.fire)}/s`, sm: `${d.role} · Hülle ${num(d.x4.hull)} · ${d.x4.v} m/s`, img: pic(id), ds: `${pct(s2.fire, cur.fire) ? `<i>Feuer</i>${pct(s2.fire, cur.fire)}` : ''}${pct(s2.hull, cur.hull) ? `<i>Hülle</i>${pct(s2.hull, cur.hull)}` : ''}${delta(s2.speed, cur.speed, (x) => `${num(x)} m/s`)}` });
+    }).join('');
+    body = `<div class="hgr-cards">${cards('S')}${cards('M')}${cards('L')}</div>
+      <div class="hgr-desc"><b>${esc(ship.name)}:</b> ${esc(ship.desc)} <span class="muted">Spezialfähigkeit: ${esc(SPECIALS[ship.special].name)} (Taste ${SPECIALS[ship.special].key}).</span></div>`;
+  } else if (view === 'weapon') {
+    const n = ship.x4.weapons, size = ship.gunSize, curDps = n * sustainedDps(g, wd.beam), curKm = wd.beam ? 1.6 : km(g);
+    title = 'Bordkanonen'; sub = `${n} × ${size.toUpperCase()}-Waffenplatz · Werte aus X4 9.0`;
+    const ids = WEAPON_IDS.filter((id) => WEAPONS[id].group !== 'schwer' || size === 'l');
+    body = `<div class="hgr-cards">${ids.map((id) => {
+      const d = WEAPONS[id], gg = weaponGun(d, size), dps = n * sustainedDps(gg, d.beam), r = d.beam ? 1.6 : km(gg);
+      const [ic, col] = WEAPON_LOOK[id] ?? ['gun', '#3fe0c5'];
+      return card({ key: 'weapon', value: id, on: lo.weapon === id, name: d.name, big: `${num(dps)}/s`, sm: d.beam ? 'Dauerstrahl' : `${num(r, 1)} km`, ic, color: col, ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(r, curKm, (x) => `${num(x, 1)} km`)}` });
+    }).join('')}</div><div class="hgr-desc"><b>${esc(wd.name)}:</b> ${esc(wd.desc)}<small>${esc(gunData(g, wd.beam))}</small></div>`;
+  } else if (view === 'turret') {
     const n = ship.turrets.length, curDps = n * sustainedDps(td.gun, td.beam);
-    const body = `${head(ship.lMounts?.length ? 'M-Türme' : 'Türme', `${n} × M, Split · schießen von selbst auf Ziele in Reichweite`)}<div class="lo-items">${TURRET_IDS.map((id) => {
+    title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;
+    body = `<div class="hgr-cards">${TURRET_IDS.map((id) => {
       const t = TURRETS[id], dps = n * sustainedDps(t.gun, t.beam);
-      return item({ key: 'turret', value: id, on: lo.turret === id, name: t.name, data: `≈ ${num(dps)}/s gesamt · schwenkt ${t.turn}°/s`, deltas: lo.turret === id ? '' : `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}`, desc: t.desc, more: gunData(t.gun, t.beam) });
-    }).join('')}</div>`;
-    return { eyebrow: 'Hangar', title: 'Türme', body, foot: foot(true) };
-  }
-
-  if (view === 'lturret') {
+      return card({ key: 'turret', value: id, on: lo.turret === id, name: t.name, big: `${num(dps)}/s`, sm: `schwenkt ${t.turn}°/s`, ic: 'turret', ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}` });
+    }).join('')}</div><div class="hgr-desc"><b>${esc(td.name)}:</b> ${esc(td.desc)}<small>${esc(gunData(td.gun, td.beam))}</small></div>`;
+  } else if (view === 'lturret') {
     const n = ship.lMounts?.length ?? 0, curDps = n * sustainedDps(ltd.gun);
-    const body = `${head('Schwere Türme', `${n} × L, Split · an den Schultern unter den Panzerplatten; Werte angenommen`)}<div class="lo-items">${LTURRET_IDS.map((id) => {
-      const t = LTURRETS[id], url = spriteUrl(t.barrel), dps = n * sustainedDps(t.gun);
-      return item({ key: 'lturret', value: id, on: (lo.lturret ?? 'plasma') === id, name: t.name, pic: url ? `<span class="lo-barrel"><img src="${url}" alt=""></span>` : '', data: `≈ ${num(dps)}/s gesamt · ${num(km(t.gun), 1)} km · schwenkt ${t.turn}°/s`, deltas: (lo.lturret ?? 'plasma') === id ? '' : `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(km(t.gun), km(ltd.gun), (x) => `${num(x, 1)} km`)}`, desc: t.desc, more: gunData(t.gun) });
-    }).join('')}</div>`;
-    return { eyebrow: 'Hangar', title: 'Schwere Türme', body, foot: foot(true) };
-  }
-
-  if (view === 'missile') {
+    title = 'Schwere Türme'; sub = `${n} × L an den Schultern · Werte angenommen`;
+    body = `<div class="hgr-cards">${LTURRET_IDS.map((id) => {
+      const t = LTURRETS[id], dps = n * sustainedDps(t.gun);
+      return card({ key: 'lturret', value: id, on: (lo.lturret ?? 'plasma') === id, name: t.name, big: `${num(dps)}/s`, sm: `${num(km(t.gun), 1)} km · ${t.turn}°/s`, img: spriteUrl(t.barrel), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(km(t.gun), km(ltd.gun), (x) => `${num(x, 1)} km`)}` });
+    }).join('')}</div><div class="hgr-desc"><b>${esc(ltd.name)}:</b> ${esc(ltd.desc)}<small>${esc(gunData(ltd.gun))}</small></div>`;
+  } else if (view === 'missile') {
     const dmgOf = (d: typeof missile) => MISSILE_DMG * d.dmg * (d.split ?? 1);
-    const reach = (d: typeof missile) => d.v * d.life + (d.split ? 120 : 0);
-    const reachName = (r: number) => (r > 2000 ? 'sehr groß' : r > 1300 ? 'mittel' : 'kurz');
-    const body = `${head('Raketen', `${ship.x4.launchers} × Werfer, Lager ${ship.x4.missiles} · je Werfer zwei Raketen pro Salve, Nachladen ${ship.missileReload && ship.missileReload < 1 ? `${Math.round(8 * ship.missileReload)} s` : '8 s'}`)}
-      <div class="lo-items">${MISSILE_IDS.map((id) => {
-        const d = MISSILES[id], on = (lo.missile ?? 'lenk') === id;
-        return item({
-          key: 'missile', value: id, on, name: d.name, tag: d.role,
-          data: `${d.split ? `${d.split} × ${Math.round(MISSILE_DMG * d.dmg)}` : Math.round(MISSILE_DMG * d.dmg)} Schaden · Reichweite ${reachName(reach(d))} · ${d.slots > 1 ? `${d.slots} Lagerplätze` : '1 Lagerplatz'}`,
-          deltas: on ? '' : `${delta(dmgOf(d), dmgOf(missile), (x) => `${Math.round(x)} Schaden`)}${delta(reach(d), reach(missile), (x) => `${num(x / 1000, 1)} km`)}${delta(d.slots, missile.slots, (x) => `${x} Platz`, true)}`,
-          desc: d.desc,
-          more: `${d.vs?.L ? `Großziele ×${String(d.vs.L).replace('.', ',')}, Jäger ×${String(d.vs.S).replace('.', ',')}` : ''}${d.splash ? ' · Druckwelle' : ''}${d.vsShield ? ' · an Schilden halb' : ''}${d.stun ? ` · Schild ${d.stun} s aus` : ''}${d.jam ? ` · Waffen ${d.jam} s gestört` : ''}`.replace(/^ · /, ''),
-        });
-      }).join('')}</div>
-      <p class="small muted lo-note">Nachschub: Raketen-Fundstück füllt das halbe Lager, die seltene Munitionskiste das ganze, nach jeder Welle bringt der Frachter ein Viertel.</p>`;
-    return { eyebrow: 'Hangar', title: 'Raketen', body, foot: foot(true) };
-  }
-
-  if (view === 'shield') {
+    const reach = (d: typeof missile) => (d.v * d.life + (d.split ? 120 : 0)) / 1000;
+    title = 'Raketen'; sub = `${ship.x4.launchers} × Werfer, Lager ${ship.x4.missiles} · Nachladen ${ship.missileReload && ship.missileReload < 1 ? Math.round(8 * ship.missileReload) : 8} s`;
+    body = `<div class="hgr-cards">${MISSILE_IDS.map((id) => {
+      const d = MISSILES[id];
+      return card({ key: 'missile', value: id, on: (lo.missile ?? 'lenk') === id, name: d.name, big: `${d.split ? `${d.split} × ${Math.round(MISSILE_DMG * d.dmg)}` : Math.round(MISSILE_DMG * d.dmg)} Schaden`, sm: `${num(reach(d), 1)} km · ${d.slots > 1 ? `${d.slots} Plätze` : '1 Platz'}`, ic: 'rocket', color: MISSILE_LOOK[id], ds: `${delta(dmgOf(d), dmgOf(missile), (x) => `${Math.round(x)}`)}${delta(reach(d), reach(missile), (x) => `${num(x, 1)} km`)}` });
+    }).join('')}</div><div class="hgr-desc"><b>${esc(missile.name)}</b> – ${esc(missile.role)}. ${esc(missile.desc)}</div>`;
+  } else if (view === 'shield') {
     const cur = SHIELDS[lo.shield];
-    const body = `${head('Schild', `${ship.x4.shields} × ${ship.cls}${ship.x4.mShields ? ` + ${ship.x4.mShields} × M` : ''} · gilt für alle Schildplätze`)}<div class="lo-items">${SHIELD_IDS.map((id) => {
-      const s = SHIELDS[id], f = (v: number) => `×${String(Math.round(v * 100) / 100).replace('.', ',')}`;
-      return item({ key: 'shield', value: id, on: lo.shield === id, name: s.name, data: `Kapazität ${f(s.cap)} · Aufladen ${f(s.regen)} · Ladepause ${f(s.delay)}`, deltas: lo.shield === id ? '' : `${pctDelta(s.cap, cur.cap) ? `<i>Kapazität</i>${pctDelta(s.cap, cur.cap)}` : ''}${pctDelta(s.regen, cur.regen) ? `<i>Aufladen</i>${pctDelta(s.regen, cur.regen)}` : ''}${pctDelta(s.delay, cur.delay, true) ? `<i>Pause</i>${pctDelta(s.delay, cur.delay, true)}` : ''}`, desc: s.desc });
-    }).join('')}</div>`;
-    return { eyebrow: 'Hangar', title: 'Schild', body, foot: foot(true) };
-  }
-
-  if (view === 'mod') {
+    title = 'Schild'; sub = `${ship.x4.shields} × ${ship.cls}${ship.x4.mShields ? ` + ${ship.x4.mShields} × M` : ''} · gilt für alle Schildplätze`;
+    body = `<div class="hgr-cards">${SHIELD_IDS.map((id) => {
+      const s = SHIELDS[id], cap = ship.shield * MAMBA_SHIELD * s.cap;
+      return card({ key: 'shield', value: id, on: lo.shield === id, name: s.name, big: num(cap), sm: `Laden ×${String(s.regen).replace('.', ',')} · Pause ×${String(s.delay).replace('.', ',')}`, ic: 'shield', color: id === 'schwer' ? '#5fb4ff' : '#3fe0c5', ds: `${pct(s.cap, cur.cap)}${pct(s.regen, cur.regen)}` });
+    }).join('')}</div><div class="hgr-desc"><b>${esc(cur.name)}:</b> ${esc(cur.desc)}</div>`;
+  } else if (view === 'mod') {
     const slot: ModSlot = m.slot ?? 'weapon';
     const cur = ms.slots[slot];
-    const switcher = `<div class="segment lo-modtabs">${SLOTS.map((sl) => { const md = ms.slots[sl]; return `<button class="${sl === slot ? 'on' : ''} ${md ? 'set' : ''}" style="${md ? `--q:${QUALITY[md.q].color}` : ''}" ${act('lo-view', { view: 'mod', slot: sl })}>${icon(SLOT_INFO[sl].icon, 14)}${SLOT_INFO[sl].name}</button>`; }).join('')}</div>`;
-    const detail = cur ? (() => {
+    title = `Mod-Sockel ${SLOT_INFO[slot].name}`; sub = `${ms.parts} Modteile · der Wert wird beim Bau ausgewürfelt`;
+    const now = cur ? (() => {
       const d = MODS[cur.id], q = QUALITY[cur.q], [a, b] = modRange(cur.id, cur.q);
-      return `<div class="mod-detail" style="--q:${q.color}">
+      return `<div class="mod-detail hgr-now" style="--q:${q.color}">
         <div class="mod-head"><b>${esc(d.name)}</b><span class="mod-q">${q.name}</span></div>
         <div class="mod-main">${esc(fmtStat(d.stat, cur.value))}</div>
         <div class="mod-roll ${m.fresh === slot ? 'fresh' : ''}" data-key="roll-${slot}-${m.rollN ?? 0}" style="--v:${(cur.roll * 100).toFixed(1)}%"><i class="bar"></i><i class="mk"></i>
           <span class="lo">${esc(fmtStat(d.stat, a))}</span><span class="hi">${esc(fmtStat(d.stat, b))}</span></div>
-        <p class="small muted" style="margin:6px 0 0">Gewürfelt: ${Math.round(cur.roll * 100)} % der Spanne${cur.roll > 0.85 ? ' – ein Spitzenwert!' : cur.roll < 0.2 ? ' – eher schwach' : ''}</p>
         ${cur.bonus.length || d.cost ? `<ul class="mod-fx">${cur.bonus.map((x) => `<li class="pos">${esc(fmtStat(x.stat, x.value))}</li>`).join('')}${d.cost ? `<li class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</li>` : ''}</ul>` : ''}
-        <div class="card-actions" style="margin-top:10px"><button class="btn small" ${act('mod-remove', { slot })}>${icon('trash', 16)}Zerlegen (+${refundOf(cur.q)} Modteile)</button></div></div>`;
-    })() : `<div class="mod-detail empty"><p class="small muted" style="margin:0">Noch kein Mod im Platz „${SLOT_INFO[slot].name}“. Wähle unten Mod und Güte – der Wert wird beim Bau ausgewürfelt.</p></div>`;
+        <button class="btn small hgr-zerlegen" ${act('mod-remove', { slot })}>${icon('trash', 15)}Zerlegen (+${refundOf(cur.q)})</button></div>`;
+    })() : `<div class="mod-detail empty hgr-now"><p class="small muted" style="margin:0">Sockel frei. Wähle unten Mod und Güte – der Wert wird beim Bau ausgewürfelt, Spitzenwerte sind selten.</p></div>`;
     const short = { 1: 'Grundl.', 2: 'Fortg.', 3: 'Außerg.' } as const;
-    const recipes = MOD_IDS.filter((id) => MODS[id].slot === slot).map((id) => {
-      const d = MODS[id];
-      const na = d.stat === 'missiles' && !ship.x4.launchers;
-      return `<div class="mod-recipe ${cur?.id === id ? 'cur' : ''}"><div class="mod-recipe-head"><b>${esc(d.name)}</b>${cur?.id === id ? '<small>eingebaut</small>' : ''}</div>
-        <div class="sub wrap">${esc(d.desc)}${d.cost ? ` <span class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</span>` : ''}${na ? ` <span class="warn-text">Wirkt nicht bei der ${esc(ship.name)}.</span>` : ''}</div>
-        <div class="mod-qrow">${([1, 2, 3] as const).map((qq) => { const Q = QUALITY[qq], ok = ms.parts >= Q.cost; return `<button class="mod-qbtn2" style="--q:${Q.color}" ${ok ? act('mod-craft', { id, q: String(qq) }) : 'disabled'} title="${Q.name}"><b>${short[qq]}</b><span>${esc(fmtRange(id, qq))}</span>${Q.bonus ? `<small>+${Q.bonus} Bonus</small>` : '<small>&nbsp;</small>'}<em>${Q.cost} ${icon('gift', 12)}</em></button>`; }).join('')}</div></div>`;
+    const cards = MOD_IDS.filter((id) => MODS[id].slot === slot).map((id) => {
+      const d = MODS[id], na = d.stat === 'missiles' && !ship.x4.launchers;
+      return `<div class="hgr-card mod ${cur?.id === id ? 'on' : ''}"><span class="hgr-art">${glyph('mod', 24)}</span><span class="hgr-nm">${esc(d.name)}</span>
+        <span class="hgr-sm wrap">${esc(d.desc)}${d.cost ? ` <span class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</span>` : ''}${na ? ` <span class="warn-text">Wirkt nicht bei der ${esc(ship.name)}.</span>` : ''}</span>
+        <span class="mod-qrow">${([1, 2, 3] as const).map((qq) => { const Q = QUALITY[qq], ok = ms.parts >= Q.cost; return `<button class="mod-qbtn2" style="--q:${Q.color}" ${ok ? act('mod-craft', { id, q: String(qq) }) : 'disabled'} title="${Q.name}"><b>${short[qq]}</b><span>${esc(fmtRange(id, qq))}</span><em>${Q.cost} ${icon('gift', 12)}</em></button>`; }).join('')}</span></div>`;
     }).join('');
-    const body = `${head(`Mod: ${SLOT_INFO[slot].name}`, `${ms.parts} Modteile · 1 je Stern in jedem Minispiel, Tagesaufgaben und Herausforderungen doppelt`)}${switcher}
-      <div class="section"><h3>Eingebaut</h3>${detail}</div>
-      <div class="section"><h3>${cur ? 'Neu bauen (ersetzt den eingebauten)' : 'Bauen'}</h3>
-        <div class="mod-legend">${([1, 2, 3] as const).map((qq) => `<span style="--q:${QUALITY[qq].color}"><i></i>${QUALITY[qq].name}${QUALITY[qq].bonus ? ` (+${QUALITY[qq].bonus} Bonus)` : ''}</span>`).join('')}</div>
-        <div class="mod-recipes">${recipes}</div>
-        <p class="small muted lo-note">Wie in X4: Beim Bau wird der Wert innerhalb der Spanne ausgewürfelt – Spitzenwerte sind selten. Höhere Güte bringt Zusatzeffekte.</p></div>`;
-    return { eyebrow: 'Hangar', title: 'Mods', body, foot: foot(true) };
+    body = `${now}<div class="hgr-cards">${cards}</div>`;
+  } else if (view === 'art') {
+    title = 'Darstellung'; sub = 'wie dein Schiff im Kampf aussieht';
+    body = `<div class="segment" style="margin:0 14px">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
+      <div class="box rows" style="margin:10px 14px 0"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Grafikvergleich der Jäger</div><div class="sub">KI-Bild, gerendert und gezeichnet nebeneinander</div></div>${icon('chev', 20, 'chev')}</div></div>`;
   }
+  const where = open ? title : mode === 'mods' ? 'Werkstatt' : 'Hangar';
+  const crumbs = open ? `Minispiele › Kampf › ${mode === 'mods' ? 'Werkstatt' : 'Hangar'}` : 'Minispiele › Kampf';
+  const bg = mode === 'mods' ? werkstattDeck : hangarDeck;
 
-  // Darstellung des eigenen Jägers
-  const body = `${head('Darstellung', 'wie dein Schiff im Kampf aussieht')}
-    <div class="segment">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
-    <div class="box rows" style="margin-top:10px"><div class="row tap" ${act('ship-art-open')}>${icon('star', 20)}<div class="grow"><div class="title" style="font-weight:500">Grafikvergleich der Jäger</div><div class="sub">KI-Bild, gerendert und gezeichnet nebeneinander</div></div>${icon('chev', 20, 'chev')}</div></div>`;
-  return { eyebrow: 'Hangar', title: 'Darstellung', body, foot: foot(true) };
+  return `<div class="modal full hgr ${open ? 'open' : ''} hgr-${mode}" role="dialog" aria-modal="true" aria-label="Hangar" style="--hgr-bg:url('${bg}')">
+    <div class="hgr-top">
+      <button class="hgr-back" ${act(open ? 'lo-view' : 'mg-back', open ? { view: 'home' } : {})} aria-label="Zurück">${icon('back', 20)}</button>
+      <div class="hgr-crumbs"><small>${esc(crumbs)}</small><b>${esc(where)}</b></div>
+      <span class="hgr-parts">${icon('gift', 13)} ${ms.parts}</span>
+      <button class="hgr-iconbtn" ${act('lo-view', { view: 'art' })} aria-label="Darstellung">${icon('star', 18)}</button>
+    </div>
+    <div class="segment hgr-modes">
+      <button class="${mode === 'gear' ? 'on' : ''}" ${act('lo-mode', { mode: 'gear' })}>Ausrüstung</button>
+      <button class="${mode === 'mods' ? 'on' : ''}" ${act('lo-mode', { mode: 'mods' })}>Werkstatt</button>
+    </div>
+    <div class="hgr-stage">
+      <div class="hgr-ship" data-key="ship-${lo.ship}">${pic(lo.ship) ? `<img src="${pic(lo.ship)}" alt="${esc(ship.name)}">` : ''}</div>
+      <svg class="hgr-lines" aria-hidden="true"></svg>
+      <div class="hgr-shipbar">
+        <button class="hgr-arrow" ${act('lo-ship', { dir: -1 })} aria-label="Vorheriges Schiff">${icon('back', 18)}</button>
+        <button class="hgr-name" ${act('lo-view', { view: 'ship' })}><b>${esc(ship.name)}</b><small>${ship.cls} · ${esc(ship.role)} · ${esc(SPECIALS[ship.special].name)}</small><span class="hgr-dots">${SHIP_IDS.map((id) => `<i class="${id === lo.ship ? 'on' : ''}"></i>`).join('')}</span></button>
+        <button class="hgr-arrow next" ${act('lo-ship', { dir: 1 })} aria-label="Nächstes Schiff">${icon('back', 18)}</button>
+      </div>
+      <div class="hgr-hots">${hotHtml}</div>
+    </div>
+    <div class="hgr-stats">${gaugeHtml(false)}</div>
+    <div class="hgr-foot"><button class="btn" ${act('mg-back')}>Fertig</button><button class="btn primary" ${act('ship-art-try')}>${icon('play', 16)}Probeflug</button></div>
+    <div class="hgr-drawer" aria-hidden="${open ? 'false' : 'true'}">
+      <div class="hgr-grip"></div>
+      <div class="hgr-dhead"><div><b>${esc(title)}</b><small>${esc(sub)}</small></div>
+        ${m.undo ? `<button class="btn small" ${act('lo-undo')}>Rückgängig</button>` : ''}<button class="btn small lo-back" ${act('lo-view', { view: 'home' })}>Fertig</button></div>
+      ${view !== 'art' && view !== 'ship' ? `<div class="hgr-dstats">${gaugeHtml(true)}</div>` : ''}
+      <div class="hgr-dbody">${body}</div>
+    </div>
+  </div>`;
+}
+
+const swiped = new WeakSet<HTMLElement>();
+
+/**
+ * Nach dem Zeichnen: Leitlinien von den Plaketten zu den Bauteilen am Schiff ziehen und Wischen zum Schiffswechsel
+ * anmelden (einmal je Fenster)
+ */
+export function layoutHangar(root: HTMLElement, onSwipe: (dir: number) => void): void {
+  const hgr = root.querySelector<HTMLElement>('.hgr');
+  if (!hgr) return;
+  const stage = hgr.querySelector<HTMLElement>('.hgr-stage')!, svg = hgr.querySelector<SVGSVGElement>('.hgr-lines')!, ship = hgr.querySelector<HTMLImageElement>('.hgr-ship img');
+  const draw = () => {
+    if (!ship || hgr.classList.contains('open')) { svg.innerHTML = ''; return; }
+    const sr = stage.getBoundingClientRect(), ir = ship.getBoundingClientRect();
+    svg.setAttribute('viewBox', `0 0 ${sr.width} ${sr.height}`);
+    svg.innerHTML = [...hgr.querySelectorAll<HTMLElement>('.hgr-hot')].map((b) => {
+      const [ax, ay] = (b.dataset.anchor ?? '0.5,0.5').split(',').map(Number);
+      const r = b.getBoundingClientRect();
+      const px = ir.left - sr.left + ax * ir.width, py = ir.top - sr.top + ay * ir.height;
+      const sx = r.left - sr.left + r.width / 2, sy = r.top - sr.top;
+      return `<g><polyline points="${sx.toFixed(1)},${sy.toFixed(1)} ${sx.toFixed(1)},${(sy - 10).toFixed(1)} ${px.toFixed(1)},${py.toFixed(1)}"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3"/></g>`;
+    }).join('');
+  };
+  if (ship && !ship.complete) ship.addEventListener('load', draw, { once: true });
+  draw();
+  if (!swiped.has(stage)) {
+    swiped.add(stage);
+    let x0: number | null = null;
+    stage.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+    stage.addEventListener('touchend', (e) => {
+      if (x0 == null || hgr.classList.contains('open')) return;
+      const d = e.changedTouches[0].clientX - x0;
+      x0 = null;
+      if (Math.abs(d) > 60) onSwipe(d < 0 ? 1 : -1);
+    });
+  }
 }

@@ -1538,8 +1538,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
     }
     case 'loadout': {
       // Hangar: Platzliste und Auswahl je Platz (siehe loadoutView.ts)
-      const v = loadoutView(m);
-      return modalShell(v.title, v.body, v.foot, v.eyebrow);
+      return loadoutView(m);
     }
     case 'shipArt': {
       // Vergleich der Darstellungen des eigenen Jägers: KI-Bild, vorab gerendert (3D), gezeichnet
