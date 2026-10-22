@@ -1265,6 +1265,8 @@ button.hgr-card:active { transform: scale(0.97); }
 .hgr-art svg { filter: drop-shadow(0 0 8px currentColor); }
 .hgr-art { overflow: hidden; }
 .hgr-art img { width: 100%; height: 74px; object-fit: contain; padding: 4px; }
+/* Waffenbilder liegen schräg im Quadrat: etwas vergrößern, die leeren Ecken werden abgeschnitten */
+.hgr-art img.item { padding: 0; transform: scale(1.3); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--c) 45%, transparent)); }
 .hgr-ds i { font-style: normal; font-size: 10.5px; color: var(--muted); align-self: center; }
 .hgr-badge { position: absolute; top: 6px; right: 6px; z-index: 1; font-family: var(--font-display); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; background: var(--teal); color: #02130f; }
 .hgr-nm { padding: 7px 9px 0; font-family: var(--font-display); font-weight: 600; font-size: 13.5px; line-height: 1.15; min-height: 37px; }

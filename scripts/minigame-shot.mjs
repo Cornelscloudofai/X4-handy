@@ -37,6 +37,11 @@ await loView('weapon');
 if (!(await page.locator('#modal .hgr.open').count())) fail('Hangar: Schublade öffnet sich nicht');
 // Vergleich zum Eingebauten: andere Waffen zeigen Änderungen (grün/rot)
 if (!(await page.locator('#modal .lo-d').count())) fail('Waffenwahl: keine Vergleichswerte');
+// Kartenbilder der Waffen geladen
+await page.waitForTimeout(400);
+const wImgs = await page.$$eval('#modal .hgr-card .hgr-art img', (l) => l.filter((i) => i.complete && i.naturalWidth > 0).length);
+if (wImgs < 9) fail(`Waffenwahl: nur ${wImgs} Kartenbilder geladen`);
+await page.screenshot({ path: `${out}/mg-0-waffen.png` });
 await page.click('#modal [data-act="loadout-set"][data-key="weapon"][data-value="tau"]');
 await page.waitForTimeout(250);
 if (!(await page.locator('#modal [data-act="lo-undo"]').count())) fail('Kein Rückgängig nach dem Einbau');

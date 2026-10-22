@@ -70,7 +70,7 @@ const glyph = (k: string, s = 18) => `<svg width="${s}" height="${s}" viewBox="0
 const WEAPON_LOOK: Record<string, [string, string]> = {
   puls: ['gun', '#3fe0c5'], bolzen: ['gun', '#9fe870'], schrot: ['scatter', '#ffb547'], strahl: ['beam', '#5fb4ff'], plasma: ['plasma', '#ff6a3d'],
   neutron: ['gatling', '#7fd8ff'], tau: ['scatter', '#ffd27a'], thermal: ['gun', '#ff8a5c'], boson: ['lance', '#c58bff'],
-  plasmaschnell: ['plasma', '#ff8a3d'], plasmasalve: ['plasma', '#ff5c3d'],
+  schnellplasma: ['plasma', '#ff8a3d'], plasmasalve: ['plasma', '#ff5c3d'],
 };
 const MISSILE_LOOK: Record<string, string> = { lenk: '#ffb070', schwer: '#ff7a3a', schwarm: '#ffd27a', stoer: '#8fe0ff' };
 
@@ -152,7 +152,7 @@ export function loadoutView(m: LoModal): string {
   // ---------- Schublade ----------
   const card = (o: { key: string; value: string; on: boolean; name: string; big: string; sm: string; ds?: string; ic?: string; color?: string; img?: string }) =>
     `<button class="hgr-card ${o.on ? 'on' : ''}" style="--c:${o.color ?? 'var(--teal)'}" ${act('loadout-set', { key: o.key, value: o.value })}>
-      ${o.on ? '<span class="hgr-badge">Eingebaut</span>' : ''}<span class="hgr-art">${o.img ? `<img src="${o.img}" alt="">` : glyph(o.ic ?? 'gun', 34)}</span>
+      ${o.on ? '<span class="hgr-badge">Eingebaut</span>' : ''}<span class="hgr-art">${o.img ? `<img src="${o.img}" alt=""${o.key === 'ship' ? '' : ' class="item"'}>` : glyph(o.ic ?? 'gun', 34)}</span>
       <span class="hgr-nm">${esc(o.name)}</span><span class="hgr-big">${esc(o.big)}</span><span class="hgr-sm">${esc(o.sm)}</span><span class="hgr-ds">${o.on ? '' : o.ds ?? ''}</span></button>`;
   let title = '', sub = '', body = '';
   if (view === 'ship') {
@@ -171,14 +171,14 @@ export function loadoutView(m: LoModal): string {
     body = `<div class="hgr-cards">${ids.map((id) => {
       const d = WEAPONS[id], gg = weaponGun(d, size), dps = n * sustainedDps(gg, d.beam), r = d.beam ? 1.6 : km(gg);
       const [ic, col] = WEAPON_LOOK[id] ?? ['gun', '#3fe0c5'];
-      return card({ key: 'weapon', value: id, on: lo.weapon === id, name: d.name, big: `${num(dps)}/s`, sm: d.beam ? 'Dauerstrahl' : `${num(r, 1)} km`, ic, color: col, ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(r, curKm, (x) => `${num(x, 1)} km`)}` });
+      return card({ key: 'weapon', value: id, on: lo.weapon === id, name: d.name, big: `${num(dps)}/s`, sm: d.beam ? 'Dauerstrahl' : `${num(r, 1)} km`, ic, color: col, img: spriteUrl(`waffe-${id}-ki`), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(r, curKm, (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(wd.name)}:</b> ${esc(wd.desc)}<small>${esc(gunData(g, wd.beam))}</small></div>`;
   } else if (view === 'turret') {
     const n = ship.turrets.length, curDps = n * sustainedDps(td.gun, td.beam);
     title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;
     body = `<div class="hgr-cards">${TURRET_IDS.map((id) => {
       const t = TURRETS[id], dps = n * sustainedDps(t.gun, t.beam);
-      return card({ key: 'turret', value: id, on: lo.turret === id, name: t.name, big: `${num(dps)}/s`, sm: `schwenkt ${t.turn}°/s`, ic: 'turret', ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}` });
+      return card({ key: 'turret', value: id, on: lo.turret === id, name: t.name, big: `${num(dps)}/s`, sm: `schwenkt ${t.turn}°/s`, ic: 'turret', color: WEAPON_LOOK[id]?.[1], img: spriteUrl(`waffe-${id}-ki`), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(td.name)}:</b> ${esc(td.desc)}<small>${esc(gunData(td.gun, td.beam))}</small></div>`;
   } else if (view === 'lturret') {
     const n = ship.lMounts?.length ?? 0, curDps = n * sustainedDps(ltd.gun);
