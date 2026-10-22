@@ -25,6 +25,7 @@ import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
+import type { Mission } from '../minigames/missions';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
 import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
 import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutView';
@@ -1093,6 +1094,14 @@ function onClick(e: MouseEvent): void {
       case 'mg-tab': if (ui.modal?.type === 'minigames') { ui.modal.tab = d.tab as 'games' | 'daily' | 'combat'; refresh(); } break;
       case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
       case 'mg-gear': if (ui.modal?.type === 'minigames') { ui.modal.gear = Number(d.gear) as 1 | 2 | 3; refresh(); } break;
+      case 'mg-mission': {
+        if (ui.modal?.type !== 'minigames') break;
+        const { level, gear } = ui.modal;
+        const kind = d.kind as MiniKind;
+        if (!unlocked(kind, level)) break;
+        openMinigame(kind, { level, gear: { weapon: gear, shield: gear, engine: gear }, mission: d.mission as Mission }, () => refresh(), true);
+        break;
+      }
       case 'mg-play': case 'mg-daily': case 'mg-mode': {
         if (ui.modal?.type !== 'minigames') break;
         const { level, gear } = ui.modal;

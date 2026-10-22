@@ -2,6 +2,7 @@
 import { wareIcon, wareMark } from './wareIcons';
 import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } from '../minigames/host';
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
+import { MISSIONS, MISSION_IDS, recordKey } from '../minigames/missions';
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooter';
 import { tunePanel } from '../minigames/tunePanel';
@@ -1523,7 +1524,18 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <p class="small muted" style="margin:8px 0 0">Gasströme mit eigener Musik: Gasflocken glitzern auf dem Schlag, der Nebel atmet mit dem Bass, im kräftigen Teil ein Lichtschauer. Bei „Bewegung reduzieren“ bleibt alles ruhig.</p></div>`;
       const dailyTab = `<div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
         <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>`;
+      // Einsätze: je Einsatz eine Zeile, darunter ein Startknopf je Gegnerseite (mit den besten Sternen der gewählten Stufe)
+      const sideName = { pirates: 'Piraten', xenon: 'Xenon', khaak: 'Kha’ak' } as const;
+      const missions = MISSION_IDS.map((id) => {
+        const mi = MISSIONS[id];
+        const btns = mi.sides.map((k) => {
+          const b = mgBest(recordKey(k, id), lvl), open = unlocked(k, lvl);
+          return `<button class="mg-side ${k}" ${open ? act('mg-mission', { kind: k, mission: id }) : 'disabled'}><b>${sideName[k]}</b>${b ? stars(b.stars) : `<small>${open ? 'Stufe ' + lvl : 'gesperrt'}</small>`}</button>`;
+        }).join('');
+        return `<div class="row mg-mission"><div class="grow"><div class="title" style="font-weight:500">${esc(mi.name)}</div><div class="sub wrap">${esc(mi.sub)}</div><div class="mg-sides">${btns}</div></div></div>`;
+      }).join('');
       const combatTab = `<div class="section"><h3>Dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SHIPS[loadout().ship].name)} – ${esc(SHIPS[loadout().ship].role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
+        <div class="section"><h3>Einsätze · Stufe ${lvl}</h3><div class="box rows">${missions}</div><p class="small muted" style="margin:8px 0 0">Neben dem Geleitschutz (Reiter „Spiele“) eigene Aufgaben mit eigener Wertung. Die Stufe stellst du im Reiter „Spiele“ ein.</p></div>
         <div class="section"><h3>Steuerung</h3><div class="segment">${(['eins', 'zwei', 'lenk'] as const).map((c) => `<button class="${controlMode() === c ? 'on' : ''}" ${act('mg-controls', { mode: c })}>${c === 'eins' ? 'Ein Stick' : c === 'zwei' ? 'Zwei Sticks' : 'Lenkrad'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : controlMode() === 'zwei' ? 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zeigen, wohin der Jäger blickt; über den Ring hinaus wird gefeuert.' : 'Links fliegen wie bei zwei Sticks. Rechts lenken wie ein Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung; über den Ring hinaus wird gefeuert.'} Beim Überschreiten des Rings leuchtet er auf, klickt leise und vibriert, wo das Gerät es zulässt.</p>
         <p class="small muted" style="margin:6px 0 0">Am PC schaltet sich die Maus-und-Tastatur-Steuerung von selbst ein: Das Schiff dreht sich zur Maus, W/A/S/D (oder Pfeiltasten) fliegen vorwärts, rückwärts und seitwärts, Linksklick feuert, Rechtsklick oder R Raketen, Leertaste Spezialfähigkeit, Mausrad Zoom.</p></div>

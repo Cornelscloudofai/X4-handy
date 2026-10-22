@@ -12,6 +12,7 @@ import { HIGHWAY_GOALS, HIGHWAY_MUTATORS, HighwayGame } from './highway';
 import { ORBIT_GOALS, ORBIT_MUTATORS, OrbitGame } from './orbit';
 import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
 import { earnParts, partsFor } from './mods';
+import { recordKey, type Mission } from './missions';
 import { setEnemyTune } from './loadout';
 import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
@@ -29,6 +30,8 @@ export interface MiniOpts {
   /** Besonderheit: Kennung, null = keine, undefined = zufällig (jede zweite Runde) */
   mutator?: string | null;
   mode?: Mode;
+  /** Kampf: Einsatz (sonst Geleitschutz) */
+  mission?: Mission;
 }
 
 export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: string; chain?: string; endless?: string }> = {
@@ -67,7 +70,7 @@ function resolve(kind: MiniKind, o: MiniOpts): GameCfg {
     const list = mutatorsOf(kind);
     mutator = Math.random() < 0.5 ? list[Math.floor(Math.random() * list.length)].id : null;
   }
-  return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal' };
+  return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission };
 }
 
 function create(kind: MiniKind, c: GameCfg): MiniGame {
@@ -251,7 +254,7 @@ function bindInput(s: Session): void {
 
 function finish(s: Session, r: GameResult): void {
   s.result = r;
-  s.outcome = recordResult(s.kind, s.cfg.level, s.cfg.mode ?? 'normal', r);
+  s.outcome = recordResult(recordKey(s.kind, s.cfg.mission), s.cfg.level, s.cfg.mode ?? 'normal', r);
   s.parts = earnParts(partsFor(r.stars, s.cfg.mode ?? 'normal'));
   setPhase('end');
 }
@@ -267,7 +270,7 @@ function mutatorBox(m: Mutator | null): string {
 const STARS = (n: number) => `<span class="mg-rs" aria-label="${n} Stern${n > 1 ? 'e' : ''}">${'★'.repeat(n)}<i>${'★'.repeat(3 - n)}</i></span>`;
 
 /** Wertung vor dem Start und in der Pause: wofür es Sterne und Punkte gibt, was Sterne bringen */
-function rulesBox(r: Rules | undefined, kind: string, mode: Mode, open: boolean): string {
+function rulesBox(r: Rules | undefined, kind: string, mode: Mode, open: boolean, mission = false): string {
   if (!r) return '';
   const factor = mode === 'daily' || mode === 'chain' || mode === 'endless' ? 2 : 1;
   const have = totalStars(kind);
@@ -275,7 +278,7 @@ function rulesBox(r: Rules | undefined, kind: string, mode: Mode, open: boolean)
   return `<details class="mg-rules"${open ? ' open' : ''}><summary>Wertung: Sterne und Punkte</summary>
     <div class="mg-rule-list">${r.stars.map((t, i) => `<div>${STARS(i + 1)}<span>${esc(t)}</span></div>`).join('')}</div>
     <small>Punkte</small><ul>${r.points.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
-    <p class="mg-rule-note">Jeder Stern bringt ${factor === 2 ? '2 Modteile' : '1 Modteil'}. ${mode === 'normal' ? `Die besten Sterne je Stufe zählen für die nächsten Stufen – bisher ${have} ★${next ? `, ${next}` : ''}.` : 'Punkte zählen für den Rekord.'}</p></details>`;
+    <p class="mg-rule-note">Jeder Stern bringt ${factor === 2 ? '2 Modteile' : '1 Modteil'}. ${mission ? 'Die Sterne zählen für den Einsatz; Stufe 4 und 5 schaltest du im Geleitschutz frei.' : mode === 'normal' ? `Die besten Sterne je Stufe zählen für die nächsten Stufen – bisher ${have} ★${next ? `, ${next}` : ''}.` : 'Punkte zählen für den Rekord.'}</p></details>`;
 }
 
 /** Auswertung: welche Sterne erreicht sind (mit deinem Wert) und woraus sich die Punkte zusammensetzen */
@@ -305,19 +308,20 @@ function setPhase(p: Phase): void {
   const g = s.game;
   const mode = s.cfg.mode ?? 'normal';
   if (p === 'intro') {
-    const rec = mode === 'daily' ? dailyBest(s.kind) : mode === 'normal' ? best(s.kind, s.cfg.level)?.points ?? null : bestPoints(s.kind, mode);
+    const rk = recordKey(s.kind, s.cfg.mission);
+    const rec = mode === 'daily' ? dailyBest(s.kind) : mode === 'normal' ? best(rk, s.cfg.level)?.points ?? null : bestPoints(rk, mode);
     layer.innerHTML = `<div class="mg-card">${artPic(s.kind, 'mg-intro-art')}<small class="eyebrow">${esc(g.eyebrow)}${MODE_LABEL[mode] ? ' · ' + MODE_LABEL[mode] : ''} · Stufe ${s.cfg.level}</small><h2>${esc(g.title)}</h2><p>${esc(g.intro)}</p>
       ${mutatorBox(g.mutator)}
       <ul class="mg-controls">${g.controls.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
-      ${g.goals.length ? `<div class="mg-goals"><small>Nebenziele</small>${g.goals.map((q) => `<div class="${hasBadge(s.kind, q.id) ? 'has' : ''}"><i></i>${esc(q.text)}${hasBadge(s.kind, q.id) ? '<em>Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
-      ${rulesBox(g.rules, s.kind, mode, false)}
+      ${g.goals.length ? `<div class="mg-goals"><small>Nebenziele</small>${g.goals.map((q) => `<div class="${hasBadge(rk, q.id) ? 'has' : ''}"><i></i>${esc(q.text)}${hasBadge(rk, q.id) ? '<em>Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
+      ${rulesBox(g.rules, s.kind, mode, false, !!s.cfg.mission && s.cfg.mission !== 'geleit')}
       ${rec ? `<p class="mg-rec">Rekord: <b class="num">${fmtPts(rec)}</b> Punkte</p>` : ''}
       <div class="mg-actions"><button class="btn ghost" data-mg="quit">Zurück</button><button class="btn primary" data-mg="start">Start</button></div></div>`;
   } else if (p === 'pause') {
     layer.innerHTML = `<div class="mg-card"><small class="eyebrow">Pause</small><h2>${esc(g.title)}</h2>
       ${g instanceof ShooterGame ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
-      ${rulesBox(g.rules, s.kind, mode, true)}
+      ${rulesBox(g.rules, s.kind, mode, true, !!s.cfg.mission && s.cfg.mission !== 'geleit')}
       <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button></div></div>`;
   } else {
     const r = s.result!;

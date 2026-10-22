@@ -12,6 +12,7 @@ import { playGameTrack, type GameTrack } from '../audio/music';
 import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
+import { MISSIONS, type Mission } from './missions';
 import { DMG_SCALE, LTURRETS, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
@@ -21,16 +22,41 @@ import {
 export type { Gear } from './common';
 
 type Side = 'pirate' | 'xenon' | 'khaak';
-type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk';
+/** cargo: Frachter des Piratenkonvois (Einsatz „Überfall“) */
+type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk' | 'cargo';
 /** Jäger mit Anflügen (anfliegen, Salve, abdrehen) – Piraten, Xenon N und die kleinen Kha'ak */
 const FIGHTERS = new Set<EKind>(['jaeger', 'n', 'ks', 'kj', 'ka']);
 /** Kha'ak mit Kyon-Strahl: kurz aufladen, dann trifft der Strahl sofort entlang einer Linie (Schilde ×1,5) */
 const KYON_LEN = 320, KYON_SHIELD = 1.5;
 
+/**
+ * Schutzziel: Frachter (Geleit, Konvoi, Flucht), Station oder Bergungsschiff. Position relativ zur Mitte der Route
+ * (fX, fY); Frachter pendeln etwas zur Seite. Eigene Abwehrtürme zielen frei; Stationstürme können zerstört und mit
+ * Fundstücken repariert werden.
+ */
+interface Ward {
+  kind: 'frachter' | 'station' | 'berger';
+  name: string;
+  ox: number; oy: number;
+  hull: number; max: number; flash: number;
+  tur: { ox: number; oy: number; cd: number; a: number; hp: number; max: number }[];
+  dead: boolean;
+  /** Phase des Pendelns */
+  ph: number;
+}
+/** Bergungscontainer im Wrackfeld (Einsatz „Bergung“): treibt, wird geschleppt oder ist abgeliefert/verloren */
+interface Crate { x: number; y: number; vx: number; vy: number; rot: number; hp: number; tow: boolean; done: boolean }
+/** Wrack (Deko und Deckung im Wrackfeld) */
+interface Wreck { x: number; y: number; rot: number; size: number }
+
 interface Enemy {
   kind: EKind; x: number; y: number; vx: number; vy: number;
   hp: number; max: number; cd: number; r: number;
   target: 'f' | 'p'; orbit: number; flash: number; dir: number;
+  /** Schutzziel, auf das der Gegner es abgesehen hat (target 'f') */
+  wd?: Ward;
+  /** Nest (Einsatz „Nest“): steht still, Brutöffnungen statt Geschütztürme */
+  nest?: boolean;
   /** Blickrichtung (Bordkanonen feuern nur dorthin) */
   ang: number;
   /** Jäger-Anflug: nach Salve oder Überflug abdrehen (Restzeit, Richtung); Schüsse und Dauer des laufenden Anflugs */
@@ -108,7 +134,7 @@ interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; fr
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean }
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
-interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p' }
+interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p'; wd?: Ward }
 /** Fundstücke; „ammo“ = Munitionskiste (selten): füllt das Raketenlager ganz */
 interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile' | 'ammo'; life: number }
 interface Rock { x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches der vier Asteroidenbilder */ v: number }
@@ -119,7 +145,7 @@ interface Card { id: string; name: string; desc: string; max: number }
 const LASER_LEN = 400, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
 
 /** Drehrate je Gegnerart (rad/s): Jäger wendig, Kanonenboote träge – wer sie umkreist, ist vor ihren Kanonen sicher */
-const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 1.3, xs: 1.6, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9 };
+const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 1.3, xs: 1.6, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
 /** Geschossgeschwindigkeit der Bordkanonen je Gegnerart (für den Vorhalt) */
 const SHOT_V: Partial<Record<EKind, number>> = { jaeger: 300, kanone: 240, n: 340, m: 430, rakete: 150, ks: 360, kj: 2000, ka: 2000, kk: 2000 };
 /** Bis zu dieser Entfernung lassen sich Gegner vom Jäger abfangen (danach kämpfen sie mit ihm statt mit dem Frachter) */
@@ -128,6 +154,16 @@ const AGGRO = 380;
 const MAP_W = 2600, LEG = 900, MAP_PAD = 520;
 /** Frachter-Tempo auf seiner Route */
 const F_SPEED = 24;
+/** Hülle eines Frachters, der Station (Einsatz „Station verteidigen“) und Abstand der Konvoi-Frachter quer zur Route */
+const F_MAX = 400, STATION_MAX = 1000, KONVOI_GAP = 560, BERGER_MAX = 800;
+/** Station: Bildgröße, Trefferradius, Lage der sechs Turmsockel (Anteil der Bildgröße), Hülle eines Stationsturms */
+const STATION_SIZE = 230, STATION_R = 86, STATION_TUR = 0.37, STATION_TUR_HP = 60;
+/** Flucht: Sekunden, bis der Sprungantrieb geladen ist (Stufe 1); Bergung: Container im Feld und nötig für den Erfolg */
+const FLUCHT_T = 150, CRATES = 8, CRATES_MIN = 4;
+/** Schleppseil des Traktorstrahls (Länge) und Reichweite zum Ankoppeln bzw. Abliefern */
+const TOW_LEN = 46, TOW_GRAB = 40, TOW_DROP = 110;
+/** Überfall: Piratenfrachter im Konvoi; Nest: Brutöffnungen um den Kern */
+const CARGO_N = 3, NEST_OPEN = 5;
 /** Zielhilfe: liegt der Vorhaltepunkt so nah vor der Nase (rad), gehen die Schüsse genau dorthin */
 /** Trägheit: Beschleunigung (× Höchsttempo pro Sekunde), Abbremsen der Drift pro Sekunde, Joystick-Bereich nur zum Drehen */
 const ACCEL = 2.4;
@@ -138,7 +174,7 @@ const TURN_ONLY = 0.35;
 export type TurretOrder = 'alle' | 'S' | 'M' | 'L';
 const ORDER_KEY = 'x4-sektorbau-turmbefehle';
 /** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
-const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', boss: 'L', turret: 'L', ks: 'S', kj: 'S', ka: 'M', kk: 'M' };
+const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', boss: 'L', turret: 'L', ks: 'S', kj: 'S', ka: 'M', kk: 'M', cargo: 'L' };
 /** Auswahl beim Wischen: oben alle, links S, rechts M, unten L */
 const ORDER_DIRS: [TurretOrder, number, number][] = [['alle', 0, -1], ['S', -1, 0], ['M', 1, 0], ['L', 0, 1]];
 function readOrders(): { m: TurretOrder; l: TurretOrder } {
@@ -259,6 +295,8 @@ const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: number; co
   kj: { hp: 35, sh: 45, speed: 175, r: 10, color: '#a855f7', name: 'Kha’ak-Jäger', pts: 130, cost: 2.5 },
   ka: { hp: 60, sh: 55, speed: 200, r: 13, color: '#d08cff', name: 'Kha’ak-Abfangjäger', pts: 220, cost: 4 },
   kk: { hp: 120, sh: 90, speed: 70, r: 18, color: '#9b5cff', name: 'Kha’ak-Korvette', pts: 300, cost: 5 },
+  // Frachter des Piratenkonvois: zäh, langsam, zwei schwache Abwehrtürme
+  cargo: { hp: 420, sh: 150, speed: 24, r: 22, color: '#ffb070', name: 'Piratenfrachter', pts: 800, cost: 0 },
 };
 
 const CARDS: Card[] = [
@@ -298,7 +336,20 @@ const ENDLESS_GOALS: GoalDef[] = [
   { id: 'combo4', text: 'Kombo ×4 erreichen' },
   { id: 'boss2', text: 'Zwei Bosse besiegen' },
 ];
-export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS];
+const G_COMBO3: GoalDef = { id: 'combo3', text: 'Kombo ×3 erreichen' };
+const G_TOUGH: GoalDef = { id: 'tough', text: 'Jäger-Hülle nie unter 50 %' };
+const G_LOOT3: GoalDef = { id: 'loot3', text: 'Drei Fundstücke einsammeln' };
+const G_NOMISSILE: GoalDef = { id: 'nomissile', text: 'Ohne Raketensalve gewinnen' };
+/** Nebenziele der Einsätze (je Runde drei davon) */
+const MISSION_GOALS: Record<Exclude<Mission, 'geleit'>, GoalDef[]> = {
+  station: [{ id: 'turrets', text: 'Am Ende stehen alle sechs Stationstürme' }, { id: 'st80', text: 'Station mit über 80 % Hülle halten' }, G_COMBO3, G_LOOT3, G_TOUGH],
+  konvoi: [{ id: 'all3', text: 'Alle drei Frachter ans Tor bringen' }, { id: 'kv60', text: 'Jeder gerettete Frachter mit über 60 % Hülle' }, G_COMBO3, G_NOMISSILE, G_TOUGH],
+  flucht: [{ id: 'fl50', text: 'Mit über 50 % Frachter-Hülle springen' }, G_COMBO3, G_TOUGH, G_LOOT3],
+  bergung: [{ id: 'crate8', text: 'Alle acht Container bergen' }, { id: 'nolost', text: 'Keinen Container verlieren' }, G_COMBO3, G_TOUGH],
+  ueberfall: [{ id: 'cargo3', text: 'Alle drei Piratenfrachter zerstören' }, { id: 'cargo45', text: 'Den ersten Frachter in unter 45 s zerstören' }, G_COMBO3, G_NOMISSILE],
+  nest: [{ id: 'nest150', text: 'Das Nest in unter 2:30 ausheben' }, { id: 'combo4', text: 'Kombo ×4 erreichen' }, G_TOUGH, G_NOMISSILE],
+};
+export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS, ...Object.values(MISSION_GOALS).flat()].filter((g, i, a) => a.findIndex((q) => q.id === g.id) === i);
 
 /** Zoomstufen des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick); per Taste wählbar, wird gemerkt */
 const ZOOMS = [1.2, 0.95, 0.72, 0.58, 0.46, 0.36, 0.27, 0.2];
@@ -384,6 +435,14 @@ export class ShooterGame implements MiniGame {
       : this.side === 'xenon'
         ? `Abschüsse: Xenon N 60, Xenon M und Schirmdrohne 250, Geschützturm 200, K-Segment 1.500 (als Großziel 750)${bounty}`
         : `Abschüsse: Kha’ak-Späher 70, Jäger 130, Abfangjäger 220, Korvette 300, Kyon-Turm und Brutkammer 200, Brutschiff 1.500 (als Großziel 750)${bounty}`;
+    const common = [
+      foes,
+      'Abgeschossene Rakete 30, gesprengte Mine 20',
+      'Kombo: jeder Abschuss kurz nach dem letzten erhöht den Faktor um 0,5 (bis ×6); nach 2,5 s ohne Abschuss fällt er auf ×1',
+      ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
+    ];
+    const ms = this.missionRules();
+    if (ms) return { stars: ms.stars, points: [...ms.points, ...common] };
     return {
       stars: this.mode === 'endless'
         ? ['4 Wellen überstehen', '7 Wellen überstehen', '10 Wellen überstehen']
@@ -398,6 +457,20 @@ export class ShooterGame implements MiniGame {
       ],
     };
   }
+  /** Sterne und Punkte der Einsätze (null = Geleitschutz) */
+  private missionRules(): { stars: string[]; points: string[] } | null {
+    switch (this.mission) {
+      case 'station': return { stars: ['Alle Wellen abwehren, die Station steht', '… mit mindestens 55 % Stations-Hülle', '… mit mindestens 85 % Stations-Hülle'], points: ['Alle Wellen abgewehrt: 1.000, dazu bis 2.000 nach Stations-Hülle und 300 je stehendem Stationsturm', 'Reparatur-Fundstück: Station +8 % und ein zerstörter Turm wieder instand'] };
+      case 'konvoi': return { stars: ['Einen Frachter ans Tor bringen', 'Zwei Frachter ans Tor bringen', 'Alle drei Frachter ans Tor bringen'], points: ['Je Frachter am Tor: 1.500, dazu bis 1.000 nach seiner Hülle'] };
+      case 'flucht': return { stars: ['Durchhalten, bis der Frachter springt', '… mit mindestens 35 % Frachter-Hülle', '… mit mindestens 60 % Frachter-Hülle'], points: ['Gesprungen: 1.000, dazu bis 2.000 nach Frachter-Hülle', `Der Sprungantrieb braucht ${Math.round(this.fluchtT)} s – auch wenn du nur ausweichst`] };
+      case 'bergung': return { stars: [`${CRATES_MIN} Container bergen`, '6 Container bergen', `Alle ${CRATES} Container bergen`], points: ['Je abgelieferter Container 400', 'Am Ende: bis 1.000 nach Hülle des Bergungsschiffs', 'Wer einen Container schleppt, ist etwas langsamer; Treffer auf den Container zerstören ihn'] };
+      case 'ueberfall': return { stars: ['Einen Piratenfrachter zerstören', 'Zwei Piratenfrachter zerstören', 'Alle drei Piratenfrachter zerstören'], points: ['Piratenfrachter 800, alle drei: 1.000 extra'] };
+      case 'nest': return { stars: ['Das Nest ausheben', '… in unter 4 Minuten', '… in unter 2:30 Minuten'], points: ['Brutöffnung 200, Kern 1.500, dazu bis 2.000 für Tempo (je Sekunde unter 5 Minuten fast 7)'] };
+      default: return null;
+    }
+  }
+  /** Flucht: Ladezeit des Sprungantriebs (höhere Stufen länger) */
+  private get fluchtT(): number { return FLUCHT_T * (1 + (this.level - 1) * 0.08); }
   private level: Level;
   private mode: Mode;
   private r: () => number;
@@ -514,20 +587,31 @@ export class ShooterGame implements MiniGame {
   /** Blickrichtung je Drohne: zum letzten Ziel, sonst wie der Jäger */
   private droneAim: number[] = [];
   private droneCd = 0;
-  // Frachter: Position auf der Route, Ziel des aktuellen Abschnitts, eigene Abwehrtürme
+  // Mitte der Route (bzw. der Station): Position, Ziel des aktuellen Abschnitts, Tempo; die Schutzziele liegen darum
   private fX = 0;
   private fY = 0;
   private fGoal = 0;
   private fVy = 0;
-  private fTur = [{ oy: -30, cd: 0, a: -Math.PI / 2 }, { oy: 34, cd: 0.3, a: Math.PI / 2 }];
+  /** Schutzziele des Einsatzes (Frachter, Station, Bergungsschiff); leer bei Überfall und Nest */
+  private wards: Ward[] = [];
+  private readonly mission: Mission;
+  // Einsätze: Ladung des Sprungantriebs (Flucht, 0…1), Container und Wracks (Bergung), Piratenfrachter (Überfall)
+  private charge = 0;
+  private crates: Crate[] = [];
+  private wrecks: Wreck[] = [];
+  private crateLost = 0;
+  private crateDone = 0;
+  private cargoTotal = 0;
+  private cargoKilled = 0;
+  private cargoEscaped = 0;
+  private firstCargoT = -1;
+  /** Flucht: Großkampfschiff gegen Ende schon unterwegs */
+  private fluchtBoss = false;
   private gateX = 0;
   private gateY = 0;
   private grpN = 0;
   /** Kha'ak-Cluster: Mitte, Tempo, Drehung der Wabe, Flugrichtung */
   private clusters = new Map<number, { x: number; y: number; vx: number; vy: number; ang: number; kind: EKind; mass: [number, number][][] }>();
-  private fHull = 400;
-  private readonly fMax = 400;
-  private fFlash = 0;
   // Welt-Objekte
   private enemies: Enemy[] = [];
   private bullets: Bullet[] = [];
@@ -551,7 +635,8 @@ export class ShooterGame implements MiniGame {
   private time = 0;
   private gateT = -1;
   private endT = -1;
-  private outcome: 'win' | 'freighter' | 'player' | null = null;
+  /** fail: Einsatzziel verfehlt (zu wenige Container, alle Piratenfrachter entkommen) */
+  private outcome: 'win' | 'freighter' | 'player' | 'fail' | null = null;
   private choosing: Card[] | null = null;
   private pendingSpawn = -1;
   /** Verstärkung einer Welle: kommt einige Sekunden später von anderer Seite */
@@ -574,6 +659,7 @@ export class ShooterGame implements MiniGame {
   constructor(cfg: GameCfg, private side: Side) {
     this.level = cfg.level;
     this.mode = cfg.mode === 'endless' ? 'endless' : cfg.mode ?? 'normal';
+    this.mission = this.mode === 'endless' ? 'geleit' : cfg.mission ?? 'geleit';
     this.r = rng(cfg.seed);
     this.gear = cfg.gear ?? { weapon: 1, shield: 1, engine: 1 };
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
@@ -635,15 +721,28 @@ export class ShooterGame implements MiniGame {
     this.power = power;
     this.foeCount = clamp(Math.sqrt(power), 0.6, 3.6);
     this.attackCap = clamp(Math.round(1 + Math.sqrt(power)), 2, 6);
-    this.nWaves = NORMAL_WAVES + (power >= 3.5 ? 1 : 0) + (power >= 10 ? 1 : 0);
+    this.nWaves = NORMAL_WAVES + (power >= 3.5 ? 1 : 0) + (power >= 10 ? 1 : 0) + (this.mission === 'station' ? 1 : 0);
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
     this.score = new Score(this.mutator?.mult ?? 1, 6);
-    this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : NORMAL_GOALS, rng(cfg.seed ^ 0x77));
+    this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : this.mission === 'geleit' ? NORMAL_GOALS : MISSION_GOALS[this.mission], rng(cfg.seed ^ 0x77));
     this.shield = this.shieldMax;
     this.eyebrow = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : 'Kha’ak';
-    this.title = this.mode === 'endless' ? 'Endlos' : side === 'pirate' ? 'Geleitschutz' : side === 'xenon' ? 'Abwehr' : 'Invasion';
-    this.intro = this.mode === 'endless'
+    this.title = this.mode === 'endless' ? 'Endlos' : this.mission === 'bergung' ? 'Bergung' : this.mission !== 'geleit' ? MISSIONS[this.mission].name : side === 'pirate' ? 'Geleitschutz' : side === 'xenon' ? 'Abwehr' : 'Invasion';
+    const foe = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : 'Kha’ak';
+    this.intro = this.mission === 'station'
+      ? `Deine Station wird angegriffen – ${foe} kommen in Wellen aus allen Richtungen. Sechs Stationstürme helfen dir; zerstörte Türme setzt du mit Reparatur-Fundstücken wieder instand. Zum Schluss greift ein Großkampfschiff an.`
+      : this.mission === 'konvoi'
+        ? `Drei Frachter fliegen weit auseinander zum Sprungtor. Die ${foe} teilen sich auf – du kannst nicht überall sein. Jeder Frachter, der das Tor erreicht, zählt.`
+        : this.mission === 'flucht'
+          ? `Ein beschädigter Frachter sitzt fest und lädt seinen Sprungantrieb. Die ${foe} wollen ihn vorher erwischen – halte sie fern, bis die Ladung voll ist. Gegen Ende kommt ein Großkampfschiff.`
+          : this.mission === 'bergung'
+            ? `Im Wrackfeld treiben ${CRATES} Container. Flieg nah heran, der Traktorstrahl koppelt an – dann zum Bergungsschiff schleppen. Mindestens ${CRATES_MIN} müssen ankommen. Treffer zerstören geschleppte Container, und die ${foe} greifen das Bergungsschiff an.`
+            : this.mission === 'ueberfall'
+              ? `Rollentausch: Ein Piratenkonvoi aus ${CARGO_N} Frachtern fliegt zum Sprungtor im Norden. Fang ihn ab, bevor er durch ist – Begleitjäger und Verstärkung aus dem Tor stellen sich dir in den Weg.`
+              : this.mission === 'nest'
+                ? `Ein ${side === 'khaak' ? 'Kha’ak-Nest' : 'Xenon-Nest'} spuckt ununterbrochen Drohnen aus. Zerstöre erst die ${NEST_OPEN} Brutöffnungen – solange sie stehen, schützt ein Schild den Kern. Dann den Kern.`
+                : this.mode === 'endless'
       ? `Welle um Welle – alle fünf Wellen ein Boss. Der Frachter wird zwischen den Wellen etwas repariert. Wie weit kommst du?`
       : side === 'pirate'
         ? 'Dein Frachter fliegt zum Sprungtor, Piraten lauern auf der Route. Fang sie ab, bevor sie ihn erreichen – Raketen- und Kanonenboote zuerst. Zum Schluss stellt sich die Piratenfregatte: erst die Geschütztürme.'
@@ -659,7 +758,7 @@ export class ShooterGame implements MiniGame {
   private c(id: string): number { return this.cards[id] ?? 0; }
   /** Effekt der Schiffsmodifikationen */
   private m(id: keyof ModStats): number { return this.mods[id] ?? 0; }
-  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (1 + this.m('speed')) * (this.sprintT > 0 ? 1.7 : 1); }
+  private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (1 + this.m('speed')) * (this.sprintT > 0 ? 1.7 : 1) * (this.towing ? 0.82 : 1); }
   private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn * (1 + this.m('turn')) * (this.sprintT > 0 ? 1.3 : 1); }
   /** Drohnen: aus Verbesserungen, dazu der Begleitjäger der Cobra (immer der letzte) */
   private get droneN(): number { return this.c('drone') + (this.escortT > 0 ? 1 : 0); }
@@ -687,8 +786,12 @@ export class ShooterGame implements MiniGame {
    */
   private get fScale(): number { return 1; }
   private get enemyDmg(): number { return this.level >= 5 ? 1.3 : this.level >= 3 ? 1.15 : 1; }
-  private get totalWaves(): number { return this.mode === 'endless' ? Infinity : this.nWaves; }
-  private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : i === this.nWaves - 1; }
+  /** Einsätze mit fester Zahl von Wellen (der Rest endet über sein eigenes Ziel) */
+  private get counted(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi' || this.mission === 'station'; }
+  /** Schutzziele fliegen eine Route (Geleit, Konvoi) */
+  private get moving(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi'; }
+  private get totalWaves(): number { return this.mode === 'endless' || !this.counted ? Infinity : this.nWaves; }
+  private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : this.counted && i === this.nWaves - 1; }
 
   resize(w: number, h: number): void {
     const first = this.w === 1;
@@ -697,23 +800,120 @@ export class ShooterGame implements MiniGame {
     this.stars.resize(w, h);
     // große Karte, unabhängig vom Bildschirm: der Frachter fliegt von unten nach oben zum Tor
     if (first) {
-      this.WW = MAP_W;
-      this.WH = MAP_PAD * 2 + LEG * (this.mode === 'endless' ? 5 : this.nWaves);
-      this.fX = this.WW / 2;
-      this.fY = this.fGoal = this.WH - MAP_PAD;
-      this.px = this.fX;
-      this.py = this.fY + 120;
+      this.setupMap();
       this.camX = this.px - w / 2 / this.zoom;
       this.camY = this.py - (h * 0.58) / this.zoom;
     }
   }
 
-  private get fx1(): number { return this.fX + Math.sin(this.time * 0.35) * 30; }
-  private get fy1(): number {
-    if (this.gateT < 0) return this.fY;
-    // ins Tor: beschleunigt bis genau in die Mitte des Wirbels
+  /** Karte, Schutzziele und Startpunkt je Einsatz */
+  private setupMap(): void {
+    const m = this.mission;
+    const frachter = (ox: number, oy = 0, ph = 0, name = 'Frachter'): Ward => ({
+      kind: 'frachter', name, ox, oy, hull: F_MAX, max: F_MAX, flash: 0, dead: false, ph,
+      tur: [{ ox: 0, oy: -30, cd: 0, a: -Math.PI / 2, hp: 1, max: 1 }, { ox: 0, oy: 34, cd: 0.3, a: Math.PI / 2, hp: 1, max: 1 }],
+    });
+    this.WW = MAP_W;
+    if (m === 'geleit' || m === 'konvoi') {
+      // der Frachter (bzw. der Konvoi) fliegt von unten nach oben zum Tor
+      this.WH = MAP_PAD * 2 + LEG * (this.mode === 'endless' ? 5 : this.nWaves);
+      this.fX = this.WW / 2;
+      this.fY = this.fGoal = this.WH - MAP_PAD;
+      this.wards = m === 'konvoi' ? [frachter(-KONVOI_GAP, 0, 0, 'West'), frachter(0, 50, 2.1, 'Mitte'), frachter(KONVOI_GAP, 0, 4.2, 'Ost')] : [frachter(0)];
+      this.px = this.fX;
+      this.py = this.fY + 120;
+      return;
+    }
+    // die übrigen Einsätze auf einer quadratischen Karte
+    this.WH = MAP_W;
+    this.fX = this.WW / 2;
+    this.fY = this.fGoal = this.WH / 2;
+    this.px = this.fX;
+    this.py = this.fY + 200;
+    if (m === 'station') {
+      // sechs Türme auf den runden Sockeln der Station
+      const tur = Array.from({ length: 6 }, (_, k) => {
+        const a = -Math.PI / 2 + (k * Math.PI) / 3;
+        return { ox: Math.cos(a) * STATION_SIZE * STATION_TUR, oy: Math.sin(a) * STATION_SIZE * STATION_TUR, cd: k * 0.1, a, hp: STATION_TUR_HP, max: STATION_TUR_HP };
+      });
+      this.wards = [{ kind: 'station', name: 'Station', ox: 0, oy: 0, hull: STATION_MAX, max: STATION_MAX, flash: 0, dead: false, ph: 0, tur }];
+    } else if (m === 'flucht') {
+      // beschädigt: drei Viertel der Hülle
+      const w = frachter(0);
+      w.hull = w.max * 0.75;
+      this.wards = [w];
+    } else if (m === 'bergung') {
+      this.fY = this.fGoal = this.WH - 620;
+      this.wards = [{ ...frachter(0), kind: 'berger', name: 'Bergungsschiff', hull: BERGER_MAX, max: BERGER_MAX }];
+      this.py = this.fY - 160;
+      this.spawnWreckField();
+    } else if (m === 'nest') {
+      // Nest oben in der Mitte, du kommst von unten
+      this.fY = this.fGoal = 640;
+      this.py = this.WH - 380;
+    } else if (m === 'ueberfall') {
+      // der Konvoi startet unten und fliegt zum Tor oben; du startest seitlich vor ihm
+      this.WH = MAP_PAD * 2 + 2500;
+      this.fY = this.fGoal = this.WH - MAP_PAD;
+      this.gateX = this.fX;
+      this.gateY = MAP_PAD - 120;
+      this.gateT = 0;
+      this.px = this.fX - 700;
+      this.py = this.fY - 1100;
+    }
+  }
+
+  /** Lage eines Schutzziels: Frachter pendeln etwas zur Seite; am Ende gleiten sie beschleunigt in die Mitte des Tors */
+  private wx(w: Ward): number {
+    const x = this.fX + w.ox + (w.kind === 'frachter' && this.mission !== 'flucht' ? Math.sin(this.time * 0.35 + w.ph) * 30 : 0);
+    if (this.gateT < 0 || w.kind !== 'frachter' || this.mission === 'ueberfall') return x;
     const k = Math.min(1, this.gateT / 1.7);
-    return this.fY + (this.gateCy - this.fY) * k * k;
+    return x + (this.gateX - x) * k * k;
+  }
+  private wy(w: Ward): number {
+    const y = this.fY + w.oy;
+    if (this.gateT < 0 || w.kind !== 'frachter' || this.mission === 'ueberfall') return y;
+    const k = Math.min(1, this.gateT / 1.7);
+    return y + (this.gateCy - y) * k * k;
+  }
+  /** Schutzziele, die noch stehen */
+  private get liveWards(): Ward[] { return this.wards.filter((w) => !w.dead); }
+  /** Hauptziel (für Kamera, Anflugrichtungen, Anzeigen): das erste, das noch steht */
+  private get mainWard(): Ward | undefined { return this.wards.find((w) => !w.dead) ?? this.wards[0]; }
+  private get fx1(): number { const w = this.mainWard; return w ? this.wx(w) : this.fX; }
+  private get fy1(): number { const w = this.mainWard; return w ? this.wy(w) : this.fY; }
+  /** Liegt der Punkt im Schutzziel? (Frachter: längliche Box, Station: Kreis) */
+  private wardHit(w: Ward, x: number, y: number, pad = 0): boolean {
+    const dx = x - this.wx(w), dy = y - this.wy(w);
+    return w.kind === 'station' ? Math.hypot(dx, dy) < STATION_R + pad : Math.abs(dx) < 20 + pad && Math.abs(dy) < 46 + pad;
+  }
+  private wardAt(x: number, y: number, pad = 0): Ward | undefined {
+    return this.wards.find((w) => !w.dead && this.wardHit(w, x, y, pad));
+  }
+  /** Strahl (Abstandsfunktion zur Strahllinie) trifft das Schutzziel? Frachter entlang der Längsachse geprüft */
+  private beamOnWard(w: Ward, dist: (x: number, y: number) => number): boolean {
+    const x = this.wx(w), y = this.wy(w);
+    if (w.kind === 'station') return dist(x, y) < STATION_R * 0.8;
+    for (let k = -40; k <= 40; k += 10) if (dist(x, y + k) < 16) return true;
+    return false;
+  }
+  /** Ziel eines Gegners (bzw. einer Rakete): sein Schutzziel, sonst das nächste, das noch steht (null = keins mehr) */
+  private wardOf(e: { x: number; y: number; wd?: Ward }): Ward | null {
+    if (e.wd && !e.wd.dead) return e.wd;
+    let best: Ward | null = null, bd = Infinity;
+    for (const w of this.wards) {
+      if (w.dead) continue;
+      const d = Math.hypot(this.wx(w) - e.x, this.wy(w) - e.y);
+      if (d < bd) { bd = d; best = w; }
+    }
+    e.wd = best ?? undefined;
+    return best;
+  }
+  /** Abstand zum nächsten Schutzziel (Infinity, wenn keins mehr steht) */
+  private wardDist(x: number, y: number): number {
+    let bd = Infinity;
+    for (const w of this.wards) if (!w.dead) bd = Math.min(bd, Math.hypot(this.wx(w) - x, this.wy(w) - y));
+    return bd;
   }
   /** Mitte des Sprungtors (rückt beim Öffnen etwas heran) */
   private get gateCy(): number { return this.gateY + Math.min(1, this.gateT * 0.8) * 60; }
@@ -733,10 +933,25 @@ export class ShooterGame implements MiniGame {
   }
 
   hud(): HudItem[] {
-    return [
-      { label: 'Frachter', value: `${Math.ceil((this.fHull / this.fMax) * 100)} %`, warn: this.fHull / this.fMax < 0.35 },
-      { label: 'Jäger', value: `${Math.ceil(this.hull)} %`, warn: this.hull < 35 },
-    ];
+    const me: HudItem = { label: 'Jäger', value: `${Math.ceil(this.hull)} %`, warn: this.hull < 35 };
+    const pct = (w: Ward | undefined) => (w && !w.dead ? w.hull / w.max : 0);
+    const w0 = this.wards[0];
+    switch (this.mission) {
+      case 'konvoi': {
+        const live = this.liveWards;
+        return [{ label: 'Konvoi', value: `${live.length}/3`, warn: live.length < 3 || live.some((w) => w.hull / w.max < 0.35) }, me];
+      }
+      case 'station': return [{ label: 'Station', value: `${Math.ceil(pct(w0) * 100)} %`, warn: pct(w0) < 0.35 }, me];
+      case 'flucht': return [{ label: 'Sprung', value: `${Math.floor(this.charge * 100)} %` }, { label: 'Frachter', value: `${Math.ceil(pct(w0) * 100)} %`, warn: pct(w0) < 0.35 }, me];
+      case 'bergung': return [{ label: 'Container', value: `${this.crateDone}/${CRATES}`, warn: CRATES - this.crateLost < CRATES_MIN + 1 }, { label: 'Schiff', value: `${Math.ceil(pct(w0) * 100)} %`, warn: pct(w0) < 0.35 }, me];
+      case 'ueberfall': return [{ label: 'Frachter', value: `${this.cargoKilled}/${CARGO_N}`, warn: this.cargoEscaped > 0 }, me];
+      case 'nest': {
+        const core = this.enemies.find((e) => e.nest);
+        const open = this.enemies.filter((e) => e.parent?.nest && e.weapon === 'brut').length;
+        return [{ label: open ? 'Brutöffnungen' : 'Kern', value: open ? `${open}` : `${core ? Math.ceil((core.hp / core.max) * 100) : 0} %` }, me];
+      }
+      default: return [{ label: 'Frachter', value: `${Math.ceil(pct(w0) * 100)} %`, warn: pct(w0) < 0.35 }, me];
+    }
   }
 
   points(): number { return this.score.points; }
@@ -897,7 +1112,7 @@ export class ShooterGame implements MiniGame {
     const c = this.choosing?.[i];
     if (!c) return;
     this.cards[c.id] = this.c(c.id) + 1;
-    if (c.id === 'repair') { this.fHull = Math.min(this.fMax, this.fHull + this.fMax * 0.25); this.hull = 100; }
+    if (c.id === 'repair') { for (const w of this.liveWards) w.hull = Math.min(w.max, w.hull + w.max * 0.25); this.hull = 100; }
     if (c.id === 'shield') this.shield = this.shieldMax;
     this.choosing = null;
     this.pendingSpawn = 1.2;
@@ -905,7 +1120,7 @@ export class ShooterGame implements MiniGame {
   }
 
   private offerCards(): void {
-    const pool = CARDS.filter((c) => this.c(c.id) < c.max && !(c.id === 'repair' && this.fHull > this.fMax * 0.85 && this.hull > 80));
+    const pool = CARDS.filter((c) => this.c(c.id) < c.max && !(c.id === 'repair' && this.liveWards.every((w) => w.hull > w.max * 0.85) && this.hull > 80));
     const pick: Card[] = [];
     while (pick.length < 3 && pool.length) pick.push(pool.splice(Math.floor(this.r() * pool.length), 1)[0]);
     this.choosing = pick;
@@ -1015,13 +1230,30 @@ export class ShooterGame implements MiniGame {
     if (this.choosing) { this.chooseCard(0); return; }
     const near = this.pickups.find((p) => Math.hypot(p.x - this.px, p.y - this.py) < 160);
     let best: Enemy | null = null, bd = 1e9;
+    const tow = this.crates.find((c) => c.tow);
     for (const e of this.enemies) {
       if (e.parent ? false : e.kind === 'boss' && e.shielded) continue;
-      // Bedrohung: Nähe zum Frachter, der Jäger selbst zählt etwas weniger
-      const d = Math.min(Math.hypot(e.x - this.fx1, e.y - this.fy1), Math.hypot(e.x - this.px, e.y - this.py) + 120);
+      // Bedrohung: Nähe zum Schutzziel, der Jäger selbst zählt etwas weniger; Piratenfrachter zuerst, Brutöffnungen vor dem Kern
+      const dp = Math.hypot(e.x - this.px, e.y - this.py);
+      let d = Math.min(this.wardDist(e.x, e.y), dp + 120);
+      // Piratenfrachter zuerst – außer, jemand sitzt dir im Nacken
+      const pressed = this.enemies.some((q) => q.kind !== 'cargo' && !q.parent && Math.hypot(q.x - this.px, q.y - this.py) < 250);
+      if (e.kind === 'cargo' && !pressed) d = dp < 900 ? dp * 0.3 : dp * 0.6;
+      if (e.parent?.nest) d = dp * 0.5;
+      if (e.nest && !e.shielded) d = dp * 0.4;
+      // beim Schleppen nur, was nah ist
+      if (tow && dp > 300) d += 600;
       if (d < bd) { bd = d; best = e; }
     }
     let tx = this.fx1, ty = this.fy1 - 140;
+    if (this.mission === 'nest' || this.mission === 'ueberfall') { tx = this.fX; ty = this.fY + 300; }
+    if (this.mission === 'bergung') {
+      // schleppen: zum Bergungsschiff; sonst zum nächsten Container, wenn nichts in der Nähe angreift
+      const free = this.crates.filter((c) => !c.done && !c.tow).sort((a, b) => Math.hypot(a.x - this.px, a.y - this.py) - Math.hypot(b.x - this.px, b.y - this.py))[0];
+      const calm = !best || Math.hypot(best.x - this.px, best.y - this.py) > 420;
+      if (tow) { tx = this.fx1; ty = this.fy1 - 60; if (calm || Math.hypot(tx - this.px, ty - this.py) < 500) best = null; }
+      else if (free && calm) { tx = free.x; ty = free.y; best = null; }
+    }
     if (near && !best) { tx = near.x; ty = near.y; }
     if (best) {
       const d = Math.hypot(best.x - this.px, best.y - this.py), t = this.wpn.beam ? 0 : d / this.wpn.speed;
@@ -1067,7 +1299,10 @@ export class ShooterGame implements MiniGame {
   private waveBudget(i: number): number {
     const swarm = this.mutator?.id === 'swarm' ? 1.45 : 1;
     // mit einem starken Schiff schicken die Gegner mehr Schiffe
-    return (5 + i * 3 + this.level * 1.6) * swarm * this.foeCount * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
+    // Einsätze: Konvoi mehr (die Gegner teilen sich auf), Nest weniger (es brütet selbst), Bergung und Flucht wachsen langsamer
+    const ms = { geleit: 1, konvoi: 1.45, station: 1.4, flucht: 1.1, bergung: 0.85, nest: 0.4, ueberfall: 0.8 }[this.mission];
+    const ii = this.mission === 'bergung' || this.mission === 'nest' || this.mission === 'ueberfall' ? Math.min(i, 3) * 0.8 : i;
+    return (5 + ii * 3 + this.level * 1.6) * swarm * this.foeCount * ms * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
   }
 
   /**
@@ -1150,10 +1385,15 @@ export class ShooterGame implements MiniGame {
     // Endlos: Karte nach oben verschieben, wenn der Frachter oben ankommt
     if (this.mode === 'endless' && this.fY - LEG < MAP_PAD) this.shiftWorld(LEG * 3);
     // nächster Streckenabschnitt
-    this.fGoal = Math.max(MAP_PAD, this.fY - LEG);
+    if (this.moving) this.fGoal = Math.max(MAP_PAD, this.fY - LEG);
     this.banner = 2.4;
     this.section = this.mode === 'endless' ? this.sectionPlan[this.wave % this.sectionPlan.length] : this.sectionPlan[this.wave] ?? 'none';
+    // im Wrackfeld, am Nest und beim Überfall keine Felsen oder Minen (eigene Hindernisse genug)
+    if (this.mission === 'bergung' || this.mission === 'nest' || this.mission === 'ueberfall') this.section = 'none';
     if (this.mutator?.id === 'mines') this.section = 'mines';
+    // Einsatzbeginn: Nest bzw. Piratenkonvoi erscheinen mit der ersten Welle
+    if (this.wave === 0 && this.mission === 'nest') this.spawnNest();
+    if (this.wave === 0 && this.mission === 'ueberfall') this.spawnConvoy();
     if (this.section === 'rocks') this.spawnRocks();
     if (this.section === 'mines') this.spawnMines();
     const boss = this.isBossWave(this.wave);
@@ -1175,7 +1415,8 @@ export class ShooterGame implements MiniGame {
         for (const [k, size] of jCl.entries()) this.reinforce.push({ t: 1 + Math.floor(k / 3) * 12 + (k % 3) * 0.5, kinds: new Array<EKind>(size).fill('kj'), from: (jFirst + (k % 3) * 2) % 5, swarm: true });
       }
       // starke Schiffe: mehr Gruppen (jede mit eigenen Anflügen), die von mehr Seiten kommen
-      const groups = Math.min(6, (kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1) + Math.max(0, Math.floor(Math.sqrt(this.power)) - 1));
+      // Konvoi und Station: mindestens drei Gruppen aus verschiedenen Richtungen
+      const groups = Math.min(6, Math.max(this.mission === 'konvoi' || this.mission === 'station' ? Math.min(3, kinds.length) : 1, (kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1) + Math.max(0, Math.floor(Math.sqrt(this.power)) - 1)));
       const per = Math.ceil(kinds.length / groups);
       const first = Math.floor(this.r() * 5);
       for (let g = 0; g < groups; g++) {
@@ -1184,7 +1425,8 @@ export class ShooterGame implements MiniGame {
         if (!part.length) continue;
         const from = (first + g * 2) % 5;
         if (g === 0) this.spawnGroup(part, from);
-        else this.reinforce.push({ t: 6 + g * (groups > 3 ? 3.5 : 5) + this.r() * 3, kinds: part, from });
+        // Konvoi: alle Gruppen fast gleichzeitig, jede auf einen anderen Frachter – man kann nicht überall sein
+        else this.reinforce.push({ t: this.mission === 'konvoi' ? 1.5 + g * 1.2 : 6 + g * (groups > 3 ? 3.5 : 5) + this.r() * 3, kinds: part, from });
       }
       // Großziele mitten in der Welle (ab Fregatten-Stärke): eine kleinere Fregatte bzw. ein K-Segment mit Türmen
       const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : this.power >= 3.5 && this.wave >= 1 ? 1 : 0;
@@ -1193,7 +1435,9 @@ export class ShooterGame implements MiniGame {
       // Richtungen, kurz nach der ersten Gruppe – so steigt der Druck, statt dass sie nacheinander eintrudeln
       const swarms = this.swarms(this.wave), sw = swarms.reduce((a, b) => a + b, 0), swT = 3 + this.r() * 2;
       for (const [k, size] of swarms.entries()) this.reinforce.push({ t: swT + k * 0.6, kinds: new Array<EKind>(size).fill(this.smallKind), from: (first + 1 + k * 2) % 5, swarm: true });
-      this.bannerText = this.mode === 'endless' ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${this.nWaves}`;
+      this.bannerText = this.mode === 'endless' || !this.counted ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${this.nWaves}`;
+      if (this.wave === 0 && this.mission === 'ueberfall') this.bannerText = 'PIRATENKONVOI';
+      if (this.wave === 0 && this.mission === 'nest') this.bannerText = this.side === 'khaak' ? 'KHA’AK-NEST' : 'XENON-NEST';
       this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
@@ -1213,6 +1457,16 @@ export class ShooterGame implements MiniGame {
     const dirs = [-Math.PI / 2, -Math.PI * 0.78, -Math.PI * 0.22, Math.PI, 0];
     let a = dirs[from % dirs.length] + (this.r() - 0.5) * 0.4;
     if (this.r() < 0.12) a = Math.PI / 2 + (this.r() - 0.5) * 0.8;
+    // Station und Flucht: aus allen Richtungen gleich oft
+    if (this.mission === 'station' || this.mission === 'flucht') a = (from / 5) * Math.PI * 2 + (this.r() - 0.5) * 0.9;
+    // Nest: Verteidiger kommen aus dem Nest
+    if (this.mission === 'nest') return [this.fX + (this.r() - 0.5) * 420, this.fY + 140 + this.r() * 160];
+    // Überfall: Verstärkung aus dem Sprungtor oder von der Seite des Konvois
+    if (this.mission === 'ueberfall') {
+      if (from % 2 === 0) return [this.gateX + (this.r() - 0.5) * 260, this.gateCy + 90];
+      const side = from % 4 === 1 ? -1 : 1;
+      return [clamp(this.fX + side * (900 + this.r() * 200), 80, this.WW - 80), clamp(this.fY - 300 + (this.r() - 0.5) * 500, 80, this.WH - 80)];
+    }
     const d = 1400 + this.r() * 300;
     return [clamp(this.fX + Math.cos(a) * d, 80, this.WW - 80), clamp(this.fY + Math.sin(a) * d, 80, this.WH - 80)];
   }
@@ -1228,13 +1482,19 @@ export class ShooterGame implements MiniGame {
     // Kha'ak-Schwärme fliegen als geschlossener Cluster
     if (swarm && this.side === 'khaak') { this.spawnCluster(list.length, x0, y0, list[0]); return; }
     const grp = ++this.grpN;
+    // Konvoi: jede Gruppe sucht sich einen Frachter aus
+    const live = this.liveWards;
+    const wd = this.mission === 'konvoi' && live.length ? live[(this.grpN + Math.floor(this.r() * 2)) % live.length] : undefined;
     // Schwarm: lockere Wolke statt Ring, je größer, desto weiter gestreut
     const spread = swarm ? 40 + Math.sqrt(list.length) * 22 : 50;
     for (const [i, kind] of list.entries()) {
       const a = swarm ? this.r() * Math.PI * 2 : (i / list.length) * Math.PI * 2, rr = swarm ? spread * Math.sqrt(this.r()) : spread;
       const e = this.makeEnemy(kind, x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr);
       e.grp = grp;
+      e.wd = wd;
       if (swarm) e.swarm = true;
+      // ohne Schutzziel (Überfall, Nest) geht es gleich auf dich
+      if (!this.wards.length) e.target = 'p';
       e.ang = Math.atan2(this.fY - e.y, this.fX - e.x);
       this.enemies.push(e);
     }
@@ -1253,6 +1513,7 @@ export class ShooterGame implements MiniGame {
     for (const p of lay.ships) {
       const e = this.makeEnemy(kind, x0 + p.x * c - p.y * sn, y0 + p.x * sn + p.y * c);
       e.cl = id; e.grp = id; e.swarm = true;
+      if (!this.wards.length) e.target = 'p';
       e.slotX = p.x; e.slotY = p.y; e.slotFlip = p.flip;
       e.ang = p.flip ? wrapA(tA + Math.PI) : tA;
       this.enemies.push(e);
@@ -1297,8 +1558,9 @@ export class ShooterGame implements MiniGame {
     for (const [id, c] of this.clusters) {
       if (!this.enemies.some((e) => e.cl === id)) { this.clusters.delete(id); continue; }
       const toP = Math.hypot(this.px - c.x, this.py - c.y);
-      const onP = toP < AGGRO * 1.5;
-      const tx = onP ? this.px : this.fx1, ty = onP ? this.py : this.fy1;
+      const cw = this.wardOf({ x: c.x, y: c.y });
+      const onP = toP < AGGRO * 1.5 || !cw;
+      const tx = onP || !cw ? this.px : this.wx(cw), ty = onP || !cw ? this.py : this.wy(cw);
       const d = Math.hypot(tx - c.x, ty - c.y);
       if (d < 380 && this.outcome !== 'player') { this.breakCluster(id); continue; }
       c.ang = turnTo(c.ang, Math.atan2(ty - c.y, tx - c.x), 1.2 * dt);
@@ -1348,7 +1610,7 @@ export class ShooterGame implements MiniGame {
     for (let k = 0; k < 30; k++) {
       x = clamp(this.fX + (this.r() - 0.5) * 1500, 60, this.WW - 60);
       y = clamp(this.fY - LEG * 1.2 + this.r() * LEG * 1.4, 60, this.WH - 60);
-      if (Math.hypot(x - this.fX, y - this.fY) > 200 && Math.hypot(x - this.px, y - this.py) > 140) break;
+      if (Math.hypot(x - this.fX, y - this.fY) > (this.mission === 'station' ? 280 : 200) && Math.hypot(x - this.px, y - this.py) > 140) break;
     }
     return [x, y];
   }
@@ -1372,6 +1634,161 @@ export class ShooterGame implements MiniGame {
     }
   }
 
+  // ---------- Einsätze: Bergung, Nest, Überfall ----------
+
+  /** Wrackfeld mit Containern zwischen den Wracks (Bergung) */
+  private spawnWreckField(): void {
+    const cx = this.fX, cy = 1050;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + this.r() * 0.6, d = 180 + this.r() * 620;
+      this.wrecks.push({ x: clamp(cx + Math.cos(a) * d * 1.3, 140, this.WW - 140), y: clamp(cy + Math.sin(a) * d * 0.75, 160, this.WH - 900), rot: this.r() * Math.PI * 2, size: 90 + this.r() * 90 });
+    }
+    for (let i = 0; i < CRATES; i++) {
+      let x = 0, y = 0;
+      for (let k = 0; k < 20; k++) {
+        x = cx + (this.r() - 0.5) * 1700;
+        y = cy + (this.r() - 0.5) * 900;
+        if (this.wrecks.every((w) => Math.hypot(w.x - x, w.y - y) > w.size * 0.45 + 20) && this.crates.every((c) => Math.hypot(c.x - x, c.y - y) > 120)) break;
+      }
+      this.crates.push({ x, y, vx: (this.r() - 0.5) * 8, vy: (this.r() - 0.5) * 8, rot: this.r() * 6, hp: 60, tow: false, done: false });
+    }
+  }
+
+  /** Container: treiben langsam; der Traktorstrahl koppelt nahe Container an, geschleppt hängen sie am Seil */
+  private updateCrates(dt: number): void {
+    let tow = this.crates.find((c) => c.tow);
+    if (!tow && this.outcome !== 'player') {
+      const near = this.crates.find((c) => !c.done && Math.hypot(c.x - this.px, c.y - this.py) < TOW_GRAB + this.ship.r);
+      if (near) { near.tow = true; tow = near; sfx.pickup(); this.floats.add(this.px, this.py - 30, 'Traktorstrahl: Container angekoppelt', '#9ffff0', 13); }
+    }
+    for (const c of this.crates) {
+      if (c.done) continue;
+      if (c.tow) {
+        // Seil: zieht den Container hinter dem Jäger her, wenn es gespannt ist
+        const dx = this.px - c.x, dy = this.py - c.y, d = Math.hypot(dx, dy) || 1, len = TOW_LEN + this.ship.r;
+        if (d > len) { const k = (d - len) / d; c.x += dx * k; c.y += dy * k; c.vx = this.pvx * 0.9; c.vy = this.pvy * 0.9; }
+        c.vx *= Math.exp(-1.5 * dt); c.vy *= Math.exp(-1.5 * dt);
+      }
+      c.x = clamp(c.x + c.vx * dt, 20, this.WW - 20);
+      c.y = clamp(c.y + c.vy * dt, 20, this.WH - 20);
+      c.rot += dt * (c.tow ? 1.2 : 0.2);
+      // abgeliefert: Container in der Abladezone (oder der Jäger fliegt dicht ans Schiff und übergibt ihn)
+      const w = this.wards[0];
+      if (c.tow && w && !w.dead && (Math.hypot(this.wx(w) - c.x, this.wy(w) - c.y) < TOW_DROP || Math.hypot(this.wx(w) - this.px, this.wy(w) - this.py) < 80)) {
+        c.tow = false; c.done = true; this.crateDone++;
+        this.gain(400, c.x, c.y, 'Container geborgen');
+        this.floats.add(this.wx(w), this.wy(w) - 70, `Container geborgen (${this.crateDone}/${CRATES})`, '#6be38f', 15);
+        this.fx.add({ x: c.x, y: c.y, color: '#6be38f', size: 8, kind: 'ring', max: 0.5 });
+        sfx.chime();
+      }
+    }
+  }
+
+  private hitCrate(c: Crate, dmg: number): void {
+    c.hp -= dmg;
+    this.fx.burst(c.x, c.y, '#ffd27a', 3, 100, 1.2, 'spark', 0.2);
+    if (c.hp > 0) return;
+    c.done = true; c.tow = false; this.crateLost++;
+    this.explode(c.x, c.y, '#ffb547', 0.9);
+    this.floats.add(c.x, c.y - 20, 'Container verloren', '#ff9aa4', 14);
+  }
+
+  /** Langsamer, solange ein Container am Seil hängt */
+  private get towing(): boolean { return this.mission === 'bergung' && this.crates.some((c) => c.tow); }
+
+  /** Nest: großer Kern, rundum Brutöffnungen (spucken Drohnen) und zwei Strahltürme; Kern geschützt, solange die Teile stehen */
+  private spawnNest(): void {
+    const core = this.makeEnemy('boss', this.fX, this.fY);
+    const st = enemyStats('boss', this.level, { extra: 2.4, tune: this.tune });
+    core.hp = core.max = st.hp;
+    core.sh = core.shMax = st.sh;
+    core.r = 64;
+    core.nest = true;
+    core.ang = Math.PI / 2;
+    core.target = 'p';
+    this.enemies.push(core);
+    const parts: [number, number, 'brut' | 'laser'][] = [];
+    for (let k = 0; k < NEST_OPEN; k++) { const a = -Math.PI / 2 + (k / NEST_OPEN) * Math.PI * 2; parts.push([Math.cos(a) * 96, Math.sin(a) * 96, 'brut']); }
+    for (const a of [Math.PI * 0.3, Math.PI * 0.7]) parts.push([Math.cos(a) * 56, Math.sin(a) * 56, 'laser']);
+    for (const [ox, oy, weapon] of parts) {
+      const t = this.makeEnemy('turret', core.x + ox, core.y + oy);
+      t.parent = core; t.ox = ox; t.oy = oy; t.weapon = weapon;
+      if (weapon === 'brut') { const b = enemyStats('turret', this.level, { extra: 2.2, tune: this.tune }); t.hp = t.max = b.hp; t.sh = t.shMax = b.sh; t.r = 16; }
+      t.cd = weapon === 'brut' ? 2 + this.r() * 4 : 2 + this.r() * 2;
+      this.enemies.push(t);
+    }
+    this.bossT = 0;
+  }
+
+  /** Nest-Kern: steht still und dreht sich; ohne Brutöffnungen feuert er Ringe */
+  private updateNest(e: Enemy, dt: number): void {
+    e.vx = 0; e.vy = 0;
+    e.ang = wrapA(e.ang + dt * 0.05);
+    e.cd -= dt;
+    if (e.shielded || e.cd > 0 || Math.hypot(this.px - e.x, this.py - e.y) > 520) return;
+    e.cd = this.level >= 4 ? 2.4 : 3;
+    const o = this.r() * Math.PI;
+    if (this.side === 'khaak') for (let q = 0; q < 8; q++) this.fireKyon(e, o + (q / 8) * Math.PI * 2, 9, KYON_LEN + 60);
+    else for (let q = 0; q < 12; q++) this.enemyShot(e, o + (q / 12) * Math.PI * 2, 230, 8, '#ff3b4a', 2.5, 2.4);
+  }
+
+  /** Brutöffnung des Nests: alle paar Sekunden zwei Drohnen, solange nicht schon viele unterwegs sind */
+  private nestBrood(e: Enemy): void {
+    const small = this.smallKind;
+    if (this.enemies.filter((q) => q.kind === small).length >= 4 + this.level * 2 || this.enemies.length > 56) return;
+    const p = e.parent!, a0 = Math.atan2(e.y - p.y, e.x - p.x);
+    for (let q = 0; q < 2; q++) {
+      const j = this.makeEnemy(small, e.x + Math.cos(a0) * 16, e.y + Math.sin(a0) * 16);
+      const a = a0 + (q - 0.5) * 0.8;
+      j.ang = a; j.vx = Math.cos(a) * 200; j.vy = Math.sin(a) * 200; j.target = 'p';
+      this.enemies.push(j);
+    }
+    this.fx.add({ x: e.x, y: e.y, color: this.side === 'khaak' ? '#c77dff' : '#ff5c6c', size: 4, kind: 'ring', max: 0.5 });
+  }
+
+  /** Piratenkonvoi: drei Frachter in lockerer Reihe, dazu Begleitjäger */
+  private spawnConvoy(): void {
+    for (let k = 0; k < CARGO_N; k++) {
+      const e = this.makeEnemy('cargo', this.fX + (k - 1) * 190, this.fY + Math.abs(k - 1) * 90);
+      e.ang = -Math.PI / 2;
+      e.target = 'p';
+      e.orbit = (k - 1) * 120;
+      this.enemies.push(e);
+    }
+    this.cargoTotal = CARGO_N;
+    this.spawnGroup(['jaeger', 'jaeger', 'jaeger', 'jaeger', 'schild', ...(this.level >= 3 ? ['kanone'] as EKind[] : [])], 0);
+    // Begleitschutz direkt am Konvoi statt weit draußen
+    for (const e of this.enemies) if (e.grp === this.grpN) { e.x = this.fX + (this.r() - 0.5) * 300; e.y = this.fY - 120 + this.r() * 80; }
+  }
+
+  /** Piratenfrachter: fliegt zum Tor (leicht versetzt), zwei schwache Abwehrtürme; am Tor entkommt er */
+  private updateCargo(e: Enemy, dt: number): void {
+    const gx = this.gateX + e.orbit * Math.min(1, Math.max(0, (e.y - this.gateCy) / 900)), gy = this.gateCy;
+    const a = Math.atan2(gy - e.y, gx - e.x);
+    e.ang = wrapA(turnTo(e.ang, a, TURN.cargo * dt));
+    const sp = SPEC.cargo.speed * (1 + 0.08 * (this.level - 1));
+    e.vx = Math.cos(e.ang) * sp; e.vy = Math.sin(e.ang) * sp;
+    e.x += e.vx * dt; e.y += e.vy * dt;
+    if (Math.hypot(gx - e.x, gy - e.y) < 50) {
+      this.enemies = this.enemies.filter((q) => q !== e);
+      this.cargoEscaped++;
+      this.fx.add({ x: e.x, y: e.y, color: '#9fe6ff', size: 10, kind: 'ring', max: 0.6 });
+      this.floats.add(e.x, e.y - 40, 'Piratenfrachter entkommen', '#ff9aa4', 15);
+      sfx.alarm();
+      return;
+    }
+    e.cd -= dt;
+    if (e.cd <= 0 && Math.hypot(this.px - e.x, this.py - e.y) < 280) {
+      e.cd = 1.3 + this.r() * 0.4;
+      for (const oy of [-26, 30]) {
+        const c = Math.cos(e.ang + Math.PI / 2), sn = Math.sin(e.ang + Math.PI / 2);
+        const sx = e.x - oy * sn, sy = e.y + oy * c;
+        const aa = Math.atan2(this.py + this.pvy * 0.3 - sy, this.px + this.pvx * 0.3 - sx);
+        this.bullets.push({ x: sx, y: sy, vx: Math.cos(aa) * 300, vy: Math.sin(aa) * 300, dmg: 4.5 * this.enemyDmg, from: 'e', life: 1, color: '#ffd27a', w: 1.6, pierce: 0 });
+      }
+    }
+  }
+
   // ---------- Ablauf ----------
 
   update(dt: number): void {
@@ -1390,12 +1807,13 @@ export class ShooterGame implements MiniGame {
     if (this.choosing) return;
     this.time += dt;
     this.score.update(dt);
-    this.fFlash = Math.max(0, this.fFlash - dt);
     this.shieldHit = Math.max(0, this.shieldHit - dt);
     if (this.wave < 0 && this.time > 0.8) this.spawnWave();
     this.waveT += dt;
     if (this.bossT >= 0) this.bossT += dt;
-    this.updateFreighter(dt);
+    this.updateWards(dt);
+    this.updateMission(dt);
+    if (this.outcome) return;
     // höchstens rund 60 Gegner zugleich – weitere Gruppen warten, bis Platz ist
     const due = this.enemies.length < 60 ? this.reinforce.find((g) => this.waveT >= g.t) : undefined;
     if (this.pendingSpawn >= 0) {
@@ -1407,30 +1825,22 @@ export class ShooterGame implements MiniGame {
       this.reinforce = this.reinforce.filter((g) => g !== due);
       this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? 'Piratenfregatte im Anflug!' : this.side === 'xenon' ? 'K-Segment im Anflug!' : 'Brutschiff im Anflug!') : due.swarm ? (this.side === 'khaak' ? `Cluster im Anflug! (${due.kinds.length})` : `Schwarm im Anflug! (${due.kinds.length})`) : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
       sfx.alarm();
-    } else if (this.wave >= 0 && this.enemies.length === 0 && !this.reinforce.length) {
+    } else if (this.wave >= 0 && this.waveCleared && !this.reinforce.length) {
       // Welle besiegt
       if (this.wave + 1 >= this.totalWaves) {
-        this.gateT = 0;
-        this.gateX = this.fx1;
-        this.gateY = this.fY - 330;
-        this.outcome = 'win';
-        this.endT = 0;
-        this.score.add(1000, 'Sprungtor erreicht');
-        this.score.add(Math.round((this.fHull / this.fMax) * 2000), 'Frachter-Hülle');
-        setGoal(this.goals, 'hull80', this.fHull / this.fMax > 0.8);
-        sfx.success();
+        this.winRound();
         return;
       }
       if (this.mode === 'endless') {
         this.score.add(300 * (this.wave + 1), 'Wellen überstanden');
-        this.fHull = Math.min(this.fMax, this.fHull + this.fMax * 0.1);
+        for (const w of this.liveWards) w.hull = Math.min(w.max, w.hull + w.max * 0.1);
         setGoal(this.goals, 'wave6', this.wave + 2 >= 6 || this.goals.find((g) => g.id === 'wave6')?.done === true);
         setGoal(this.goals, 'wave10', this.wave + 2 >= 10 || this.goals.find((g) => g.id === 'wave10')?.done === true);
       }
       this.section = 'none';
       this.offerCards();
       return;
-    } else if (this.wave >= 0 && this.waveT > (this.isBossWave(this.wave + 1) ? 100 : 75) && !this.isBossWave(this.wave) && this.wave + 1 < this.totalWaves) {
+    } else if (this.wave >= 0 && this.waveT > (!this.counted ? 35 : this.isBossWave(this.wave + 1) ? 100 : 75) && !this.isBossWave(this.wave) && this.wave + 1 < this.totalWaves) {
       // zu langsam: nächste Welle kommt trotzdem (ohne Verbesserung)
       this.spawnWave();
     }
@@ -1447,10 +1857,10 @@ export class ShooterGame implements MiniGame {
     setGoal(this.goals, 'loot3', this.loot >= 3);
     setGoal(this.goals, 'boss2', this.bossKills >= 2);
     setGoal(this.goals, 'nomissile', this.missilesUsed === 0);
-    if (this.fHull <= 0 && !this.outcome) {
+    // alle Schutzziele verloren
+    if (this.wards.length && !this.liveWards.length && !this.outcome) {
       this.outcome = 'freighter';
       this.endT = 0;
-      this.explode(this.fx1, this.fy1, '#5ff0d8', 2.4);
     }
     if (this.hull <= 0 && !this.outcome) {
       this.outcome = 'player';
@@ -1459,32 +1869,153 @@ export class ShooterGame implements MiniGame {
     }
   }
 
-  /** Frachter fliegt bis zum Ende des Abschnitts und wartet dort; seine zwei Abwehrtürme zielen frei */
-  private updateFreighter(dt: number): void {
+  /**
+   * Schutzziele: Frachter fliegen (Geleit, Konvoi) bis zum Ende des Abschnitts und warten dort; ihre Abwehrtürme zielen
+   * frei – Raketen zuerst. Die Station hat sechs stärkere Türme mit eigener Hülle.
+   */
+  private updateWards(dt: number): void {
     const prev = this.fY;
-    if (this.wave >= 0) this.fY = Math.max(this.fGoal, this.fY - F_SPEED * dt);
+    if (this.wave >= 0 && this.moving) this.fY = Math.max(this.fGoal, this.fY - F_SPEED * dt);
     this.fVy = (this.fY - prev) / Math.max(dt, 1e-6);
-    const fx = this.fx1, fy = this.fy1;
-    for (const t of this.fTur) {
-      t.cd -= dt;
-      const tx0 = fx, ty0 = fy + t.oy;
-      // Raketen zuerst, sonst der nächste Gegner in Reichweite
-      let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = 240;
-      for (const m of this.eMissiles) { const d = Math.hypot(m.x - tx0, m.y - ty0); if (d < bd) { bd = d; tgt = m; } }
-      if (!tgt) {
-        bd = 210;
-        for (const e of this.enemies) {
-          if (e.kind === 'boss' && e.shielded) continue;
-          const d = Math.hypot(e.x - tx0, e.y - ty0);
-          if (d < bd) { bd = d; tgt = e; }
+    for (const w of this.wards) {
+      w.flash = Math.max(0, w.flash - dt);
+      if (w.dead) continue;
+      const st = w.kind === 'station';
+      const range = st ? 270 : 240, cd = st ? 0.8 : 0.9, dmg = st ? 3.2 : 3, x0 = this.wx(w), y0 = this.wy(w);
+      for (const t of w.tur) {
+        if (t.hp <= 0) continue;
+        t.cd -= dt;
+        const tx0 = x0 + t.ox, ty0 = y0 + t.oy;
+        let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = range;
+        for (const m of this.eMissiles) { const d = Math.hypot(m.x - tx0, m.y - ty0); if (d < bd) { bd = d; tgt = m; } }
+        if (!tgt) {
+          bd = range - 30;
+          for (const e of this.enemies) {
+            if (e.kind === 'boss' && e.shielded) continue;
+            const d = Math.hypot(e.x - tx0, e.y - ty0);
+            if (d < bd) { bd = d; tgt = e; }
+          }
+        }
+        if (!tgt) continue;
+        const lt = bd / 520;
+        t.a = Math.atan2(tgt.y + tgt.vy * lt - ty0, tgt.x + tgt.vx * lt - tx0);
+        if (t.cd <= 0) {
+          t.cd = cd;
+          this.bullets.push({ x: tx0 + Math.cos(t.a) * 8, y: ty0 + Math.sin(t.a) * 8, vx: Math.cos(t.a) * 520, vy: Math.sin(t.a) * 520, dmg, from: 'p', life: range / 520, color: st ? '#ffb070' : '#9fe6ff', w: st ? 2 : 1.4, pierce: 0 });
         }
       }
-      if (!tgt) continue;
-      const lt = bd / 520;
-      t.a = Math.atan2(tgt.y + tgt.vy * lt - ty0, tgt.x + tgt.vx * lt - tx0);
-      if (t.cd <= 0) {
-        t.cd = 0.9;
-        this.bullets.push({ x: tx0 + Math.cos(t.a) * 8, y: ty0 + Math.sin(t.a) * 8, vx: Math.cos(t.a) * 520, vy: Math.sin(t.a) * 520, dmg: 3, from: 'p', life: 0.5, color: '#9fe6ff', w: 1.4, pierce: 0 });
+    }
+  }
+
+  /** Treffer am Schutzziel; bei der Station trifft es zuerst einen Turm in der Nähe. Ohne Hülle: zerstört */
+  private hitWard(w: Ward, dmg: number, x: number, y: number): void {
+    if (w.dead) return;
+    if (w.kind === 'station') {
+      const x0 = this.wx(w), y0 = this.wy(w);
+      const t = w.tur.find((q) => q.hp > 0 && Math.hypot(x0 + q.ox - x, y0 + q.oy - y) < 24);
+      if (t) {
+        t.hp = Math.max(0, t.hp - dmg);
+        if (t.hp <= 0) { this.explode(x0 + t.ox, y0 + t.oy, '#ffb070', 1); this.floats.add(x0 + t.ox, y0 + t.oy - 20, 'Stationsturm zerstört', '#ff9aa4', 13); }
+        dmg *= 0.3;
+      }
+    }
+    w.hull = Math.max(0, w.hull - dmg);
+    w.flash = 0.12;
+    this.fx.burst(x, y, '#ffb070', 4, 120, 1.2, 'spark', 0.25);
+    if (w.hull <= 0) {
+      w.dead = true;
+      this.explode(this.wx(w), this.wy(w), '#5ff0d8', w.kind === 'station' ? 4 : 2.4);
+      if (this.wards.length > 1) { this.floats.add(this.wx(w), this.wy(w) - 60, `Frachter ${w.name} verloren`, '#ff9aa4', 15); sfx.alarm(); }
+    }
+  }
+
+  /** Welle besiegt? (Nest und Piratenfrachter zählen nicht mit – sie bleiben) */
+  private get waveCleared(): boolean {
+    return this.enemies.every((e) => e.nest || e.parent?.nest || e.kind === 'cargo');
+  }
+
+  /** Runde gewonnen: Punkte und Abschluss je Einsatz */
+  private winRound(): void {
+    this.outcome = 'win';
+    this.endT = 0;
+    const live = this.liveWards;
+    const f = (w?: Ward) => (w ? w.hull / w.max : 0);
+    if (this.moving || this.mission === 'flucht') {
+      // Sprungtor öffnet sich vor dem Frachter (Konvoi: vor der Mitte)
+      this.gateT = 0;
+      this.gateX = this.mission === 'konvoi' ? this.fX : this.fx1;
+      this.gateY = this.fY - 330;
+    }
+    switch (this.mission) {
+      case 'konvoi':
+        for (const w of live) { this.score.add(1500, 'Frachter am Tor'); this.score.add(Math.round(f(w) * 1000), 'Frachter-Hülle'); }
+        setGoal(this.goals, 'all3', live.length === 3);
+        setGoal(this.goals, 'kv60', live.length > 0 && live.every((w) => f(w) > 0.6));
+        break;
+      case 'station': {
+        const w = this.wards[0], intact = w.tur.filter((t) => t.hp > 0).length;
+        this.score.add(1000, 'Alle Wellen abgewehrt');
+        this.score.add(Math.round(f(w) * 2000), 'Stations-Hülle');
+        this.score.add(300 * intact, 'Stationstürme');
+        setGoal(this.goals, 'turrets', intact === 6);
+        setGoal(this.goals, 'st80', f(w) > 0.8);
+        break;
+      }
+      case 'flucht':
+        this.score.add(1000, 'Gesprungen');
+        this.score.add(Math.round(f(this.wards[0]) * 2000), 'Frachter-Hülle');
+        setGoal(this.goals, 'fl50', f(this.wards[0]) > 0.5);
+        break;
+      case 'bergung':
+        this.score.add(Math.round(f(this.wards[0]) * 1000), 'Bergungsschiff');
+        setGoal(this.goals, 'crate8', this.crateDone === CRATES);
+        setGoal(this.goals, 'nolost', this.crateLost === 0);
+        break;
+      case 'ueberfall':
+        if (this.cargoKilled === CARGO_N) this.score.add(1000, 'Ganzer Konvoi');
+        setGoal(this.goals, 'cargo3', this.cargoKilled === CARGO_N);
+        break;
+      case 'nest':
+        this.score.add(Math.max(0, Math.round(2000 - this.time * 6.67)), 'Tempo');
+        setGoal(this.goals, 'nest150', this.time < 150);
+        break;
+      default:
+        this.score.add(1000, 'Sprungtor erreicht');
+        this.score.add(Math.round(f(this.wards[0]) * 2000), 'Frachter-Hülle');
+        setGoal(this.goals, 'hull80', f(this.wards[0]) > 0.8);
+    }
+    sfx.success();
+  }
+
+  /** Ziele der Einsätze, die nicht an Wellen hängen: Sprungantrieb, Container, Piratenkonvoi */
+  private updateMission(dt: number): void {
+    if (this.wave < 0) return;
+    if (this.mission === 'flucht') {
+      this.charge = Math.min(1, this.charge + dt / this.fluchtT);
+      // gegen Ende ein Großkampfschiff, das den Sprung verhindern soll
+      if (this.charge >= 0.62 && !this.fluchtBoss) {
+        this.fluchtBoss = true;
+        this.reinforce.push({ t: this.waveT, kinds: ['boss'], from: Math.floor(this.r() * 5) });
+      }
+      if (this.charge >= 1 && this.liveWards.length) { this.winRound(); return; }
+    }
+    if (this.mission === 'bergung') {
+      this.updateCrates(dt);
+      const open = this.crates.filter((c) => !c.done).length;
+      if (!open || CRATES - this.crateLost < CRATES_MIN) {
+        if (this.crateDone >= CRATES_MIN) this.winRound();
+        else { this.outcome = 'fail'; this.endT = 0; }
+        return;
+      }
+    }
+    if (this.mission === 'ueberfall') {
+      this.gateT += dt;
+      // Konvoi-Mitte folgt den Frachtern (für Anflugrichtungen und Kamera am Ende)
+      const cg = this.enemies.filter((e) => e.kind === 'cargo');
+      if (cg.length) { this.fX = cg.reduce((a, e) => a + e.x, 0) / cg.length; this.fY = cg.reduce((a, e) => a + e.y, 0) / cg.length; }
+      if (this.cargoKilled + this.cargoEscaped >= this.cargoTotal && this.cargoTotal) {
+        if (this.cargoKilled > 0) this.winRound();
+        else { this.outcome = 'fail'; this.endT = 0; }
       }
     }
   }
@@ -1873,7 +2404,8 @@ export class ShooterGame implements MiniGame {
     for (const e of this.enemies) {
       e.shT += dt;
       e.shFlash = Math.max(0, e.shFlash - dt);
-      if (e.shT > 3 && e.sh < e.shMax) e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.25 * dt);
+      // Piratenfrachter haben keinen Schildgenerator, der nachlädt
+      if (e.shT > 3 && e.sh < e.shMax && e.kind !== 'cargo') e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.25 * dt);
     }
     const fx = this.fx1, fy = this.fy1;
     // Schildträger schützen Verbündete in der Nähe
@@ -1905,8 +2437,14 @@ export class ShooterGame implements MiniGame {
         e.x = p.x + e.ox! * c - e.oy! * sn;
         e.y = p.y + e.ox! * sn + e.oy! * c;
         e.vx = p.vx; e.vy = p.vy;
-        if (e.weapon === 'laser') { this.updateLaser(e, dt, fx, fy); continue; }
+        const pw = this.wardOf(p);
+        const pfx = pw ? this.wx(pw) : this.px, pfy = pw ? this.wy(pw) : this.py;
+        if (e.weapon === 'laser') { this.updateLaser(e, dt, pfx, pfy); continue; }
         e.cd -= dt;
+        if (e.weapon === 'brut' && p.nest) {
+          if (e.cd <= 0) { e.cd = Math.max(6, 10 - this.level * 0.6) + this.r() * 3; this.nestBrood(e); }
+          continue;
+        }
         if (e.weapon === 'brut') {
           // Brutkasten des Brutschiffs: entlässt alle paar Sekunden zwei Kha'ak-Jäger (solange nur wenige unterwegs sind, höchstens dreimal)
           if (e.cd <= 0) {
@@ -1925,7 +2463,7 @@ export class ShooterGame implements MiniGame {
           }
           continue;
         }
-        const tx = this.r() < 0.5 ? this.px : fx, ty = tx === this.px ? this.py : fy;
+        const tx = this.r() < 0.5 || !pw ? this.px : pfx, ty = tx === this.px ? this.py : pfy;
         if (e.weapon === 'plasma') {
           if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < 380) {
             e.cd = (this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8;
@@ -1993,15 +2531,22 @@ export class ShooterGame implements MiniGame {
           }
         }
       }
+      // Piratenfrachter (Überfall) fliegen stur zum Tor
+      if (e.kind === 'cargo') { this.updateCargo(e, dt); continue; }
+      // Nest: steht still; ohne Brutöffnungen feuert der Kern Ringe
+      if (e.nest) { this.updateNest(e, dt); continue; }
       // Abfangen: wer dem Jäger nahe kommt, kämpft mit ihm; Raketen- und Kanonenboote bleiben stur am Frachter
       const toP = Math.hypot(this.px - e.x, this.py - e.y);
-      if (e.kind !== 'kanone' && e.kind !== 'rakete' && e.kind !== 'boss') {
-        if (e.target === 'f' && toP < AGGRO && this.outcome !== 'player') e.target = 'p';
+      const ew = this.wardOf(e);
+      if (!ew) e.target = 'p';
+      else if (e.kind !== 'kanone' && e.kind !== 'rakete' && e.kind !== 'boss') {
+        // Konvoi: die Angreifer bleiben stur an ihrem Frachter, nur ganz nah lassen sie sich ablenken
+        if (e.target === 'f' && toP < (this.mission === 'konvoi' || this.mission === 'station' ? AGGRO * 0.55 : AGGRO) && this.outcome !== 'player') e.target = 'p';
         else if (e.target === 'p' && toP > AGGRO * 2.2) e.target = 'f';
-      }
-      const onP = e.target === 'p';
-      const tx = onP ? this.px : fx, ty = onP ? this.py : fy;
-      const tvx = onP ? this.pvx : 0, tvy = onP ? this.pvy : this.fVy;
+      } else e.target = 'f';
+      const onP = e.target === 'p' || !ew;
+      const tx = onP || !ew ? this.px : this.wx(ew), ty = onP || !ew ? this.py : this.wy(ew);
+      const tvx = onP ? this.pvx : 0, tvy = onP ? this.pvy : this.moving ? this.fVy : 0;
       const dx = tx - e.x, dy = ty - e.y, d = Math.hypot(dx, dy) || 1;
       // Vorhaltepunkt für die eigenen Bordkanonen
       const lt = d / (SHOT_V[e.kind] ?? 300);
@@ -2089,7 +2634,7 @@ export class ShooterGame implements MiniGame {
         const a = e.ang + (this.r() - 0.5) * (fighter ? 0.14 : 0.06);
         if (e.kind === 'jaeger') { e.cd = 0.4; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 300, 6, '#ffb070'); }
         else if (e.kind === 'kanone') { e.cd = 2.4; for (let q = 0; q < 3; q++) this.enemyShot(e, a + (q - 1) * 0.08, 240, 8, '#ffd27a'); }
-        else if (e.kind === 'rakete') { e.cd = 4; this.eMissiles.push({ x: e.x, y: e.y, vx: Math.cos(e.ang) * 90, vy: Math.sin(e.ang) * 90, hp: 6, life: 7, target: e.target }); }
+        else if (e.kind === 'rakete') { e.cd = 4; this.eMissiles.push({ x: e.x, y: e.y, vx: Math.cos(e.ang) * 90, vy: Math.sin(e.ang) * 90, hp: 6, life: 7, target: e.target, wd: e.wd }); }
         else if (e.kind === 'n') { e.cd = 0.32; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 340, 4, '#ff5c6c'); }
         else if (e.kind === 'm') { e.cd = 1.8; this.enemyShot(e, a, 430, 11, '#ff3b4a', 3); }
         else if (e.kind === 'ks') { e.cd = 0.36; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 360, 3.5, '#d9a6ff'); }
@@ -2114,7 +2659,8 @@ export class ShooterGame implements MiniGame {
     }
     // gegnerische Raketen
     for (const m of this.eMissiles) {
-      const tx = m.target === 'f' ? fx : this.px, ty = m.target === 'f' ? fy : this.py;
+      const mw = m.target === 'f' ? this.wardOf(m) : null;
+      const tx = mw ? this.wx(mw) : this.px, ty = mw ? this.wy(mw) : this.py;
       const dx = tx - m.x, dy = ty - m.y, d = Math.hypot(dx, dy) || 1;
       m.vx += (dx / d) * 220 * dt;
       m.vy += (dy / d) * 220 * dt;
@@ -2124,7 +2670,8 @@ export class ShooterGame implements MiniGame {
       m.y += m.vy * dt;
       m.life -= dt;
       if (Math.random() < 0.6) this.fx.add({ x: m.x, y: m.y, color: '#ff8a5c', size: 1.2, max: 0.3 });
-      if (m.target === 'f' && Math.abs(m.x - fx) < 22 && Math.abs(m.y - fy) < 48) { this.hitFreighter(18 * this.enemyDmg * this.fScale, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
+      const hw = this.wardAt(m.x, m.y, 2);
+      if (hw) { this.hitWard(hw, 18 * this.enemyDmg * this.fScale, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
       else if (Math.hypot(this.px - m.x, this.py - m.y) < this.ship.r + 2) { this.damagePlayer(18 * this.enemyDmg); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
     }
     this.eMissiles = this.eMissiles.filter((m) => m.life > 0 && m.hp > 0);
@@ -2146,11 +2693,11 @@ export class ShooterGame implements MiniGame {
       this.damagePlayer(dmg * this.enemyDmg, KYON_SHIELD);
       end = Math.min(end, (this.px - x0) * cx + (this.py - y0) * cy);
     }
-    let onF = false;
-    for (let k = -40; k <= 40 && !onF; k += 10) onF = dist(this.fx1, this.fy1 + k) < 16;
-    if (onF) {
-      this.hitFreighter(dmg * this.enemyDmg * this.fScale, this.fx1, this.fy1);
-      end = Math.min(end, Math.max(0, (this.fx1 - x0) * cx + (this.fy1 - y0) * cy));
+    for (const w of this.wards) {
+      if (w.dead || !this.beamOnWard(w, dist)) continue;
+      const wx = this.wx(w), wy = this.wy(w), t = Math.max(0, (wx - x0) * cx + (wy - y0) * cy);
+      this.hitWard(w, dmg * this.enemyDmg * this.fScale, x0 + cx * t, y0 + cy * t);
+      end = Math.min(end, t);
     }
     this.rails.push({ x1: x0, y1: y0, x2: x0 + cx * end, y2: y0 + cy * end, t: 0.22, color: '#b45cff' });
     const sx = (e.x - this.camX) * this.zoom, sy = (e.y - this.camY) * this.zoom;
@@ -2190,18 +2737,17 @@ export class ShooterGame implements MiniGame {
           return Math.hypot(e.x + cx * t - x, e.y + cy * t - y);
         };
         if (dist(this.px, this.py) < this.ship.r - 3) this.damagePlayer(LASER_DPS * this.enemyDmg * dt);
-        // Frachter: entlang seiner Längsachse prüfen; Schaden gesammelt, damit nicht jedes Bild Funken sprühen
-        let onF = false;
-        for (let k = -40; k <= 40 && !onF; k += 10) onF = dist(fx, fy + k) < 16;
-        if (onF) {
+        // Schutzziele: Frachter entlang der Längsachse prüfen; Schaden gesammelt, damit nicht jedes Bild Funken sprühen
+        const hw = this.wards.find((w) => !w.dead && this.beamOnWard(w, dist));
+        if (hw) {
           e.beamAcc = (e.beamAcc ?? 0) + LASER_DPS * this.enemyDmg * dt;
-          if (e.beamAcc > 4) { this.hitFreighter(e.beamAcc * this.fScale, fx, fy); e.beamAcc = 0; }
+          if (e.beamAcc > 4) { const t = clamp((this.wx(hw) - e.x) * cx + (this.wy(hw) - e.y) * cy, 0, LASER_LEN); this.hitWard(hw, e.beamAcc * this.fScale, e.x + cx * t, e.y + cy * t); e.beamAcc = 0; }
         }
       }
       return;
     }
     e.cd -= dt;
-    const toP = this.r() < 0.55;
+    const toP = this.r() < 0.55 || !this.liveWards.length;
     const tx = toP ? this.px : fx, ty = toP ? this.py : fy;
     if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < LASER_LEN - 20) {
       // Kha'ak-Kyon-Türme laden etwas länger nach (das Brutschiff bringt dafür Jäger mit)
@@ -2212,18 +2758,11 @@ export class ShooterGame implements MiniGame {
     }
   }
 
-  private hitFreighter(dmg: number, x: number, y: number): void {
-    this.fHull = Math.max(0, this.fHull - dmg);
-    this.fFlash = 0.12;
-    this.fx.burst(x, y, '#ffb070', 4, 120, 1.2, 'spark', 0.25);
-  }
-
   private rockAt(x: number, y: number): Rock | undefined {
     return this.rocks.find((k) => Math.hypot(k.x - x, k.y - y) < k.r);
   }
 
   private updateShots(dt: number): void {
-    const fx = this.fx1, fy = this.fy1;
     const keep: Bullet[] = [];
     for (const b of this.bullets) {
       b.x += b.vx * dt;
@@ -2257,7 +2796,11 @@ export class ShooterGame implements MiniGame {
         }
       } else {
         if (Math.hypot(this.px - b.x, this.py - b.y) < this.ship.r) { this.damagePlayer(b.dmg); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
-        if (Math.abs(b.x - fx) < 20 && Math.abs(b.y - fy) < 46) { this.hitFreighter(b.dmg * this.fScale, b.x, b.y); continue; }
+        const hw = this.wardAt(b.x, b.y);
+        if (hw) { this.hitWard(hw, b.dmg * this.fScale, b.x, b.y); continue; }
+        // geschleppte und treibende Container (Bergung) gehen zu Bruch
+        const cr = this.crates.length ? this.crates.find((c) => !c.done && Math.hypot(c.x - b.x, c.y - b.y) < 11) : undefined;
+        if (cr) { this.hitCrate(cr, b.dmg); continue; }
       }
       keep.push(b);
     }
@@ -2327,12 +2870,11 @@ export class ShooterGame implements MiniGame {
       else k.r = 0;
     }
     this.rocks = this.rocks.filter((k) => k.r > 0);
-    const fx = this.fx1, fy = this.fy1;
     for (const m of this.mines) {
       m.x += m.vx * dt;
       m.y += m.vy * dt;
       if (m.armed < 0) {
-        const near = Math.hypot(this.px - m.x, this.py - m.y) < 44 || Math.hypot(fx - m.x, fy - m.y) < 60 || this.enemies.some((e) => Math.hypot(e.x - m.x, e.y - m.y) < 40);
+        const near = Math.hypot(this.px - m.x, this.py - m.y) < 44 || !!this.wardAt(m.x, m.y, 14) || this.enemies.some((e) => Math.hypot(e.x - m.x, e.y - m.y) < 40);
         if (near) { m.armed = 0.7; sfx.warn(); }
       } else {
         m.armed -= dt;
@@ -2349,7 +2891,7 @@ export class ShooterGame implements MiniGame {
     this.explode(m.x, m.y, '#ffb547', 1.2);
     this.fx.add({ x: m.x, y: m.y, color: '#ffd27a', size: 20, kind: 'ring', max: 0.4 });
     if (Math.hypot(this.px - m.x, this.py - m.y) < 70 && this.dashT <= 0) this.damagePlayer(25);
-    if (Math.hypot(this.fx1 - m.x, this.fy1 - m.y) < 80) this.hitFreighter(30, m.x, m.y);
+    for (const w of this.wards) if (!w.dead && this.wardHit(w, m.x, m.y, 40)) this.hitWard(w, 30, m.x, m.y);
     for (const e of [...this.enemies]) if (Math.hypot(e.x - m.x, e.y - m.y) < 70) this.damageEnemy(e, 60);
     this.gain(20, m.x, m.y, 'Minen gesprengt');
   }
@@ -2362,7 +2904,15 @@ export class ShooterGame implements MiniGame {
       if (d < 22) {
         p.life = 0;
         this.loot++;
-        if (p.kind === 'repair') { this.fHull = Math.min(this.fMax, this.fHull + this.fMax * 0.08); this.hull = Math.min(100, this.hull + 20); this.floats.add(this.px, this.py - 20, 'Reparatur', '#6be38f', 13); }
+        if (p.kind === 'repair') {
+          for (const w of this.liveWards) w.hull = Math.min(w.max, w.hull + w.max * 0.08);
+          this.hull = Math.min(100, this.hull + 20);
+          // Station: ein zerstörter Turm wird wieder instand gesetzt
+          const st = this.wards.find((w) => w.kind === 'station' && !w.dead);
+          const broken = st?.tur.find((t) => t.hp <= 0);
+          if (broken) broken.hp = broken.max;
+          this.floats.add(this.px, this.py - 20, broken ? 'Reparatur: Stationsturm instand' : 'Reparatur', '#6be38f', 13);
+        }
         else if (p.kind === 'shield') { this.shield = this.shieldMax; this.floats.add(this.px, this.py - 20, 'Schild voll', '#7fd8ff', 13); }
         else if (p.kind === 'ammo') { this.missileCd = 0; this.ammo = this.ammoMax; this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Munitionskiste: Raketenlager voll' : 'Munition (kein Werfer)', '#ffd27a', 13); }
         // Raketen-Fundstück: die Hälfte des Lagers (mindestens vier), Werfer sofort bereit
@@ -2433,6 +2983,12 @@ export class ShooterGame implements MiniGame {
     this.kills++;
     this.score.bump(0.5, 2.5);
     this.gain(SPEC[e.kind].pts * (e.mini ? 0.5 : 1) * (this.mutator?.id === 'bounty' ? 1.5 : 1), e.x, e.y, e.kind === 'boss' ? (e.mini ? 'Großziele' : 'Boss') : e.kind === 'turret' ? 'Geschütztürme' : 'Abschüsse');
+    if (e.kind === 'cargo') {
+      this.cargoKilled++;
+      if (this.firstCargoT < 0) { this.firstCargoT = this.time; setGoal(this.goals, 'cargo45', this.time < 45); }
+      this.floats.add(e.x, e.y - 40, `Piratenfrachter zerstört (${this.cargoKilled}/${CARGO_N})`, '#6be38f', 15);
+    }
+    if (e.nest && this.mission === 'nest' && !this.outcome) { this.bossKills++; this.winRound(); return; }
     if (e.kind === 'boss' && !e.mini) {
       this.bossKills++;
       setGoal(this.goals, 'boss30', this.bossT < 30);
@@ -2483,7 +3039,8 @@ export class ShooterGame implements MiniGame {
   }
 
   private finish(): GameResult {
-    const f = this.fHull / this.fMax;
+    if (this.mission !== 'geleit') return this.finishMission();
+    const f = this.wards[0].hull / this.wards[0].max;
     let ok: boolean, stars: 0 | 1 | 2 | 3, headline: string;
     const waves = this.wave + (this.outcome === 'win' ? 1 : 0);
     if (this.mode === 'endless') {
@@ -2523,6 +3080,78 @@ export class ShooterGame implements MiniGame {
     };
   }
 
+  /** Auswertung der Einsätze: Sterne nach Einsatzziel, Zeilen passend zum Einsatz */
+  private finishMission(): GameResult {
+    const win = this.outcome === 'win';
+    const w0 = this.wards[0];
+    const f = w0 && !w0.dead ? w0.hull / w0.max : 0;
+    const pct = (x: number) => `${Math.round(x * 100)} %`;
+    const lost = this.outcome === 'player' ? 'Jäger zerstört' : '';
+    let ok = win, stars: 0 | 1 | 2 | 3 = 0, headline = '', got: string[] = [], oks: boolean[] = [];
+    const lines: [string, string][] = [];
+    const mm = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+    switch (this.mission) {
+      case 'konvoi': {
+        const n = win ? this.liveWards.length : 0;
+        oks = [n >= 1, n >= 2, n >= 3];
+        got = [`${n} am Tor`, `${n} am Tor`, `${n} am Tor`];
+        headline = win ? (n === 3 ? 'Ganzer Konvoi in Sicherheit' : `${n} von 3 Frachtern in Sicherheit`) : lost || 'Konvoi verloren';
+        lines.push(['Frachter am Tor', `${n} von 3`]);
+        break;
+      }
+      case 'station':
+        oks = [win, win && f >= 0.55, win && f >= 0.85];
+        got = [win ? '' : lost || 'Station zerstört', pct(f), pct(f)];
+        headline = win ? 'Station gehalten' : lost || 'Station zerstört';
+        lines.push(['Stations-Hülle', pct(f)], ['Stationstürme', `${w0.tur.filter((t) => t.hp > 0).length} von 6`]);
+        break;
+      case 'flucht':
+        oks = [win, win && f >= 0.35, win && f >= 0.6];
+        got = [win ? '' : lost || 'Frachter verloren', pct(f), pct(f)];
+        headline = win ? 'Sprung geglückt' : lost || 'Frachter verloren';
+        lines.push(['Sprungantrieb', pct(this.charge)], ['Frachter-Hülle', pct(f)]);
+        break;
+      case 'bergung': {
+        const n = this.crateDone;
+        ok = win && n >= CRATES_MIN;
+        oks = [ok, ok && n >= 6, ok && n >= CRATES];
+        got = [`${n} geborgen`, `${n} geborgen`, `${n} geborgen`];
+        headline = ok ? `${n} Container geborgen` : lost || (this.outcome === 'freighter' ? 'Bergungsschiff verloren' : 'Zu viele Container verloren');
+        lines.push(['Container', `${n} von ${CRATES}`], ['Verloren', `${this.crateLost}`], ['Bergungsschiff', pct(f)]);
+        break;
+      }
+      case 'ueberfall': {
+        const n = this.cargoKilled;
+        ok = win && n >= 1;
+        oks = [n >= 1 && ok, n >= 2 && ok, n >= 3 && ok];
+        got = [`${n} zerstört`, `${n} zerstört`, `${n} zerstört`];
+        headline = ok ? (n === CARGO_N ? 'Ganzer Konvoi zerstört' : `${n} von ${CARGO_N} Frachtern zerstört`) : lost || 'Konvoi entkommen';
+        lines.push(['Zerstört', `${n} von ${CARGO_N}`], ['Entkommen', `${this.cargoEscaped}`]);
+        break;
+      }
+      case 'nest':
+        oks = [win, win && this.time < 240, win && this.time < 150];
+        got = [win ? '' : lost || 'Nest steht noch', mm(this.time), mm(this.time)];
+        headline = win ? 'Nest ausgehoben' : lost || 'Nest steht noch';
+        lines.push(['Zeit', mm(this.time)]);
+        break;
+    }
+    stars = (oks.filter(Boolean).length as 0 | 1 | 2 | 3);
+    if (!ok) { stars = 0; for (const g of this.goals) g.done = false; }
+    const rules = this.rules.stars;
+    return {
+      success: ok,
+      stars,
+      starRules: rules.map((text, i) => ({ text, ok: oks[i] ?? false, got: got[i] || undefined })),
+      breakdown: this.score.breakdown(),
+      score: Math.round(f * 100),
+      points: this.score.points,
+      goals: this.goals.map((g) => ({ ...g })),
+      headline,
+      lines: [...lines, ['Abschüsse', `${this.kills}`], ['Beste Kombo', `×${String(this.score.maxCombo).replace('.', ',')}`]],
+    };
+  }
+
   result(): GameResult | null {
     return this.done;
   }
@@ -2536,8 +3165,8 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Für Tests */
-  get state(): { wave: number; enemies: number; fHull: number; hull: number; outcome: string | null; choosing: boolean; time: number } {
-    return { wave: this.wave, enemies: this.enemies.length, fHull: this.fHull, hull: this.hull, outcome: this.outcome, choosing: !!this.choosing, time: this.time };
+  get state(): { wave: number; enemies: number; fHull: number; hull: number; outcome: string | null; choosing: boolean; time: number; mission: Mission; wards: number; charge: number; crates: number; cargo: number } {
+    return { wave: this.wave, enemies: this.enemies.length, fHull: this.wards.reduce((a, w) => a + (w.dead ? 0 : w.hull), 0), hull: this.hull, outcome: this.outcome, choosing: !!this.choosing, time: this.time, mission: this.mission, wards: this.liveWards.length, charge: this.charge, crates: this.crateDone, cargo: this.cargoKilled };
   }
 
   // ---------- Darstellung ----------
@@ -2559,7 +3188,8 @@ export class ShooterGame implements MiniGame {
     for (const k of this.rocks) this.drawRock(ctx, k);
     for (const m of this.mines) this.drawMine(ctx, m, t);
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
-    if (this.outcome !== 'freighter') { this.drawFreighter(ctx, t); this.drawFreighterTurrets(ctx); }
+    if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
+    this.drawWards(ctx, t);
     this.drawClusterMass(ctx, t);
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
     this.drawBeams(ctx, t);
@@ -3010,10 +3640,31 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
   }
 
-  private drawFreighter(ctx: CanvasRenderingContext2D, t: number): void {
-    const x = this.fx1, y = this.fy1;
-    const shrink = this.gateT >= 0 ? Math.max(0, 1 - Math.max(0, this.gateT - 1.2) * 1.6) : 1;
+  /** Schutzziele: Frachter, Bergungsschiff und Station samt Türmen und Hüllenbalken */
+  private drawWards(ctx: CanvasRenderingContext2D, t: number): void {
+    for (const w of this.wards) {
+      if (w.dead) continue;
+      if (w.kind === 'station') this.drawStation(ctx, w, t);
+      else this.drawFreighter(ctx, w, t);
+    }
+  }
+
+  private drawFreighter(ctx: CanvasRenderingContext2D, w: Ward, t: number): void {
+    const x = this.wx(w), y = this.wy(w);
+    const jump = this.gateT >= 0 && this.mission !== 'ueberfall';
+    const shrink = jump ? Math.max(0, 1 - Math.max(0, this.gateT - 1.2) * 1.6) : 1;
     if (shrink <= 0) return;
+    // Bergungsschiff: Abladezone als gestrichelter Ring
+    if (w.kind === 'berger') {
+      ctx.save();
+      ctx.strokeStyle = rgba('#6be38f', this.towing ? 0.55 + 0.25 * Math.sin(t * 5) : 0.25);
+      ctx.setLineDash([6, 8]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, TOW_DROP, t * 0.3, t * 0.3 + Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(shrink, shrink);
@@ -3022,83 +3673,285 @@ export class ShooterGame implements MiniGame {
       // Bild-Grafik: Containerschiff, gut 105 px lang; vier flackernde Triebwerke; Treffer blitzen hell auf
       const size = 110;
       ctx.fillStyle = rgba('#ffa040', 0.5 + 0.3 * Math.random());
+      // Flucht: Triebwerke aus, der Antrieb lädt (blaues Flackern am Heck)
+      if (this.mission === 'flucht' && !jump) ctx.fillStyle = rgba('#7fd8ff', 0.25 + 0.5 * this.charge * Math.random());
       for (const fx of [-0.104, -0.053, 0.05, 0.105]) {
         const ex = fx * size, ey = 0.462 * size;
         ctx.beginPath();
-        ctx.moveTo(ex - 2, ey); ctx.lineTo(ex + 2, ey); ctx.lineTo(ex, ey + 5 + Math.random() * 5 + (this.gateT >= 0 ? 10 : 0));
+        ctx.moveTo(ex - 2, ey); ctx.lineTo(ex + 2, ey); ctx.lineTo(ex, ey + 5 + Math.random() * 5 + (jump ? 10 : 0));
         ctx.closePath();
         ctx.fill();
       }
       ctx.drawImage(spr, -size / 2, -size / 2, size, size);
-      if (this.fFlash > 0) {
+      if (w.flash > 0) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.5;
         ctx.drawImage(spr, -size / 2, -size / 2, size, size);
       }
-      ctx.restore();
-      this.drawFreighterHull(ctx, x, y);
-      return;
-    }
-    const col = this.fFlash > 0 ? '#ffffff' : '#5ff0d8';
-    ctx.beginPath();
-    ctx.moveTo(0, -48); ctx.lineTo(12, -36); ctx.lineTo(14, 34); ctx.lineTo(8, 46); ctx.lineTo(-8, 46); ctx.lineTo(-14, 34); ctx.lineTo(-12, -36);
-    ctx.closePath();
-    ctx.fillStyle = '#0c1d29';
-    ctx.fill();
-    ctx.strokeStyle = rgba(col, 0.22);
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-    for (let k = 0; k < 4; k++) {
-      for (const s of [-1, 1]) {
-        ctx.fillStyle = '#10283a';
-        ctx.fillRect(s * 15 - (s < 0 ? 10 : 0), -24 + k * 13, 10, 11);
-        ctx.strokeStyle = rgba('#8fd3ff', 0.7);
-        ctx.lineWidth = 1;
-        ctx.strokeRect(s * 15 - (s < 0 ? 10 : 0) + 0.5, -24 + k * 13 + 0.5, 9, 10);
+    } else {
+      const col = w.flash > 0 ? '#ffffff' : w.kind === 'berger' ? '#6be38f' : '#5ff0d8';
+      ctx.beginPath();
+      ctx.moveTo(0, -48); ctx.lineTo(12, -36); ctx.lineTo(14, 34); ctx.lineTo(8, 46); ctx.lineTo(-8, 46); ctx.lineTo(-14, 34); ctx.lineTo(-12, -36);
+      ctx.closePath();
+      ctx.fillStyle = '#0c1d29';
+      ctx.fill();
+      ctx.strokeStyle = rgba(col, 0.22);
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      for (let k = 0; k < 4; k++) {
+        for (const sd of [-1, 1]) {
+          ctx.fillStyle = '#10283a';
+          ctx.fillRect(sd * 15 - (sd < 0 ? 10 : 0), -24 + k * 13, 10, 11);
+          ctx.strokeStyle = rgba('#8fd3ff', 0.7);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(sd * 15 - (sd < 0 ? 10 : 0) + 0.5, -24 + k * 13 + 0.5, 9, 10);
+        }
       }
+      ctx.fillStyle = rgba('#7fd8ff', 0.6 + 0.3 * Math.sin(t * 25));
+      ctx.fillRect(-7, 46, 5, 6 + Math.random() * 4);
+      ctx.fillRect(2, 46, 5, 6 + Math.random() * 4);
     }
-    ctx.fillStyle = rgba('#7fd8ff', 0.6 + 0.3 * Math.sin(t * 25));
-    ctx.fillRect(-7, 46, 5, 6 + Math.random() * 4);
-    ctx.fillRect(2, 46, 5, 6 + Math.random() * 4);
+    // Flucht: Ladering des Sprungantriebs um den Frachter
+    if (this.mission === 'flucht' && !jump) {
+      ctx.strokeStyle = rgba('#7fd8ff', 0.25);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 68, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = rgba('#9fe6ff', 0.75 + 0.2 * Math.sin(t * 6));
+      ctx.beginPath();
+      ctx.arc(0, 0, 68, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.charge);
+      ctx.stroke();
+    }
     ctx.restore();
-    this.drawFreighterHull(ctx, x, y);
+    if (!jump) this.drawWardTurrets(ctx, w);
+    this.drawWardHull(ctx, w, x, y + 62, 60);
+    if (this.wards.length > 1 || w.kind === 'berger') {
+      ctx.save();
+      ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(228,243,240,0.75)';
+      ctx.fillText(w.kind === 'berger' ? 'Bergungsschiff' : w.name, x, y + 80);
+      ctx.restore();
+    }
   }
 
-  /** Die zwei Abwehrtürme des Frachters (zielen frei) */
-  private drawFreighterTurrets(ctx: CanvasRenderingContext2D): void {
-    if (this.gateT >= 0) return;
-    const x = this.fx1, y = this.fy1;
-    for (const tur of this.fTur) {
-      ctx.save();
-      ctx.translate(x, y + tur.oy);
-      ctx.fillStyle = '#0a1a24';
-      ctx.strokeStyle = '#9fe6ff';
-      ctx.lineWidth = 1.3;
+  /** Station: Bild mit sechs Turmsockeln, darauf die Stationstürme; zerstörte Türme rauchen */
+  private drawStation(ctx: CanvasRenderingContext2D, w: Ward, t: number): void {
+    const x = this.wx(w), y = this.wy(w);
+    const spr = projectileSprite('split-station-kern-mittel-ki');
+    ctx.save();
+    ctx.translate(x, y);
+    if (spr) {
+      ctx.drawImage(spr, -STATION_SIZE / 2, -STATION_SIZE / 2, STATION_SIZE, STATION_SIZE);
+      if (w.flash > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.35;
+        ctx.drawImage(spr, -STATION_SIZE / 2, -STATION_SIZE / 2, STATION_SIZE, STATION_SIZE);
+      }
+    } else {
+      // Neon-Ersatz: Sechseck mit Speichen
+      ctx.strokeStyle = w.flash > 0 ? '#ffffff' : '#ffb070';
+      ctx.fillStyle = '#1a0f0a';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+      for (let k = 0; k < 6; k++) { const a = -Math.PI / 2 + (k * Math.PI) / 3; ctx.lineTo(Math.cos(a) * 52, Math.sin(a) * 52); }
+      ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(tur.a) * 3, Math.sin(tur.a) * 3);
-      ctx.lineTo(Math.cos(tur.a) * 9, Math.sin(tur.a) * 9);
-      ctx.stroke();
+      for (const tu of w.tur) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tu.ox, tu.oy); ctx.stroke(); }
+    }
+    ctx.restore();
+    this.drawWardTurrets(ctx, w);
+    // Rauch über zerstörten Türmen
+    for (const tu of w.tur) if (tu.hp <= 0 && Math.random() < 0.3) this.fx.add({ x: x + tu.ox + (Math.random() - 0.5) * 8, y: y + tu.oy, vy: -14, color: '#6a5a52', size: 2.4, max: 0.9 });
+    this.drawWardHull(ctx, w, x, y + STATION_SIZE / 2 + 6, 110);
+    void t;
+  }
+
+  /** Abwehrtürme eines Schutzziels (zielen frei); Stationstürme mit Bild und eigenem Hüllenbalken */
+  private drawWardTurrets(ctx: CanvasRenderingContext2D, w: Ward): void {
+    const x = this.wx(w), y = this.wy(w), st = w.kind === 'station';
+    const ts = st ? turretSprite('tau', 'split-cobra') : null;
+    for (const tur of w.tur) {
+      ctx.save();
+      ctx.translate(x + tur.ox, y + tur.oy);
+      if (st && tur.hp <= 0) {
+        // zerstört: verkohlter Sockel
+        ctx.fillStyle = '#1a1210';
+        ctx.strokeStyle = 'rgba(255,92,108,0.6)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+      if (ts) {
+        const W = 30 / ts.d;
+        ctx.rotate(tur.a + Math.PI / 2);
+        ctx.drawImage(ts.img, -ts.px * W, -ts.py * W, W, W);
+      } else {
+        const r = st ? 8 : 4.5;
+        ctx.fillStyle = '#0a1a24';
+        ctx.strokeStyle = st ? '#ffb070' : '#9fe6ff';
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(tur.a) * r * 0.6, Math.sin(tur.a) * r * 0.6);
+        ctx.lineTo(Math.cos(tur.a) * r * 2, Math.sin(tur.a) * r * 2);
+        ctx.stroke();
+      }
       ctx.restore();
+      if (st && tur.hp < tur.max) {
+        ctx.fillStyle = 'rgba(14,30,44,0.85)';
+        ctx.fillRect(x + tur.ox - 12, y + tur.oy + 16, 24, 3);
+        ctx.fillStyle = tur.hp / tur.max > 0.5 ? '#ffb070' : '#ff5c6c';
+        ctx.fillRect(x + tur.ox - 12, y + tur.oy + 16, 24 * (tur.hp / tur.max), 3);
+      }
     }
   }
 
-  /** Hüllenbalken unter dem Frachter */
-  private drawFreighterHull(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-    const f = this.fHull / this.fMax;
+  /** Hüllenbalken unter einem Schutzziel */
+  private drawWardHull(ctx: CanvasRenderingContext2D, w: Ward, x: number, y: number, width: number): void {
+    const f = w.hull / w.max;
     ctx.fillStyle = 'rgba(14,30,44,0.85)';
-    ctx.fillRect(x - 30, y + 62, 60, 4);
+    ctx.fillRect(x - width / 2, y, width, 4);
     ctx.fillStyle = f > 0.5 ? '#3fe0c5' : f > 0.25 ? '#ffb547' : '#ff5c6c';
-    ctx.fillRect(x - 30, y + 62, 60 * f, 4);
+    ctx.fillRect(x - width / 2, y, width * f, 4);
+  }
+
+  /** Wracks (dunkel, langsam drehend) und Container im Wrackfeld; geschleppt mit leuchtendem Traktorstrahl */
+  private drawSalvage(ctx: CanvasRenderingContext2D, t: number): void {
+    const imgs = ['frachter-m-ki', 'pirat-fregatte-ki', 'split-dock-ki'];
+    for (const [i, wr] of this.wrecks.entries()) {
+      const img = projectileSprite(imgs[i % imgs.length]);
+      ctx.save();
+      ctx.translate(wr.x, wr.y);
+      ctx.rotate(wr.rot + t * 0.01 * (i % 2 ? 1 : -1));
+      if (img) {
+        ctx.globalAlpha = 0.42;
+        ctx.drawImage(img, -wr.size / 2, -wr.size / 2, wr.size, wr.size);
+      } else {
+        ctx.strokeStyle = 'rgba(168,154,138,0.35)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-wr.size * 0.15, -wr.size * 0.4, wr.size * 0.3, wr.size * 0.8);
+      }
+      ctx.restore();
+      // ab und zu sprüht ein Funke aus dem Wrack
+      if (Math.random() < 0.02) this.fx.burst(wr.x + (Math.random() - 0.5) * wr.size * 0.4, wr.y + (Math.random() - 0.5) * wr.size * 0.4, '#ffb070', 3, 60, 1, 'spark', 0.3);
+    }
+    for (const c of this.crates) {
+      if (c.done) continue;
+      if (c.tow) {
+        // Traktorstrahl: flimmernde Doppellinie vom Jäger zum Container
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = rgba('#9ffff0', 0.25 + 0.15 * Math.sin(t * 20));
+        ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(this.px, this.py); ctx.lineTo(c.x, c.y); ctx.stroke();
+        ctx.strokeStyle = rgba('#e6fffb', 0.8);
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 5]);
+        ctx.lineDashOffset = -t * 40;
+        ctx.beginPath(); ctx.moveTo(this.px, this.py); ctx.lineTo(c.x, c.y); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.rot);
+      // Container: Kasten mit Rippen und Warnstreifen, Leuchtpunkt blinkt
+      ctx.fillStyle = '#3a2a18';
+      ctx.strokeStyle = c.tow ? '#9ffff0' : '#ffb547';
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(-10, -7, 20, 14);
+      ctx.strokeRect(-10, -7, 20, 14);
+      ctx.strokeStyle = 'rgba(255,181,71,0.55)';
+      for (const k of [-5, 0, 5]) { ctx.beginPath(); ctx.moveTo(k, -7); ctx.lineTo(k, 7); ctx.stroke(); }
+      ctx.fillStyle = Math.sin(t * 5 + c.x) > 0 ? '#ffd27a' : '#6a4a20';
+      ctx.fillRect(-2, -2, 4, 4);
+      ctx.restore();
+      if (c.hp < 60) {
+        ctx.fillStyle = 'rgba(14,30,44,0.85)';
+        ctx.fillRect(c.x - 11, c.y + 12, 22, 3);
+        ctx.fillStyle = '#ffb547';
+        ctx.fillRect(c.x - 11, c.y + 12, 22 * Math.max(0, c.hp / 60), 3);
+      }
+    }
+  }
+
+  /** Nest: Neon-Wabe (Xenon: Metallringe mit rotem Auge; Kha'ak: Kristallstacheln mit violettem Kern) */
+  private drawNest(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
+    const kh = this.side === 'khaak', col = kh ? '#b45cff' : '#ff3b4a', r = e.r;
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    // Glimmen
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.2);
+    g.addColorStop(0, rgba(col, 0.35));
+    g.addColorStop(1, rgba(col, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2); ctx.fill();
+    if (kh) {
+      // Kristallstacheln, langsam drehend
+      for (let k = 0; k < 9; k++) {
+        const a = t * 0.08 + (k / 9) * Math.PI * 2, L = r * (1.25 + 0.25 * ((k * 7) % 3));
+        ctx.save();
+        ctx.rotate(a);
+        ctx.beginPath(); ctx.moveTo(-r * 0.28, 0); ctx.lineTo(0, -L); ctx.lineTo(r * 0.28, 0); ctx.closePath();
+        ctx.fillStyle = '#2a1640';
+        ctx.fill();
+        ctx.strokeStyle = rgba('#d9a6ff', 0.75);
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else {
+      // drei Sechseck-Ringe, gegenläufig
+      for (let ring = 0; ring < 3; ring++) {
+        const rr = r * (1.25 - ring * 0.3), a0 = t * (ring % 2 ? -0.15 : 0.12);
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) { const a = a0 + (k * Math.PI) / 3; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+        ctx.closePath();
+        ctx.fillStyle = ring === 0 ? '#1a1416' : 'rgba(40,30,34,0.9)';
+        ctx.fill();
+        ctx.strokeStyle = rgba('#ff8a96', 0.55 - ring * 0.1);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // leuchtende Segmente
+        ctx.strokeStyle = rgba(col, 0.6 + 0.3 * Math.sin(t * 3 + ring));
+        ctx.lineWidth = 3;
+        for (let k = 0; k < 6; k += 2) {
+          const a = a0 + (k * Math.PI) / 3, b = a0 + ((k + 1) * Math.PI) / 3;
+          ctx.beginPath(); ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); ctx.lineTo(Math.cos(b) * rr, Math.sin(b) * rr); ctx.stroke();
+        }
+      }
+    }
+    // Kern: pulsierendes Auge, beim Treffer hell
+    const pulse = 0.75 + 0.25 * Math.sin(t * 4);
+    const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.5);
+    cg.addColorStop(0, e.flash > 0 ? '#ffffff' : kh ? '#f2e0ff' : '#ffd0d4');
+    cg.addColorStop(0.4, rgba(col, pulse));
+    cg.addColorStop(1, rgba(col, 0));
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2); ctx.fill();
+    // Schild, solange Brutöffnungen oder Türme stehen
+    if (e.shielded) {
+      ctx.strokeStyle = rgba('#7fd8ff', 0.3 + 0.2 * Math.sin(t * 6));
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, r * 1.75, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
+    if (e.nest) { this.drawNest(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }
     const s = SPEC[e.kind];
     const xen = this.side === 'xenon', kh = this.side === 'khaak';
     const base = e.kind === 'turret' ? (kh ? '#c77dff' : xen ? '#ff5c6c' : '#ffd27a') : e.kind === 'boss' ? (kh ? '#a855f7' : xen ? '#ff3b4a' : '#ffb547') : s.color;
@@ -3512,7 +4365,7 @@ export class ShooterGame implements MiniGame {
     const lead = new Map<number, { e: Enemy; d: number }>();
     for (const e of this.enemies) {
       if (e.parent || e.target !== 'f' || e.grp == null) continue;
-      const d = Math.hypot(e.x - this.fx1, e.y - this.fy1);
+      const d = this.wardDist(e.x, e.y);
       const cur = lead.get(e.grp);
       if (!cur || d < cur.d) lead.set(e.grp, { e, d });
     }
@@ -3522,7 +4375,7 @@ export class ShooterGame implements MiniGame {
     ctx.textBaseline = 'middle';
     for (const e of this.enemies) {
       if (e.parent) continue;
-      const pos = arrow(e.x, e.y, rgba(e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, 0.85), e.kind === 'boss' ? 9 : 6);
+      const pos = arrow(e.x, e.y, rgba(e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, 0.85), e.kind === 'boss' || e.kind === 'cargo' ? 9 : 6);
       const L = e.grp != null ? lead.get(e.grp) : undefined;
       if (pos && L && L.e === e && L.d > 220) {
         const eta = Math.max(1, Math.ceil((L.d - 120) / SPEC[e.kind].speed));
@@ -3535,7 +4388,13 @@ export class ShooterGame implements MiniGame {
     }
     ctx.restore();
     for (const m of this.eMissiles) arrow(m.x, m.y, 'rgba(255,138,92,0.9)', 5);
-    arrow(this.fx1, this.fy1, '#5ff0d8', 9);
+    for (const w of this.liveWards) arrow(this.wx(w), this.wy(w), w.kind === 'berger' ? '#6be38f' : '#5ff0d8', 9);
+    // Bergung: ohne Container am Seil zeigt ein Pfeil zum nächsten Container
+    if (this.mission === 'bergung' && !this.towing) {
+      const c = this.crates.filter((q) => !q.done).sort((a, b) => Math.hypot(a.x - this.px, a.y - this.py) - Math.hypot(b.x - this.px, b.y - this.py))[0];
+      if (c) arrow(c.x, c.y, '#ffd27a', 7);
+    }
+    if (this.mission === 'ueberfall') arrow(this.gateX, this.gateCy, '#9fe6ff', 8);
   }
 
   /** Radar um den eigenen Jäger (±RADAR Welteinheiten); Gegner außerhalb erscheinen am Rand */
@@ -3564,18 +4423,22 @@ export class ShooterGame implements MiniGame {
     ctx.strokeRect(cx + (0 - this.px) * sc, cy + (0 - this.py) * sc, this.WW * sc, this.WH * sc);
     ctx.strokeStyle = 'rgba(228,243,240,0.3)';
     ctx.strokeRect(cx + (this.camX - this.px) * sc, cy + (this.camY + TOP / this.zoom - this.py) * sc, (this.w / this.zoom) * sc, ((this.h - TOP) / this.zoom) * sc);
-    // Kreis um den Frachter: ab hier wird es für ihn gefährlich
-    const fp = pos(this.fx1, this.fy1, true)!;
+    // Kreis um jedes Schutzziel: ab hier wird es für es gefährlich
+    const wps = this.liveWards.map((w) => pos(this.wx(w), this.wy(w), true)!);
     ctx.strokeStyle = 'rgba(95,240,216,0.25)';
-    ctx.beginPath();
-    ctx.arc(fp[0], fp[1], 300 * sc, 0, Math.PI * 2);
-    ctx.stroke();
+    for (const fp of wps) {
+      ctx.beginPath();
+      ctx.arc(fp[0], fp[1], 300 * sc, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     const dot = (p: [number, number] | null, c: string, r = 1.6) => { if (!p) return; ctx.fillStyle = c; ctx.fillRect(p[0] - r, p[1] - r, r * 2, r * 2); };
+    for (const c of this.crates) if (!c.done) dot(pos(c.x, c.y), c.tow ? '#9ffff0' : '#ffd27a', 1.6);
+    if (this.mission === 'ueberfall') dot(pos(this.gateX, this.gateCy, true), '#9fe6ff', 3);
     for (const k of this.rocks) dot(pos(k.x, k.y), 'rgba(168,154,138,0.6)', 1.2);
     for (const m of this.mines) dot(pos(m.x, m.y), 'rgba(255,181,71,0.7)', 1);
     for (const p of this.pickups) dot(pos(p.x, p.y), '#6be38f', 1.4);
-    for (const e of this.enemies) if (!e.parent) dot(pos(e.x, e.y, true), e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, e.kind === 'boss' ? 3 : 1.7);
-    dot(fp, '#5ff0d8', 2.8);
+    for (const e of this.enemies) if (!e.parent) dot(pos(e.x, e.y, true), e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, e.kind === 'boss' || e.kind === 'cargo' ? 3 : 1.7);
+    for (const fp of wps) dot(fp, '#5ff0d8', 2.8);
     // eigener Jäger als kleiner Pfeil
     ctx.translate(cx, cy);
     ctx.rotate(this.aimA + Math.PI / 2);
@@ -3593,7 +4456,31 @@ export class ShooterGame implements MiniGame {
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(169,195,198,0.85)';
     const x = 12, y = TOP + 14;
-    if (this.mode === 'endless') {
+    const bar = (label: string, f: number, col: string) => {
+      ctx.fillText(label, x, y);
+      const bx = x + ctx.measureText(label).width + 8;
+      ctx.fillStyle = 'rgba(110,220,205,0.2)';
+      ctx.fillRect(bx, y - 6, 110, 4);
+      ctx.fillStyle = col;
+      ctx.fillRect(bx, y - 6, 110 * clamp(f, 0, 1), 4);
+    };
+    const m = this.mission;
+    if (m === 'flucht') bar('SPRUNGANTRIEB', this.charge, '#7fd8ff');
+    else if (m === 'bergung') bar(`CONTAINER ${this.crateDone}/${CRATES}${this.crateLost ? ` · ${this.crateLost} VERLOREN` : ''}`, this.crateDone / CRATES, '#6be38f');
+    else if (m === 'ueberfall') {
+      ctx.fillText(`PIRATENKONVOI · ${this.cargoKilled} ZERSTÖRT${this.cargoEscaped ? ` · ${this.cargoEscaped} ENTKOMMEN` : ''}`, x, y);
+      // Vorsprung des vordersten Frachters zum Tor
+      const lead = this.enemies.filter((e) => e.kind === 'cargo').reduce((a, e) => Math.min(a, e.y - this.gateCy), Infinity);
+      if (Number.isFinite(lead)) { ctx.fillStyle = lead < 600 ? '#ff9aa4' : 'rgba(169,195,198,0.85)'; ctx.fillText(`TOR IN ${Math.max(0, Math.round(lead / (SPEC.cargo.speed * (1 + 0.08 * (this.level - 1)))))} s`, x, y + 16); }
+    } else if (m === 'nest') {
+      const open = this.enemies.filter((e) => e.parent?.nest && e.weapon === 'brut').length;
+      ctx.fillText(open ? `BRUTÖFFNUNGEN ${open}/${NEST_OPEN}` : this.enemies.some((e) => e.nest) ? 'KERN UNGESCHÜTZT' : 'NEST', x, y);
+    } else if (m === 'station') {
+      ctx.fillText(`WELLE ${Math.max(1, this.wave + 1)} VON ${this.nWaves}${this.isBossWave(Math.max(0, this.wave)) ? ' · GROSSKAMPFSCHIFF' : ''}`, x, y);
+      const st = this.wards[0];
+      ctx.fillStyle = 'rgba(169,195,198,0.85)';
+      if (st) ctx.fillText(`STATIONSTÜRME ${st.tur.filter((q) => q.hp > 0).length}/6`, x, y + 16);
+    } else if (this.mode === 'endless') {
       ctx.fillText(`WELLE ${Math.max(1, this.wave + 1)}${this.isBossWave(Math.max(0, this.wave)) ? ' · BOSS' : ''}`, x, y);
     } else {
       ctx.fillText('STRECKE', x, y);
@@ -3605,13 +4492,18 @@ export class ShooterGame implements MiniGame {
         else ctx.fillRect(bx, y - 6, 20, 4);
       }
     }
-    if (this.fY <= this.fGoal + 1 && this.wave >= 0 && this.enemies.length && this.gateT < 0) {
+    const waiting = this.moving && this.fY <= this.fGoal + 1 && this.wave >= 0 && this.enemies.length > 0 && this.gateT < 0;
+    if (waiting) {
       ctx.fillStyle = '#ffb547';
-      ctx.fillText('FRACHTER WARTET', x, y + 18);
+      ctx.fillText(this.mission === 'konvoi' ? 'KONVOI WARTET' : 'FRACHTER WARTET', x, y + 18);
+    }
+    if (this.towing) {
+      ctx.fillStyle = '#9ffff0';
+      ctx.fillText('CONTAINER AM SEIL', x, y + 18);
     }
     if (this.cruise > 0.3) {
       ctx.fillStyle = rgba('#9ffff0', 0.5 + 0.5 * this.cruise);
-      ctx.fillText('REISEANTRIEB', x, y + (this.fY <= this.fGoal + 1 && this.enemies.length ? 34 : 18));
+      ctx.fillText('REISEANTRIEB', x, y + (waiting || this.towing || m === 'station' || m === 'ueberfall' ? 34 : 18));
     }
     ctx.restore();
   }

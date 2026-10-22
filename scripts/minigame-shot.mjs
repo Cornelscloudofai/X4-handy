@@ -305,6 +305,33 @@ for (const kind of ['pirates', 'xenon', 'khaak']) {
   await page.click('#minigame [data-mg="abort"]');
   await page.click('#minigame [data-mg="quit"]');
 }
+// --- Kampf-Einsätze: aus dem Reiter „Kampf“ starten, kurz vorspulen (Autopilot), Bild ---
+await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+await page.waitForTimeout(200);
+if ((await page.locator('#modal .mg-mission').count()) !== 6) fail('Einsätze fehlen im Reiter „Kampf“');
+await page.locator('#modal .mg-mission').first().scrollIntoViewIfNeeded();
+await page.screenshot({ path: `${out}/mg-16-einsaetze.png` });
+for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['flucht', 'khaak'], ['bergung', 'pirates'], ['ueberfall', 'pirates'], ['nest', 'khaak']]) {
+  await page.click(`#modal [data-act="mg-mission"][data-mission="${mission}"][data-kind="${kind}"]`);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${out}/mg-17-${mission}-intro.png` });
+  await page.click('#minigame [data-mg="start"]');
+  await page.waitForTimeout(200);
+  // 25 s vorspulen, damit Gegner, Container usw. im Bild sind
+  await mg(() => { const g = window.__mg.game; for (let i = 0; i < 60 * 25 && !g.result(); i++) { g.autopilot(); g.update(1 / 60); } });
+  await page.waitForTimeout(500);
+  const st = await mg(() => window.__mg.game.state);
+  if (st.mission !== mission) fail(`Einsatz ${mission}: falscher Einsatz (${st.mission})`);
+  if (st.wave < 0) fail(`Einsatz ${mission}: keine Gegner`);
+  await page.screenshot({ path: `${out}/mg-17-${mission}.png` });
+  await page.click('#minigame [data-mg="pause"]');
+  await page.click('#minigame [data-mg="abort"]');
+  await page.waitForTimeout(200);
+  await page.click('#minigame [data-mg="quit"]');
+  await page.waitForTimeout(200);
+}
+await page.click('#modal [data-act="mg-tab"][data-tab="games"]');
+await page.waitForTimeout(200);
 // Tagesaufgabe und Endlos-Modus: Einführung mit Besonderheit und Nebenzielen
 await page.click('#modal [data-act="mg-tab"][data-tab="daily"]');
 await page.waitForTimeout(200);

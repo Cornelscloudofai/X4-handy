@@ -172,6 +172,8 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   // Piratenfregatte: 130 px bei Trefferradius 34; die Türme sitzen auf den Sockeln im Bild (siehe shooter.ts)
   'pirat:boss': { name: 'pirat-fregatte-ki', scale: 3.82 },
   'pirat:turret': { name: 'pirat-turm-ki', scale: 2.4 },
+  // Frachter des Piratenkonvois (Einsatz „Überfall“): 110 px bei Trefferradius 22
+  cargo: { name: 'frachter-m-ki', scale: 5 },
   n: { name: 'xenon-n-ki', scale: 4.5 },
   m: { name: 'xenon-m-ki', scale: 5 },
   xs: { name: 'xenon-schirmdrohne-ki', scale: 4.2 },
