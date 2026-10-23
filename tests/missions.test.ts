@@ -23,7 +23,7 @@ function play(g: ShooterGame, max = 900): GameResult {
 /** Zugriff auf Innereien für gezielte Prüfungen */
 type G = {
   wards: { kind: string; hull: number; max: number; dead: boolean; tur: { hp: number; max: number }[] }[];
-  enemies: { kind: string; x: number; y: number; hp: number; nest?: boolean; parent?: unknown; weapon?: string; shielded: boolean }[];
+  enemies: { kind: string; x: number; y: number; hp: number; nest?: boolean; parent?: unknown; weapon?: string; shielded: boolean; hive?: unknown; plat?: unknown; cl?: number }[];
   crates: { x: number; y: number; tow: boolean; done: boolean; hp: number }[];
   pickups: { x: number; y: number; kind: string; life: number }[];
   px: number; py: number; pvx: number; pvy: number;
@@ -118,6 +118,34 @@ describe('Kampf: Einsätze', () => {
     expect(G.enemies.filter((e) => e.parent === core && e.weapon === 'brut').length).toBe(5);
     expect(G.enemies.some((e) => e.kind === 'n')).toBe(true);
   });
+
+  it('Kha’ak-Nest: zwei Nebennester brüten Späher, vier Turmplattformen feuern Kyon-Strahlen; alles freiwillig', () => {
+    const g = game('nest', 'khaak');
+    const G = g as unknown as G & { hull: number };
+    for (let i = 0; i < 60; i++) g.update(DT);
+    expect(G.enemies.filter((e) => e.hive).length).toBe(2);
+    expect(G.enemies.filter((e) => e.plat).length).toBe(4);
+    // Jäger vor eine Plattform setzen: sie dreht sich zu ihm, lädt und trifft
+    const p = G.enemies.find((e) => e.plat) as unknown as { x: number; y: number };
+    const S = g as unknown as { shield: number; rails: { color: string }[] };
+    let shots = 0;
+    for (let i = 0; i < 60 * 12; i++) {
+      G.px = p.x + 150; G.py = p.y + 40; G.hull = Math.max(G.hull, 50);
+      const sh0 = S.shield;
+      g.update(DT);
+      if (S.shield < sh0 && S.rails.some((r) => r.color === '#b45cff')) shots++;
+    }
+    expect(shots).toBeGreaterThan(0);
+    // Nebennester brüten Cluster (solange nicht schon viele Späher unterwegs sind)
+    const all = G.enemies as unknown as { kind: string; hive?: unknown; broodT?: number; cl?: number }[];
+    G.enemies = all.filter((e) => e.kind !== 'ks') as never;
+    for (const e of all) if (e.hive) e.broodT = 0;
+    g.update(DT);
+    expect((G.enemies as unknown as { cl?: number }[]).some((e) => e.cl != null)).toBe(true);
+    // Sieg ohne Nebennester und Plattformen: nur der Kern zählt
+    const r = play(g);
+    expect(r.points).toBeGreaterThan(0);
+  }, 120000);
 
   it('Flucht: der Sprungantrieb lädt mit der Zeit, voll = gewonnen', () => {
     const g = game('flucht', 'pirate');

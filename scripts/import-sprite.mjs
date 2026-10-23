@@ -78,7 +78,15 @@ const r = await page.evaluate(async ([src, SIZE]) => {
     og.drawImage(cur, 0, 0, size, size);
     return o;
   };
-  const out = shrink(c, Math.min(SIZE, W));
+  // nicht quadratische Vorlagen mittig auf ein durchsichtiges Quadrat setzen (nicht verzerren)
+  let sq = c;
+  if (W !== H) {
+    const M = Math.max(W, H);
+    sq = document.createElement('canvas');
+    sq.width = sq.height = M;
+    sq.getContext('2d').drawImage(c, (M - W) / 2, (M - H) / 2);
+  }
+  const out = shrink(sq, Math.min(SIZE, Math.max(W, H)));
   const pv = document.createElement('canvas');
   pv.width = pv.height = out.width;
   const pg = pv.getContext('2d');

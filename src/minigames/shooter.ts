@@ -44,6 +44,22 @@ interface Ward {
   /** Phase des Pendelns */
   ph: number;
 }
+/**
+ * Kha'ak-Turmplattform: Kopfbild, Drehpunkt (runder Sockel, Anteil des Bilds), Mündung (Abstand vom Drehpunkt in
+ * Spielpunkten, Querversatz der Rohre), Kopf- und Sockelgröße, Waffe (Strahlen je Schuss, Fächer, Schaden, Länge,
+ * Ladezeit, Pause)
+ */
+interface PlatDef {
+  head: string; base: string; py: number; size: number; baseSize: number; muzzle: number; side: number[]; fan: number;
+  dmg: number; len: number; charge: number; cd: number; turn: number; name: string;
+}
+const PLATS: Record<'dreifach' | 'zwilling' | 'lanze' | 'strahl', PlatDef> = {
+  dreifach: { name: 'Dreifach-Kyonturm', head: 'khaak-turm-dreifach-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 95, baseSize: 150, muzzle: 50, side: [0], fan: 0.2, dmg: 7, len: KYON_LEN, charge: 0.6, cd: 3.2, turn: 1.1 },
+  zwilling: { name: 'Zwillings-Kyonturm', head: 'khaak-turm-zwilling-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 100, baseSize: 150, muzzle: 48, side: [-4.5, 4.5], fan: 0, dmg: 6, len: KYON_LEN, charge: 0.35, cd: 1.5, turn: 1.4 },
+  lanze: { name: 'Kyon-Lanze', head: 'khaak-turm-lanze-ki', base: 'khaak-plattform-gross-ki', py: 0.68, size: 100, baseSize: 155, muzzle: 62, side: [0], fan: 0, dmg: 14, len: KYON_LEN + 140, charge: 0.8, cd: 2.8, turn: 0.8 },
+  strahl: { name: 'Kyon-Strahler', head: 'khaak-turm-strahl-ki', base: 'khaak-plattform-gross-ki', py: 0.73, size: 165, baseSize: 155, muzzle: 112, side: [0], fan: 0, dmg: 22, len: KYON_LEN + 260, charge: 1.2, cd: 4.5, turn: 0.55 },
+};
+
 /** Bergungscontainer im Wrackfeld (Einsatz „Bergung“): treibt, wird geschleppt oder ist abgeliefert/verloren */
 interface Crate { x: number; y: number; vx: number; vy: number; rot: number; hp: number; tow: boolean; done: boolean }
 /** Wrack (Deko und Deckung im Wrackfeld) */
@@ -57,6 +73,10 @@ interface Enemy {
   wd?: Ward;
   /** Nest (Einsatz „Nest“): steht still, Brutöffnungen statt Geschütztürme */
   nest?: boolean;
+  /** Kha'ak-Nebennest beim Nest: steht still, brütet Späher-Cluster */
+  hive?: { img: string };
+  /** Kha'ak-Turmplattform beim Nest: fester Sockel, drehender Turmkopf; plT = Kyon lädt (Restzeit) */
+  plat?: PlatDef; plT?: number;
   /** Blickrichtung (Bordkanonen feuern nur dorthin) */
   ang: number;
   /** Jäger-Anflug: nach Salve oder Überflug abdrehen (Restzeit, Richtung); Schüsse und Dauer des laufenden Anflugs */
@@ -374,13 +394,15 @@ const G_TOUGH: GoalDef = { id: 'tough', text: 'Jäger-Hülle nie unter 50 %' };
 const G_LOOT3: GoalDef = { id: 'loot3', text: 'Drei Fundstücke einsammeln' };
 const G_NOMISSILE: GoalDef = { id: 'nomissile', text: 'Ohne Raketensalve gewinnen' };
 /** Nebenziele der Einsätze (je Runde drei davon) */
-const MISSION_GOALS: Record<Exclude<Mission, 'geleit'>, GoalDef[]> = {
+const MISSION_GOALS: Record<Exclude<Mission, 'geleit'> | 'nestKhaak', GoalDef[]> = {
   station: [{ id: 'turrets', text: 'Am Ende stehen alle sechs Stationstürme' }, { id: 'st80', text: 'Station mit über 80 % Hülle halten' }, G_COMBO3, G_LOOT3, G_TOUGH],
   konvoi: [{ id: 'all3', text: 'Alle drei Frachter ans Tor bringen' }, { id: 'kv60', text: 'Jeder gerettete Frachter mit über 60 % Hülle' }, G_COMBO3, G_NOMISSILE, G_TOUGH],
   flucht: [{ id: 'fl50', text: 'Mit über 50 % Frachter-Hülle springen' }, G_COMBO3, G_TOUGH, G_LOOT3],
   bergung: [{ id: 'crate8', text: 'Alle acht Container bergen' }, { id: 'nolost', text: 'Keinen Container verlieren' }, G_COMBO3, G_TOUGH],
   ueberfall: [{ id: 'cargo3', text: 'Alle drei Piratenfrachter zerstören' }, { id: 'cargo45', text: 'Den ersten Frachter in unter 45 s zerstören' }, G_COMBO3, G_NOMISSILE],
   nest: [{ id: 'nest150', text: 'Das Nest in unter 2:30 ausheben' }, { id: 'combo4', text: 'Kombo ×4 erreichen' }, G_TOUGH, G_NOMISSILE],
+  // nur beim Kha'ak-Nest (dort gibt es Nebennester und Turmplattformen)
+  nestKhaak: [{ id: 'hives', text: 'Auch beide Nebennester zerstören' }, { id: 'plats', text: 'Alle vier Turmplattformen zerstören' }, { id: 'nest150', text: 'Das Nest in unter 2:30 ausheben' }, G_TOUGH, G_NOMISSILE],
 };
 export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS, ...Object.values(MISSION_GOALS).flat()].filter((g, i, a) => a.findIndex((q) => q.id === g.id) === i);
 
@@ -498,7 +520,7 @@ export class ShooterGame implements MiniGame {
       case 'flucht': return { stars: ['Durchhalten, bis der Frachter springt', '… mit mindestens 35 % Frachter-Hülle', '… mit mindestens 60 % Frachter-Hülle'], points: ['Gesprungen: 1.000, dazu bis 2.000 nach Frachter-Hülle', `Der Sprungantrieb braucht ${Math.round(this.fluchtT)} s – auch wenn du nur ausweichst`] };
       case 'bergung': return { stars: [`${CRATES_MIN} Container bergen`, '6 Container bergen', `Alle ${CRATES} Container bergen`], points: ['Je abgelieferter Container 400', 'Am Ende: bis 1.000 nach Hülle des Bergungsschiffs', 'Wer einen Container schleppt, ist etwas langsamer; Treffer auf den Container zerstören ihn'] };
       case 'ueberfall': return { stars: ['Einen Piratenfrachter zerstören', 'Zwei Piratenfrachter zerstören', 'Alle drei Piratenfrachter zerstören'], points: ['Piratenfrachter 800, alle drei: 1.000 extra'] };
-      case 'nest': return { stars: ['Das Nest ausheben', '… in unter 4 Minuten', '… in unter 2:30 Minuten'], points: ['Brutöffnung 200, Kern 1.500, dazu bis 2.000 für Tempo (je Sekunde unter 5 Minuten fast 7)'] };
+      case 'nest': return { stars: ['Das Nest ausheben', '… in unter 4 Minuten', '… in unter 2:30 Minuten'], points: ['Brutöffnung 200, Kern 1.500, dazu bis 2.000 für Tempo (je Sekunde unter 5 Minuten fast 7)', ...(this.side === 'khaak' ? ['Kha’ak: zwei Nebennester (je 750, brüten Späher-Cluster) und vier Turmplattformen (je 200) – freiwillige Ziele'] : [])] };
       default: return null;
     }
   }
@@ -758,7 +780,7 @@ export class ShooterGame implements MiniGame {
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
     this.score = new Score(this.mutator?.mult ?? 1, 6);
-    this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : this.mission === 'geleit' ? NORMAL_GOALS : MISSION_GOALS[this.mission], rng(cfg.seed ^ 0x77));
+    this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : this.mission === 'geleit' ? NORMAL_GOALS : MISSION_GOALS[this.mission === 'nest' && side === 'khaak' ? 'nestKhaak' : this.mission], rng(cfg.seed ^ 0x77));
     this.shield = this.shieldMax;
     this.eyebrow = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : 'Kha’ak';
     this.title = this.mode === 'endless' ? 'Endlos' : this.mission === 'bergung' ? 'Bergung' : this.mission !== 'geleit' ? MISSIONS[this.mission].name : side === 'pirate' ? 'Geleitschutz' : side === 'xenon' ? 'Abwehr' : 'Invasion';
@@ -1753,6 +1775,76 @@ export class ShooterGame implements MiniGame {
       this.enemies.push(t);
     }
     this.bossT = 0;
+    if (this.side === 'khaak') this.spawnNestSurroundings();
+  }
+
+  /**
+   * Umgebung des Kha'ak-Nests: zwei Nebennester (brüten Späher-Cluster) seitlich davor und vier Turmplattformen auf dem
+   * Anflugweg – alles freiwillige Ziele, die das Ausheben schwerer machen
+   */
+  private spawnNestSurroundings(): void {
+    for (const [dx, dy, img] of [[-600, 520, 'khaak-nebennest-a-ki'], [600, 520, 'khaak-nebennest-b-ki']] as const) {
+      const h = this.makeEnemy('boss', this.fX + dx, this.fY + dy);
+      const st = enemyStats('boss', this.level, { mini: true, tune: this.tune });
+      h.hp = h.max = st.hp; h.sh = h.shMax = st.sh;
+      h.r = 52; h.mini = true; h.hive = { img }; h.target = 'p';
+      h.ang = this.r() * Math.PI * 2;
+      h.broodT = 6 + this.r() * 6;
+      this.enemies.push(h);
+    }
+    for (const [dx, dy, type] of [[-380, 950, 'dreifach'], [380, 950, 'zwilling'], [-900, 150, 'lanze'], [900, 150, 'strahl']] as const) {
+      const t = this.makeEnemy('turret', this.fX + dx, this.fY + dy);
+      const st = enemyStats('turret', this.level, { extra: 2, tune: this.tune });
+      t.hp = t.max = st.hp; t.sh = t.shMax = st.sh;
+      t.r = 20; t.plat = PLATS[type]; t.target = 'p';
+      t.ang = Math.atan2(this.py - t.y, this.px - t.x);
+      t.cd = 2 + this.r() * 2;
+      this.enemies.push(t);
+    }
+  }
+
+  /** Turmplattform: Kopf dreht sich mit begrenzter Rate zu dir, lädt sichtbar und feuert Kyon-Strahlen aus den Mündungen */
+  private updatePlat(e: Enemy, dt: number): void {
+    const d = e.plat!;
+    e.vx = 0; e.vy = 0;
+    const want = Math.atan2(this.py - e.y, this.px - e.x), dist = Math.hypot(this.px - e.x, this.py - e.y);
+    // während des Ladens bleibt die Richtung stehen (wer ausweicht, entkommt)
+    if (e.plT == null) e.ang = wrapA(turnTo(e.ang, want, d.turn * dt));
+    if (e.plT != null) {
+      e.plT -= dt;
+      if (e.plT <= 0) {
+        e.plT = undefined;
+        for (const a of d.fan ? [-d.fan, 0, d.fan] : [0]) for (const sd of d.side) {
+          const [mx, my] = this.platMuzzle(e, sd);
+          this.fireKyon(e, e.ang + a, d.dmg, d.len, [mx, my]);
+        }
+      }
+      return;
+    }
+    e.cd -= dt;
+    if (e.cd <= 0 && dist < d.len + 30 && this.outcome !== 'player' && Math.abs(wrapA(want - e.ang)) < 0.25) {
+      e.cd = d.cd * (this.level >= 4 ? 0.85 : 1) + this.r() * 0.6;
+      e.plT = d.charge;
+    }
+  }
+
+  /** Mündung eines Plattformturms (sd = Querversatz des Rohrs) */
+  private platMuzzle(e: Enemy, sd: number): [number, number] {
+    const d = e.plat!, c = Math.cos(e.ang), sn = Math.sin(e.ang);
+    return [e.x + c * d.muzzle - sn * sd, e.y + sn * d.muzzle + c * sd];
+  }
+
+  /** Nebennest: steht still, dreht sich langsam und entlässt alle paar Sekunden einen Vierer-Cluster Späher */
+  private updateHive(e: Enemy, dt: number): void {
+    e.vx = 0; e.vy = 0;
+    e.ang = wrapA(e.ang + dt * 0.04);
+    e.broodT = (e.broodT ?? 8) - dt;
+    if (e.broodT > 0) return;
+    e.broodT = Math.max(9, 16 - this.level) + this.r() * 4;
+    if (!this.broodRoom()) return;
+    const a = Math.atan2(this.py - e.y, this.px - e.x);
+    this.spawnCluster(4, e.x + Math.cos(a) * 70, e.y + Math.sin(a) * 70);
+    this.fx.add({ x: e.x, y: e.y, color: '#c77dff', size: 5, kind: 'ring', max: 0.5 });
   }
 
   /** Nest-Kern: steht still und dreht sich; ohne Brutöffnungen feuert er Ringe */
@@ -1965,7 +2057,7 @@ export class ShooterGame implements MiniGame {
 
   /** Welle besiegt? (Nest und Piratenfrachter zählen nicht mit – sie bleiben) */
   private get waveCleared(): boolean {
-    return this.enemies.every((e) => e.nest || e.parent?.nest || e.kind === 'cargo');
+    return this.enemies.every((e) => e.nest || e.parent?.nest || e.kind === 'cargo' || e.plat || e.hive);
   }
 
   /** Runde gewonnen: Punkte und Abschluss je Einsatz */
@@ -2012,6 +2104,8 @@ export class ShooterGame implements MiniGame {
       case 'nest':
         this.score.add(Math.max(0, Math.round(2000 - this.time * 6.67)), 'Tempo');
         setGoal(this.goals, 'nest150', this.time < 150);
+        setGoal(this.goals, 'hives', !this.enemies.some((q) => q.hive));
+        setGoal(this.goals, 'plats', !this.enemies.some((q) => q.plat));
         break;
       default:
         this.score.add(1000, 'Sprungtor erreicht');
@@ -2517,6 +2611,9 @@ export class ShooterGame implements MiniGame {
         }
         continue;
       }
+      // Kha'ak-Turmplattformen und Nebennester (Nest-Einsatz) stehen fest
+      if (e.plat) { this.updatePlat(e, dt); continue; }
+      if (e.hive) { this.updateHive(e, dt); continue; }
       // Kha'ak im Cluster: Platz im Dreieck halten (Spitze in Flugrichtung), nicht feuern
       if (e.cl != null) {
         const c = this.clusters.get(e.cl);
@@ -2715,9 +2812,9 @@ export class ShooterGame implements MiniGame {
    * Kyon-Strahl: trifft sofort alles auf der Linie (Jäger, Frachter); gegen Schilde ×1,5 – Kha'ak brennen Schilde
    * schnell durch, die Hülle hält länger
    */
-  private fireKyon(e: Enemy, a: number, dmg: number, len = KYON_LEN): void {
+  private fireKyon(e: Enemy, a: number, dmg: number, len = KYON_LEN, start: [number, number] = [e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r]): void {
     const cx = Math.cos(a), cy = Math.sin(a);
-    const x0 = e.x + cx * e.r, y0 = e.y + cy * e.r;
+    const [x0, y0] = start;
     const dist = (x: number, y: number): number => {
       const t = clamp((x - x0) * cx + (y - y0) * cy, 0, len);
       return Math.hypot(x0 + cx * t - x, y0 + cy * t - y);
@@ -3989,6 +4086,76 @@ export class ShooterGame implements MiniGame {
     return true;
   }
 
+  /** Turmplattform: Sockel (fest), darauf der drehende Turmkopf; beim Laden flackernde Ziellinien aus den Mündungen */
+  private drawPlat(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
+    const d = e.plat!, base = projectileSprite(d.base), head = projectileSprite(d.head);
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (base) ctx.drawImage(base, -d.baseSize / 2, -d.baseSize / 2, d.baseSize, d.baseSize);
+    else { ctx.strokeStyle = '#9b5cff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.rotate(e.ang + Math.PI / 2);
+    if (head) {
+      ctx.drawImage(head, -d.size / 2, -d.py * d.size, d.size, d.size);
+      if (e.flash > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.45;
+        ctx.drawImage(head, -d.size / 2, -d.py * d.size, d.size, d.size);
+      }
+    } else {
+      ctx.fillStyle = '#2a1640'; ctx.strokeStyle = '#d9a6ff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -d.muzzle); ctx.stroke();
+    }
+    ctx.restore();
+    if (e.plT != null) {
+      const k = 1 - e.plT / d.charge;
+      ctx.save();
+      ctx.strokeStyle = rgba('#c98cff', 0.2 + 0.45 * k * (0.6 + 0.4 * Math.sin(t * 50)));
+      ctx.lineWidth = 0.8 + k * 1.4;
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      for (const a of d.fan ? [-d.fan, 0, d.fan] : [0]) for (const sd of d.side) {
+        const [mx, my] = this.platMuzzle(e, sd), aa = e.ang + a;
+        ctx.moveTo(mx, my);
+        ctx.lineTo(mx + Math.cos(aa) * d.len, my + Math.sin(aa) * d.len);
+      }
+      ctx.stroke();
+      // Mündungen glühen auf
+      ctx.setLineDash([]);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const sd of d.side) {
+        const [mx, my] = this.platMuzzle(e, sd);
+        const g = ctx.createRadialGradient(mx, my, 0, mx, my, 6 + 8 * k);
+        g.addColorStop(0, 'rgba(240,210,255,0.9)');
+        g.addColorStop(1, 'rgba(180,92,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(mx, my, 6 + 8 * k, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Nebennest: Kristallbild, dreht sich langsam; Treffer blitzen hell */
+  private drawHive(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
+    const img = projectileSprite(e.hive!.img), size = 190;
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.6);
+    g.addColorStop(0, `rgba(180,92,255,${0.16 + 0.06 * Math.sin(t * 2 + e.x)})`);
+    g.addColorStop(1, 'rgba(180,92,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, size * 0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.rotate(e.ang);
+    if (img) {
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      if (e.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.4; ctx.drawImage(img, -size / 2, -size / 2, size, size); }
+    } else {
+      ctx.strokeStyle = '#d9a6ff'; ctx.lineWidth = 2;
+      ctx.beginPath(); for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2, r = k % 2 ? 30 : 60; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   /** Lila Blitz zwischen zwei Punkten: zwei zuckende Zickzack-Bahnen mit Schein, alle paar Hundertstel neu gewürfelt */
   private drawNestBolt(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, t: number): void {
     const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
@@ -4092,6 +4259,8 @@ export class ShooterGame implements MiniGame {
 
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
     if (e.nest) { this.drawNest(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }
+    if (e.plat) { this.drawPlat(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }
+    if (e.hive) { this.drawHive(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }
     if (e.parent?.nest && e.weapon === 'brut' && projectileSprite(NEST_LAYOUT[this.side === 'khaak' ? 'khaak' : 'xenon'].core)) { this.drawEnemyStatus(ctx, e); return; }
     const s = SPEC[e.kind];
     const xen = this.side === 'xenon', kh = this.side === 'khaak';
