@@ -4,7 +4,7 @@
 // zeigt die Änderung seit dem letzten Einbau. Zwei Modi: Ausrüstung (Waffen, Raketen, Schild, Türme) und Werkstatt
 // (vier Mod-Sockel). Navigation: höchstens eine Ebene (Hangar → Schublade); Zurück schließt immer zuerst die Schublade.
 import {
-  LTURRET_IDS, LTURRETS, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
+  LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
   loadout, sustainedDps, weaponGun, type Loadout, type ShipId, type X4Gun,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
@@ -47,7 +47,7 @@ const pct = (v: number, cur: number, lower = false) => (cur > 0 ? delta(v / cur,
 function gunData(g: X4Gun, beam = false): string {
   return beam
     ? `${num(g.dmg)} Schaden/s · Dauerstrahl`
-    : `${num(g.dmg)}${g.amt > 1 ? ` × ${g.amt}` : ''} Schaden · ${g.mag === 1 ? 'Einzelschuss' : `${num(g.rate, 1)} Schuss/s`}${g.mag > 1 ? ` · ${g.mag}er-Salve, ${num(g.reload, 1)} s Pause` : g.mag === 1 ? `, ${num(g.reload, 1)} s Aufladen` : ''} · ${num(km(g), 1)} km`;
+    : `${num(g.dmg)}${g.amt > 1 ? ` × ${g.amt}` : ''} Schaden · ${g.mag === 1 ? 'Einzelschuss' : `${num(g.rate, 1)} Schuss/s`}${g.mag > 1 ? ` · ${g.mag}er-Salve, ${num(g.reload * RELOAD, 1)} s Pause` : g.mag === 1 ? `, ${num(g.reload * RELOAD, 1)} s Aufladen` : ''} · ${num(km(g), 1)} km`;
 }
 
 // ---------- Kartenzeichen (bis eigene Bilder da sind) ----------

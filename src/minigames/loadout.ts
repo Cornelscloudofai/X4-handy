@@ -233,9 +233,10 @@ export interface WeaponDef {
   m: X4Gun;
   /** eigene Werte für L-Waffenplätze (sonst aus der M-Version abgeleitet) */
   l?: X4Gun;
-  /** Strahl statt Geschossen; haftende Geschosse mit Nachbrand (Thermal-Desintegrator); Lanze: trifft sofort als Blitzstrahl */
+  /** Strahl statt Geschossen; Lanze: trifft sofort als Blitzstrahl */
   beam?: boolean;
-  sticky?: boolean;
+  /** Anteil des Schadens, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */
+  hullPierce?: number;
   rail?: boolean;
   /** Zielhilfe im Verhältnis zu sonst (Bosonenlanze: kleiner Schwenkbereich) */
   gimbal?: number;
@@ -245,6 +246,11 @@ export interface WeaponDef {
 
 /** X4-Takt, der im Minispiel einen Schuss pro Sekunde ergibt (Spielzeit je X4-Sekunde, siehe TIME) */
 const TIME_RATE = 0.26 * 6;
+/**
+ * Nachladen und Pausen nach einer Salve bzw. einem Magazin dauern im Minispiel nur 60 % der X4-Zeit (im Spieltakt
+ * gemessen etwa so lange wie in X4 selbst) – sonst wirken Schrotbatterie, Tau-Beschleuniger und Co. zu träge
+ */
+export const RELOAD = 0.6;
 
 // Annahmen, wo die Daten nichts hergeben (siehe docs/design/split-militaerschiffe.md):
 // – Plasmakanone: die Nachladezeit fehlt; sie feuert so schnell, wie ihre Kühlung es erlaubt (Hitze ÷ Kühlung).
@@ -295,8 +301,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     m: { dmg: 90, rate: 2, amt: 4, mag: 6, reload: 5, v: 2000, life: 1.4, angle: 1.32 },
   },
   thermal: {
-    name: 'Thermal-Desintegrator', group: 'split', color: '#ff9d2e', w: 2.6, sticky: true,
-    desc: 'Split: Geschosse haften am Ziel und brennen nach; sie dringen teilweise durch Schilde.',
+    name: 'Thermal-Desintegrator', group: 'split', color: '#ff9d2e', w: 2.6, hullPierce: 0.4,
+    desc: 'Split: 40 % jedes Treffers umgehen den Schild und gehen sofort auf die Hülle – stark gegen gut geschützte Ziele.',
     s: { dmg: 31, rate: 4, amt: 1, mag: 8, reload: 2.2, v: 2200, life: 1.1, angle: 0.3 },
     m: { dmg: 92, rate: 4, amt: 1, mag: 8, reload: 4.5, v: 2200, life: 1.682, angle: 0.3 },
   },
@@ -318,9 +324,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   plasmasalve: {
     name: 'Plasma-Salvenkanone', group: 'schwer', color: '#c8ff6b', w: 5,
     desc: 'Drei schwere Plasmakugeln kurz hintereinander, dann drei Sekunden nachladen – viel Wucht auf einen Schlag.',
-    s: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * 1), v: 1500, life: 7.3, angle: 0.4 },
-    m: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * 1), v: 1500, life: 7.3, angle: 0.4 },
-    l: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * 1), v: 1500, life: 7.3, angle: 0.4 },
+    s: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * RELOAD), v: 1500, life: 7.3, angle: 0.4 },
+    m: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * RELOAD), v: 1500, life: 7.3, angle: 0.4 },
+    l: { dmg: 1100, rate: TIME_RATE * 3, amt: 1, mag: 3, reload: 3 / (TIME_RATE * RELOAD), v: 1500, life: 7.3, angle: 0.4 },
   },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
@@ -387,7 +393,7 @@ export function sustainedDps(g: X4Gun, beam = false): number {
   if (beam) return g.dmg;
   const per = g.dmg * g.amt;
   if (!g.mag) return per * g.rate;
-  return (per * g.mag) / ((g.mag - 1) / g.rate + Math.max(g.reload, 1 / g.rate));
+  return (per * g.mag) / ((g.mag - 1) / g.rate + Math.max(g.reload * RELOAD, 1 / g.rate));
 }
 
 /**
@@ -402,7 +408,9 @@ export function effectiveDps(g: X4Gun, beam = false): number {
 /** Spielzeit je X4-Sekunde: das Minispiel läuft etwas gemächlicher (Pulslaser: 0,26 s statt 1/6 s je Schuss) */
 export const TIME = 0.26 * 6;
 /** Spielschaden je X4-Schadenspunkt im Verhältnis zum Grundschaden: der Pulslaser behält seine bisherige Dauerleistung */
-export const DMG_SCALE = (0.5 / 0.26) * TIME / sustainedDps(WEAPONS.puls.s);
+// (Maßstab mit der ursprünglichen Nachladezeit, damit das schnellere Nachladen mehr Feuerkraft bringt statt den
+// Schaden je Treffer zu senken)
+export const DMG_SCALE = (0.5 / 0.26) * TIME / sustainedDps({ ...WEAPONS.puls.s, reload: WEAPONS.puls.s.reload / RELOAD });
 /** Reichweite: 3500 m Pulslaser = 416 Bildpunkte; Geschosstempo verdichtet (Wurzel), sonst wären Plasma zu langsam und Bosonen zu schnell */
 const RANGE_SCALE = 416 / 3500;
 /** größte Reichweite der L-Hauptbatterie (Spielpunkte) */

@@ -147,6 +147,28 @@ describe('Kampf: Einsätze', () => {
     expect(r.points).toBeGreaterThan(0);
   }, 120000);
 
+  it('Xenon-Nest: Nebennester schicken N-Drohnen, Plattformtürme feuern Feuerstöße und Laser', () => {
+    const g = game('nest', 'xenon');
+    const G = g as unknown as G & { hull: number; bullets: { from: string }[] };
+    for (let i = 0; i < 60; i++) g.update(DT);
+    expect(G.enemies.filter((e) => e.hive).length).toBe(2);
+    expect(G.enemies.filter((e) => e.plat).length).toBe(4);
+    const p = G.enemies.find((e) => e.plat) as unknown as { x: number; y: number };
+    let shots = 0;
+    for (let i = 0; i < 60 * 8; i++) {
+      G.px = p.x + 160; G.py = p.y + 60; G.hull = 100;
+      g.update(DT);
+      shots = Math.max(shots, G.bullets.filter((b) => b.from === 'e').length);
+    }
+    expect(shots).toBeGreaterThan(3);
+    const all = G.enemies as unknown as { kind: string; hive?: unknown; broodT?: number }[];
+    G.enemies = all.filter((e) => e.kind !== 'n') as never;
+    for (const e of all) if (e.hive) e.broodT = 0;
+    // ohne Drohnen gilt die Welle als besiegt: erst die Verbesserungskarte wählen (solange steht das Spiel)
+    for (let i = 0; i < 3; i++) { g.update(DT); if (g.state.choosing) g.chooseCard(0); }
+    expect((G.enemies as unknown as { kind: string }[]).filter((e) => e.kind === 'n').length).toBeGreaterThanOrEqual(3);
+  }, 120000);
+
   it('Flucht: der Sprungantrieb lädt mit der Zeit, voll = gewonnen', () => {
     const g = game('flucht', 'pirate');
     for (let i = 0; i < 60 * 30; i++) { g.autopilot(); g.update(DT); }

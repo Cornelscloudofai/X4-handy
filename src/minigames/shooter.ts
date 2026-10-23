@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { DMG_SCALE, LTURRETS, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -52,12 +52,20 @@ interface Ward {
 interface PlatDef {
   head: string; base: string; py: number; size: number; baseSize: number; muzzle: number; side: number[]; fan: number;
   dmg: number; len: number; charge: number; cd: number; turn: number; name: string;
+  /** Waffe: Kyon-Strahl (Kha'ak), Laserstrahl (trifft sofort, Xenon) oder Kanone (Feuerstoß aus Geschossen) */
+  fire?: 'kyon' | 'beam' | 'gun'; color?: string;
+  /** Kanone: Schüsse je Feuerstoß, Abstand (s), Geschosstempo, Breite */
+  burst?: number; gap?: number; v?: number; w?: number;
 }
-const PLATS: Record<'dreifach' | 'zwilling' | 'lanze' | 'strahl', PlatDef> = {
-  dreifach: { name: 'Dreifach-Kyonturm', head: 'khaak-turm-dreifach-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 95, baseSize: 150, muzzle: 50, side: [0], fan: 0.2, dmg: 7, len: KYON_LEN, charge: 0.6, cd: 3.2, turn: 1.1 },
-  zwilling: { name: 'Zwillings-Kyonturm', head: 'khaak-turm-zwilling-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 100, baseSize: 150, muzzle: 48, side: [-4.5, 4.5], fan: 0, dmg: 6, len: KYON_LEN, charge: 0.35, cd: 1.5, turn: 1.4 },
-  lanze: { name: 'Kyon-Lanze', head: 'khaak-turm-lanze-ki', base: 'khaak-plattform-gross-ki', py: 0.68, size: 100, baseSize: 155, muzzle: 62, side: [0], fan: 0, dmg: 14, len: KYON_LEN + 140, charge: 0.8, cd: 2.8, turn: 0.8 },
-  strahl: { name: 'Kyon-Strahler', head: 'khaak-turm-strahl-ki', base: 'khaak-plattform-gross-ki', py: 0.73, size: 165, baseSize: 155, muzzle: 112, side: [0], fan: 0, dmg: 22, len: KYON_LEN + 260, charge: 1.2, cd: 4.5, turn: 0.55 },
+const PLATS: Record<'dreifach' | 'zwilling' | 'lanze' | 'strahl' | 'xgatling' | 'xzwilling' | 'xlaser', PlatDef> = {
+  // Xenon: Gatling (langer Feuerstoß), Zwillingskanone (schwere Bolzen abwechselnd aus beiden Rohren), schwerer Laser
+  xgatling: { name: 'Xenon-Gatlingturm', head: 'xenon-turm-gatling-ki', base: 'xenon-plattform-klein-ki', py: 0.77, size: 120, baseSize: 150, muzzle: 86, side: [0], fan: 0, dmg: 3, len: 560, charge: 0.45, cd: 2.8, turn: 1.3, fire: 'gun', color: '#ff5c6c', burst: 14, gap: 0.07, v: 470, w: 1.8 },
+  xzwilling: { name: 'Xenon-Zwillingskanone', head: 'xenon-turm-zwilling-ki', base: 'xenon-plattform-klein-ki', py: 0.7, size: 105, baseSize: 150, muzzle: 67, side: [-4.6, 4.6], fan: 0, dmg: 9, len: 580, charge: 0.5, cd: 2.6, turn: 1, fire: 'gun', color: '#ff3b4a', burst: 4, gap: 0.22, v: 330, w: 4 },
+  xlaser: { name: 'Schwerer Xenon-Laser', head: 'xenon-turm-laser-gross-ki', base: 'xenon-plattform-gross-ki', py: 0.68, size: 95, baseSize: 165, muzzle: 62, side: [0], fan: 0, dmg: 20, len: 760, charge: 1.1, cd: 4.2, turn: 0.6, fire: 'beam', color: '#ff3b4a' },
+  dreifach: { name: 'Dreifach-Kyonturm', head: 'khaak-turm-dreifach-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 95, baseSize: 150, muzzle: 50, side: [0], fan: 0.2, dmg: 7, len: KYON_LEN + 140, charge: 0.6, cd: 3.2, turn: 1.1 },
+  zwilling: { name: 'Zwillings-Kyonturm', head: 'khaak-turm-zwilling-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 100, baseSize: 150, muzzle: 48, side: [-4.5, 4.5], fan: 0, dmg: 6, len: KYON_LEN + 140, charge: 0.35, cd: 1.5, turn: 1.4 },
+  lanze: { name: 'Kyon-Lanze', head: 'khaak-turm-lanze-ki', base: 'khaak-plattform-gross-ki', py: 0.68, size: 100, baseSize: 155, muzzle: 62, side: [0], fan: 0, dmg: 14, len: KYON_LEN + 300, charge: 0.8, cd: 2.8, turn: 0.8 },
+  strahl: { name: 'Kyon-Strahler', head: 'khaak-turm-strahl-ki', base: 'khaak-plattform-gross-ki', py: 0.73, size: 165, baseSize: 155, muzzle: 112, side: [0], fan: 0, dmg: 22, len: KYON_LEN + 440, charge: 1.2, cd: 4.5, turn: 0.55 },
 };
 
 /** Bergungscontainer im Wrackfeld (Einsatz „Bergung“): treibt, wird geschleppt oder ist abgeliefert/verloren */
@@ -77,6 +85,8 @@ interface Enemy {
   hive?: { img: string };
   /** Kha'ak-Turmplattform beim Nest: fester Sockel, drehender Turmkopf; plT = Kyon lädt (Restzeit) */
   plat?: PlatDef; plT?: number;
+  /** Plattform mit Kanone: Schüsse im laufenden Feuerstoß und Zeit bis zum nächsten */
+  burst?: number; burstT?: number;
   /** Blickrichtung (Bordkanonen feuern nur dorthin) */
   ang: number;
   /** Jäger-Anflug: nach Salve oder Überflug abdrehen (Restzeit, Richtung); Schüsse und Dauer des laufenden Anflugs */
@@ -121,7 +131,8 @@ interface GameGun {
   /** Streuung je Geschoss (rad, ± zufällig) */
   jitter: number;
   beam: boolean;
-  sticky: boolean;
+  /** Anteil des Schadens, der den Schild umgeht (Thermal-Desintegrator) */
+  hullPierce: number;
   /** Lanze: trifft sofort als Blitzstrahl */
   rail: boolean;
   gimbal: number;
@@ -141,16 +152,16 @@ function vibrate(ms: number): void {
   }
 }
 
-function gameGun(g: X4Gun, o: { beam?: boolean; sticky?: boolean; rail?: boolean; gimbal?: number; color: string; w: number }): GameGun {
+function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; gimbal?: number; color: string; w: number }): GameGun {
   const beam = !!o.beam, range = gameRange(g, beam), speed = beam ? 0 : gameSpeed(g.v);
   return {
-    dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME,
+    dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME * RELOAD,
     speed, life: beam ? 0 : range / speed, range, pellets: g.amt, jitter: g.angle * JITTER,
-    beam, sticky: !!o.sticky, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w,
+    beam, hullPierce: o.hullPierce ?? 0, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w,
   };
 }
 
-interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** haftet und brennt nach (Thermal-Desintegrator) */ sticky?: boolean }
+interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean }
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
@@ -162,7 +173,12 @@ interface Mine { x: number; y: number; vx: number; vy: number; armed: number; hp
 interface Card { id: string; name: string; desc: string; max: number }
 
 /** Laserturm der Xenon: Reichweite, Aufladezeit, Brenndauer, Schaden pro Sekunde */
-const LASER_LEN = 400, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
+const LASER_LEN = 600, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
+/**
+ * Reichweite gegnerischer Geschütztürme (Großkampfschiffe, Nester, Frachter): Kanonen- und Plasmatürme – deutlich
+ * weiter als die Bordwaffen der Jäger, damit Großziele nicht gefahrlos aus sicherer Entfernung beschossen werden
+ */
+const TURRET_RANGE = 520, PLASMA_RANGE = 560;
 
 /** Drehrate je Gegnerart (rad/s): Jäger wendig, Kanonenboote träge – wer sie umkreist, ist vor ihren Kanonen sicher */
 const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 1.3, xs: 1.6, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
@@ -520,7 +536,7 @@ export class ShooterGame implements MiniGame {
       case 'flucht': return { stars: ['Durchhalten, bis der Frachter springt', '… mit mindestens 35 % Frachter-Hülle', '… mit mindestens 60 % Frachter-Hülle'], points: ['Gesprungen: 1.000, dazu bis 2.000 nach Frachter-Hülle', `Der Sprungantrieb braucht ${Math.round(this.fluchtT)} s – auch wenn du nur ausweichst`] };
       case 'bergung': return { stars: [`${CRATES_MIN} Container bergen`, '6 Container bergen', `Alle ${CRATES} Container bergen`], points: ['Je abgelieferter Container 400', 'Am Ende: bis 1.000 nach Hülle des Bergungsschiffs', 'Wer einen Container schleppt, ist etwas langsamer; Treffer auf den Container zerstören ihn'] };
       case 'ueberfall': return { stars: ['Einen Piratenfrachter zerstören', 'Zwei Piratenfrachter zerstören', 'Alle drei Piratenfrachter zerstören'], points: ['Piratenfrachter 800, alle drei: 1.000 extra'] };
-      case 'nest': return { stars: ['Das Nest ausheben', '… in unter 4 Minuten', '… in unter 2:30 Minuten'], points: ['Brutöffnung 200, Kern 1.500, dazu bis 2.000 für Tempo (je Sekunde unter 5 Minuten fast 7)', ...(this.side === 'khaak' ? ['Kha’ak: zwei Nebennester (je 750, brüten Späher-Cluster) und vier Turmplattformen (je 200) – freiwillige Ziele'] : [])] };
+      case 'nest': return { stars: ['Das Nest ausheben', '… in unter 4 Minuten', '… in unter 2:30 Minuten'], points: ['Brutöffnung 200, Kern 1.500, dazu bis 2.000 für Tempo (je Sekunde unter 5 Minuten fast 7)', this.side === 'khaak' ? 'Zwei Nebennester (je 750, brüten Späher-Cluster) und vier Turmplattformen (je 200) – freiwillige Ziele' : 'Zwei Nebennester (je 750, schicken Xenon-N-Drohnen) und vier Turmplattformen (je 200: Gatling, Zwillingskanone, schwerer Laser) – freiwillige Ziele'] };
       default: return null;
     }
   }
@@ -592,7 +608,6 @@ export class ShooterGame implements MiniGame {
   private mag = 0;
   private idle = 0;
   /** Nachbrand haftender Geschosse: Gegner, Schaden pro Sekunde, Restzeit */
-  private burns: { e: Enemy; dps: number; t: number }[] = [];
   private readonly sh: ShieldDef;
   /** Effekte der Schiffsmodifikationen */
   private readonly mods: ModStats;
@@ -780,7 +795,7 @@ export class ShooterGame implements MiniGame {
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
     this.score = new Score(this.mutator?.mult ?? 1, 6);
-    this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : this.mission === 'geleit' ? NORMAL_GOALS : MISSION_GOALS[this.mission === 'nest' && side === 'khaak' ? 'nestKhaak' : this.mission], rng(cfg.seed ^ 0x77));
+    this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : this.mission === 'geleit' ? NORMAL_GOALS : MISSION_GOALS[this.mission === 'nest' ? 'nestKhaak' : this.mission], rng(cfg.seed ^ 0x77));
     this.shield = this.shieldMax;
     this.eyebrow = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : 'Kha’ak';
     this.title = this.mode === 'endless' ? 'Endlos' : this.mission === 'bergung' ? 'Bergung' : this.mission !== 'geleit' ? MISSIONS[this.mission].name : side === 'pirate' ? 'Geleitschutz' : side === 'xenon' ? 'Abwehr' : 'Invasion';
@@ -1775,15 +1790,18 @@ export class ShooterGame implements MiniGame {
       this.enemies.push(t);
     }
     this.bossT = 0;
-    if (this.side === 'khaak') this.spawnNestSurroundings();
+    this.spawnNestSurroundings();
   }
 
   /**
-   * Umgebung des Kha'ak-Nests: zwei Nebennester (brüten Späher-Cluster) seitlich davor und vier Turmplattformen auf dem
-   * Anflugweg – alles freiwillige Ziele, die das Ausheben schwerer machen
+   * Umgebung des Nests: zwei Nebennester (brüten Späher-Cluster bzw. Xenon-Drohnen) seitlich davor und vier
+   * Turmplattformen auf dem Anflugweg – alles freiwillige Ziele, die das Ausheben schwerer machen
    */
   private spawnNestSurroundings(): void {
-    for (const [dx, dy, img] of [[-600, 520, 'khaak-nebennest-a-ki'], [600, 520, 'khaak-nebennest-b-ki']] as const) {
+    const kh = this.side === 'khaak';
+    const hives = kh ? ['khaak-nebennest-a-ki', 'khaak-nebennest-b-ki'] : ['xenon-nebennest-a-ki', 'xenon-nebennest-b-ki'];
+    const plats = (kh ? ['dreifach', 'zwilling', 'lanze', 'strahl'] : ['xgatling', 'xzwilling', 'xlaser', 'xgatling']) as (keyof typeof PLATS)[];
+    for (const [dx, dy, img] of [[-600, 520, hives[0]], [600, 520, hives[1]]] as const) {
       const h = this.makeEnemy('boss', this.fX + dx, this.fY + dy);
       const st = enemyStats('boss', this.level, { mini: true, tune: this.tune });
       h.hp = h.max = st.hp; h.sh = h.shMax = st.sh;
@@ -1792,7 +1810,7 @@ export class ShooterGame implements MiniGame {
       h.broodT = 6 + this.r() * 6;
       this.enemies.push(h);
     }
-    for (const [dx, dy, type] of [[-380, 950, 'dreifach'], [380, 950, 'zwilling'], [-900, 150, 'lanze'], [900, 150, 'strahl']] as const) {
+    for (const [dx, dy, type] of [[-380, 950, plats[0]], [380, 950, plats[1]], [-900, 150, plats[2]], [900, 150, plats[3]]] as const) {
       const t = this.makeEnemy('turret', this.fX + dx, this.fY + dy);
       const st = enemyStats('turret', this.level, { extra: 2, tune: this.tune });
       t.hp = t.max = st.hp; t.sh = t.shMax = st.sh;
@@ -1809,14 +1827,31 @@ export class ShooterGame implements MiniGame {
     e.vx = 0; e.vy = 0;
     const want = Math.atan2(this.py - e.y, this.px - e.x), dist = Math.hypot(this.px - e.x, this.py - e.y);
     // während des Ladens bleibt die Richtung stehen (wer ausweicht, entkommt)
+    // Kanone im Feuerstoß: folgt dem Ziel weiter, Schuss um Schuss (Zwilling: abwechselnd aus beiden Rohren)
+    if (e.burst) {
+      e.ang = wrapA(turnTo(e.ang, want, d.turn * dt));
+      e.burstT = (e.burstT ?? 0) - dt;
+      if (e.burstT <= 0) {
+        e.burstT = d.gap ?? 0.1;
+        const sd = d.side[e.burst % d.side.length], [mx, my] = this.platMuzzle(e, sd), v = d.v ?? 400;
+        const a = e.ang + (this.r() - 0.5) * 0.06;
+        this.bullets.push({ x: mx, y: my, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: d.dmg * this.enemyDmg, from: 'e', life: d.len / v, color: d.color ?? '#ff5c6c', w: d.w ?? 2, pierce: 0 });
+        e.burst--;
+        const sx = (e.x - this.camX) * this.zoom, sy = (e.y - this.camY) * this.zoom;
+        if (sx > -40 && sx < this.w + 40 && sy > -40 && sy < this.h + 40) sfx.enemyShot(this.panAt(e.x));
+      }
+      return;
+    }
     if (e.plT == null) e.ang = wrapA(turnTo(e.ang, want, d.turn * dt));
     if (e.plT != null) {
       e.plT -= dt;
       if (e.plT <= 0) {
         e.plT = undefined;
+        if (d.fire === 'gun') { e.burst = d.burst ?? 8; e.burstT = 0; return; }
         for (const a of d.fan ? [-d.fan, 0, d.fan] : [0]) for (const sd of d.side) {
           const [mx, my] = this.platMuzzle(e, sd);
-          this.fireKyon(e, e.ang + a, d.dmg, d.len, [mx, my]);
+          if (d.fire === 'beam') this.fireKyon(e, e.ang + a, d.dmg, d.len, [mx, my], d.color, 1);
+          else this.fireKyon(e, e.ang + a, d.dmg, d.len, [mx, my]);
         }
       }
       return;
@@ -1841,8 +1876,20 @@ export class ShooterGame implements MiniGame {
     e.broodT = (e.broodT ?? 8) - dt;
     if (e.broodT > 0) return;
     e.broodT = Math.max(9, 16 - this.level) + this.r() * 4;
-    if (!this.broodRoom()) return;
     const a = Math.atan2(this.py - e.y, this.px - e.x);
+    if (this.side !== 'khaak') {
+      // Xenon: drei N-Drohnen, solange nicht schon viele unterwegs sind
+      if (this.enemies.filter((q) => q.kind === 'n').length >= 10 || this.enemies.length > 56) return;
+      for (let q = 0; q < 3; q++) {
+        const j = this.makeEnemy('n', e.x + Math.cos(a) * 70 + (q - 1) * 16, e.y + Math.sin(a) * 70);
+        const aa = a + (q - 1) * 0.5;
+        j.ang = aa; j.vx = Math.cos(aa) * 200; j.vy = Math.sin(aa) * 200; j.target = 'p';
+        this.enemies.push(j);
+      }
+      this.fx.add({ x: e.x, y: e.y, color: '#ff5c6c', size: 5, kind: 'ring', max: 0.5 });
+      return;
+    }
+    if (!this.broodRoom()) return;
     this.spawnCluster(4, e.x + Math.cos(a) * 70, e.y + Math.sin(a) * 70);
     this.fx.add({ x: e.x, y: e.y, color: '#c77dff', size: 5, kind: 'ring', max: 0.5 });
   }
@@ -1851,11 +1898,11 @@ export class ShooterGame implements MiniGame {
   private updateNest(e: Enemy, dt: number): void {
     e.vx = 0; e.vy = 0;
     e.cd -= dt;
-    if (e.shielded || e.cd > 0 || Math.hypot(this.px - e.x, this.py - e.y) > 520) return;
+    if (e.shielded || e.cd > 0 || Math.hypot(this.px - e.x, this.py - e.y) > 620) return;
     e.cd = this.level >= 4 ? 2.4 : 3;
     const o = this.r() * Math.PI;
-    if (this.side === 'khaak') for (let q = 0; q < 8; q++) this.fireKyon(e, o + (q / 8) * Math.PI * 2, 9, KYON_LEN + 60);
-    else for (let q = 0; q < 12; q++) this.enemyShot(e, o + (q / 12) * Math.PI * 2, 230, 8, '#ff3b4a', 2.5, 2.4);
+    if (this.side === 'khaak') for (let q = 0; q < 8; q++) this.fireKyon(e, o + (q / 8) * Math.PI * 2, 9, KYON_LEN + 260);
+    else for (let q = 0; q < 12; q++) this.enemyShot(e, o + (q / 12) * Math.PI * 2, 230, 8, '#ff3b4a', 2.5, 2.8);
   }
 
   /** Brutöffnung des Nests: alle paar Sekunden zwei Drohnen, solange nicht schon viele unterwegs sind */
@@ -1904,13 +1951,13 @@ export class ShooterGame implements MiniGame {
       return;
     }
     e.cd -= dt;
-    if (e.cd <= 0 && Math.hypot(this.px - e.x, this.py - e.y) < 280) {
+    if (e.cd <= 0 && Math.hypot(this.px - e.x, this.py - e.y) < 400) {
       e.cd = 1.3 + this.r() * 0.4;
       for (const oy of [-26, 30]) {
         const c = Math.cos(e.ang + Math.PI / 2), sn = Math.sin(e.ang + Math.PI / 2);
         const sx = e.x - oy * sn, sy = e.y + oy * c;
         const aa = Math.atan2(this.py + this.pvy * 0.3 - sy, this.px + this.pvx * 0.3 - sx);
-        this.bullets.push({ x: sx, y: sy, vx: Math.cos(aa) * 300, vy: Math.sin(aa) * 300, dmg: 4.5 * this.enemyDmg, from: 'e', life: 1, color: '#ffd27a', w: 1.6, pierce: 0 });
+        this.bullets.push({ x: sx, y: sy, vx: Math.cos(aa) * 300, vy: Math.sin(aa) * 300, dmg: 4.5 * this.enemyDmg, from: 'e', life: 1.45, color: '#ffd27a', w: 1.6, pierce: 0 });
       }
     }
   }
@@ -2309,7 +2356,7 @@ export class ShooterGame implements MiniGame {
         for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < w.pellets; p++) {
           const a = a0 + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter;
           if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7), w.range, w.color); continue; }
-          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), sticky: w.sticky || undefined });
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), hullPierce: w.hullPierce || undefined });
         }
       }
       // nächster Schuss; ist das Magazin leer, erst nachladen
@@ -2319,17 +2366,6 @@ export class ShooterGame implements MiniGame {
     this.updateTurrets(dt);
     if (this.tBeams.length) sustain('turretBeam', 'beam', 0.45);
     this.updateLTurrets(dt);
-    // Nachbrand: dringt zum Teil durch fremde Schilde (Annahme: 65 % statt 30 %)
-    if (this.burns.length) {
-      for (const bn of this.burns) {
-        bn.t -= dt;
-        if (this.enemies.includes(bn.e)) {
-          this.damageEnemy(bn.e, bn.dps * dt, 0.65);
-          if (Math.random() < dt * 8) this.fx.add({ x: bn.e.x + (Math.random() - 0.5) * bn.e.r, y: bn.e.y + (Math.random() - 0.5) * bn.e.r, color: '#ff9d2e', size: 1.4, max: 0.25 });
-        }
-      }
-      this.burns = this.burns.filter((bn) => bn.t > 0 && this.enemies.includes(bn.e));
-    }
     // Drohnen kreisen und feuern selbst
     const drones = this.droneN;
     if (drones) {
@@ -2593,21 +2629,21 @@ export class ShooterGame implements MiniGame {
         }
         const tx = this.r() < 0.5 || !pw ? this.px : pfx, ty = tx === this.px ? this.py : pfy;
         if (e.weapon === 'plasma') {
-          if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < 380) {
+          if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < PLASMA_RANGE) {
             e.cd = (this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8;
             // dicke, langsame Plasmakugel: leicht gestreut, gut sichtbar, schwer
             const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08;
-            this.enemyShot(e, a2, 175, 14, '#ff6a3d', 6, 2.6);
+            this.enemyShot(e, a2, 175, 14, '#ff6a3d', 6, (PLASMA_RANGE + 40) / 175);
             // aus den Mündungen, nicht aus der Turmmitte
             const pb = this.bullets[this.bullets.length - 1];
             pb.x += Math.cos(a2) * 19; pb.y += Math.sin(a2) * 19;
           }
           continue;
         }
-        if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < 340) {
+        if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < TURRET_RANGE) {
           e.cd = 2.2 + this.r() * 0.8;
-          const a2 = Math.atan2(ty - e.y, tx - e.x);
-          for (let q = 0; q < 2; q++) this.enemyShot(e, a2 + (q - 0.5) * 0.1, this.side === 'pirate' ? 250 : 280, 5.5, this.side === 'pirate' ? '#ffd27a' : '#ff5c6c');
+          const a2 = Math.atan2(ty - e.y, tx - e.x), v = this.side === 'pirate' ? 250 : 280;
+          for (let q = 0; q < 2; q++) this.enemyShot(e, a2 + (q - 0.5) * 0.1, v, 5.5, this.side === 'pirate' ? '#ffd27a' : '#ff5c6c', 2, (TURRET_RANGE + 40) / v);
         }
         continue;
       }
@@ -2757,7 +2793,7 @@ export class ShooterGame implements MiniGame {
       // Bordkanonen: nur wenn das Ziel genau vor dem Bug liegt
       e.cd -= dt;
       const off = Math.abs(wrapA(aimAt - e.ang));
-      const range = e.kind === 'n' || e.kind === 'ks' ? 210 : e.kind === 'boss' ? 380 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320;
+      const range = e.kind === 'n' || e.kind === 'ks' ? 210 : e.kind === 'boss' ? 480 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320;
       const cone = e.kind === 'kanone' ? 0.2 : e.kind === 'rakete' ? 0.5 : e.kind === 'kk' ? 0.3 : 0.12;
       // Jäger feuern nur im Anflug, nicht beim Abdrehen
       const breaking = fighter && !!e.brk && e.brk > 0;
@@ -2779,7 +2815,7 @@ export class ShooterGame implements MiniGame {
             if (this.side === 'khaak') {
               // Brutschiff-Kern: Ring aus Kyon-Strahlen, leicht versetzt
               const o = this.r() * Math.PI;
-              for (let q = 0; q < 8; q++) this.fireKyon(e, o + (q / 8) * Math.PI * 2, 10, KYON_LEN + 60);
+              for (let q = 0; q < 8; q++) this.fireKyon(e, o + (q / 8) * Math.PI * 2, 10, KYON_LEN + 200);
             } else {
               const n = this.side === 'pirate' ? 5 : 10;
               for (let q = 0; q < n; q++) this.enemyShot(e, this.side === 'pirate' ? aimAt + (q - 2) * 0.16 : (q / n) * Math.PI * 2, 240, 9, this.side === 'pirate' ? '#ffd27a' : '#ff3b4a', 2.5);
@@ -2812,7 +2848,7 @@ export class ShooterGame implements MiniGame {
    * Kyon-Strahl: trifft sofort alles auf der Linie (Jäger, Frachter); gegen Schilde ×1,5 – Kha'ak brennen Schilde
    * schnell durch, die Hülle hält länger
    */
-  private fireKyon(e: Enemy, a: number, dmg: number, len = KYON_LEN, start: [number, number] = [e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r]): void {
+  private fireKyon(e: Enemy, a: number, dmg: number, len = KYON_LEN, start: [number, number] = [e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r], color = '#b45cff', vsShield = KYON_SHIELD): void {
     const cx = Math.cos(a), cy = Math.sin(a);
     const [x0, y0] = start;
     const dist = (x: number, y: number): number => {
@@ -2821,7 +2857,7 @@ export class ShooterGame implements MiniGame {
     };
     let end = len;
     if (dist(this.px, this.py) < this.ship.r + 2) {
-      this.damagePlayer(dmg * this.enemyDmg, KYON_SHIELD);
+      this.damagePlayer(dmg * this.enemyDmg, vsShield);
       end = Math.min(end, (this.px - x0) * cx + (this.py - y0) * cy);
     }
     for (const w of this.wards) {
@@ -2830,7 +2866,7 @@ export class ShooterGame implements MiniGame {
       this.hitWard(w, dmg * this.enemyDmg * this.fScale, x0 + cx * t, y0 + cy * t);
       end = Math.min(end, t);
     }
-    this.rails.push({ x1: x0, y1: y0, x2: x0 + cx * end, y2: y0 + cy * end, t: 0.22, color: '#b45cff' });
+    this.rails.push({ x1: x0, y1: y0, x2: x0 + cx * end, y2: y0 + cy * end, t: 0.22, color });
     const sx = (e.x - this.camX) * this.zoom, sy = (e.y - this.camY) * this.zoom;
     if (sx > -40 && sx < this.w + 40 && sy > -40 && sy < this.h + 40) sfx.kyon(this.panAt(e.x));
   }
@@ -2911,11 +2947,9 @@ export class ShooterGame implements MiniGame {
         // Der geschützte Boss-Rumpf lässt Geschosse durch – so erreicht man auch die Türme dahinter
         const e = this.enemies.find((q) => !b.hit?.has(q) && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < q.r + 3);
         if (e) {
-          if (b.sticky) {
-            // haftet am Ziel und brennt nach (Annahme: Schaden verteilt über 2 Sekunden)
-            this.burns.push({ e, dps: b.dmg / 2, t: 2 });
-            e.flash = 0.08;
-          } else this.damageEnemy(e, b.dmg);
+          this.damageEnemy(e, b.dmg, 0.3, b.hullPierce ?? 0);
+          // Thermal: glühende Funken, wo die Hitze durch den Schild auf die Hülle schlägt
+          if (b.hullPierce) this.fx.burst(b.x, b.y, '#ff9d2e', 4, 90, 1.4, 'spark', 0.3);
           if (b.splash) {
             // Torpedo: Flächenschaden in der Umgebung
             for (const q of [...this.enemies]) if (q !== e && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < b.splash + q.r) this.damageEnemy(q, b.dmg * 0.5);
@@ -3086,9 +3120,11 @@ export class ShooterGame implements MiniGame {
     this.fx.burst(m.x, m.y, def.stun ? '#8fe0ff' : '#ffd27a', m.mini ? 7 : 12, 180, 1.8, 'spark', 0.35);
   }
 
-  private damageEnemy(e: Enemy, dmg: number, bypass = 0.3): void {
+  /** toHull: Anteil, der den eigenen Schild umgeht und sofort die Hülle trifft (Thermal-Desintegrator) */
+  private damageEnemy(e: Enemy, dmg: number, bypass = 0.3, toHull = 0): void {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
     let d = e.shielded ? dmg * bypass : dmg;
+    if (toHull > 0) { e.hp -= d * toHull; d *= 1 - toHull; }
     // eigener Schild fängt zuerst ab
     e.shT = 0;
     if (e.sh > 0) {
@@ -4108,9 +4144,10 @@ export class ShooterGame implements MiniGame {
     }
     ctx.restore();
     if (e.plT != null) {
-      const k = 1 - e.plT / d.charge;
+      const k = 1 - e.plT / d.charge, glow = d.color === '#ff3b4a' || d.color === '#ff5c6c' ? ['255,200,200', '255,59,74'] : ['240,210,255', '180,92,255'];
       ctx.save();
-      ctx.strokeStyle = rgba('#c98cff', 0.2 + 0.45 * k * (0.6 + 0.4 * Math.sin(t * 50)));
+      // Kanonen laufen nur warm (Mündungsglühen), Strahlwaffen zeigen dazu die Ziellinie
+      ctx.strokeStyle = rgba(d.fire === 'gun' ? '#000000' : d.color === '#ff3b4a' ? '#ff8a96' : '#c98cff', d.fire === 'gun' ? 0 : 0.2 + 0.45 * k * (0.6 + 0.4 * Math.sin(t * 50)));
       ctx.lineWidth = 0.8 + k * 1.4;
       ctx.setLineDash([4, 5]);
       ctx.beginPath();
@@ -4126,8 +4163,8 @@ export class ShooterGame implements MiniGame {
       for (const sd of d.side) {
         const [mx, my] = this.platMuzzle(e, sd);
         const g = ctx.createRadialGradient(mx, my, 0, mx, my, 6 + 8 * k);
-        g.addColorStop(0, 'rgba(240,210,255,0.9)');
-        g.addColorStop(1, 'rgba(180,92,255,0)');
+        g.addColorStop(0, `rgba(${glow[0]},0.9)`);
+        g.addColorStop(1, `rgba(${glow[1]},0)`);
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(mx, my, 6 + 8 * k, 0, Math.PI * 2); ctx.fill();
       }
@@ -4137,12 +4174,12 @@ export class ShooterGame implements MiniGame {
 
   /** Nebennest: Kristallbild, dreht sich langsam; Treffer blitzen hell */
   private drawHive(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
-    const img = projectileSprite(e.hive!.img), size = 190;
+    const img = projectileSprite(e.hive!.img), size = 190, col = this.side === 'khaak' ? '180,92,255' : '255,59,74';
     ctx.save();
     ctx.translate(e.x, e.y);
     const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.6);
-    g.addColorStop(0, `rgba(180,92,255,${0.16 + 0.06 * Math.sin(t * 2 + e.x)})`);
-    g.addColorStop(1, 'rgba(180,92,255,0)');
+    g.addColorStop(0, `rgba(${col},${0.16 + 0.06 * Math.sin(t * 2 + e.x)})`);
+    g.addColorStop(1, `rgba(${col},0)`);
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(0, 0, size * 0.6, 0, Math.PI * 2); ctx.fill();
     ctx.rotate(e.ang);

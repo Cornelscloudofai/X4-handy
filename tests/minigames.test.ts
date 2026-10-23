@@ -1512,3 +1512,46 @@ describe('Kampf: Kha’ak', () => {
     expect(t.map((q) => q.weapon)).toEqual(['laser', 'laser']);
   });
 });
+
+describe('Kampf: Nachladen, Thermal-Desintegrator, Turmreichweite', () => {
+  type T = { wpn: { reload: number }; enemies: { kind: string; hp: number; max: number; sh: number; shMax: number; x: number; y: number; r: number }[]; damageEnemy(e: unknown, d: number, b?: number, h?: number): void; makeEnemy(k: string, x: number, y: number): { hp: number; sh: number; x: number; y: number } };
+  const mk = (weapon: string) => new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'mamba', weapon, turret: 'puls', shield: 'leicht' } as Loadout }, 'pirate') as unknown as T;
+
+  it('Nachladen dauert im Spiel etwa so lange wie in X4 (nicht mehr um den Spieltakt gestreckt)', () => {
+    // Schrotbatterie S: 5 s in X4 → gut 4,7 s im Spiel (vorher 7,8 s)
+    expect(mk('schrot').wpn.reload).toBeLessThan(5);
+    expect(mk('schrot').wpn.reload).toBeGreaterThan(4);
+    expect(mk('tau').wpn.reload).toBeLessThan(4);
+  });
+
+  it('Thermal-Desintegrator: 40 % gehen am Schild vorbei sofort auf die Hülle', () => {
+    const g = mk('thermal');
+    const e = g.makeEnemy('kanone', 0, 0);
+    e.sh = 100; e.hp = 100;
+    g.damageEnemy(e, 50, 0.3, 0.4);
+    expect(e.hp).toBeCloseTo(80); // 20 auf die Hülle
+    expect(e.sh).toBeCloseTo(70); // 30 auf den Schild
+    // normale Waffe: alles erst auf den Schild
+    const f = g.makeEnemy('kanone', 0, 0);
+    f.sh = 100; f.hp = 100;
+    g.damageEnemy(f, 50);
+    expect(f.hp).toBe(100);
+  });
+
+  it('gegnerische Türme schießen weiter als der Pulslaser reicht', () => {
+    const g = new ShooterGame(cfg(1, 3), 'xenon') as unknown as T & { update(dt: number): void; resize(w: number, h: number): void; spawnBoss(): void; px: number; py: number; bullets: { from: string; life: number; vx: number; vy: number }[]; hull: number };
+    g.resize(W, H);
+    for (let i = 0; i < 60; i++) g.update(DT);
+    g.enemies = [];
+    g.spawnBoss();
+    const boss = g.enemies.find((e) => e.kind === 'boss')!;
+    // Jäger 500 Punkte entfernt: Laser- oder Plasmatürme feuern trotzdem
+    let fired = false;
+    for (let i = 0; i < 60 * 8 && !fired; i++) {
+      g.px = boss.x; g.py = boss.y + 500; g.hull = 100;
+      g.update(DT);
+      fired = g.bullets.some((b) => b.from === 'e' && Math.hypot(b.vx, b.vy) * b.life > 480) || (g.enemies as unknown as { beamT?: number }[]).some((q) => (q.beamT ?? 0) > 0);
+    }
+    expect(fired).toBe(true);
+  });
+});
