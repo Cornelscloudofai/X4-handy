@@ -169,6 +169,21 @@ describe('Kampf: Einsätze', () => {
     expect((G.enemies as unknown as { kind: string }[]).filter((e) => e.kind === 'n').length).toBeGreaterThanOrEqual(3);
   }, 120000);
 
+  it('Bergung und Flucht: Turmplattformen bei Xenon und Kha’ak (nicht bei Piraten); bei der Flucht treffen sie auch den Frachter', () => {
+    const count = (m: Mission, side: Side) => { const g = game(m, side); for (let i = 0; i < 60; i++) g.update(DT); return (g as unknown as G).enemies.filter((e) => e.plat).length; };
+    expect(count('bergung', 'xenon')).toBe(3);
+    expect(count('flucht', 'khaak')).toBe(3);
+    expect(count('bergung', 'pirate')).toBe(0);
+    // Jäger weit weg: die Plattformen nehmen den Frachter ins Visier
+    const g = game('flucht', 'xenon');
+    const G = g as unknown as G & { hull: number };
+    for (let i = 0; i < 60; i++) g.update(DT);
+    G.enemies = G.enemies.filter((e) => e.plat) as never;
+    const f0 = g.state.fHull;
+    for (let i = 0; i < 60 * 15; i++) { G.px = 100; G.py = 2500; G.hull = 100; g.update(DT); if (g.state.choosing) g.chooseCard(0); }
+    expect(g.state.fHull).toBeLessThan(f0);
+  }, 120000);
+
   it('Flucht: der Sprungantrieb lädt mit der Zeit, voll = gewonnen', () => {
     const g = game('flucht', 'pirate');
     for (let i = 0; i < 60 * 30; i++) { g.autopilot(); g.update(DT); }

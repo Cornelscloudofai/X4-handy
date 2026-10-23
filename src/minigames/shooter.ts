@@ -1464,6 +1464,7 @@ export class ShooterGame implements MiniGame {
     // Einsatzbeginn: Nest bzw. Piratenkonvoi erscheinen mit der ersten Welle
     if (this.wave === 0 && this.mission === 'nest') this.spawnNest();
     if (this.wave === 0 && this.mission === 'ueberfall') this.spawnConvoy();
+    if (this.wave === 0 && (this.mission === 'bergung' || this.mission === 'flucht')) this.spawnMissionPlats();
     if (this.section === 'rocks') this.spawnRocks();
     if (this.section === 'mines') this.spawnMines();
     const boss = this.isBossWave(this.wave);
@@ -1810,8 +1811,13 @@ export class ShooterGame implements MiniGame {
       h.broodT = 6 + this.r() * 6;
       this.enemies.push(h);
     }
-    for (const [dx, dy, type] of [[-380, 950, plats[0]], [380, 950, plats[1]], [-900, 150, plats[2]], [900, 150, plats[3]]] as const) {
-      const t = this.makeEnemy('turret', this.fX + dx, this.fY + dy);
+    this.spawnPlats([[this.fX - 380, this.fY + 950, plats[0]], [this.fX + 380, this.fY + 950, plats[1]], [this.fX - 900, this.fY + 150, plats[2]], [this.fX + 900, this.fY + 150, plats[3]]]);
+  }
+
+  /** Turmplattformen an festen Punkten der Karte */
+  private spawnPlats(list: [number, number, keyof typeof PLATS][]): void {
+    for (const [x, y, type] of list) {
+      const t = this.makeEnemy('turret', x, y);
       const st = enemyStats('turret', this.level, { extra: 2, tune: this.tune });
       t.hp = t.max = st.hp; t.sh = t.shMax = st.sh;
       t.r = 20; t.plat = PLATS[type]; t.target = 'p';
@@ -1821,11 +1827,33 @@ export class ShooterGame implements MiniGame {
     }
   }
 
+  /**
+   * Turmplattformen bei Bergung und Flucht (nur Xenon und Kha'ak – für Piraten gibt es keine): bei der Bergung bewachen
+   * drei das Wrackfeld (ihre Geschosse zerstören auch Container), bei der Flucht stehen drei im Halbkreis um den
+   * Frachter und nehmen ihn ins Visier, wenn du außer Reichweite bist
+   */
+  private spawnMissionPlats(): void {
+    if (this.side === 'pirate') return;
+    const kh = this.side === 'khaak';
+    if (this.mission === 'bergung') {
+      this.spawnPlats([[700, 780, kh ? 'dreifach' : 'xgatling'], [1900, 780, kh ? 'zwilling' : 'xzwilling'], [1300, 430, kh ? 'lanze' : 'xlaser']]);
+    } else if (this.mission === 'flucht') {
+      const x = this.fX, y = this.fY;
+      this.spawnPlats([[x - 430, y - 260, kh ? 'dreifach' : 'xgatling'], [x + 430, y - 260, kh ? 'zwilling' : 'xzwilling'], [x, y - 560, kh ? 'strahl' : 'xlaser']]);
+    }
+  }
+
   /** Turmplattform: Kopf dreht sich mit begrenzter Rate zu dir, lädt sichtbar und feuert Kyon-Strahlen aus den Mündungen */
   private updatePlat(e: Enemy, dt: number): void {
     const d = e.plat!;
     e.vx = 0; e.vy = 0;
-    const want = Math.atan2(this.py - e.y, this.px - e.x), dist = Math.hypot(this.px - e.x, this.py - e.y);
+    // Ziel: du, solange du in Reichweite bist – sonst ein Schutzziel in Reichweite (Flucht: der Frachter)
+    let tx = this.px, ty = this.py, dist = Math.hypot(this.px - e.x, this.py - e.y);
+    if (dist > d.len + 30) {
+      const w = this.wardOf(e);
+      if (w) { const wd = Math.hypot(this.wx(w) - e.x, this.wy(w) - e.y); if (wd < d.len) { tx = this.wx(w); ty = this.wy(w); dist = wd; } }
+    }
+    const want = Math.atan2(ty - e.y, tx - e.x);
     // während des Ladens bleibt die Richtung stehen (wer ausweicht, entkommt)
     // Kanone im Feuerstoß: folgt dem Ziel weiter, Schuss um Schuss (Zwilling: abwechselnd aus beiden Rohren)
     if (e.burst) {
