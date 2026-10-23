@@ -25,7 +25,7 @@ Vorgeschlagene Reihenfolge: 1. Elite-Gegner + Rollen Abfangjäger/Bomber, 2. Rak
 - Raketenabwehr: manche Gegner schießen Raketen ab, andere werfen Täuschkörper (Störrakete legt die Abwehr lahm).
 - Xenon passen sich an: viel Raketen → mehr Abwehr in späteren Wellen; nur Bordkanonen → mehr Schildträger.
 
-**2. Neue Missionstypen** – umgesetzt als „Einsätze“ (Station verteidigen, Konvoi, Überfall, Bergung, Nest, Flucht); offen: Balance nach eigenem Spielen, eigene Bilder für Kha’ak-Nest, Container und Wracks (Xenon-Nest hat Bilder)
+**2. Neue Missionstypen** – umgesetzt als „Einsätze“ (Station verteidigen, Konvoi, Überfall, Bergung, Nest, Flucht); offen: Balance nach eigenem Spielen, eigene Bilder für Container und Wracks (beide Nester haben Bilder)
 - Station verteidigen (Angriffe aus allen Richtungen, Stationstürme mit Fundstücken reparieren).
 - Konvoi: drei Frachter, nicht alle zu retten – entscheiden, wen man schützt (Belohnung je Frachter).
 - Überfall: Rollentausch, selbst einen Piratenkonvoi vor dem Tor abfangen.
