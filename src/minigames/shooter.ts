@@ -24,6 +24,24 @@ export type { Gear } from './common';
 type Side = 'pirate' | 'xenon' | 'khaak';
 /** cargo: Frachter des Piratenkonvois (Einsatz „Überfall“) */
 type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk' | 'cargo';
+/**
+ * Elite-Gegner (farbiger Rand): Gepanzert (doppelter Schild, langsam), Flink (schnell, weicht Raketen aus), Splitter
+ * (zerfällt beim Abschuss in zwei kleine), Kommandant (lädt Schilde naher Verbündeter; fällt er, löst sich die Gruppe
+ * auf), Rächer (explodiert kurz nach dem Abschuss)
+ */
+export type Elite = 'gepanzert' | 'flink' | 'splitter' | 'kommandant' | 'raecher';
+export const ELITES: Record<Elite, { name: string; color: string; info: string }> = {
+  gepanzert: { name: 'Gepanzert', color: '#b8c7d6', info: 'doppelter Schild, langsam' },
+  flink: { name: 'Flink', color: '#5cf2c0', info: 'schnell und wendig, weicht Raketen aus' },
+  splitter: { name: 'Splitter', color: '#ffa63d', info: 'zerfällt beim Abschuss in zwei kleine Schiffe' },
+  kommandant: { name: 'Kommandant', color: '#ffd84a', info: 'lädt die Schilde naher Verbündeter – zuerst abschießen löst die Gruppe auf' },
+  raecher: { name: 'Rächer', color: '#ff4848', info: 'explodiert kurz nach dem Abschuss – Abstand halten' },
+};
+const ELITE_IDS = Object.keys(ELITES) as Elite[];
+/** Gegnertypen, die Elite werden können (keine Schildträger, Großziele, Türme oder Frachter) */
+const ELITE_KINDS = new Set<EKind>(['jaeger', 'kanone', 'rakete', 'n', 'm', 'ks', 'kj', 'ka', 'kk']);
+/** Reichweite des Kommandanten, Sprengradius und Zündzeit des Rächers */
+const CMD_R = 240, BLAST_R = 115, BLAST_T = 0.9;
 /** Jäger mit Anflügen (anfliegen, Salve, abdrehen) – Piraten, Xenon N und die kleinen Kha'ak */
 const FIGHTERS = new Set<EKind>(['jaeger', 'n', 'ks', 'kj', 'ka']);
 /** Kha'ak mit Kyon-Strahl: kurz aufladen, dann trifft der Strahl sofort entlang einer Linie (Schilde ×1,5) */
@@ -114,6 +132,8 @@ interface Enemy {
   sh: number; shMax: number; shT: number; shFlash: number;
   /** Großziel mitten in einer Welle (kleinere Fregatte bzw. K-Segment), kein Endboss */
   mini?: boolean;
+  /** Elite-Eigenschaft; Flink: Abklingzeit des Ausweichens; im Schutz eines Kommandanten */
+  elite?: Elite; dodgeCd?: number; cmdBy?: Enemy;
   inside?: boolean;
 }
 /** Waffe in Spielwerten (aus den X4-Werten umgerechnet) */
@@ -509,6 +529,7 @@ export class ShooterGame implements MiniGame {
     const common = [
       foes,
       'Abgeschossene Rakete 30, gesprengte Mine 20',
+      'Elite-Gegner (farbiger Rand): Abschuss ×1,5',
       'Kombo: jeder Abschuss kurz nach dem letzten erhöht den Faktor um 0,5 (bis ×6); nach 2,5 s ohne Abschuss fällt er auf ×1',
       ...(this.mutator && this.mutator.mult !== 1 ? [`Besonderheit „${this.mutator.name}“: alle Punkte ×${String(this.mutator.mult).replace('.', ',')}`] : []),
     ];
@@ -521,6 +542,7 @@ export class ShooterGame implements MiniGame {
       points: [
         foes,
         'Abgeschossene Rakete 30, gesprengte Mine 20',
+        'Elite-Gegner (farbiger Rand): Abschuss ×1,5',
         'Stärkeres Schiff: Gegner bleiben gleich stark, es kommen aber mehr, in mehr Gruppen, schwerere Typen, Großziele und eine längere Route – mehr Punkte',
         this.mode === 'endless' ? 'Jede überstandene Welle: 300 × Wellennummer' : 'Am Sprungtor: 1.000 fürs Ankommen, dazu bis 2.000 nach Frachter-Hülle (100 % = 2.000)',
         'Kombo: jeder Abschuss kurz nach dem letzten erhöht den Faktor um 0,5 (bis ×6); nach 2,5 s ohne Abschuss fällt er auf ×1',
@@ -711,6 +733,11 @@ export class ShooterGame implements MiniGame {
   private pendingSpawn = -1;
   /** Verstärkung einer Welle: kommt einige Sekunden später von anderer Seite */
   private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean }[] = [];
+  /** Elite-Gegner, die in dieser Welle noch kommen, und dafür in Frage kommende Gegner */
+  private eliteLeft = 0;
+  private eliteRest = 0;
+  /** Sprengung eines Rächers: zündet nach kurzer Zeit */
+  private blasts: { x: number; y: number; t: number; dmg: number }[] = [];
   private shake = 0;
   private fx = new Particles();
   private floats = new Floaters();
@@ -1452,6 +1479,7 @@ export class ShooterGame implements MiniGame {
     this.wave++;
     this.waveT = 0;
     this.reinforce = [];
+    this.eliteLeft = this.eliteRest = 0;
     // Endlos: Karte nach oben verschieben, wenn der Frachter oben ankommt
     if (this.mode === 'endless' && this.fY - LEG < MAP_PAD) this.shiftWorld(LEG * 3);
     // nächster Streckenabschnitt
@@ -1485,6 +1513,11 @@ export class ShooterGame implements MiniGame {
         const jFirst = Math.floor(this.r() * 5);
         for (const [k, size] of jCl.entries()) this.reinforce.push({ t: 1 + Math.floor(k / 3) * 12 + (k % 3) * 0.5, kinds: new Array<EKind>(size).fill('kj'), from: (jFirst + (k % 3) * 2) % 5, swarm: true });
       }
+      // Elite-Gegner: verteilt auf die Gruppen der Welle (Schwärme und Cluster bleiben gewöhnlich)
+      // (bei den Kha'ak auch Jäger in ihren Clustern)
+      this.eliteRest = kinds.filter((k) => ELITE_KINDS.has(k)).length + jCl.reduce((a, b) => a + b, 0);
+      this.eliteLeft = Math.min(this.eliteRest, this.eliteCount(this.wave));
+      const eliteN = this.eliteLeft;
       // starke Schiffe: mehr Gruppen (jede mit eigenen Anflügen), die von mehr Seiten kommen
       // Konvoi und Station: mindestens drei Gruppen aus verschiedenen Richtungen
       const groups = Math.min(6, Math.max(this.mission === 'konvoi' || this.mission === 'station' ? Math.min(3, kinds.length) : 1, (kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1) + Math.max(0, Math.floor(Math.sqrt(this.power)) - 1)));
@@ -1509,7 +1542,7 @@ export class ShooterGame implements MiniGame {
       this.bannerText = this.mode === 'endless' || !this.counted ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${this.nWaves}`;
       if (this.wave === 0 && this.mission === 'ueberfall') this.bannerText = 'PIRATENKONVOI';
       if (this.wave === 0 && this.mission === 'nest') this.bannerText = this.side === 'khaak' ? 'KHA’AK-NEST' : 'XENON-NEST';
-      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '');
+      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
     // Nachschub vom Frachter nach jeder überstandenen Welle: ein Viertel des Raketenlagers
@@ -1542,6 +1575,21 @@ export class ShooterGame implements MiniGame {
     return [clamp(this.fX + Math.cos(a) * d, 80, this.WW - 80), clamp(this.fY + Math.sin(a) * d, 80, this.WH - 80)];
   }
 
+  /** Elite-Gegner je Welle: Stufe 1 ab der zweiten Welle einer, später und auf höheren Stufen mehr */
+  eliteCount(wave: number): number {
+    if (this.level <= 1 && wave === 0) return 0;
+    return Math.min(6, Math.floor((this.level - 1) / 2) + (wave >= 1 ? 1 : 0) + (wave >= 3 ? 1 : 0) + (this.mode === 'endless' ? Math.floor(wave / 4) : 0));
+  }
+
+  /** Gegner zum Elite-Gegner machen; Kommandant nur in Gruppen mit Verbündeten */
+  makeElite(e: Enemy, type?: Elite, groupSize = 3): void {
+    let t = type ?? ELITE_IDS[Math.floor(this.r() * ELITE_IDS.length)];
+    if (t === 'kommandant' && groupSize < 3 && !type) t = 'gepanzert';
+    e.elite = t;
+    if (t === 'gepanzert') e.sh = e.shMax = Math.max(e.shMax * 2, e.max * 0.6);
+    else e.hp = e.max = e.max * 1.25;
+  }
+
   private makeEnemy(kind: EKind, x: number, y: number): Enemy {
     const s = SPEC[kind];
     const { hp, sh } = enemyStats(kind, this.level, { extra: this.mode === 'endless' ? 1 + this.wave * 0.06 : 1, tune: this.tune });
@@ -1563,6 +1611,10 @@ export class ShooterGame implements MiniGame {
       const e = this.makeEnemy(kind, x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr);
       e.grp = grp;
       e.wd = wd;
+      if (!swarm && this.eliteLeft > 0 && ELITE_KINDS.has(kind)) {
+        if (this.r() < this.eliteLeft / Math.max(1, this.eliteRest)) { this.makeElite(e, undefined, list.length); this.eliteLeft--; }
+        this.eliteRest--;
+      }
       if (swarm) e.swarm = true;
       // ohne Schutzziel (Überfall, Nest) geht es gleich auf dich
       if (!this.wards.length) e.target = 'p';
@@ -1584,6 +1636,10 @@ export class ShooterGame implements MiniGame {
     for (const p of lay.ships) {
       const e = this.makeEnemy(kind, x0 + p.x * c - p.y * sn, y0 + p.x * sn + p.y * c);
       e.cl = id; e.grp = id; e.swarm = true;
+      if (kind !== 'ks' && this.eliteLeft > 0) {
+        if (this.r() < this.eliteLeft / Math.max(1, this.eliteRest)) { this.makeElite(e, undefined, n); this.eliteLeft--; }
+        this.eliteRest--;
+      }
       if (!this.wards.length) e.target = 'p';
       e.slotX = p.x; e.slotY = p.y; e.slotFlip = p.flip;
       e.ang = p.flip ? wrapA(tA + Math.PI) : tA;
@@ -2047,6 +2103,7 @@ export class ShooterGame implements MiniGame {
     }
     this.updatePlayer(dt);
     this.updateEnemies(dt);
+    this.updateBlasts(dt);
     this.updateShots(dt);
     this.updateField(dt);
     this.updatePickups(dt);
@@ -2598,6 +2655,17 @@ export class ShooterGame implements MiniGame {
       e.shFlash = Math.max(0, e.shFlash - dt);
       // Piratenfrachter haben keinen Schildgenerator, der nachlädt
       if (e.shT > 3 && e.sh < e.shMax && e.kind !== 'cargo') e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.25 * dt);
+      if (e.dodgeCd) e.dodgeCd = Math.max(0, e.dodgeCd - dt);
+    }
+    // Kommandant: lädt die Schilde naher Verbündeter, auch unter Beschuss
+    const cmds = this.enemies.filter((e) => e.elite === 'kommandant');
+    for (const e of this.enemies) {
+      e.cmdBy = undefined;
+      if (!cmds.length || e.elite === 'kommandant' || e.parent || e.plat || e.hive || e.nest) continue;
+      const c = cmds.find((q) => Math.hypot(q.x - e.x, q.y - e.y) < CMD_R);
+      if (!c) continue;
+      e.cmdBy = c;
+      if (e.sh < e.shMax) e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.2 * dt);
     }
     const fx = this.fx1, fy = this.fy1;
     // Schildträger schützen Verbündete in der Nähe
@@ -2805,12 +2873,14 @@ export class ShooterGame implements MiniGame {
         want = Math.atan2(wy, wx);
         sp = s.speed * clamp(wl, 0, 1);
       }
+      if (e.elite === 'gepanzert') sp *= 0.7;
+      else if (e.elite === 'flink') sp *= 1.25;
       // am Kartenrand umkehren
       if (e.x < 60 || e.x > this.WW - 60 || e.y < 60 || e.y > this.WH - 60) {
         want = Math.atan2(clamp(e.y, 200, this.WH - 200) - e.y, clamp(e.x, 200, this.WW - 200) - e.x);
         if (fighter) face = want;
       }
-      e.ang = wrapA(turnTo(e.ang, face, TURN[e.kind] * dt));
+      e.ang = wrapA(turnTo(e.ang, face, TURN[e.kind] * (e.elite === 'flink' ? 1.4 : 1) * dt));
       // Jäger fliegen dorthin, wohin ihre Nase zeigt; die schweren Schiffe können seitlich versetzen
       const mvA = fighter ? e.ang : want;
       const k = Math.min(1, dt * (fighter ? 3 : 2));
@@ -3004,6 +3074,11 @@ export class ShooterGame implements MiniGame {
       if (m.target && !this.enemies.includes(m.target)) m.target = this.enemies.find((e) => !(e.kind === 'boss' && e.shielded)) ?? null;
       if (m.target) {
         const dx = m.target.x - m.x, dy = m.target.y - m.y, d = Math.hypot(dx, dy) || 1;
+        // Flinker Elite-Gegner: weicht kurz vor dem Einschlag zur Seite aus, die Rakete verliert ihr Ziel
+        if (m.target.elite === 'flink' && d < 150 && !m.target.dodgeCd) { this.dodgeMissile(m.target, m); m.target = null; }
+      }
+      if (m.target) {
+        const dx = m.target.x - m.x, dy = m.target.y - m.y, d = Math.hypot(dx, dy) || 1;
         // Lenkung: die Rakete dreht ihren Flugvektor (begrenzte Drehrate) auf den Abfangpunkt – dort, wo das Ziel
         // ankommt, wenn sie es erreicht – statt nur dorthin zu beschleunigen (das ließ sie um das Ziel kreisen)
         let v = Math.hypot(m.vx, m.vy) || 1;
@@ -3174,10 +3249,11 @@ export class ShooterGame implements MiniGame {
     if (!this.enemies.includes(e)) return;
     this.enemies = this.enemies.filter((q) => q !== e && q.parent !== e);
     this.explode(e.x, e.y, SPEC[e.kind].color, e.kind === 'boss' ? 4 : e.r / 10);
+    if (e.elite) this.eliteDeath(e);
     if (!byPlayer) return;
     this.kills++;
     this.score.bump(0.5, 2.5);
-    this.gain(SPEC[e.kind].pts * (e.mini ? 0.5 : 1) * (this.mutator?.id === 'bounty' ? 1.5 : 1), e.x, e.y, e.kind === 'boss' ? (e.mini ? 'Großziele' : 'Boss') : e.kind === 'turret' ? 'Geschütztürme' : 'Abschüsse');
+    this.gain(SPEC[e.kind].pts * (e.mini ? 0.5 : 1) * (e.elite ? 1.5 : 1) * (this.mutator?.id === 'bounty' ? 1.5 : 1), e.x, e.y, e.kind === 'boss' ? (e.mini ? 'Großziele' : 'Boss') : e.kind === 'turret' ? 'Geschütztürme' : e.elite ? 'Elite-Gegner' : 'Abschüsse');
     if (e.kind === 'cargo') {
       this.cargoKilled++;
       if (this.firstCargoT < 0) { this.firstCargoT = this.time; setGoal(this.goals, 'cargo45', this.time < 45); }
@@ -3190,13 +3266,71 @@ export class ShooterGame implements MiniGame {
       this.bossT = -1;
       buzz(120);
     }
-    const chance = this.mutator?.id === 'bounty' ? 0.3 : 0.14;
+    const chance = (this.mutator?.id === 'bounty' ? 0.3 : 0.14) * (e.elite ? 2.5 : 1);
     if (e.kind !== 'turret' && this.r() < chance) {
       const kinds: Pickup['kind'][] = ['repair', 'shield', 'missile'];
       // selten (jedes zehnte Fundstück, nur mit Raketenwerfern): Munitionskiste
       const kind = this.launchers.length && this.r() < 0.1 ? 'ammo' : kinds[Math.floor(this.r() * 3)];
       this.pickups.push({ x: e.x, y: e.y, kind, life: 12 });
     }
+  }
+
+  /** Ausweichen eines flinken Elite-Gegners: kräftiger Satz quer zur Flugbahn der Rakete */
+  private dodgeMissile(e: Enemy, m: Missile): void {
+    const v = Math.hypot(m.vx, m.vy) || 1, side = this.r() < 0.5 ? 1 : -1;
+    const nx = (-m.vy / v) * side, ny = (m.vx / v) * side;
+    e.vx += nx * 520; e.vy += ny * 520;
+    e.x = clamp(e.x + nx * 26, 20, this.WW - 20); e.y = clamp(e.y + ny * 26, 20, this.WH - 20);
+    e.dodgeCd = 3;
+    this.fx.burst(e.x, e.y, ELITES.flink.color, 6, 160, 1, 'spark', 0.25);
+    this.floats.add(e.x, e.y - 24, 'ausgewichen!', ELITES.flink.color, 12);
+  }
+
+  /** Splitter zerfällt, Rächer zündet, Kommandant fällt (Gruppe löst sich auf) */
+  private eliteDeath(e: Enemy): void {
+    if (e.elite === 'splitter') {
+      for (let q = 0; q < 2; q++) {
+        const a = e.ang + (q ? 1 : -1) * Math.PI / 2;
+        const k = this.makeEnemy(this.smallKind, e.x + Math.cos(a) * 14, e.y + Math.sin(a) * 14);
+        k.hp = k.max = k.max * 0.7; k.sh = k.shMax = k.shMax * 0.5;
+        k.ang = a; k.vx = Math.cos(a) * 240; k.vy = Math.sin(a) * 240;
+        k.grp = e.grp; k.wd = e.wd; k.target = e.target;
+        k.brk = 0.6; k.brkA = a;
+        this.enemies.push(k);
+      }
+      this.fx.burst(e.x, e.y, ELITES.splitter.color, 10, 200, 1.4, 'spark', 0.4);
+    } else if (e.elite === 'raecher') {
+      this.blasts.push({ x: e.x, y: e.y, t: BLAST_T, dmg: 20 * this.enemyDmg });
+      this.floats.add(e.x, e.y - 26, 'Rächer – weg da!', ELITES.raecher.color, 13);
+    } else if (e.elite === 'kommandant') {
+      // Verbündete in seiner Nähe und aus seiner Gruppe: Schild weg, drehen ab und feuern kurz nicht
+      let n = 0;
+      for (const q of this.enemies) {
+        if (q === e || q.parent || q.plat || q.hive || q.nest || q.kind === 'boss' || q.kind === 'cargo') continue;
+        if (q.cmdBy !== e && (q.grp == null || q.grp !== e.grp)) continue;
+        q.sh = 0; q.shT = 0; q.shFlash = 0.4; q.cmdBy = undefined;
+        q.cd = Math.max(q.cd, 1.8);
+        q.brk = 1.6 + this.r() * 0.8; q.brkA = Math.atan2(q.y - e.y, q.x - e.x);
+        n++;
+      }
+      this.floats.add(e.x, e.y - 26, n ? 'Kommandant gefallen – Gruppe löst sich auf' : 'Kommandant gefallen', ELITES.kommandant.color, 13);
+    }
+  }
+
+  /** Rächer-Sprengungen: zünden nach kurzer Zeit und treffen alles im Umkreis */
+  private updateBlasts(dt: number): void {
+    if (!this.blasts.length) return;
+    const keep: typeof this.blasts = [];
+    for (const b of this.blasts) {
+      b.t -= dt;
+      if (b.t > 0) { keep.push(b); continue; }
+      this.explode(b.x, b.y, ELITES.raecher.color, 2.4);
+      this.fx.add({ x: b.x, y: b.y, color: '#ffb070', size: BLAST_R / 6, kind: 'ring', max: 0.5 });
+      if (this.outcome !== 'player' && Math.hypot(this.px - b.x, this.py - b.y) < BLAST_R + 12) this.damagePlayer(b.dmg);
+      for (const w of this.wards) if (!w.dead && Math.hypot(this.wx(w) - b.x, this.wy(w) - b.y) < BLAST_R + 60) this.hitWard(w, b.dmg, b.x, b.y);
+      for (const q of [...this.enemies]) if (!q.parent && Math.hypot(q.x - b.x, q.y - b.y) < BLAST_R + q.r) this.damageEnemy(q, (q.max + q.shMax) * 0.4, 1);
+    }
+    this.blasts = keep;
   }
 
   /** Schaden am Jäger: erst Schild, dann Hülle; vsShield > 1 trifft den Schild stärker (Kyon) */
@@ -3387,6 +3521,7 @@ export class ShooterGame implements MiniGame {
     this.drawWards(ctx, t);
     this.drawClusterMass(ctx, t);
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
+    this.drawBlasts(ctx, t);
     this.drawBeams(ctx, t);
     // Geschosse über den Schiffen: die Türme liegen oben auf dem Rumpf, ihre Schüsse fliegen darüber hinweg
     if (this.outcome !== 'player') this.drawPlayer(ctx, t);
@@ -4431,8 +4566,48 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Schild-Aufblitzen sowie Hülle und Schild als feine Linien über dem Gegner (Deckkraft einstellbar) */
+  /** Rächer-Sprengung vor dem Zünden: roter Kreis, der sich zusammenzieht und immer schneller pulst */
+  private drawBlasts(ctx: CanvasRenderingContext2D, t: number): void {
+    for (const b of this.blasts) {
+      const k = 1 - b.t / BLAST_T, pulse = 0.5 + 0.5 * Math.sin(t * (10 + k * 30));
+      ctx.fillStyle = rgba(ELITES.raecher.color, 0.06 + 0.12 * k * pulse);
+      ctx.beginPath(); ctx.arc(b.x, b.y, BLAST_R, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = rgba(ELITES.raecher.color, 0.5 + 0.4 * pulse);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.arc(b.x, b.y, BLAST_R, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = rgba('#ffe0c0', 0.6 + 0.4 * pulse);
+      ctx.beginPath(); ctx.arc(b.x, b.y, 4 + 8 * k, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   private drawEnemyStatus(ctx: CanvasRenderingContext2D, e: Enemy): void {
     const base = SPEC[e.kind].color;
+    // Kommandant: feine goldene Linie zu jedem Verbündeten, dessen Schild er lädt
+    if (e.cmdBy) {
+      ctx.strokeStyle = rgba(ELITES.kommandant.color, 0.28);
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.cmdBy.x, e.cmdBy.y); ctx.stroke();
+    }
+    // Elite: farbiger Doppelrand; der Rächer pulst, wenn er angeschlagen ist
+    if (e.elite) {
+      const col = ELITES[e.elite].color, now = this.time;
+      const pulse = e.elite === 'raecher' && e.hp < e.max * 0.5 ? 0.5 + 0.5 * Math.sin(now * 14) : 0.75;
+      const rr = e.r * 1.35 + 4;
+      ctx.strokeStyle = rgba(col, 0.45 + 0.45 * pulse);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(e.x, e.y, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = rgba(col, 0.25);
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(e.x, e.y, rr + 4, now * 2, now * 2 + Math.PI * 1.2); ctx.stroke();
+      if (e.elite === 'kommandant') {
+        ctx.strokeStyle = rgba(col, 0.12);
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath(); ctx.arc(e.x, e.y, CMD_R, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
     // Schild-Aufblitzen: Treffer auf den Schild zeigen eine dünne Blase
     if (e.shFlash > 0) {
       ctx.strokeStyle = rgba('#8fe0ff', e.shFlash * 2.5);

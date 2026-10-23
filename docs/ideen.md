@@ -17,7 +17,7 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 Vorgeschlagene Reihenfolge: 1. Elite-Gegner + Rollen Abfangjäger/Bomber, 2. Raketenabwehr der Gegner + Raketenwarnung,
 3. Missionen „Station verteidigen“ und „Konvoi“, 4. Flügelleute mit Befehlen.
 
-**1. Gegner, die Taktik erzwingen**
+**1. Gegner, die Taktik erzwingen** – Elite-Gegner umgesetzt (Gepanzert, Flink, Splitter, Kommandant, Rächer); offen: Rollen Abfangjäger/Bomber
 - Rollen: Abfangjäger binden gezielt den Spieler, gleichzeitig greifen Bomber den Frachter an (Zwickmühle).
 - Elite-Gegner mit Eigenschaften (farbiger Rand): „Gepanzert“ (Schild doppelt, langsam), „Flink“ (weicht Raketen aus),
   „Splitter“ (zerfällt beim Abschuss in zwei kleine), „Kommandant“ (gibt nahen Gegnern Schild; zuerst abschießen löst
