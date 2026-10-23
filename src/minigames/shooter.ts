@@ -164,6 +164,20 @@ const FLUCHT_T = 150, CRATES = 8, CRATES_MIN = 4;
 const TOW_LEN = 46, TOW_GRAB = 40, TOW_DROP = 110;
 /** Überfall: Piratenfrachter im Konvoi; Nest: Brutöffnungen um den Kern */
 const CARGO_N = 3, NEST_OPEN = 5;
+/**
+ * Xenon-Nest aus vier KI-Bildern (je 1024 px): Kern in der Mitte, links und rechts je ein Brutmodul mit zwei Öffnungen,
+ * unten eines mit einer Öffnung. Lage der Module und Öffnungen in Bildpunkten zur Kernmitte – die Steckverbindungen
+ * (an den Bildrändern ausgemessen) stoßen genau aneinander; NEST_SCALE rechnet in Spielpunkte um.
+ */
+const NEST_SCALE = 0.17;
+const XENON_NEST_MODS: { name: string; x: number; y: number }[] = [
+  { name: 'xenon-nest-links-ki', x: -900, y: -4 }, { name: 'xenon-nest-rechts-ki', x: 903, y: -3 }, { name: 'xenon-nest-unten-ki', x: 0, y: 997 },
+];
+const XENON_NEST_PARTS: [number, number, 'brut' | 'laser'][] = [
+  [-836, -116, 'brut'], [-836, 106, 'brut'], [840, -115, 'brut'], [840, 106, 'brut'], [0, 844, 'brut'],
+  // Strahltürme auf den oberen Seitenkapseln des Kerns
+  [-267, -283, 'laser'], [268, -283, 'laser'],
+];
 /** Zielhilfe: liegt der Vorhaltepunkt so nah vor der Nase (rad), gehen die Schüsse genau dorthin */
 /** Trägheit: Beschleunigung (× Höchsttempo pro Sekunde), Abbremsen der Drift pro Sekunde, Joystick-Bereich nur zum Drehen */
 const ACCEL = 2.4;
@@ -1702,14 +1716,19 @@ export class ShooterGame implements MiniGame {
     const st = enemyStats('boss', this.level, { extra: 2.4, tune: this.tune });
     core.hp = core.max = st.hp;
     core.sh = core.shMax = st.sh;
-    core.r = 64;
+    const xen = this.side !== 'khaak';
+    core.r = xen ? 52 : 64;
     core.nest = true;
-    core.ang = Math.PI / 2;
+    // Xenon-Nest steht fest (Bild wie geliefert: Kern oben, Brutmodul unten zeigt zu dir), Kha'ak-Nest dreht sich
+    core.ang = xen ? -Math.PI / 2 : Math.PI / 2;
     core.target = 'p';
     this.enemies.push(core);
     const parts: [number, number, 'brut' | 'laser'][] = [];
-    for (let k = 0; k < NEST_OPEN; k++) { const a = -Math.PI / 2 + (k / NEST_OPEN) * Math.PI * 2; parts.push([Math.cos(a) * 96, Math.sin(a) * 96, 'brut']); }
-    for (const a of [Math.PI * 0.3, Math.PI * 0.7]) parts.push([Math.cos(a) * 56, Math.sin(a) * 56, 'laser']);
+    if (xen) for (const [x, y, w] of XENON_NEST_PARTS) parts.push([x * NEST_SCALE, y * NEST_SCALE, w]);
+    else {
+      for (let k = 0; k < NEST_OPEN; k++) { const a = -Math.PI / 2 + (k / NEST_OPEN) * Math.PI * 2; parts.push([Math.cos(a) * 96, Math.sin(a) * 96, 'brut']); }
+      for (const a of [Math.PI * 0.3, Math.PI * 0.7]) parts.push([Math.cos(a) * 56, Math.sin(a) * 56, 'laser']);
+    }
     for (const [ox, oy, weapon] of parts) {
       const t = this.makeEnemy('turret', core.x + ox, core.y + oy);
       t.parent = core; t.ox = ox; t.oy = oy; t.weapon = weapon;
@@ -1723,7 +1742,7 @@ export class ShooterGame implements MiniGame {
   /** Nest-Kern: steht still und dreht sich; ohne Brutöffnungen feuert er Ringe */
   private updateNest(e: Enemy, dt: number): void {
     e.vx = 0; e.vy = 0;
-    e.ang = wrapA(e.ang + dt * 0.05);
+    if (this.side === 'khaak') e.ang = wrapA(e.ang + dt * 0.05);
     e.cd -= dt;
     if (e.shielded || e.cd > 0 || Math.hypot(this.px - e.x, this.py - e.y) > 520) return;
     e.cd = this.level >= 4 ? 2.4 : 3;
@@ -3887,8 +3906,76 @@ export class ShooterGame implements MiniGame {
     }
   }
 
+  /**
+   * Xenon-Nest aus den vier Bildern: Module, dann der Kern; zerstörte Brutöffnungen verkohlt und rauchend, alle
+   * Öffnungen eines Moduls zerstört = Modul dunkel. false, solange die Bilder noch laden (dann Neon-Zeichnung).
+   */
+  private drawXenonNest(ctx: CanvasRenderingContext2D, e: Enemy, t: number): boolean {
+    const core = projectileSprite('xenon-nest-kern-ki');
+    const mods = XENON_NEST_MODS.map((m) => projectileSprite(m.name));
+    if (!core || mods.some((m) => !m)) return false;
+    const S = NEST_SCALE, size = 1024 * S;
+    const alive = (x: number, y: number) => this.enemies.some((q) => q.parent === e && q.weapon === 'brut' && Math.abs(q.ox! - x * S) < 1 && Math.abs(q.oy! - y * S) < 1);
+    const opens = XENON_NEST_PARTS.filter((p) => p[2] === 'brut');
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(e.ang + Math.PI / 2);
+    // Glimmen unter dem Nest
+    const g = ctx.createRadialGradient(0, 60, 0, 0, 60, 260);
+    g.addColorStop(0, 'rgba(255,59,74,0.18)');
+    g.addColorStop(1, 'rgba(255,59,74,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 60, 260, 0, Math.PI * 2); ctx.fill();
+    for (const [i, m] of XENON_NEST_MODS.entries()) {
+      // Modul ohne lebende Öffnung: ausgebrannt
+      const own = opens.filter(([x]) => (m.x < 0 ? x < -400 : m.x > 0 ? x > 400 : Math.abs(x) < 400));
+      const dead = own.every(([x, y]) => !alive(x, y));
+      ctx.globalAlpha = dead ? 0.55 : 1;
+      ctx.drawImage(mods[i]!, m.x * S - size / 2, m.y * S - size / 2, size, size);
+    }
+    ctx.globalAlpha = 1;
+    ctx.drawImage(core, -size / 2, -size / 2, size, size);
+    if (e.flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.4;
+      ctx.drawImage(core, -size / 2, -size / 2, size, size);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
+    // Brutöffnungen: lebende pulsieren rot, zerstörte sind verkohlt
+    for (const [x, y] of opens) {
+      const ox = x * S, oy = y * S;
+      if (alive(x, y)) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const pg = ctx.createRadialGradient(ox, oy, 0, ox, oy, 18);
+        pg.addColorStop(0, `rgba(255,80,90,${0.35 + 0.25 * Math.sin(t * 3 + x)})`);
+        pg.addColorStop(1, 'rgba(255,40,60,0)');
+        ctx.fillStyle = pg;
+        ctx.beginPath(); ctx.arc(ox, oy, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.fillStyle = 'rgba(12,8,8,0.85)';
+        ctx.beginPath(); ctx.arc(ox, oy, 13, 0, Math.PI * 2); ctx.fill();
+        if (Math.random() < 0.25) {
+          const c = Math.cos(e.ang + Math.PI / 2), sn = Math.sin(e.ang + Math.PI / 2);
+          this.fx.add({ x: e.x + ox * c - oy * sn + (Math.random() - 0.5) * 10, y: e.y + ox * sn + oy * c, vy: -16, color: '#5a4a46', size: 2.6, max: 1 });
+        }
+      }
+    }
+    // Schild um den Kern, solange Teile stehen
+    if (e.shielded) {
+      ctx.strokeStyle = rgba('#7fd8ff', 0.3 + 0.2 * Math.sin(t * 6));
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, e.r * 1.7, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+    return true;
+  }
+
   /** Nest: Neon-Wabe (Xenon: Metallringe mit rotem Auge; Kha'ak: Kristallstacheln mit violettem Kern) */
   private drawNest(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
+    if (this.side !== 'khaak' && this.drawXenonNest(ctx, e, t)) return;
     const kh = this.side === 'khaak', col = kh ? '#b45cff' : '#ff3b4a', r = e.r;
     ctx.save();
     ctx.translate(e.x, e.y);
@@ -3952,6 +4039,7 @@ export class ShooterGame implements MiniGame {
 
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
     if (e.nest) { this.drawNest(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }
+    if (e.parent?.nest && e.weapon === 'brut' && this.side !== 'khaak' && projectileSprite('xenon-nest-kern-ki')) { this.drawEnemyStatus(ctx, e); return; }
     const s = SPEC[e.kind];
     const xen = this.side === 'xenon', kh = this.side === 'khaak';
     const base = e.kind === 'turret' ? (kh ? '#c77dff' : xen ? '#ff5c6c' : '#ffd27a') : e.kind === 'boss' ? (kh ? '#a855f7' : xen ? '#ff3b4a' : '#ffb547') : s.color;

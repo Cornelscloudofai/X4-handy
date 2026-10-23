@@ -311,10 +311,10 @@ await page.waitForTimeout(200);
 if ((await page.locator('#modal .mg-mission').count()) !== 6) fail('Einsätze fehlen im Reiter „Kampf“');
 await page.locator('#modal .mg-mission').first().scrollIntoViewIfNeeded();
 await page.screenshot({ path: `${out}/mg-16-einsaetze.png` });
-for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['flucht', 'khaak'], ['bergung', 'pirates'], ['ueberfall', 'pirates'], ['nest', 'khaak']]) {
+for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['flucht', 'khaak'], ['bergung', 'pirates'], ['ueberfall', 'pirates'], ['nest', 'khaak'], ['nest', 'xenon']]) {
   await page.click(`#modal [data-act="mg-mission"][data-mission="${mission}"][data-kind="${kind}"]`);
   await page.waitForTimeout(300);
-  await page.screenshot({ path: `${out}/mg-17-${mission}-intro.png` });
+  await page.screenshot({ path: `${out}/mg-17-${mission}-${kind}-intro.png` });
   await page.click('#minigame [data-mg="start"]');
   await page.waitForTimeout(200);
   // 25 s vorspulen, damit Gegner, Container usw. im Bild sind
@@ -323,7 +323,7 @@ for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['fl
   const st = await mg(() => window.__mg.game.state);
   if (st.mission !== mission) fail(`Einsatz ${mission}: falscher Einsatz (${st.mission})`);
   if (st.wave < 0) fail(`Einsatz ${mission}: keine Gegner`);
-  await page.screenshot({ path: `${out}/mg-17-${mission}.png` });
+  await page.screenshot({ path: `${out}/mg-17-${mission}-${kind}.png` });
   await page.click('#minigame [data-mg="pause"]');
   await page.click('#minigame [data-mg="abort"]');
   await page.waitForTimeout(200);
