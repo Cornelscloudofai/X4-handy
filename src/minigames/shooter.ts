@@ -25,7 +25,7 @@ type Side = 'pirate' | 'xenon' | 'khaak';
 /** cargo: Frachter des Piratenkonvois (Einsatz „Überfall“) */
 type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk' | 'cargo';
 /**
- * Elite-Gegner (farbiger Rand): Gepanzert (doppelter Schild, langsam), Flink (schnell, weicht Raketen aus), Splitter
+ * Elite-Gegner (leuchtende farbige Umrandung): Gepanzert (doppelter Schild, langsam), Flink (schnell, weicht Raketen aus), Splitter
  * (zerfällt beim Abschuss in zwei kleine), Kommandant (lädt Schilde naher Verbündeter; fällt er, löst sich die Gruppe
  * auf), Rächer (explodiert kurz nach dem Abschuss)
  */
@@ -42,6 +42,40 @@ const ELITE_IDS = Object.keys(ELITES) as Elite[];
 const ELITE_KINDS = new Set<EKind>(['jaeger', 'kanone', 'rakete', 'n', 'm', 'ks', 'kj', 'ka', 'kk']);
 /** Reichweite des Kommandanten, Sprengradius und Zündzeit des Rächers */
 const CMD_R = 240, BLAST_R = 115, BLAST_T = 0.9;
+/** Rand der Leuchtsilhouette (Anteil der Bildgröße je Seite) */
+const GLOW_PAD = 0.12;
+const glowCache = new Map<string, HTMLCanvasElement>();
+/**
+ * Leuchtende Umrandung eines Schiffsbilds: eingefärbte Silhouette, ringsum leicht versetzt (gibt eine feste Kontur)
+ * und weich überstrahlt; einmal je Bild und Farbe berechnet (256 px genügen für den Schein)
+ */
+function eliteGlow(img: CanvasImageSource & { width: number; height: number }, color: string): HTMLCanvasElement {
+  const key = `${(img as HTMLImageElement).src ?? img.width}|${color}`;
+  const hit = glowCache.get(key);
+  if (hit) return hit;
+  const S = 256, P = Math.round(S * GLOW_PAD), W = S + 2 * P;
+  const sil = document.createElement('canvas');
+  sil.width = sil.height = S;
+  const sg = sil.getContext('2d')!;
+  sg.imageSmoothingQuality = 'high';
+  sg.drawImage(img, 0, 0, S, S);
+  sg.globalCompositeOperation = 'source-in';
+  sg.fillStyle = color;
+  sg.fillRect(0, 0, S, S);
+  const out = document.createElement('canvas');
+  out.width = out.height = W;
+  const og = out.getContext('2d')!;
+  og.shadowColor = color;
+  og.shadowBlur = S * 0.08;
+  const o = S * 0.045;
+  for (let k = 0; k < 12; k++) { const q = (k / 12) * Math.PI * 2; og.drawImage(sil, P + Math.cos(q) * o, P + Math.sin(q) * o); }
+  og.shadowBlur = 0;
+  og.globalCompositeOperation = 'lighter';
+  og.globalAlpha = 0.5;
+  for (let k = 0; k < 8; k++) { const q = (k / 8) * Math.PI * 2; og.drawImage(sil, P + Math.cos(q) * o * 0.6, P + Math.sin(q) * o * 0.6); }
+  glowCache.set(key, out);
+  return out;
+}
 /** Jäger mit Anflügen (anfliegen, Salve, abdrehen) – Piraten, Xenon N und die kleinen Kha'ak */
 const FIGHTERS = new Set<EKind>(['jaeger', 'n', 'ks', 'kj', 'ka']);
 /** Kha'ak mit Kyon-Strahl: kurz aufladen, dann trifft der Strahl sofort entlang einer Linie (Schilde ×1,5) */
@@ -4493,6 +4527,13 @@ export class ShooterGame implements MiniGame {
         ctx.fill();
       }
       const top = -size / 2 - spr.oy * size;
+      // Elite: leuchtende Umrandung in der Farbe der Eigenschaft (Silhouette des Bilds, dahinter gezeichnet)
+      if (e.elite) {
+        const g = eliteGlow(spr.img, ELITES[e.elite].color), k = size * (1 + 2 * GLOW_PAD);
+        ctx.globalAlpha = this.eliteAlpha(e);
+        ctx.drawImage(g, -k / 2, top - size * GLOW_PAD, k, k);
+        ctx.globalAlpha = 1;
+      }
       ctx.drawImage(spr.img, -size / 2, top, size, size);
       if (e.kind === 'schild' || e.kind === 'xs') {
         // Reichweite des Schutzschilds
@@ -4539,6 +4580,17 @@ export class ShooterGame implements MiniGame {
         break;
     }
     ctx.closePath();
+    if (e.elite) {
+      // Elite: leuchtende Umrandung der Neon-Form
+      ctx.save();
+      ctx.globalAlpha = this.eliteAlpha(e);
+      ctx.shadowColor = ELITES[e.elite].color;
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = ELITES[e.elite].color;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.fillStyle = kh ? '#140a1e' : '#1a0c10';
     ctx.fill();
     ctx.strokeStyle = rgba(col, 0.25);
@@ -4566,6 +4618,12 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Schild-Aufblitzen sowie Hülle und Schild als feine Linien über dem Gegner (Deckkraft einstellbar) */
+  /** Deckkraft der Elite-Umrandung: leicht atmend; der Rächer pulst schnell, wenn er angeschlagen ist */
+  private eliteAlpha(e: Enemy): number {
+    if (e.elite === 'raecher' && e.hp < e.max * 0.5) return 0.55 + 0.45 * Math.sin(this.time * 14);
+    return 0.8 + 0.2 * Math.sin(this.time * 3 + e.orbit);
+  }
+
   /** Rächer-Sprengung vor dem Zünden: roter Kreis, der sich zusammenzieht und immer schneller pulst */
   private drawBlasts(ctx: CanvasRenderingContext2D, t: number): void {
     for (const b of this.blasts) {
@@ -4589,24 +4647,6 @@ export class ShooterGame implements MiniGame {
       ctx.strokeStyle = rgba(ELITES.kommandant.color, 0.28);
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.cmdBy.x, e.cmdBy.y); ctx.stroke();
-    }
-    // Elite: farbiger Doppelrand; der Rächer pulst, wenn er angeschlagen ist
-    if (e.elite) {
-      const col = ELITES[e.elite].color, now = this.time;
-      const pulse = e.elite === 'raecher' && e.hp < e.max * 0.5 ? 0.5 + 0.5 * Math.sin(now * 14) : 0.75;
-      const rr = e.r * 1.35 + 4;
-      ctx.strokeStyle = rgba(col, 0.45 + 0.45 * pulse);
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(e.x, e.y, rr, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = rgba(col, 0.25);
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(e.x, e.y, rr + 4, now * 2, now * 2 + Math.PI * 1.2); ctx.stroke();
-      if (e.elite === 'kommandant') {
-        ctx.strokeStyle = rgba(col, 0.12);
-        ctx.setLineDash([4, 8]);
-        ctx.beginPath(); ctx.arc(e.x, e.y, CMD_R, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
-      }
     }
     // Schild-Aufblitzen: Treffer auf den Schild zeigen eine dünne Blase
     if (e.shFlash > 0) {
