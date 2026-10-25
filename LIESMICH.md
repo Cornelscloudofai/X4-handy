@@ -10,5 +10,5 @@ Hinweis: Die Fassung mit `index.html` und Ordner `assets` (Download aus dem Clau
 nicht – Browser blockieren dort das Nachladen der Programmdatei. Dafür diese Einzeldatei nehmen.
 
 Die Einzeldatei speichert ihren Spielstand getrennt von der Online-Version
-(Übertragen: im Spiel unter Mehr → Spielstand exportieren / importieren).
+(Übertragen: im Spiel „Spielstand sichern“ und in der anderen Fassung „Spielstand laden“).
 Neue Versionen ersetzen hier jeweils die alte (dieser Zweig enthält nur die Download-Datei, keinen Quellcode).
