@@ -29,7 +29,8 @@ einem Solarkraftwerk und einem Miner.
   Sekunden nach dem Spielstart im Hintergrund geladen (Startdatei ein Drittel kleiner).
 - **Eigene Adresse (Netlify):** `netlify.toml` beschreibt den Bau (`npm run build`, Ordner `dist`, Node 22) und die
   Zwischenspeicher-Regeln (Seite und Service Worker immer frisch, `assets/` dauerhaft). Netlify ist mit dem
-  GitHub-Projekt verbunden und baut bei jedem Push auf den Hauptzweig neu.
+  GitHub-Projekt verbunden, baut aber nur bei Commits mit `[live]` in der Meldung (`scripts/netlify-ignore.sh`) –
+  jeder Bau kostet Credits.
 - **Feedback von Testern:** Mehr → „Feedback geben“ und im Pausenmenü jedes Minispiels: Art (Fehler, Idee, Gedanke),
   Text, freiwillig Name, Bildschirmfoto (bei Fehlern vorausgewählt) und auf Wunsch der Spielstand; dazu automatisch
   Spielversion (Datum · Git-Stand), Gerät, Bildschirm, Ort im Spiel und Spieltag/Credits/Kapitel. Gesendet wird an

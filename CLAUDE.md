@@ -13,5 +13,9 @@
 - **Von einem leistungsstarken Gerät ausgehen.** Alles soll einwandfrei und flüssig laufen, aber wir begrenzen uns nicht
   selbst: Schönheit und Wirkung gehen vor Sparsamkeit. Optimieren ja (z. B. Nachladen, Zwischenspeichern), aber nie auf
   Kosten von Bildqualität, Auflösung, Effekten oder Detailreichtum – keine Obergrenzen „zur Sicherheit“ für schwache Geräte.
+- **Netlify (x4-sektorbau.netlify.app) spart Credits:** Jeder erfolgreiche Bau kostet 15 von 300 Credits im Monat. Netlify
+  baut nur, wenn die Commit-Meldung `[live]` enthält (`scripts/netlify-ignore.sh`). `[live]` nur setzen, wenn der Nutzer
+  ausdrücklich veröffentlichen will – sonst nie. Das Claude-Artifact darf weiter bei jeder Änderung aktualisiert werden.
+  Keine KI-Funktionen von Netlify nutzen oder auslösen.
 - Vor jedem Commit: `npx vitest run` und `npm run e2e` – Ergebnis wirklich prüfen (Exit-Code), nicht nur die Ausgabe überfliegen.
 - Bild-Prompts immer als Codeblock (```text … ```) ausgeben, damit sie per Kopieren-Knopf übernommen werden können – nicht als Zitat.

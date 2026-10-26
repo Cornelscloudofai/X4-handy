@@ -1,8 +1,10 @@
 # Netlify: baut das Spiel aus dem Hauptzweig und stellt dist/ unter eigener Adresse bereit (als App installierbar,
-# offline spielbar). Jeder Push baut automatisch neu.
+# offline spielbar). Gebaut wird nur bei Commits mit „[live]“ in der Meldung (jeder Bau kostet Credits).
 [build]
   command = "npm run build"
   publish = "dist"
+  # nur bauen, wenn die Commit-Meldung „[live]“ enthält (spart Credits, siehe scripts/netlify-ignore.sh)
+  ignore = "bash ./scripts/netlify-ignore.sh"
 
 [build.environment]
   NODE_VERSION = "22"
