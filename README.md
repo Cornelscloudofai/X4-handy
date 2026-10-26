@@ -14,6 +14,11 @@ einem Solarkraftwerk und einem Miner.
 - **Bauen:** `npm run build` legt das Spiel in `dist/` ab – `index.html`, Code und alle Bilder als eigene Dateien
   in `dist/assets/` (Bilder werden erst geladen, wenn sie gebraucht werden, und bleiben im Zwischenspeicher).
   Zum Ausprobieren braucht es einen Webserver, z. B. `npm run preview`.
+- **Trailer:** `node scripts/trailer/trailer.mjs <ordner>` nimmt einen Trailer direkt aus dem Spiel auf (Hochformat
+  1080×1920, 60 Bilder/s, Bild für Bild mit angehaltener Uhr, Schnitte auf den Takt von „kampf-invasion“, Texte im
+  Spielstil) und setzt ihn mit ffmpeg zur MP4 zusammen. Braucht die Schriften `@fontsource/barlow` und
+  `@fontsource/chakra-petch` (Ordner über `TRAILER_FONTS`) und ffmpeg (`FFMPEG`); `--preview` macht nur Stichbilder,
+  `--only=szene1,szene2` nimmt einzelne Szenen neu auf (mit `--encode` danach wieder zusammensetzen).
 - **Offline / zum Weitergeben:** `npm run build:einzeldatei` packt alles in eine einzige Datei
   `dist-einzeldatei/index.html`, die sich direkt im Browser öffnen oder aufs Handy kopieren lässt.
 - **Entwickeln:** `npm install`, dann `npm run dev` – die angezeigte Netzwerkadresse funktioniert
