@@ -19,6 +19,18 @@ einem Solarkraftwerk und einem Miner.
   Spielstil) und setzt ihn mit ffmpeg zur MP4 zusammen. Braucht die Schriften `@fontsource/barlow` und
   `@fontsource/chakra-petch` (Ordner über `TRAILER_FONTS`) und ffmpeg (`FFMPEG`); `--preview` macht nur Stichbilder,
   `--only=szene1,szene2` nimmt einzelne Szenen neu auf (mit `--encode` danach wieder zusammensetzen).
+- **Sicherungen:** Beim Spielen wird alle 20 Minuten und bei jedem Start automatisch gesichert (IndexedDB im Browser;
+  es bleiben die letzten zehn und je Tag eine der vergangenen zwei Wochen). Mehr → Spielstand → „Automatische
+  Sicherungen“ zeigt sie und stellt sie wieder her (der aktuelle Stand wird vorher selbst gesichert). Fehlt der
+  Spielstand beim Start, bietet der Willkommensdialog die letzte Sicherung an. „Spielstand sichern“ liefert eine
+  vollständige Sicherung – Spielstand, Minispiel-Rekorde, Modteile, Ausrüstung, Einstellungen – als Text oder Datei;
+  „Spielstand laden“ nimmt sie (und alte Spielstände) wieder an.
+- **Schneller Start:** Die Minispiele sind eigene Programmteile und werden erst beim Start eines Spiels bzw. drei
+  Sekunden nach dem Spielstart im Hintergrund geladen (Startdatei ein Drittel kleiner).
+- **Als App:** Läuft das Spiel unter eigener Adresse (https, nicht eingebettet), ist es installierbar (Manifest,
+  Symbol `public/icon-*.png` aus `node scripts/render-icon.mjs`) und offline spielbar (`public/sw.js`: Seite zuerst aus
+  dem Netz, Programmteile und Bilder aus dem Zwischenspeicher). Mehr → Spielstand bietet dann „Als App installieren“
+  bzw. auf dem iPhone den Weg über „Zum Home-Bildschirm“. Im Claude-Artifact und in der Einzeldatei bleibt das aus.
 - **Offline / zum Weitergeben:** `npm run build:einzeldatei` packt alles in eine einzige Datei
   `dist-einzeldatei/index.html`, die sich direkt im Browser öffnen oder aufs Handy kopieren lässt.
 - **Entwickeln:** `npm install`, dann `npm run dev` – die angezeigte Netzwerkadresse funktioniert

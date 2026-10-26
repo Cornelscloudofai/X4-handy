@@ -12,7 +12,7 @@ import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
 import { fieldById, stationById } from '../engine/logistics';
 import { catchUp, step } from '../engine/sim';
-import { deserialize, serialize, loadLocal, newGame, saveLocal, clearLocal } from '../engine/state';
+import { deserialize, loadLocal, newGame, saveLocal, clearLocal, SAVE_KEY } from '../engine/state';
 import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
@@ -23,7 +23,9 @@ import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
 import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
-import { dailyOpts, minigameBack, minigameOpen, openMinigame, type MiniKind, type MiniOpts } from '../minigames/host';
+import { initInstall, installApp } from './install';
+import { applyBackup, autoBackup, collect, getBackup, listBackups, parseBackup, saveBackup } from './backup';
+import { dailyOpts, minigameBack, minigameOpen, openMinigame, preloadMinigames, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
 import type { Mission } from '../minigames/missions';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
@@ -88,6 +90,8 @@ export function start(): void {
   const loaded = loadLocal();
   if (loaded) {
     state = loaded;
+    // Sicherung beim Start, noch vor dem Nachholen der Abwesenheit (schützt auch vor Fehlern einer neuen Version)
+    void autoBackup(localStorage, backupLabel(loaded), 60 * 60e3);
     const away = Math.min(8 * 3600, Math.max(0, (Date.now() - state.savedAt) / 1000));
     if (away > 90) {
       const report = catchUp(state, away);
@@ -96,6 +100,8 @@ export function start(): void {
   } else {
     state = newGame(undefined, 'mining');
     ui.modal = { type: 'welcome' };
+    // Spielstand fehlt (gelöscht oder vom Browser entfernt), aber es gibt eine automatische Sicherung: anbieten
+    void listBackups().then((l) => { if (l[0] && ui.modal?.type === 'welcome') { ui.restoreHint = l[0]; refresh(); } });
   }
   ui.sector = state.stations[0]?.sector ?? 'zhin';
   lastCredits = state.credits;
@@ -174,6 +180,10 @@ export function start(): void {
   (window as unknown as { __audio: unknown }).__audio = { names: SOUND_DEMO.map((x) => x[0]), render: (i: number, sec: number) => renderOffline(SOUND_DEMO[i][1], sec), meterPeak, ready: () => preloadSamples(new OfflineAudioContext(2, 1, 44100)), mood: (i: number, sec: number) => renderMood(i, sec) };
   (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector, renderer };
   requestAnimationFrame(frame);
+  // als App installierbar und offline spielbar (nur unter eigener Adresse)
+  initInstall(() => refresh());
+  // Minispiele im Hintergrund nachladen, sobald die Karte steht (der Start selbst bleibt schlank)
+  setTimeout(() => ((window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => f()))(preloadMinigames), 3000);
   const boot = document.getElementById('boot');
   if (boot) { boot.style.opacity = '0'; setTimeout(() => boot.remove(), 500); }
 }
@@ -330,9 +340,40 @@ function chapterBanner(e: { index: number; title: string; credits: number; facti
 }
 let bannerTimer = 0;
 
+/** Beschreibung einer Sicherung: Spieltag, Credits, Kapitel */
+function backupLabel(s: GameState): string {
+  return `Tag ${Math.floor(s.time / 86400) + 1} · ${fmtCr(s.credits)} · Kapitel ${(s.story?.index ?? 0) + 1}`;
+}
+
+/** Alles durch eine Sicherung ersetzen; der jetzige Stand wird vorher selbst gesichert, dann startet das Spiel neu */
+async function replaceAll(b: import('./backup').BackupData): Promise<void> {
+  // nur einen echten Spielstand vorher sichern (nicht das frische Spiel hinter dem Willkommensdialog)
+  if (ui.modal?.type !== 'welcome') { save(); await saveBackup(collect(localStorage, 'Vor dem Laden · ' + backupLabel(state))); }
+  // ab hier nicht mehr speichern – sonst schriebe das Verlassen der Seite den alten Stand wieder zurück
+  leaving = true;
+  try {
+    applyBackup(localStorage, b);
+  } catch {
+    leaving = false;
+    toast('Laden auf diesem Gerät nicht möglich (Speicher voll?).', 'warn');
+    return;
+  }
+  // Rekorde, Ausrüstung und Einstellungen liegen im Speicher der Module: neu laden statt einzeln nachziehen
+  location.reload();
+}
+
+async function restoreBackup(id: number): Promise<void> {
+  const b = await getBackup(id);
+  if (!b) { toast('Diese Sicherung gibt es nicht mehr.', 'warn'); return; }
+  await replaceAll(b);
+}
+
+let leaving = false;
+
 function save(): void {
-  if (!state) return;
+  if (!state || leaving) return;
   const ok = saveLocal(state);
+  if (ok) void autoBackup(localStorage, backupLabel(state), 20 * 60e3);
   ui.saveStatus = ok ? 'Zuletzt gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'Speichern auf diesem Gerät nicht möglich – nutze „Spielstand sichern“.';
 }
 
@@ -1257,7 +1298,19 @@ function onClick(e: MouseEvent): void {
       }
       case 'market-sector': ui.marketSector = d.id!; refresh(); break;
       case 'market-group': ui.marketGroup = d.g!; refresh(); break;
-      case 'export': save(); ui.modal = { type: 'export' }; refresh(); break;
+      case 'export': save(); ui.modal = { type: 'export', text: JSON.stringify(collect(localStorage, backupLabel(state))) }; refresh(); break;
+      case 'backups':
+        ui.modal = { type: 'backups', note: ui.modal?.type === 'backups' ? ui.modal.note : undefined };
+        refresh();
+        void listBackups().then((list) => { if (ui.modal?.type === 'backups') { ui.modal = { ...ui.modal, list }; refresh(); } });
+        break;
+      case 'backup-now':
+        save();
+        void saveBackup(collect(localStorage, 'Von Hand · ' + backupLabel(state))).then((ok) => listBackups().then((list) => { if (ui.modal?.type === 'backups') { ui.modal = { type: 'backups', list, note: ok ? 'Gesichert.' : 'Sichern auf diesem Gerät nicht möglich.' }; refresh(); } }));
+        break;
+      case 'backup-pick': if (ui.modal?.type === 'backups') { ui.modal = { ...ui.modal, confirm: Number(d.id) }; refresh(); } break;
+      case 'backup-restore': void restoreBackup(Number(d.id)); break;
+      case 'app-install': void installApp().then((ok) => { if (ok) toast('X4 Sektorbau ist jetzt als App installiert.', 'good'); refresh(); }); break;
       case 'copy-export': {
         const t = document.getElementById('exportText') as HTMLTextAreaElement | null;
         const status = document.getElementById('copyStatus');
@@ -1267,11 +1320,12 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'download-export': {
-        const blob = new Blob([serialize(state)], { type: 'application/json' });
+        save();
+        const blob = new Blob([JSON.stringify(collect(localStorage, backupLabel(state)))], { type: 'application/json' });
         const a = document.createElement('a');
         const day = Math.floor(state.time / 86400) + 1;
         a.href = URL.createObjectURL(blob);
-        a.download = `x4-sektorbau-tag${day}.json`;
+        a.download = `x4-sektorbau-sicherung-tag${day}.json`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -1283,6 +1337,13 @@ function onClick(e: MouseEvent): void {
       case 'import-modal': ui.modal = { type: 'import' }; refresh(); break;
       case 'import-do': {
         const t = (document.getElementById('importText') as HTMLTextAreaElement | null)?.value ?? '';
+        // vollständige Sicherung (Spielstand, Rekorde, Ausrüstung …): alles zurückschreiben und neu starten
+        const full = parseBackup(t.trim());
+        if (full) {
+          if (!Object.keys(full.keys).some((k) => k === SAVE_KEY)) { ui.modal = { type: 'import', error: 'In dieser Sicherung fehlt der Spielstand.' } as Modal; refresh(); break; }
+          void replaceAll(full);
+          break;
+        }
         try {
           state = deserialize(t.trim());
           ui.modal = null;

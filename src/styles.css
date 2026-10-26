@@ -1305,3 +1305,6 @@ button.hgr-card:active { transform: scale(0.97); }
 .mod-qbtn2:disabled { opacity: 0.38; }
 .mod-qbtn2:not(:disabled):active { transform: scale(0.96); }
 @media (prefers-reduced-motion: reduce) { .hgr-ship img { animation: none; } .hgr-drawer, .hgr-ship { transition: none; } }
+
+/* Minispiel wird nachgeladen: kleiner Hinweis über der Karte */
+.mg-loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 60; padding: 12px 20px; border-radius: 14px; background: rgba(8, 22, 32, 0.92); border: 1px solid rgba(63, 224, 197, 0.45); color: #bff7ec; font-weight: 600; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); pointer-events: none; }

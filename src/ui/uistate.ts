@@ -28,7 +28,9 @@ export type Modal =
   | { type: 'minigames'; level: 1 | 2 | 3 | 4 | 5; gear: 1 | 2 | 3; tab?: 'games' | 'daily' | 'combat' }
   | { type: 'chart'; spec: ChartSpec; hours: number }
   | { type: 'alerts' }
-  | { type: 'export' }
+  | { type: 'export'; text?: string }
+  /** Automatische Sicherungen: Liste, ausgewählte zum Wiederherstellen */
+  | { type: 'backups'; list?: import('./backup').BackupMeta[]; confirm?: number; note?: string }
   | { type: 'import'; error?: string }
   | { type: 'home'; ship: string }
   | { type: 'courier'; contract: number; station?: string }
@@ -85,6 +87,8 @@ export interface UIState {
   marketSector: string;
   marketGroup: string;
   saveStatus: string;
+  /** Kein Spielstand, aber eine automatische Sicherung gefunden (Angebot im Willkommensdialog) */
+  restoreHint?: { id: number; created: number; label: string } | null;
   plan: PlanSettings;
   planZoom: number;
   planFocus: string;

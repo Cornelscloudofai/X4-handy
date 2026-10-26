@@ -4,7 +4,8 @@ import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } 
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
 import { MISSIONS, MISSION_IDS, recordKey } from '../minigames/missions';
 import type { Level } from '../minigames/common';
-import { drawFighterVector } from '../minigames/shooter';
+import { drawFighterVector } from '../minigames/shooterData';
+import { installState } from './install';
 import { tunePanel } from '../minigames/tunePanel';
 import { loadoutView } from './loadoutView';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
@@ -1445,9 +1446,11 @@ function morePanel(state: GameState, ui: UIState): string {
       return page(`
         <div class="section"><div class="box rows">
           <div class="row">${icon('save', 20)}<div class="grow"><div class="title" style="font-weight:500">Automatisch gespeichert</div><div class="sub wrap">${esc(ui.saveStatus || 'Auf diesem Gerät')}</div></div></div>
-          ${linkRow('box', 'Spielstand sichern', 'Als Text kopieren', 'export')}
-          ${linkRow('down', 'Spielstand laden', 'Gesicherten Text einfügen', 'import-modal')}
+          ${linkRow('clock', 'Automatische Sicherungen', 'Alle 20 Minuten beim Spielen, die letzten zehn und je Tag eine – hier wiederherstellen', 'backups')}
+          ${linkRow('box', 'Spielstand sichern', 'Alles zum Mitnehmen: Spielstand, Minispiel-Rekorde, Modteile, Ausrüstung', 'export')}
+          ${linkRow('down', 'Spielstand laden', 'Gesicherten Text oder Datei einfügen', 'import-modal')}
         </div></div>
+        ${appSection()}
         <div class="section"><h3>Neu beginnen</h3><div class="box rows">
           <div class="row tap" ${act('ask-newgame')}>${icon('trash', 20, 'neg')}<div class="grow"><div class="title neg" style="font-weight:500">Neues Spiel</div><div class="sub">Löscht den aktuellen Spielstand</div></div></div>
         </div></div>`);
@@ -1478,7 +1481,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         ${prod.length ? `<div class="section" style="margin-top:14px"><h3>Produziert</h3><div class="box rows">${prod.map(([id, n]) => `<div class="row">${wareMark(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[id].name)}</div></div><div class="right"><b>${fmtAmount(n)}</b></div></div>`).join('')}</div></div>` : ''}`,
         `<button class="btn primary" ${act('modal-close')}>Weiter</button>`);
     }
-    case 'welcome': return welcomeModal();
+    case 'welcome': return welcomeModal(ui.restoreHint);
     case 'help': { const h = helpModalParts(m.topic); return modalShell(h.title, h.body, h.foot, m.topic ? 'Hilfe' : 'X4 Sektorbau'); }
     case 'chart':
       return modalShell(m.spec.title, bigChart(state, m.spec, m.hours), `<button class="btn" ${act('modal-close')}>Schließen</button>`, m.spec.sub ?? '');
@@ -1575,8 +1578,16 @@ export function modalHtml(state: GameState, ui: UIState): string {
       const alerts = allAlerts(state);
       return modalShell('Engpässe & Hinweise', alerts.length ? `<div class="box rows">${alerts.map((a) => `<div class="row tap" ${act('open-station', { id: a.station, tab: 'overview' })}>${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text)}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, stationById(state, a.station)!, a.ware))}</div>` : ''}</div>${icon('chev', 20, 'chev')}</div>`).join('')}</div>` : '<div class="empty">Alles läuft. Keine Engpässe.</div>', `<button class="btn" ${act('modal-close')}>Schließen</button>`);
     }
-    case 'export': return modalShell('Spielstand sichern', `<p class="lead">Kopiere diesen Text und bewahre ihn auf. Mit „Spielstand laden“ kannst du ihn später wieder einfügen.</p><textarea id="exportText" readonly>${esc(JSON.stringify(state))}</textarea><p class="small muted" id="copyStatus"></p>`, `<button class="btn" ${act('modal-close')}>Schließen</button>${canDownload() ? `<button class="btn" ${act('download-export')}>${icon('save', 18)}Als Datei</button>` : ''}<button class="btn primary" ${act('copy-export')}>Kopieren</button>`);
-    case 'import': return modalShell('Spielstand laden', `<p class="lead">Füge einen gesicherten Spielstand ein. Der aktuelle Stand wird ersetzt.</p><label class="btn block file-btn">${icon('save', 18)}Datei wählen …<input type="file" id="importFile" accept=".json,.txt,application/json,text/plain" data-change="import-file" hidden></label><textarea id="importText" placeholder="{&quot;version&quot;:1, …}"></textarea>${m.error ? `<p class="small neg">${esc(m.error)}</p>` : ''}`, `<button class="btn" ${act('modal-close')}>Abbrechen</button><button class="btn primary" ${act('import-do')}>Laden</button>`);
+    case 'export': return modalShell('Spielstand sichern', `<p class="lead">Kopiere diesen Text und bewahre ihn auf. Mit „Spielstand laden“ kannst du ihn später wieder einfügen.</p><textarea id="exportText" readonly>${esc(m.text ?? JSON.stringify(state))}</textarea><p class="small muted" id="copyStatus"></p>`, `<button class="btn" ${act('modal-close')}>Schließen</button>${canDownload() ? `<button class="btn" ${act('download-export')}>${icon('save', 18)}Als Datei</button>` : ''}<button class="btn primary" ${act('copy-export')}>Kopieren</button>`);
+    case 'backups': {
+      const when = (t: number): string => new Date(t).toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const list = m.list;
+      const pick = list?.find((b) => b.id === m.confirm);
+      if (pick) return modalShell('Sicherung laden?', `<p class="lead">Spielstand vom ${esc(when(pick.created))} laden?</p><div class="box rows"><div class="row">${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(pick.label || 'Sicherung')}</div><div class="sub">${esc(when(pick.created))}</div></div></div></div><p class="small muted">Dein jetziger Stand wird vorher selbst gesichert – du kannst also jederzeit zurück.</p>`, `<button class="btn" ${act('backups')}>Zurück</button><button class="btn primary" ${act('backup-restore', { id: String(pick.id) })}>Laden</button>`);
+      const rows = !list ? '<p class="small muted">Lade …</p>' : list.length ? `<div class="box rows">${list.map((b) => `<div class="row tap" ${act('backup-pick', { id: String(b.id) })}>${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(when(b.created))}</div><div class="sub wrap">${esc(b.label || 'Sicherung')}</div></div>${icon('chev', 20, 'chev')}</div>`).join('')}</div>` : '<p class="small muted">Noch keine Sicherung – die erste entsteht beim Spielen nach wenigen Minuten.</p>';
+      return modalShell('Automatische Sicherungen', `<p class="lead">Beim Spielen wird alle 20 Minuten gesichert, dazu bei jedem Start. Es bleiben die letzten zehn und für die vergangenen zwei Wochen je Tag eine.</p>${m.note ? `<p class="small good">${esc(m.note)}</p>` : ''}${rows}<p class="small muted">Die Sicherungen liegen im Speicher dieses Browsers. Für ein anderes Gerät oder zur Sicherheit: „Spielstand sichern“ als Datei.</p>`, `<button class="btn" ${act('modal-close')}>Schließen</button><button class="btn primary" ${act('backup-now')}>Jetzt sichern</button>`);
+    }
+    case 'import': return modalShell('Spielstand laden', `<p class="lead">Füge einen gesicherten Spielstand ein. Der aktuelle Stand wird ersetzt – vorher aber automatisch gesichert.</p><label class="btn block file-btn">${icon('save', 18)}Datei wählen …<input type="file" id="importFile" accept=".json,.txt,application/json,text/plain" data-change="import-file" hidden></label><textarea id="importText" placeholder="{&quot;version&quot;:1, …}"></textarea>${m.error ? `<p class="small neg">${esc(m.error)}</p>` : ''}`, `<button class="btn" ${act('modal-close')}>Abbrechen</button><button class="btn primary" ${act('import-do')}>Laden</button>`);
     case 'home': {
       const s = state.ships.find((x) => x.id === m.ship);
       return modalShell('Heimatstation wählen', `<div class="box rows"><div class="row tap" ${act('set-home', { id: m.ship, st: '' })}>${icon('fleet', 20)}<div class="grow"><div class="title">Keiner Station (frei)</div><div class="sub wrap">Sektorbefehle, Handelsrouten und Einzelaufträge</div></div>${s && !s.home ? icon('check', 20, 'pos') : ''}</div>${state.stations.map((st) => `<div class="row tap" ${act('set-home', { id: m.ship, st: st.id })}>${icon('station', 20)}<div class="grow"><div class="title">${esc(st.name)}</div><div class="sub">${esc(sector(st.sector).name)}</div></div>${s?.home === st.id ? icon('check', 20, 'pos') : ''}</div>`).join('')}</div>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button>`);
@@ -1799,10 +1810,23 @@ function buyShipModal(state: GameState, m: Extract<Modal, { type: 'buyShip' }>):
   return modalShell('Schiff kaufen', `${picker}<div style="display:grid;gap:10px">${cards}</div><p class="small muted" style="margin-top:10px">Preis = Rumpf + Grundausstattung (Triebwerke, Schilde, bei Mineral-Minern Abbautürme) zu X4-Durchschnittspreisen; ohne Waffen. Tempo aus Schub und Luftwiderstand. *Abbaurate ist ein Spielwert.</p>`, `<button class="btn" ${act('modal-close')}>Fertig</button>`, `Split-Werft · ${fmtCr(state.credits)} verfügbar`);
 }
 
-function welcomeModal(): string {
+/** Als App installieren (nur sichtbar, wenn das Spiel unter eigener Adresse läuft) */
+function appSection(): string {
+  const st = installState();
+  if (st === 'none') return '';
+  const row = st === 'prompt'
+    ? linkRow('down', 'Als App installieren', 'Eigenes Symbol auf dem Startbildschirm, Vollbild, offline spielbar', 'app-install')
+    : st === 'ios'
+      ? `<div class="row">${icon('info', 20)}<div class="grow"><div class="title" style="font-weight:500">Als App installieren</div><div class="sub wrap">In Safari unten auf „Teilen“ tippen, dann „Zum Home-Bildschirm“.</div></div></div>`
+      : `<div class="row">${icon('check', 20, 'good')}<div class="grow"><div class="title" style="font-weight:500">Als App installiert</div><div class="sub wrap">Läuft im eigenen Fenster und auch ohne Verbindung.</div></div></div>`;
+  return `<div class="section"><h3>App</h3><div class="box rows">${row}</div></div>`;
+}
+
+function welcomeModal(hint?: UIState['restoreHint']): string {
+  const restore = hint ? `<div class="box rows" style="margin:0 0 12px"><div class="row tap" ${act('backup-restore', { id: String(hint.id) })}>${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">Gesicherten Spielstand laden</div><div class="sub wrap">${esc(hint.label || 'Sicherung')} · ${esc(new Date(hint.created).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</div></div>${icon('chev', 20, 'chev')}</div></div>` : '';
   return `<div class="modal" role="dialog" aria-modal="true" aria-label="Willkommen">
     <div class="welcome-hero art" style="--hero:url(${CAREER.hero})"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
-    <div class="sheet-body"><div class="small muted" style="margin:0 0 8px">Wie willst du anfangen?</div>
+    <div class="sheet-body">${restore}<div class="small muted" style="margin:0 0 8px">${hint ? 'Oder neu anfangen:' : 'Wie willst du anfangen?'}</div>
       <div class="start-pick">
         <button class="start-card miner" ${act('start-game', { kind: 'mining' })}><span class="start-img" style="background-image:url(${CAREER.mining})"><em>${icon('miner', 16)}Bergbau</em></span><span class="start-txt"><b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 5.000 Cr</span><small>Erz oder Silizium fördern und damit einen Wirtschaftszweig voranbringen.</small></span></button>
         <button class="start-card trader" ${act('start-game', { kind: 'trading' })}><span class="start-img" style="background-image:url(${CAREER.trading})"><em>${icon('trader', 16)}Handel</em></span><span class="start-txt"><b>Loslegen mit Handel</b><span>2 Tuatara-Transporter (S) · 30.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></span></button>

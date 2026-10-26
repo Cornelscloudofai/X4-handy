@@ -13,8 +13,10 @@ import { fbm, perlin } from '../render/noise';
 import { shipSprite, stationCoreSprite, moduleSprite } from '../render/shipArt';
 import {
   buzz, clamp, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type MiniGame, type Mutator, type Rules,
+  type GameCfg, type GameResult, type Goal, type HudItem, type MiniGame, type Mutator, type Rules,
 } from './common';
+import { ORBIT_GOALS, ORBIT_MUTATORS } from './menuInfo';
+export { ORBIT_MUTATORS, ORBIT_GOALS };
 
 /** Gravitationsparameter des Planeten (Planetenradius = 1, Zeit in Spielsekunden = Missionsminuten) */
 const MU = 0.8;
@@ -36,21 +38,7 @@ const WARP = 8;
 const MOON_MU = 0.012 * MU;
 const MOON_R = 0.24;
 
-export const ORBIT_MUTATORS: Mutator[] = [
-  { id: 'lowfuel', name: 'Knappes Δv', desc: 'Nur 70 % Treibstoff', mult: 1.4 },
-  { id: 'weak', name: 'Schwaches Triebwerk', desc: 'Halber Schub: lange Zündungen', mult: 1.3 },
-  { id: 'atmo', name: 'Dichte Atmosphäre', desc: 'Die Lufthülle reicht weit hinaus – sie bremst (und lässt sich zum Bremsen nutzen)', mult: 1.2 },
-  { id: 'debris', name: 'Trümmerwolke', desc: 'Trümmer kreisen auf kreuzenden Bahnen', mult: 1.4 },
-];
 
-export const ORBIT_GOALS: GoalDef[] = [
-  { id: 'fuel', text: 'Mit mehr als der Hälfte Δv andocken' },
-  { id: 'fast', text: 'Zielzeit für drei Sterne' },
-  { id: 'precise', text: 'Präzises Rendezvous: Andockcomputer unter 1.000 m/s' },
-  { id: 'burns', text: 'Höchstens drei Zündungen' },
-  { id: 'swing', text: 'Swing-by am Mond nutzen' },
-  { id: 'aero', text: 'Mit der Atmosphäre bremsen' },
-];
 
 interface Body { x: number; y: number; vx: number; vy: number }
 interface Debris extends Body { hit: number }

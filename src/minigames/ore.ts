@@ -14,8 +14,10 @@ import { mapShipSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
 import {
   buzz, clamp, drawButton, roundRect, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
+  type GameCfg, type GameResult, type Goal, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
+import { ORE_GOALS, ORE_MUTATORS } from './menuInfo';
+export { ORE_MUTATORS, ORE_GOALS };
 
 const DURATION = 45;
 /** Fingerversatz: der Laser trifft etwas oberhalb des Fingers, damit man den Treffpunkt sieht */
@@ -34,25 +36,7 @@ const MODES: Record<LaserMode, { name: string; rr: number; rate: number; heatVei
   fine: { name: 'Fein', rr: 0.05, rate: 2.1, heatVein: 6, heatRock: 13, stress: 3.5, press: 0.13 },
 };
 
-export const ORE_MUTATORS: Mutator[] = [
-  { id: 'rich', name: 'Reiche Adern', desc: 'Mehr Adern, aber ein Viertel weniger Zeit', mult: 1.3 },
-  { id: 'hot', name: 'Hitzewelle', desc: 'Der Laser kühlt nur halb so schnell ab', mult: 1.4 },
-  { id: 'spin', name: 'Taumelnder Asteroid', desc: 'Der Asteroid dreht sich schnell', mult: 1.4 },
-  { id: 'crystal', name: 'Kristallfeld', desc: 'Doppelt so viele Kristallnester', mult: 1.2 },
-  { id: 'brittle', name: 'Brüchiges Gestein', desc: 'Risse wachsen doppelt so schnell', mult: 1.35 },
-];
 
-export const ORE_GOALS: GoalDef[] = [
-  { id: 'cool', text: 'Nie überhitzen' },
-  { id: 'combo3', text: 'Kombo ×3 erreichen' },
-  { id: 'crystal2', text: 'Zwei Kristallnester bergen' },
-  { id: 'break', text: 'Einen Asteroiden ganz zerlegen' },
-  { id: 'nopocket', text: 'Keine Gastasche treffen' },
-  { id: 'noflush', text: 'Ohne Kühlspülung auskommen' },
-  { id: 'core', text: 'Eine Kernader ausbeuten' },
-  { id: 'vent', text: 'Eine Gastasche gefahrlos ablassen' },
-  { id: 'stable', text: 'Kein Einsturz' },
-];
 
 interface VeinPt { x: number; y: number; a: number }
 interface Pocket {

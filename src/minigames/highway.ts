@@ -15,11 +15,13 @@ import { BG_IMAGES } from '../render/bgImages';
 import { mapShipSprite, shipSprite, type FighterSprite } from '../render/shipArt';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, starsFor, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
+  type GameCfg, type GameResult, type Goal, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
 import { playOneOf, type GameTrack } from '../audio/music';
 import overtakerUrl from '../assets/music/fracht-slowly-overtaker.mp3';
 import chillWayUrl from '../assets/music/fracht-slow-way-ist-chill-way.mp3';
+import { HIGHWAY_GOALS, HIGHWAY_MUTATORS } from './menuInfo';
+export { HIGHWAY_MUTATORS, HIGHWAY_GOALS };
 
 /** Spuren des Highways */
 const LANES = 5;
@@ -40,21 +42,7 @@ const GATE_FUEL = 0.15;
 /** Ab hier (Reststrecke) keine Verstärker und Einfädler mehr: Ausfahrt vorbereiten */
 const EXIT_ZONE = 3400;
 
-export const HIGHWAY_MUTATORS: Mutator[] = [
-  { id: 'dense', name: 'Stoßzeit', desc: 'Doppelt so viel Verkehr', mult: 1.4 },
-  { id: 'lowfuel', name: 'Knapper Treibstoff', desc: 'Nur halb so viel Δv', mult: 1.4 },
-  { id: 'ion', name: 'Ionensturm', desc: 'Seitliche Feldböen schieben das Schiff', mult: 1.5 },
-  { id: 'heavy', name: 'Schwer beladen', desc: 'Doppelte Masse: halber Seitenschub', mult: 1.3 },
-];
 
-export const HIGHWAY_GOALS: GoalDef[] = [
-  { id: 'nocrash', text: 'Keine Kollision' },
-  { id: 'fuel', text: 'Mit mehr als der Hälfte Δv ankommen' },
-  { id: 'exit', text: 'Die Ausfahrt treffen' },
-  { id: 'noretro', text: 'Ohne Gegenschub nach vorn' },
-  { id: 'fast', text: 'Zielzeit für drei Sterne' },
-  { id: 'gates', text: 'Vier Feldverstärker treffen' },
-];
 
 interface Ship {
   /** Lage quer (Spuren, 0 … LANES) und längs (px Strecke) */

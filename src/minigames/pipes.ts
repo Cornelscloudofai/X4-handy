@@ -7,9 +7,11 @@ import { drawWareGlyph } from '../render/glyphs';
 import { sfx } from '../ui/sound';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
+  type GameCfg, type GameResult, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
 } from './common';
 import { DIRS, bits, consumers, generate, par, power, rotate, type Board, type GenOpts, type PowerInfo } from './pipesLogic';
+import { PIPES_CHAIN_GOALS as CHAIN_GOALS, PIPES_GOALS, PIPES_MUTATORS, PIPES_NORMAL_GOALS as NORMAL_GOALS } from './menuInfo';
+export { PIPES_MUTATORS, PIPES_GOALS };
 
 interface Conf { n: number; opts: GenOpts; limit: number; pressure: number }
 const CONF: Record<Level, Conf> = {
@@ -24,26 +26,7 @@ const GROUP_COLORS = ['#b690ff', '#ff84c1', '#7fcf82', '#ffd27a', '#7fd8ff'];
 const CHAIN_START = 75;
 const CHAIN_BONUS = 25;
 
-export const PIPES_MUTATORS: Mutator[] = [
-  { id: 'dark', name: 'Notbeleuchtung', desc: 'Nur versorgte Leitungen und ihre Nachbarn sind zu sehen', mult: 1.4 },
-  { id: 'rush', name: 'Eilauftrag', desc: 'Nur die halbe Zeit', mult: 1.5 },
-  { id: 'valves', name: 'Ventilchaos', desc: 'Zwei zusätzliche Ventilgruppen', mult: 1.3 },
-  { id: 'surge', name: 'Überdruck', desc: 'Offene Enden kosten doppelt so viel Druck', mult: 1.3 },
-];
 
-const NORMAL_GOALS: GoalDef[] = [
-  { id: 'moves', text: 'Mit höchstens Bestwert + 30 % Zügen lösen' },
-  { id: 'fast', text: 'In der ersten Hälfte der Zeit lösen' },
-  { id: 'combo3', text: 'Kombo ×3 erreichen' },
-  { id: 'pressure', text: 'Druck nie unter 60 %' },
-  { id: 'valve', text: 'Kein Ventil öfter als dreimal drehen' },
-];
-const CHAIN_GOALS: GoalDef[] = [
-  { id: 'chain5', text: 'Fünf Netze schaffen' },
-  { id: 'chain8', text: 'Acht Netze schaffen' },
-  { id: 'combo3', text: 'Kombo ×3 erreichen' },
-];
-export const PIPES_GOALS: GoalDef[] = [...NORMAL_GOALS, ...CHAIN_GOALS.filter((g) => g.id !== 'combo3')];
 
 export class PipesGame implements MiniGame {
   readonly eyebrow = 'Störung beheben';

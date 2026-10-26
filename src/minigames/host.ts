@@ -4,13 +4,7 @@
 import { sfx } from '../ui/sound';
 import { esc } from '../ui/dom';
 import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, type Level, type MiniGame, type Mode, type Mutator, type Rules } from './common';
-import { PIPES_GOALS, PIPES_MUTATORS, PipesGame } from './pipes';
-import { ORE_GOALS, ORE_MUTATORS, OreGame } from './ore';
-import { GAS_GOALS, GAS_MUTATORS, GasGame } from './gas';
-import { CARGO_GOALS, CARGO_MUTATORS, CargoGame } from './cargo';
-import { HIGHWAY_GOALS, HIGHWAY_MUTATORS, HighwayGame } from './highway';
-import { ORBIT_GOALS, ORBIT_MUTATORS, OrbitGame } from './orbit';
-import { SHOOTER_GOALS, SHOOTER_MUTATORS, ShooterGame } from './shooter';
+import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
 import { earnParts, partsFor } from './mods';
 import { recordKey, type Mission } from './missions';
 import { setEnemyTune } from './loadout';
@@ -73,18 +67,52 @@ function resolve(kind: MiniKind, o: MiniOpts): GameCfg {
   return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission };
 }
 
+type Factory = (c: GameCfg) => MiniGame;
+/** Spiele werden erst geladen, wenn man sie startet (oder im Hintergrund nach dem Start) – das Hauptspiel startet schneller */
+const LOAD: Record<MiniKind, () => Promise<Factory>> = {
+  pipes: () => import('./pipes').then((m) => (c) => new m.PipesGame(c)),
+  ore: () => import('./ore').then((m) => (c) => new m.OreGame(c)),
+  gas: () => import('./gas').then((m) => (c) => new m.GasGame(c)),
+  cargo: () => import('./cargo').then((m) => (c) => new m.CargoGame(c)),
+  highway: () => import('./highway').then((m) => (c) => new m.HighwayGame(c)),
+  orbit: () => import('./orbit').then((m) => (c) => new m.OrbitGame(c)),
+  pirates: () => import('./shooter').then((m) => (c) => new m.ShooterGame(c, 'pirate')),
+  xenon: () => import('./shooter').then((m) => (c) => new m.ShooterGame(c, 'xenon')),
+  khaak: () => import('./shooter').then((m) => (c) => new m.ShooterGame(c, 'khaak')),
+};
+const ready: Partial<Record<MiniKind, Factory>> = {};
+const loading: Partial<Record<MiniKind, Promise<Factory>>> = {};
+
+function loadKind(kind: MiniKind): Promise<Factory> {
+  loading[kind] ??= LOAD[kind]().then((f) => (ready[kind] = f)).catch((e) => { delete loading[kind]; throw e; });
+  return loading[kind]!;
+}
+
+/** Alle Spiele im Hintergrund nachladen (danach starten sie sofort, auch ohne Netz) */
+export function preloadMinigames(): void {
+  for (const k of MINI_KINDS) void loadKind(k).catch(() => {});
+}
+
+/** Kampf: Gegnerstärke lässt sich im Pausenmenü verstellen */
+function retunable(g: MiniGame): g is MiniGame & { retune(): void } {
+  return typeof (g as { retune?: unknown }).retune === 'function';
+}
+
 function create(kind: MiniKind, c: GameCfg): MiniGame {
-  switch (kind) {
-    case 'pipes': return new PipesGame(c);
-    case 'ore': return new OreGame(c);
-    case 'gas': return new GasGame(c);
-    case 'cargo': return new CargoGame(c);
-    case 'highway': return new HighwayGame(c);
-    case 'orbit': return new OrbitGame(c);
-    case 'pirates': return new ShooterGame(c, 'pirate');
-    case 'xenon': return new ShooterGame(c, 'xenon');
-    case 'khaak': return new ShooterGame(c, 'khaak');
+  return ready[kind]!(c);
+}
+
+/** kurzer Hinweis, solange ein Spiel nachgeladen wird */
+function loadingNote(text: string | null): void {
+  let el = document.getElementById('mg-loading');
+  if (!text) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mg-loading';
+    el.className = 'mg-loading';
+    (document.getElementById('app') ?? document.body).appendChild(el);
   }
+  el.textContent = text;
 }
 
 type Phase = 'intro' | 'play' | 'pause' | 'end';
@@ -130,6 +158,15 @@ export function minigameBack(): boolean {
 }
 
 export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameResult | null) => void, replay = false): void {
+  if (!ready[kind]) {
+    if (document.getElementById('mg-loading')) return;
+    loadingNote('Lade …');
+    loadKind(kind).then(() => { loadingNote(null); openMinigame(kind, opts, onDone, replay); }).catch(() => {
+      loadingNote('Laden fehlgeschlagen – Verbindung prüfen');
+      setTimeout(() => loadingNote(null), 2500);
+    });
+    return;
+  }
   if (cur) close(null);
   const root = document.createElement('div');
   root.id = 'minigame';
@@ -217,7 +254,7 @@ function bindInput(s: Session): void {
   // Entwicklungswerkzeug im Pausenmenü des Kampfs: Regler wirken sofort auf alle Gegner im Feld
   s.root.addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
-    if (el.dataset?.change !== 'enemy-tune' || !(s.game instanceof ShooterGame)) return;
+    if (el.dataset?.change !== 'enemy-tune' || !retunable(s.game)) return;
     setEnemyTune({ [el.dataset.key === 'shield' ? 'shield' : 'hull']: tuneFromSlider(Number(el.value)) });
     s.game.retune();
     refreshTunePanel(s.root, s.cfg.level);
@@ -234,7 +271,7 @@ function bindInput(s: Session): void {
       case 'abort': finish(s, s.game.abort()); break;
       case 'tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
-        if (s.game instanceof ShooterGame) s.game.retune();
+        if (retunable(s.game)) s.game.retune();
         for (const r of s.root.querySelectorAll<HTMLInputElement>('input[data-change="enemy-tune"]')) r.value = String(tuneToSlider(1));
         refreshTunePanel(s.root, s.cfg.level);
         break;
@@ -319,7 +356,7 @@ function setPhase(p: Phase): void {
       <div class="mg-actions"><button class="btn ghost" data-mg="quit">Zurück</button><button class="btn primary" data-mg="start">Start</button></div></div>`;
   } else if (p === 'pause') {
     layer.innerHTML = `<div class="mg-card"><small class="eyebrow">Pause</small><h2>${esc(g.title)}</h2>
-      ${g instanceof ShooterGame ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
+      ${retunable(g) ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
       ${rulesBox(g.rules, s.kind, mode, true, !!s.cfg.mission && s.cfg.mission !== 'geleit')}
       <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button></div></div>`;

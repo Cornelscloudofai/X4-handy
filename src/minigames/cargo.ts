@@ -15,11 +15,13 @@ import { BG_IMAGES } from '../render/bgImages';
 import { shipSprite } from '../render/shipArt';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, roundRect, Score, setGoal, starsFor, Starfield, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
+  type GameCfg, type GameResult, type Goal, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
 import { playOneOf, type GameTrack } from '../audio/music';
 import overtakerUrl from '../assets/music/fracht-slowly-overtaker.mp3';
 import chillWayUrl from '../assets/music/fracht-slow-way-ist-chill-way.mp3';
+import { CARGO_GOALS, CARGO_MUTATORS } from './menuInfo';
+export { CARGO_MUTATORS, CARGO_GOALS };
 
 /** Zeitlimit der Runde (s) */
 const LIMIT = 150;
@@ -47,22 +49,7 @@ const PREDICT: Record<Level, number> = { 1: 3, 2: 2.4, 3: 1.8, 4: 1.3, 5: 0.9 };
 /** Abfertigungszeit für 3/2/1 Sterne je Stufe (s): weniger ist besser */
 const TARGET: Record<Level, [number, number, number]> = { 1: [40, 60, 85], 2: [55, 78, 105], 3: [70, 95, 125], 4: [80, 108, 140], 5: [90, 120, 155] };
 
-export const CARGO_MUTATORS: Mutator[] = [
-  { id: 'heavy', name: 'Schwerlast', desc: 'Alle Container 60 % schwerer', mult: 1.3 },
-  { id: 'bouncy', name: 'Prallwände', desc: 'Die Wände federn voll zurück', mult: 1.2 },
-  { id: 'drift', name: 'Relativdrift', desc: 'Station und Schiff treiben gegeneinander', mult: 1.4 },
-  { id: 'dark', name: 'Notbeleuchtung', desc: 'Bahnvorhersage nur ganz kurz', mult: 1.5 },
-  { id: 'weak', name: 'Schwache Magnete', desc: 'Das Magnetfeld bremst nur halb so stark', mult: 1.4 },
-];
 
-export const CARGO_GOALS: GoalDef[] = [
-  { id: 'order', text: 'Keine Umräumung beim Entladen' },
-  { id: 'balance', text: 'Schwerpunkt höchstens 5 % neben der Achse' },
-  { id: 'nolost', text: 'Kein Container treibt ins All' },
-  { id: 'clean', text: 'Fünf Volltreffer (mit dem ersten Schuss eingefangen)' },
-  { id: 'notractor', text: 'Ohne Traktorstrahl auskommen' },
-  { id: 'fast', text: 'Alles in der Zielzeit für drei Sterne' },
-];
 
 /** Containerwaren: Name, Farbe, Masse (t) */
 const WARES: { id: string; name: string; color: string; mass: number }[] = [

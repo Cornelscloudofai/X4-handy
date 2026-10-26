@@ -4,7 +4,7 @@ import { esc } from '../ui/dom';
 import type { Level } from './common';
 import { enemyTune, tuneToSlider, type EnemyTune } from './loadout';
 export { tuneFromSlider, tuneToSlider } from './loadout';
-import { enemyStatTable } from './shooter';
+import { enemyStatTable } from './shooterData';
 
 const fmt = (v: number) => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

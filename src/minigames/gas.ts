@@ -18,8 +18,10 @@ import { mapShipSprite, projectileSprite } from '../render/shipArt';
 import { fbm, perlin } from '../render/noise';
 import {
   buzz, clamp, findMutator, Floaters, fmtTime, Particles, pickGoals, rgba, rng, Score, setGoal, starsFor, Starfield, TOP,
-  type GameCfg, type GameResult, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
+  type GameCfg, type GameResult, type Goal, type HudItem, type Level, type MiniGame, type Mutator, type Rules,
 } from './common';
+import { GAS_GOALS, GAS_MUTATORS } from './menuInfo';
+export { GAS_MUTATORS, GAS_GOALS };
 
 /** Eine Runde dauert so lange wie das Lied (Celestial Drift, 3:48) */
 const DURATION = Math.round((trackBeats as { duration: number }).duration);
@@ -51,23 +53,7 @@ const JOY_R = 64;
 const FUN_MIN = 12;
 const FUN_MAX = 72;
 
-export const GAS_MUTATORS: Mutator[] = [
-  { id: 'storm', name: 'Gewittersturm', desc: 'Mehr Sturmzellen und Funken', mult: 1.5 },
-  { id: 'gold', name: 'Goldrausch', desc: 'Goldene Ströme viel häufiger', mult: 1.2 },
-  { id: 'leak', name: 'Leckender Tank', desc: 'Ungesicherte Ladung entweicht langsam', mult: 1.4 },
-  { id: 'fast', name: 'Starke Strömung', desc: 'Die Ströme ziehen viel schneller', mult: 1.4 },
-  { id: 'smog', name: 'Verschmutzter Nebel', desc: 'Doppelt so viel Fremdgas', mult: 1.3 },
-];
 
-export const GAS_GOALS: GoalDef[] = [
-  { id: 'nohit', text: 'Kein Überschlag, kein Blitz' },
-  { id: 'gold3', text: 'Aus goldenen Strömen 30 Flocken fangen' },
-  { id: 'full4', text: 'Viermal mit vollem Tank entladen' },
-  { id: 'combo', text: 'Kombo ×2,5 (volle, reine Tanks in Folge)' },
-  { id: 'nowaste', text: 'Am Ende nichts mehr ungesichert im Tank' },
-  { id: 'pure3', text: 'Drei reine Ladungen sichern' },
-  { id: 'nospark', text: 'Keinen einzigen Funken fangen' },
-];
 
 type Kind = 'gas' | 'gold' | 'foreign';
 type FlakeKind = 'gas' | 'gold' | 'foreign' | 'spark';

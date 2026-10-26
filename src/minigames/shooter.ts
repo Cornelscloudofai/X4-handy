@@ -16,14 +16,16 @@ import { MISSIONS, type Mission } from './missions';
 import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
-  type GameCfg, type GameResult, type Gear, type Goal, type GoalDef, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
+  type GameCfg, type GameResult, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
 } from './common';
+import { MISSION_GOALS, SHOOTER_ENDLESS_GOALS as ENDLESS_GOALS, SHOOTER_GOALS, SHOOTER_MUTATORS, SHOOTER_NORMAL_GOALS as NORMAL_GOALS } from './menuInfo';
+import { SPEC, enemyStats, drawFighterVector, type EKind } from './shooterData';
+export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
+export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
 export type { Gear } from './common';
 
 type Side = 'pirate' | 'xenon' | 'khaak';
-/** cargo: Frachter des Piratenkonvois (Einsatz „Überfall“) */
-type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk' | 'cargo';
 /**
  * Elite-Gegner (leuchtende farbige Umrandung): Gepanzert (doppelter Schild, langsam), Flink (schnell, weicht Raketen aus), Splitter
  * (zerfällt beim Abschuss in zwei kleine), Kommandant (lädt Schilde naher Verbündeter; fällt er, löst sich die Gruppe
@@ -399,29 +401,6 @@ function turnTo(a: number, b: number, step: number): number {
   return Math.abs(d) <= step ? b : a + Math.sign(d) * step;
 }
 
-/** Gegner etwas zäher als die Grundwerte (Hülle), dazu ein eigener Schild je Art (sh) */
-const ENEMY_HULL = 1.1, ENEMY_SHIELD = 0.6;
-const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: number; color: string; name: string; pts: number; cost: number }> = {
-  jaeger: { hp: 30, sh: 22, speed: 165, r: 10, color: '#ff8a5c', name: 'Piratenjäger', pts: 100, cost: 2 },
-  kanone: { hp: 95, sh: 60, speed: 70, r: 16, color: '#ffb547', name: 'Kanonenboot', pts: 250, cost: 4 },
-  rakete: { hp: 55, sh: 40, speed: 90, r: 13, color: '#ffd27a', name: 'Raketenboot', pts: 200, cost: 3.5 },
-  schild: { hp: 70, sh: 80, speed: 85, r: 13, color: '#7fd8ff', name: 'Schildträger', pts: 250, cost: 4 },
-  n: { hp: 15, sh: 12, speed: 205, r: 8, color: '#ff3b4a', name: 'Xenon N', pts: 60, cost: 1.5 },
-  m: { hp: 75, sh: 55, speed: 95, r: 14, color: '#ff5c6c', name: 'Xenon M', pts: 250, cost: 4 },
-  xs: { hp: 70, sh: 70, speed: 85, r: 13, color: '#ff9ab0', name: 'Schirmdrohne', pts: 250, cost: 4 },
-  boss: { hp: 450, sh: 300, speed: 45, r: 34, color: '#ffb547', name: 'Boss', pts: 1500, cost: 0 },
-  turret: { hp: 90, sh: 30, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
-  // Kha'ak: schwache Hülle, kräftige Schilde (Kyon-Kristalle)
-  // Bildgrößen im Verhältnis zur Mamba (etwa 34 px): Späher ein Drittel, Jäger gut zwei Drittel (siehe shipArt.ts);
-  // die Trefferzone ist etwas größer als das Bild, damit man die Kleinen auch auf dem Handy trifft
-  ks: { hp: 18, sh: 18, speed: 230, r: 8, color: '#c77dff', name: 'Kha’ak-Späher', pts: 70, cost: 1.5 },
-  kj: { hp: 35, sh: 45, speed: 175, r: 10, color: '#a855f7', name: 'Kha’ak-Jäger', pts: 130, cost: 2.5 },
-  ka: { hp: 60, sh: 55, speed: 200, r: 13, color: '#d08cff', name: 'Kha’ak-Abfangjäger', pts: 220, cost: 4 },
-  kk: { hp: 120, sh: 90, speed: 70, r: 18, color: '#9b5cff', name: 'Kha’ak-Korvette', pts: 300, cost: 5 },
-  // Frachter des Piratenkonvois: zäh, langsam, zwei schwache Abwehrtürme
-  cargo: { hp: 420, sh: 150, speed: 24, r: 22, color: '#ffb070', name: 'Piratenfrachter', pts: 800, cost: 0 },
-};
-
 const CARDS: Card[] = [
   { id: 'spread', name: 'Streuschuss', desc: 'Zwei zusätzliche Geschosse schräg', max: 2 },
   { id: 'rapid', name: 'Schnellfeuer', desc: '+25 % Feuerrate', max: 3 },
@@ -437,44 +416,7 @@ const CARDS: Card[] = [
   { id: 'speed', name: 'Nachbrenner', desc: '+12 % Tempo', max: 2 },
 ];
 
-export const SHOOTER_MUTATORS: Mutator[] = [
-  { id: 'swarm', name: 'Schwarm', desc: 'Deutlich mehr Gegner pro Welle', mult: 1.5 },
-  { id: 'glass', name: 'Glaskanone', desc: 'Doppelter Schaden, aber nur halber Schild', mult: 1.4 },
-  { id: 'ion', name: 'Ionensturm', desc: 'Schilde laden sich nicht von selbst auf', mult: 1.5 },
-  { id: 'mines', name: 'Minengürtel', desc: 'Minen auf der ganzen Strecke', mult: 1.3 },
-  { id: 'bounty', name: 'Kopfgeld', desc: 'Mehr Fundstücke, Abschüsse zählen mehr', mult: 1.2 },
-];
 
-const NORMAL_GOALS: GoalDef[] = [
-  { id: 'hull80', text: 'Frachter mit über 80 % Hülle ans Tor' },
-  { id: 'boss30', text: 'Den Boss in unter 30 s zerstören' },
-  { id: 'combo3', text: 'Kombo ×3 erreichen' },
-  { id: 'nomissile', text: 'Ohne Raketensalve gewinnen' },
-  { id: 'tough', text: 'Jäger-Hülle nie unter 50 %' },
-  { id: 'loot3', text: 'Drei Fundstücke einsammeln' },
-];
-const ENDLESS_GOALS: GoalDef[] = [
-  { id: 'wave6', text: 'Welle 6 erreichen' },
-  { id: 'wave10', text: 'Welle 10 erreichen' },
-  { id: 'combo4', text: 'Kombo ×4 erreichen' },
-  { id: 'boss2', text: 'Zwei Bosse besiegen' },
-];
-const G_COMBO3: GoalDef = { id: 'combo3', text: 'Kombo ×3 erreichen' };
-const G_TOUGH: GoalDef = { id: 'tough', text: 'Jäger-Hülle nie unter 50 %' };
-const G_LOOT3: GoalDef = { id: 'loot3', text: 'Drei Fundstücke einsammeln' };
-const G_NOMISSILE: GoalDef = { id: 'nomissile', text: 'Ohne Raketensalve gewinnen' };
-/** Nebenziele der Einsätze (je Runde drei davon) */
-const MISSION_GOALS: Record<Exclude<Mission, 'geleit'> | 'nestKhaak', GoalDef[]> = {
-  station: [{ id: 'turrets', text: 'Am Ende stehen alle sechs Stationstürme' }, { id: 'st80', text: 'Station mit über 80 % Hülle halten' }, G_COMBO3, G_LOOT3, G_TOUGH],
-  konvoi: [{ id: 'all3', text: 'Alle drei Frachter ans Tor bringen' }, { id: 'kv60', text: 'Jeder gerettete Frachter mit über 60 % Hülle' }, G_COMBO3, G_NOMISSILE, G_TOUGH],
-  flucht: [{ id: 'fl50', text: 'Mit über 50 % Frachter-Hülle springen' }, G_COMBO3, G_TOUGH, G_LOOT3],
-  bergung: [{ id: 'crate8', text: 'Alle acht Container bergen' }, { id: 'nolost', text: 'Keinen Container verlieren' }, G_COMBO3, G_TOUGH],
-  ueberfall: [{ id: 'cargo3', text: 'Alle drei Piratenfrachter zerstören' }, { id: 'cargo45', text: 'Den ersten Frachter in unter 45 s zerstören' }, G_COMBO3, G_NOMISSILE],
-  nest: [{ id: 'nest150', text: 'Das Nest in unter 2:30 ausheben' }, { id: 'combo4', text: 'Kombo ×4 erreichen' }, G_TOUGH, G_NOMISSILE],
-  // nur beim Kha'ak-Nest (dort gibt es Nebennester und Turmplattformen)
-  nestKhaak: [{ id: 'hives', text: 'Auch beide Nebennester zerstören' }, { id: 'plats', text: 'Alle vier Turmplattformen zerstören' }, { id: 'nest150', text: 'Das Nest in unter 2:30 ausheben' }, G_TOUGH, G_NOMISSILE],
-};
-export const SHOOTER_GOALS: GoalDef[] = [...NORMAL_GOALS, ...ENDLESS_GOALS, ...Object.values(MISSION_GOALS).flat()].filter((g, i, a) => a.findIndex((q) => q.id === g.id) === i);
 
 /** Zoomstufen des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick); per Taste wählbar, wird gemerkt */
 const ZOOMS = [1.2, 0.95, 0.72, 0.58, 0.46, 0.36, 0.27, 0.2];
@@ -491,22 +433,7 @@ function readZoom(): number {
 
 /** Normale Runde: drei Wellen und der Boss */
 const NORMAL_WAVES = 4;
-const HP_MUL: Record<Level, number> = { 1: 1, 2: 1.15, 3: 1.3, 4: 1.45, 5: 1.6 };
 
-/**
- * Hülle und Schild eines Gegners, wie er im Spiel erscheint: Grundwert × Hüllen-/Schildfaktor × Stufe × Faktor aus
- * dem Entwicklungswerkzeug (Minispiele → Kampf → Gegnerstärke); Großziele haben 55 % der Boss-Werte
- */
-export function enemyStats(kind: EKind, level: Level, opt: { mini?: boolean; extra?: number; tune?: { hull: number; shield: number } } = {}): { hp: number; sh: number } {
-  const t = opt.tune ?? enemyTune(), k = HP_MUL[level] * (opt.mini ? 0.55 : 1) * (opt.extra ?? 1);
-  return { hp: SPEC[kind].hp * ENEMY_HULL * k * t.hull, sh: SPEC[kind].sh * ENEMY_SHIELD * k * t.shield };
-}
-
-/** Übersicht für das Entwicklungswerkzeug: alle Gegnertypen einer Stufe */
-export function enemyStatTable(level: Level, tune?: { hull: number; shield: number }): { name: string; hp: number; sh: number }[] {
-  const kinds: [EKind, string, boolean?][] = [['n', 'Xenon N'], ['jaeger', 'Piratenjäger'], ['rakete', 'Raketenboot'], ['schild', 'Schildträger'], ['xs', 'Schirmdrohne'], ['m', 'Xenon M'], ['kanone', 'Kanonenboot'], ['ks', 'Kha’ak-Späher'], ['kj', 'Kha’ak-Jäger'], ['ka', 'Kha’ak-Abfangjäger'], ['kk', 'Kha’ak-Korvette'], ['turret', 'Geschützturm'], ['boss', 'Großziel', true], ['boss', 'Boss']];
-  return kinds.map(([kind, name, mini]) => ({ name, ...enemyStats(kind, level, { mini, tune }) }));
-}
 /** Größe des Schiffsbilds in Bildpunkten (das Bild hat Rand, das Schiff selbst ist etwa 85 % davon) */
 const SPRITE_SIZE = 46;
 /**
@@ -515,20 +442,6 @@ const SPRITE_SIZE = 46;
  */
 const LB_LEN = 0.12, LB_ROOT = 0.12, LB_WIDE = 1.6;
 
-/** Der eigene Jäger als Neon-Zeichnung (Nase oben, etwa 25 Bildpunkte lang) */
-export function drawFighterVector(ctx: CanvasRenderingContext2D): void {
-  ctx.beginPath();
-  ctx.moveTo(0, -14); ctx.lineTo(5, -4); ctx.lineTo(12, 8); ctx.lineTo(4, 6); ctx.lineTo(0, 11); ctx.lineTo(-4, 6); ctx.lineTo(-12, 8); ctx.lineTo(-5, -4);
-  ctx.closePath();
-  ctx.fillStyle = '#0a2028';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(63,224,197,0.3)';
-  ctx.lineWidth = 5;
-  ctx.stroke();
-  ctx.strokeStyle = '#3fe0c5';
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-}
 
 export class ShooterGame implements MiniGame {
   readonly eyebrow: string;
