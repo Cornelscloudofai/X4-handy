@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Feedback-Formular (für Netlify Forms)</title></head>
+<body>
+<!-- Netlify erkennt Formulare beim Bau nur in statischem HTML. Das Spiel sendet sein Feedback per JavaScript; dieses
+     versteckte Gegenstück meldet Formular und Felder an (Namen müssen mit src/ui/feedback.ts übereinstimmen). -->
+<form name="feedback" data-netlify="true" netlify-honeypot="bot-field" enctype="multipart/form-data" hidden>
+  <input name="bot-field">
+  <input name="art">
+  <textarea name="text"></textarea>
+  <input name="name">
+  <input name="version">
+  <input name="ort">
+  <input name="spielstand">
+  <input name="geraet">
+  <input type="file" name="bild">
+  <input type="file" name="sicherung">
+</form>
+</body>
+</html>

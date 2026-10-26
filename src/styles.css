@@ -1308,3 +1308,19 @@ button.hgr-card:active { transform: scale(0.97); }
 
 /* Minispiel wird nachgeladen: kleiner Hinweis über der Karte */
 .mg-loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 60; padding: 12px 20px; border-radius: 14px; background: rgba(8, 22, 32, 0.92); border: 1px solid rgba(63, 224, 197, 0.45); color: #bff7ec; font-weight: 600; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); pointer-events: none; }
+
+/* ---------- Feedback (eigene Ebene, auch über einem Minispiel) ---------- */
+.fb-layer { position: fixed; inset: 0; z-index: 200; display: flex; align-items: flex-end; justify-content: center; background: rgba(1, 5, 10, 0.6); backdrop-filter: blur(3px); animation: fade 0.18s; }
+@media (min-width: 700px) { .fb-layer { align-items: center; } }
+.fb-layer .sheet-body { display: flex; flex-direction: column; gap: 12px; }
+.fb-layer .lead { margin: 0; }
+.fb-layer .fb-text { min-height: 150px; font-family: var(--font-body, inherit); font-size: 15px; line-height: 1.4; }
+.fb-layer .fb-name { width: 100%; }
+.fb-check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-2); }
+.fb-check input { width: 20px; height: 20px; accent-color: #3fe0c5; flex: none; }
+.fb-check small { color: var(--text-3, var(--text-2)); }
+.fb-meta { margin: 0; }
+.fb-warn { margin: 0; display: flex; gap: 6px; align-items: flex-start; color: #ffd28a; }
+.fb-status { margin: 0; min-height: 1.2em; }
+.fb-status.good { color: #6be38f; }
+.fb-status.neg { color: #ff9aa4; }

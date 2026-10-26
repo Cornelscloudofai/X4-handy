@@ -1389,7 +1389,8 @@ function morePanel(state: GameState, ui: UIState): string {
         <div class="right small muted">${state.stations.length} Station${state.stations.length === 1 ? '' : 'en'}<br>${state.ships.length} Schiff${state.ships.length === 1 ? '' : 'e'}</div></div>
       <div class="section menu-bigs">${big('company')}${big('games')}</div>
       <div class="section"><div class="menu-smalls">${small}</div></div>
-      <div class="section"><div class="card-actions"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>`);
+      <div class="section"><div class="card-actions"><button class="btn small" ${act('open-news')}>${icon('info', 16)}Nachrichten</button><button class="btn small" ${act('open-ledger')}>${icon('wallet', 16)}Kontobuch</button></div></div>
+      <div class="section"><div class="box rows">${linkRow('info', 'Feedback geben', 'Fehler gefunden? Eine Idee oder ein Gedanke? Direkt aus dem Spiel schicken – mit Bildschirmfoto.', 'feedback')}</div></div>`);
   }
   const page = (body: string) => sheet(sub.title, 'Mehr', `<div class="page-hero" style="${artStyle('more-' + sub.id)}">${artPic('more-' + sub.id, 'page-hero-art')}<div><b>${esc(sub.title)}</b><span>${esc(sub.sub)}</span></div></div>` + body, { back: true });
   switch (sub.id) {

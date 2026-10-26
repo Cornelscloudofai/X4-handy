@@ -24,8 +24,9 @@ import { stepSectorImage } from '../render/bgImages';
 import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
 import { initInstall, installApp } from './install';
+import { openFeedback } from './feedback';
 import { applyBackup, autoBackup, collect, getBackup, listBackups, parseBackup, saveBackup } from './backup';
-import { dailyOpts, minigameBack, minigameOpen, openMinigame, preloadMinigames, type MiniKind, type MiniOpts } from '../minigames/host';
+import { dailyOpts, minigameBack, minigameOpen, openMinigame, preloadMinigames, setMinigameFeedback, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
 import type { Mission } from '../minigames/missions';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
@@ -180,6 +181,8 @@ export function start(): void {
   (window as unknown as { __audio: unknown }).__audio = { names: SOUND_DEMO.map((x) => x[0]), render: (i: number, sec: number) => renderOffline(SOUND_DEMO[i][1], sec), meterPeak, ready: () => preloadSamples(new OfflineAudioContext(2, 1, 44100)), mood: (i: number, sec: number) => renderMood(i, sec) };
   (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector, renderer };
   requestAnimationFrame(frame);
+  // Feedback auch aus dem Pausenmenü der Minispiele
+  setMinigameFeedback((context, cv) => openFeedback({ context, canvas: cv, summary: backupLabel(state), save: () => JSON.stringify(collect(localStorage, backupLabel(state))) }));
   // als App installierbar und offline spielbar (nur unter eigener Adresse)
   initInstall(() => refresh());
   // Minispiele im Hintergrund nachladen, sobald die Karte steht (der Start selbst bleibt schlank)
@@ -339,6 +342,12 @@ function chapterBanner(e: { index: number; title: string; credits: number; facti
   bannerTimer = window.setTimeout(() => { host.classList.remove('show'); host.hidden = true; document.body.classList.remove('banner-on'); }, 3200);
 }
 let bannerTimer = 0;
+
+/** Wo im Spiel das Feedback entsteht (Ansicht, Sektor, offenes Fenster) */
+function feedbackContext(): string {
+  const p = ui.panel ? ` · Fenster ${ui.panel.type}${ui.panel.tab ? '/' + ui.panel.tab : ''}` : '';
+  return `${ui.view === 'galaxy' ? 'Galaxiekarte' : 'Sektorkarte'} ${ui.sector}${p}`;
+}
 
 /** Beschreibung einer Sicherung: Spieltag, Credits, Kapitel */
 function backupLabel(s: GameState): string {
@@ -1310,6 +1319,10 @@ function onClick(e: MouseEvent): void {
         break;
       case 'backup-pick': if (ui.modal?.type === 'backups') { ui.modal = { ...ui.modal, confirm: Number(d.id) }; refresh(); } break;
       case 'backup-restore': void restoreBackup(Number(d.id)); break;
+      case 'feedback':
+        save();
+        openFeedback({ context: feedbackContext(), canvas, summary: backupLabel(state), save: () => JSON.stringify(collect(localStorage, backupLabel(state))) });
+        break;
       case 'app-install': void installApp().then((ok) => { if (ok) toast('X4 Sektorbau ist jetzt als App installiert.', 'good'); refresh(); }); break;
       case 'copy-export': {
         const t = document.getElementById('exportText') as HTMLTextAreaElement | null;

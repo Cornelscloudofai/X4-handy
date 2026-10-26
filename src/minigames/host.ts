@@ -67,6 +67,12 @@ function resolve(kind: MiniKind, o: MiniOpts): GameCfg {
   return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission };
 }
 
+/** Feedback aus dem Pausenmenü (setzt die App; Ort im Spiel und Leinwand fürs Bildschirmfoto) */
+let feedbackHook: ((context: string, canvas: HTMLCanvasElement) => void) | null = null;
+export function setMinigameFeedback(f: (context: string, canvas: HTMLCanvasElement) => void): void {
+  feedbackHook = f;
+}
+
 type Factory = (c: GameCfg) => MiniGame;
 /** Spiele werden erst geladen, wenn man sie startet (oder im Hintergrund nach dem Start) – das Hauptspiel startet schneller */
 const LOAD: Record<MiniKind, () => Promise<Factory>> = {
@@ -269,6 +275,7 @@ function bindInput(s: Session): void {
       case 'pause': if (s.phase === 'play') setPhase('pause'); break;
       case 'quit': close(s.phase === 'end' ? s.result : null); break;
       case 'abort': finish(s, s.game.abort()); break;
+      case 'feedback': feedbackHook?.(`Minispiel: ${s.game.eyebrow} · ${s.game.title} · Stufe ${s.cfg.level}${s.cfg.mission && s.cfg.mission !== 'geleit' ? ` · Einsatz ${s.cfg.mission}` : ''}`, s.canvas); break;
       case 'tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
         if (retunable(s.game)) s.game.retune();
@@ -359,7 +366,7 @@ function setPhase(p: Phase): void {
       ${retunable(g) ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
       ${rulesBox(g.rules, s.kind, mode, true, !!s.cfg.mission && s.cfg.mission !== 'geleit')}
-      <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button></div></div>`;
+      <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button>${feedbackHook ? '<button class="btn ghost" data-mg="feedback">Feedback geben</button>' : ''}</div></div>`;
   } else {
     const r = s.result!;
     const o = s.outcome;
