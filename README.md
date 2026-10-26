@@ -27,6 +27,9 @@ einem Solarkraftwerk und einem Miner.
   „Spielstand laden“ nimmt sie (und alte Spielstände) wieder an.
 - **Schneller Start:** Die Minispiele sind eigene Programmteile und werden erst beim Start eines Spiels bzw. drei
   Sekunden nach dem Spielstart im Hintergrund geladen (Startdatei ein Drittel kleiner).
+- **Eigene Adresse (Netlify):** `netlify.toml` beschreibt den Bau (`npm run build`, Ordner `dist`, Node 22) und die
+  Zwischenspeicher-Regeln (Seite und Service Worker immer frisch, `assets/` dauerhaft). Netlify ist mit dem
+  GitHub-Projekt verbunden und baut bei jedem Push auf den Hauptzweig neu.
 - **Als App:** Läuft das Spiel unter eigener Adresse (https, nicht eingebettet), ist es installierbar (Manifest,
   Symbol `public/icon-*.png` aus `node scripts/render-icon.mjs`) und offline spielbar (`public/sw.js`: Seite zuerst aus
   dem Netz, Programmteile und Bilder aus dem Zwischenspeicher). Mehr → Spielstand bietet dann „Als App installieren“

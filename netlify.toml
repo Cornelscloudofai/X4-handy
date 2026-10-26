@@ -1,0 +1,37 @@
+# Netlify: baut das Spiel aus dem Hauptzweig und stellt dist/ unter eigener Adresse bereit (als App installierbar,
+# offline spielbar). Jeder Push baut automatisch neu.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Browser für die Tests braucht der Bau nicht
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+
+# Seite und Service Worker immer frisch prüfen, sonst kommen neue Versionen verspätet an
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Programmteile, Bilder und Klänge tragen eine Prüfsumme im Namen und ändern sich nie
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
