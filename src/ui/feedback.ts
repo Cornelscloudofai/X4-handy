@@ -114,16 +114,25 @@ export function openFeedback(o: FeedbackOpts): void {
     fd.append('geraet', device());
     if ($<HTMLInputElement>('fbShot').checked) { const img = await shot; if (img) fd.append('bild', img, `bildschirm-${Date.now()}.jpg`); }
     if ($<HTMLInputElement>('fbSave').checked && o.save) fd.append('sicherung', new Blob([o.save()], { type: 'application/json' }), `x4-sektorbau-sicherung-${Date.now()}.json`);
+    let res: Response;
     try {
-      const res = await fetch('/', { method: 'POST', body: fd });
-      if (!res.ok && res.status !== 303 && res.status !== 302) throw new Error(String(res.status));
-      try { localStorage.removeItem(DRAFT); } catch { /* egal */ }
-      status('Danke! Dein Feedback ist angekommen.', 'good');
-      root.querySelector('.modal-foot')!.innerHTML = '<button class="btn primary" data-fb="close">Schließen</button>';
+      res = await fetch('/', { method: 'POST', body: fd });
     } catch {
       b.removeAttribute('disabled');
       status('Senden hat nicht geklappt – keine Verbindung? Dein Text bleibt erhalten, versuch es gleich noch einmal.', 'neg');
+      return;
     }
+    // Netlify antwortet mit 404/405, solange das Formular dort nicht eingerichtet ist (Formular-Erkennung + neuer Bau)
+    if (!res.ok && res.status !== 303 && res.status !== 302) {
+      b.removeAttribute('disabled');
+      status(res.status === 404 || res.status === 405
+        ? `Das Feedback-Formular ist auf dem Server noch nicht eingerichtet (Fehler ${res.status}). Dein Text bleibt erhalten.`
+        : `Der Server hat das Feedback abgelehnt (Fehler ${res.status}). Dein Text bleibt erhalten, versuch es später noch einmal.`, 'neg');
+      return;
+    }
+    try { localStorage.removeItem(DRAFT); } catch { /* egal */ }
+    status('Danke! Dein Feedback ist angekommen.', 'good');
+    root.querySelector('.modal-foot')!.innerHTML = '<button class="btn primary" data-fb="close">Schließen</button>';
   });
   setTimeout(() => text.focus(), 60);
 }

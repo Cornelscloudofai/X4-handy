@@ -11,8 +11,11 @@ const errors = [];
 const fail = (m) => errors.push(m);
 page.on('pageerror', (e) => errors.push(String(e)));
 const posts = [];
+let reject = 404;
 await page.route('**/*', async (route) => {
   const r = route.request();
+  // erster Versuch: Formular noch nicht eingerichtet (404) – klare Meldung, Text bleibt; danach angenommen
+  if (r.method() === 'POST' && reject) { const st = reject; reject = 0; await route.fulfill({ status: st, body: 'not found' }); return; }
   if (r.method() === 'POST') { posts.push(r.postDataBuffer()?.toString('latin1') ?? ''); await route.fulfill({ status: 200, body: 'ok' }); return; }
   await route.continue();
 });
@@ -29,6 +32,10 @@ await page.fill('#fbText', 'Testmeldung: Der Frachter fliegt durch die Station.'
 await page.fill('#fbName', 'Tester');
 await page.check('#fbSave');
 await page.screenshot({ path: `${out}/feedback-1-formular.png` });
+await page.click('#feedback [data-fb="send"]');
+await page.waitForTimeout(1200);
+if (!(await page.locator('#fbStatus', { hasText: 'noch nicht eingerichtet' }).count())) fail('Fehler 404 ohne klare Meldung');
+if (!(await page.inputValue('#fbText')).includes('Testmeldung')) fail('Text nach Fehlschlag verloren');
 await page.click('#feedback [data-fb="send"]');
 await page.waitForTimeout(1200);
 const body = posts.join('\n');
