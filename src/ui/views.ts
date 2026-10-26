@@ -1814,11 +1814,17 @@ function buyShipModal(state: GameState, m: Extract<Modal, { type: 'buyShip' }>):
 function appSection(): string {
   const st = installState();
   if (st === 'none') return '';
+  const how: Record<string, string> = {
+    ios: 'In Safari unten auf „Teilen“ tippen, dann „Zum Home-Bildschirm“.',
+    samsung: 'Menü ≡ unten rechts → „Seite hinzufügen zu“ → „Startbildschirm“.',
+    firefox: 'Menü ⋮ → „Installieren“ bzw. „Zum Startbildschirm hinzufügen“.',
+    manual: 'Browser-Menü ⋮ oben rechts → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“.',
+  };
   const row = st === 'prompt'
     ? linkRow('down', 'Als App installieren', 'Eigenes Symbol auf dem Startbildschirm, Vollbild, offline spielbar', 'app-install')
-    : st === 'ios'
-      ? `<div class="row">${icon('info', 20)}<div class="grow"><div class="title" style="font-weight:500">Als App installieren</div><div class="sub wrap">In Safari unten auf „Teilen“ tippen, dann „Zum Home-Bildschirm“.</div></div></div>`
-      : `<div class="row">${icon('check', 20, 'good')}<div class="grow"><div class="title" style="font-weight:500">Als App installiert</div><div class="sub wrap">Läuft im eigenen Fenster und auch ohne Verbindung.</div></div></div>`;
+    : st === 'installed'
+      ? `<div class="row">${icon('check', 20, 'good')}<div class="grow"><div class="title" style="font-weight:500">Als App installiert</div><div class="sub wrap">Läuft im eigenen Fenster und auch ohne Verbindung.</div></div></div>`
+      : `<div class="row">${icon('info', 20)}<div class="grow"><div class="title" style="font-weight:500">Als App installieren</div><div class="sub wrap">${esc(how[st])} Danach startet das Spiel über sein Symbol im Vollbild und läuft auch offline.</div></div></div>`;
   return `<div class="section"><h3>App</h3><div class="box rows">${row}</div></div>`;
 }
 

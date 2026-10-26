@@ -26,12 +26,20 @@ export function isInstalled(): boolean {
   return matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 }
 
-/** Was die Mehr-Seite anbieten kann: Installieren (Android/Chrome), Hinweis fürs iPhone, bereits installiert, nichts */
-export function installState(): 'prompt' | 'ios' | 'installed' | 'none' {
+/**
+ * Was die Mehr-Seite anbieten kann: Installieren per Knopf (der Browser hat es angeboten), Anleitung fürs iPhone bzw.
+ * für andere Browser (Chrome bietet es erst nach einer Weile an, Samsung Internet und Firefox nie per Knopf),
+ * bereits installiert, nichts (eingebettet oder Einzeldatei)
+ */
+export function installState(): 'prompt' | 'ios' | 'samsung' | 'firefox' | 'manual' | 'installed' | 'none' {
   if (!active) return 'none';
   if (isInstalled()) return 'installed';
   if (promptEvt) return 'prompt';
-  return /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'ios' : 'none';
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return 'ios';
+  if (/SamsungBrowser/.test(ua)) return 'samsung';
+  if (/Firefox/.test(ua)) return 'firefox';
+  return 'manual';
 }
 
 export async function installApp(): Promise<boolean> {

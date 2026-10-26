@@ -17,9 +17,15 @@ await page.waitForTimeout(700);
 const man = await page.evaluate(async () => { const l = document.querySelector('link[rel="manifest"]'); if (!l) return null; const r = await fetch(l.href); return r.ok ? r.json() : null; });
 if (!man?.icons?.length || man.display !== 'standalone') fail('Manifest fehlt oder unvollständig');
 for (const ic of man?.icons ?? []) if (!(await page.evaluate(async (s) => (await fetch(s)).ok, ic.src))) fail(`Symbol fehlt: ${ic.src}`);
+// Mehr → Spielstand zeigt den Abschnitt „App“ (Knopf oder Anleitung für den Browser)
+await page.click('text=Loslegen');
+await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.panel = { type: 'more', tab: 'save' }; g.refresh(); });
+await page.waitForTimeout(400);
+if (!(await page.locator('#panel', { hasText: 'Als App install' }).count())) fail('Mehr → Spielstand: Abschnitt „App“ fehlt');
+await page.screenshot({ path: `${out}/app-abschnitt.png` });
+await page.evaluate(() => { const g = window.__game; g.ui.panel = null; g.refresh(); });
 // Service Worker übernimmt (nach einem Neuladen steuert er die Seite)
 await page.evaluate(() => navigator.serviceWorker.ready);
-await page.click('text=Loslegen');
 await page.waitForTimeout(4500);
 await page.reload();
 await page.waitForTimeout(1500);
