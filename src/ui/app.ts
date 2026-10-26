@@ -190,7 +190,7 @@ export function start(): void {
 
 function resize(): void {
   const r = canvas.getBoundingClientRect();
-  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
   canvas.width = Math.round(r.width * dpr);
   canvas.height = Math.round(r.height * dpr);
   const first = cam.w === 1;

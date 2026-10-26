@@ -213,9 +213,9 @@ export function drawRockField(ctx: CanvasRenderingContext2D, cam: Camera, f: { i
     const z = cam.zoom * depth;
     // Scharfes Ebenenbild passend zur Zoomstufe (wird nur bei merklicher Zoomänderung neu gezeichnet)
     const zb = Math.pow(1.15, Math.round(Math.log(cam.zoom) / Math.log(1.15)));
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
     const px = Math.ceil(data.ext * 2 * zb * depth * dpr);
-    const img = px <= 2048 ? zoomSprite(f.id, f.ware, data, layer, zb, depth, dpr, base, color) : null;
+    const img = px <= 4096 ? zoomSprite(f.id, f.ware, data, layer, zb, depth, dpr, base, color) : null;
     if (img) {
       const size = data.ext * 2 * z;
       ctx.drawImage(img, lx - size / 2, ly - size / 2, size, size);

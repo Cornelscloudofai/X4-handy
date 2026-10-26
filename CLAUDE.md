@@ -10,5 +10,8 @@
   - Das Spiel wird mit getrennten Dateien gebaut (`dist/assets/…`), Bilder werden erst bei Bedarf geladen –
     Dateigröße ist daher kein Grund, Bilder zu verkleinern.
 - Gezeichnet wird in voller Bildschirmauflösung (bis 3 Bildpunkte je CSS-Pixel) mit hochwertiger Bildglättung.
+- **Von einem leistungsstarken Gerät ausgehen.** Alles soll einwandfrei und flüssig laufen, aber wir begrenzen uns nicht
+  selbst: Schönheit und Wirkung gehen vor Sparsamkeit. Optimieren ja (z. B. Nachladen, Zwischenspeichern), aber nie auf
+  Kosten von Bildqualität, Auflösung, Effekten oder Detailreichtum – keine Obergrenzen „zur Sicherheit“ für schwache Geräte.
 - Vor jedem Commit: `npx vitest run` und `npm run e2e` – Ergebnis wirklich prüfen (Exit-Code), nicht nur die Ausgabe überfliegen.
 - Bild-Prompts immer als Codeblock (```text … ```) ausgeben, damit sie per Kopieren-Knopf übernommen werden können – nicht als Zitat.
