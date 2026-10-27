@@ -20,7 +20,7 @@ export type Modal =
   | { type: 'confirm'; title: string; text: string; action: string; args: Record<string, string>; danger?: boolean; label: string }
   | { type: 'rename'; station: string }
   | { type: 'offline'; seconds: number; credits: number; produced: Record<string, number>; modules: number }
-  | { type: 'welcome' }
+  | { type: 'welcome'; /** 0 Geschichte, 1 Kernelemente, 2 Schiffswahl */ step?: number }
   | { type: 'help'; topic?: string }
   | { type: 'wareIcons' }
   | { type: 'shipArt' }

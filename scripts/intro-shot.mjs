@@ -13,7 +13,7 @@ const fail = (m) => errors.push(m);
 page.on('pageerror', (e) => errors.push(String(e)));
 const url = (await distUrl()) + '?intro=1';
 await page.goto(url);
-await page.waitForTimeout(2500);
+await page.waitForTimeout(4000);
 if (!(await page.locator('#intro').count())) fail('Erster Start ohne Intro');
 await page.screenshot({ path: `${out}/intro-1-start.png` });
 await page.waitForFunction(() => document.querySelector('#intro')?.classList.contains('ready'), null, { timeout: 30000 }).catch(() => fail('Trailer lädt nicht'));
@@ -27,9 +27,26 @@ if (await page.locator('#intro:not(.out)').count()) {
   await page.waitForTimeout(2000);
 }
 if (await page.locator('#intro').count()) fail('Intro endet nicht');
-if (!(await page.locator('text=Loslegen').count())) fail('Nach dem Intro keine Karrierewahl');
-await page.waitForTimeout(1200);
-await page.screenshot({ path: `${out}/intro-3-karriere.png` });
+// Willkommen in drei Schritten: Geschichte → Kernelemente → Schiffswahl
+if (!(await page.locator('#modal .wl-story').count())) fail('Nach dem Intro keine Geschichte');
+await page.waitForTimeout(5500);
+await page.screenshot({ path: `${out}/intro-3-geschichte.png` });
+await page.click('#modal .wl-next');
+await page.waitForTimeout(2600);
+if (!(await page.locator('#modal .wl-card').count())) fail('Kernelemente fehlen');
+await page.screenshot({ path: `${out}/intro-4-kern.png` });
+await page.click('#modal .wl-next');
+await page.waitForTimeout(1500);
+if (!(await page.locator('text=Loslegen mit Bergbau').isVisible())) fail('Keine Karrierewahl nach den Kernelementen');
+await page.screenshot({ path: `${out}/intro-5-karriere.png` });
+// Zurück und Überspringen
+await page.click('#modal [data-act="welcome-step"][data-step="1"]');
+await page.waitForTimeout(300);
+await page.click('#modal [data-act="welcome-step"][data-step="0"]');
+await page.waitForTimeout(300);
+await page.click('#modal [data-act="welcome-step"][data-step="2"]');
+await page.waitForTimeout(600);
+if (!(await page.locator('text=Loslegen mit Handel').isVisible())) fail('Überspringen führt nicht zur Karrierewahl');
 // gleicher Tag: kein Intro
 await page.reload();
 await page.waitForTimeout(1500);

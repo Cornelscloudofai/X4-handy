@@ -29,7 +29,7 @@ export const PANEL_HERO: Record<string, { src: string; pos: string }> = {
 };
 
 /** Bilder der Startwahl (Karriere): Hangar mit beiden Schiffen als Kopf, je Laufbahn ein eigenes Bild */
-export const CAREER = { hero: karriereHangar, mining: karriereBergbau, trading: karriereHandel };
+export const CAREER = { hero: karriereHangar, mining: karriereBergbau, trading: karriereHandel, story: unternehmenStation };
 
 
 export interface MenuArt { bg: string; sprite?: string; /** großes, freigestelltes Menübild statt Schiffsbild */ art?: string }

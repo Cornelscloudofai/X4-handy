@@ -4,6 +4,7 @@
 // im Artifact und in der Einzeldatei gibt es kein Intro.
 import { liveContext, settings } from '../audio/engine';
 import { holdTitle, releaseTitle } from '../audio/music';
+import sprungtor from '../assets/menu/ueber-sprungtor.jpg';
 
 const KEY = 'x4-sektorbau-intro';
 const OFF_KEY = 'x4-sektorbau-intro-aus';
@@ -38,6 +39,11 @@ export function introAvailable(): boolean {
   return true;
 }
 
+/** Willkommen in drei Schritten (Geschichte, Kernelemente, Schiffswahl); automatisierte Tests springen zur Schiffswahl */
+export function welcomeFirstStep(): number {
+  return navigator.webdriver && !/[?&](intro|welcome)=1/.test(location.search) ? 2 : 0;
+}
+
 /** Soll das Intro bei diesem Start laufen? Erster Start immer, danach einmal am Tag (wenn nicht abgeschaltet) */
 export function introDue(): boolean {
   if (!introAvailable()) return false;
@@ -57,10 +63,15 @@ export function runIntro(done: () => void, force = false): void {
   root.id = 'intro';
   root.className = 'intro';
   root.innerHTML = `
+    <div class="intro-bg" style="--bg:url(${sprungtor})"></div>
+    <div class="intro-art" style="--bg:url(${sprungtor})"></div>
+    <div class="intro-gate"></div>
     <div class="intro-stars"></div>
+    <div class="intro-vignette"></div>
     <div class="intro-start">
-      <div class="intro-logo"><small>Familie Zhin</small><b>X4 <em>Sektorbau</em></b></div>
-      <div class="intro-tap">Antippen zum Starten</div>
+      <div class="intro-logo"><small>Familie Zhin</small><b>X4 <em>Sektorbau</em></b><span class="intro-flare"></span></div>
+      <div class="intro-claim">Aus Trümmern ein Imperium</div>
+      <div class="intro-tap"><span class="intro-ring"><i></i><i></i>${'<svg viewBox="0 0 24 24" width="26" height="26"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>'}</span><span class="intro-tap-txt">Antippen zum Starten</span></div>
       <div class="intro-load"><i></i></div>
     </div>
     <video class="intro-video" playsinline preload="auto"></video>

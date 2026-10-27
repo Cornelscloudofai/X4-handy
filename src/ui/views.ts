@@ -1485,7 +1485,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         ${prod.length ? `<div class="section" style="margin-top:14px"><h3>Produziert</h3><div class="box rows">${prod.map(([id, n]) => `<div class="row">${wareMark(id)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[id].name)}</div></div><div class="right"><b>${fmtAmount(n)}</b></div></div>`).join('')}</div></div>` : ''}`,
         `<button class="btn primary" ${act('modal-close')}>Weiter</button>`);
     }
-    case 'welcome': return welcomeModal(ui.restoreHint);
+    case 'welcome': return welcomeModal(ui.restoreHint, m.step ?? 0);
     case 'help': { const h = helpModalParts(m.topic); return modalShell(h.title, h.body, h.foot, m.topic ? 'Hilfe' : 'X4 Sektorbau'); }
     case 'chart':
       return modalShell(m.spec.title, bigChart(state, m.spec, m.hours), `<button class="btn" ${act('modal-close')}>Schließen</button>`, m.spec.sub ?? '');
@@ -1832,21 +1832,49 @@ function appSection(): string {
   return `<div class="section"><h3>App</h3><div class="box rows">${row}</div></div>`;
 }
 
-function welcomeModal(hint?: UIState['restoreHint']): string {
-  const restore = hint ? `<div class="box rows" style="margin:0 0 12px"><div class="row tap" ${act('backup-restore', { id: String(hint.id) })}>${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">Gesicherten Spielstand laden</div><div class="sub wrap">${esc(hint.label || 'Sicherung')} · ${esc(new Date(hint.created).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</div></div>${icon('chev', 20, 'chev')}</div></div>` : '';
-  return `<div class="modal" role="dialog" aria-modal="true" aria-label="Willkommen">
-    <div class="welcome-hero art" style="--hero:url(${CAREER.hero})"><div class="welcome-embers">${Array.from({ length: 14 }, (_, i) => `<i style="left:${(i * 37 + 11) % 96}%;animation-delay:${((i * 0.71) % 6).toFixed(2)}s;animation-duration:${(5 + (i % 4) * 0.8).toFixed(1)}s;--dx:${((i % 5) - 2) * 14}px"></i>`).join('')}</div><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
-    <div class="sheet-body">${restore}<div class="small muted" style="margin:0 0 8px">${hint ? 'Oder neu anfangen:' : 'Wie willst du anfangen?'}</div>
+/** Erzählung des Neuanfangs, Satz für Satz eingeblendet */
+const WELCOME_STORY = [
+  'Familie Zhin, kurz nach dem Xenon-Angriff.',
+  'Der Sektor liegt in Trümmern – doch wer jetzt baut, prägt ihn für Generationen.',
+  'Der Rat überträgt dir Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager.',
+  'Noch läuft keine einzige Fabrik. Noch.',
+  'Verdiene dein erstes Geld – und mach daraus ein Wirtschaftsimperium.',
+];
+
+/** Die Kernelemente des Spiels, je mit eigenem Bild */
+const WELCOME_CORE: { icon: string; title: string; text: string; img: string; pos: string }[] = [
+  { icon: 'factory', title: 'Bauen', text: 'Plane Module für deine Stationen. Schiffe liefern das Baumaterial ins Baulager.', img: PANEL_HERO.stations.src, pos: PANEL_HERO.stations.pos },
+  { icon: 'miner', title: 'Fördern und herstellen', text: 'Miner holen Erz, Silizium und Gas. Fabriken verarbeiten sie nach den echten X4-Rezepten.', img: PANEL_HERO.planner.src, pos: PANEL_HERO.planner.pos },
+  { icon: 'trader', title: 'Handeln', text: 'Transporter verkaufen Überschüsse und bringen, was fehlt – je cleverer die Route, desto mehr Gewinn.', img: PANEL_HERO.market.src, pos: PANEL_HERO.market.pos },
+  { icon: 'target', title: 'Der Kampagne folgen', text: 'Unten auf der Karte steht dein nächstes Ziel. Hinweise zeigen dir die ersten Handgriffe.', img: PANEL_HERO.missions.src, pos: PANEL_HERO.missions.pos },
+];
+
+function welcomeModal(hint?: UIState['restoreHint'], step = 0): string {
+  const restore = hint ? `<div class="box rows wl-restore"><div class="row tap" ${act('backup-restore', { id: String(hint.id) })}>${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">Gesicherten Spielstand laden</div><div class="sub wrap">${esc(hint.label || 'Sicherung')} · ${esc(new Date(hint.created).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</div></div>${icon('chev', 20, 'chev')}</div></div>` : '';
+  const embers = `<div class="welcome-embers">${Array.from({ length: 14 }, (_, i) => `<i style="left:${(i * 37 + 11) % 96}%;animation-delay:${((i * 0.71) % 6).toFixed(2)}s;animation-duration:${(5 + (i % 4) * 0.8).toFixed(1)}s;--dx:${((i % 5) - 2) * 14}px"></i>`).join('')}</div>`;
+  const dots = `<div class="wl-dots" aria-label="Schritt ${step + 1} von 3">${[0, 1, 2].map((i) => `<i class="${i === step ? 'on' : i < step ? 'done' : ''}"></i>`).join('')}</div>`;
+  const foot = (back: string, next: string, delay: number) => `<div class="modal-foot wl-foot">${back}${dots}${next ? `<button class="btn primary wl-next" style="--d:${delay}s" ${act('welcome-step', { step: step + 1 })}>${next} ${icon('chev', 18)}</button>` : '<span></span>'}</div>`;
+  const backBtn = step > 0 ? `<button class="btn ghost" ${act('welcome-step', { step: step - 1 })}>Zurück</button>` : `<button class="btn ghost" ${act('welcome-step', { step: 2 })}>Überspringen</button>`;
+  if (step === 0) {
+    return `<div class="modal welcome wl-0" role="dialog" aria-modal="true" aria-label="Willkommen">
+    <div class="welcome-hero art story" style="--hero:url(${CAREER.story})">${embers}<div class="wl-eyebrow">Kapitel 0 · Der Neuanfang</div><div class="logo">X4 <em>Sektorbau</em></div></div>
+    <div class="sheet-body"><div class="wl-story">${WELCOME_STORY.map((t, i) => `<p style="--d:${(0.9 + i * 0.85).toFixed(2)}s"${i === WELCOME_STORY.length - 1 ? ' class="wl-key"' : ''}>${esc(t)}</p>`).join('')}</div>${restore}</div>
+    ${foot(backBtn, 'Weiter', 0.9 + WELCOME_STORY.length * 0.85)}</div>`;
+  }
+  if (step === 1) {
+    return `<div class="modal welcome wl-1" role="dialog" aria-modal="true" aria-label="So funktioniert es">
+    <div class="sheet-body"><div class="wl-head"><span class="wl-eyebrow">So wächst dein Imperium</span><h2>Vier Dinge, die alles bewegen</h2></div>
+      <div class="wl-core">${WELCOME_CORE.map((c, i) => `<div class="wl-card" style="--d:${(0.35 + i * 0.45).toFixed(2)}s;--img:url(${c.img});--pos:${c.pos}"><span class="wl-ic">${icon(c.icon, 22)}<b>${i + 1}</b></span><div><b>${c.title}</b><span>${c.text}</span></div></div>`).join('')}</div></div>
+    ${foot(backBtn, 'Zum Hangar', 0.35 + WELCOME_CORE.length * 0.45)}</div>`;
+  }
+  return `<div class="modal welcome wl-2" role="dialog" aria-modal="true" aria-label="Wähle deinen Start">
+    <div class="welcome-hero art pick" style="--hero:url(${CAREER.hero})">${embers}<div class="wl-eyebrow">Hangar Zhin</div><div class="logo">Wähle deinen <em>Start</em></div></div>
+    <div class="sheet-body">${restore}${hint ? '<div class="small muted" style="margin:0 0 8px">Oder neu anfangen:</div>' : ''}
       <div class="start-pick">
         <button class="start-card miner" ${act('start-game', { kind: 'mining' })}><span class="start-img" style="background-image:url(${CAREER.mining})"><em>${icon('miner', 16)}Bergbau</em></span><span class="start-txt"><b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 5.000 Cr</span><small>Erz oder Silizium fördern und damit einen Wirtschaftszweig voranbringen.</small></span></button>
         <button class="start-card trader" ${act('start-game', { kind: 'trading' })}><span class="start-img" style="background-image:url(${CAREER.trading})"><em>${icon('trader', 16)}Handel</em></span><span class="start-txt"><b>Loslegen mit Handel</b><span>2 Tuatara-Transporter (S) · 30.000 Cr</span><small>Feste Routen, Lieferaufträge und gute Gelegenheiten – je aktiver, desto mehr.</small></span></button>
-      </div>
-      <div class="steps" style="margin-top:14px">
-      <div><span class="n">1</span><div><b>Bauen</b>Module planst du unter Stationen → Module. Das Baumaterial liefern Schiffe ins Baulager der Station.</div></div>
-      <div><span class="n">2</span><div><b>Fördern und herstellen</b>Miner holen Rohstoffe, Fabriken verarbeiten sie mit den echten X4-Rezepten.</div></div>
-      <div><span class="n">3</span><div><b>Handeln</b>Transporter und NPC-Händler verkaufen Überschüsse und bringen, was fehlt.</div></div>
-      <div><span class="n">4</span><div><b>Der Kampagne folgen</b>Unten auf der Karte steht dein nächstes Ziel. Hinweise zeigen dir die ersten Handgriffe.</div></div>
-    </div></div></div>`;
+      </div><p class="wl-hint">Beides lässt sich später ausbauen – deine Wahl bestimmt nur, womit du anfängst.</p></div>
+    ${foot(`<button class="btn ghost" ${act('welcome-step', { step: 1 })}>Zurück</button>`, '', 0)}</div>`;
 }
 
 export { SPEEDS };

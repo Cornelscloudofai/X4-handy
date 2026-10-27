@@ -25,7 +25,7 @@ import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
 import { initInstall, installApp } from './install';
 import { openFeedback } from './feedback';
-import { introDue, introEnabled, runIntro, setIntroEnabled } from './intro';
+import { introDue, introEnabled, runIntro, setIntroEnabled, welcomeFirstStep } from './intro';
 import { applyBackup, autoBackup, collect, getBackup, listBackups, parseBackup, saveBackup } from './backup';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, preloadMinigames, setMinigameFeedback, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
@@ -101,7 +101,7 @@ export function start(): void {
     }
   } else {
     state = newGame(undefined, 'mining');
-    ui.modal = { type: 'welcome' };
+    ui.modal = { type: 'welcome', step: welcomeFirstStep() };
     // Spielstand fehlt (gelöscht oder vom Browser entfernt), aber es gibt eine automatische Sicherung: anbieten
     void listBackups().then((l) => { if (l[0] && ui.modal?.type === 'welcome') { ui.restoreHint = l[0]; refresh(); } });
   }
@@ -464,7 +464,7 @@ function panelKey(): string {
 function modalKey(): string {
   const m = ui.modal;
   if (!m) return '';
-  return m.type + ('station' in m ? m.station : '') + ('cat' in m ? m.cat : '') + ('role' in m ? m.role : '');
+  return m.type + ('station' in m ? m.station : '') + ('cat' in m ? m.cat : '') + ('role' in m ? m.role : '') + ('step' in m ? String(m.step) : '');
 }
 
 function refresh(): void {
@@ -757,6 +757,7 @@ function onClick(e: MouseEvent): void {
       case 'music-style': setMusicStyle(audioSettingsRef.style === 'klassisch' ? 'melodisch' : 'klassisch'); refresh(); break;
       case 'music-next': toast(`Stimmung: ${nextMood()}`, 'info'); refresh(); break;
       case 'help': ui.modal = { type: 'help', topic: d.topic || undefined }; refresh(); break;
+      case 'welcome-step': if (ui.modal?.type === 'welcome') { ui.modal = { type: 'welcome', step: Math.max(0, Math.min(2, Number(d.step) || 0)) }; refresh(); } break;
       case 'start-game': runConfirmed('start-game', { kind: d.kind ?? 'mining' }); break;
       case 'coach-next': markCoachSeen(state, d.id!); if (d.id === 'finish') { state.help = { ...state.help, coachOff: true }; } refresh(); break;
       case 'coach-off': state.help = { ...state.help, coachOff: true }; toast('Hinweise ausgeblendet – im Menü unter „Erste Schritte zeigen“ wieder einschalten.', 'info'); refresh(); break;
@@ -1429,7 +1430,7 @@ function onClick(e: MouseEvent): void {
         ui.selection = null;
         ui.sector = 'zhin';
         ui.view = 'sector';
-        ui.modal = { type: 'welcome' };
+        ui.modal = { type: 'welcome', step: welcomeFirstStep() };
         fitSector();
         save();
         refresh();
