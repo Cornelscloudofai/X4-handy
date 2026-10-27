@@ -1,7 +1,7 @@
-// Intro beim App-Start: Startschirm („Antippen zum Starten“ – erst die Berührung erlaubt dem Browser Ton), danach der
-// Trailer im Vollbild. Beim allerersten Start läuft er ganz, später höchstens einmal am Tag beim echten Neustart und
-// lässt sich überspringen; in den Einstellungen abschaltbar. Nur in der App-Version (eigene Adresse, nicht eingebettet):
-// im Artifact und in der Einzeldatei gibt es kein Intro.
+// Intro bei jedem Start: Startschirm mit dem Sprungtor („Antippen zum Starten“ – erst die Berührung erlaubt dem Browser
+// Ton, die Titelmusik setzt damit ein). Danach der Trailer im Vollbild – nur in der App-Version (eigene Adresse, nicht
+// eingebettet): beim allerersten Start ganz, später höchstens einmal am Tag und überspringbar; in den Einstellungen
+// abschaltbar. Ohne fälligen Trailer fliegt die Kamera beim Antippen ins Tor und das Spiel beginnt.
 import { liveContext, settings } from '../audio/engine';
 import { holdTitle, releaseTitle } from '../audio/music';
 import sprungtor from '../assets/menu/ueber-sprungtor.jpg';
@@ -30,7 +30,12 @@ export function setIntroEnabled(on: boolean): void {
   try { if (on) localStorage.removeItem(OFF_KEY); else localStorage.setItem(OFF_KEY, '1'); } catch { /* egal */ }
 }
 
-/** Läuft das Spiel als App-Version (eigene Adresse, nicht eingebettet)? Automatisierte Tests nur mit ?intro=1 */
+/** Startschirm bei jedem Start (überall); automatisierte Tests nur mit ?intro=1 */
+export function startScreenDue(): boolean {
+  return !(navigator.webdriver && !/[?&]intro=1/.test(location.search));
+}
+
+/** Gibt es den Trailer (App-Version: eigene Adresse, nicht eingebettet)? Automatisierte Tests nur mit ?intro=1 */
 export function introAvailable(): boolean {
   let top = false;
   try { top = window.top === window; } catch { top = false; }
@@ -44,7 +49,7 @@ export function welcomeFirstStep(): number {
   return navigator.webdriver && !/[?&](intro|welcome)=1/.test(location.search) ? 2 : 0;
 }
 
-/** Soll das Intro bei diesem Start laufen? Erster Start immer, danach einmal am Tag (wenn nicht abgeschaltet) */
+/** Soll der Trailer bei diesem Start laufen? Erster Start immer, danach einmal am Tag (wenn nicht abgeschaltet) */
 export function introDue(): boolean {
   if (!introAvailable()) return false;
   const s = seen();
@@ -53,15 +58,17 @@ export function introDue(): boolean {
 }
 
 /**
- * Startschirm und Trailer zeigen; done() wird aufgerufen, sobald das Intro vorbei ist (zu Ende, übersprungen oder
- * nicht ladbar). force: von Hand aus den Einstellungen (immer überspringbar, zählt nicht als Tagesintro).
+ * Startschirm zeigen, bei fälligem Trailer (oder force) danach den Trailer; done() wird aufgerufen, sobald das Intro
+ * vorbei ist (zu Ende, übersprungen oder nicht ladbar). force: von Hand aus den Einstellungen (immer überspringbar,
+ * zählt nicht als Tagesintro).
  */
 export function runIntro(done: () => void, force = false): void {
   const s = seen();
+  const trailer = force || introDue();
   const first = s.n === 0 && !force;
   const root = document.createElement('div');
   root.id = 'intro';
-  root.className = 'intro';
+  root.className = trailer ? 'intro trailer' : 'intro';
   root.innerHTML = `
     <div class="intro-bg" style="--bg:url(${sprungtor})"></div>
     <div class="intro-art" style="--bg:url(${sprungtor})"></div>
@@ -91,7 +98,7 @@ export function runIntro(done: () => void, force = false): void {
     // Klangwelt wieder an, Titelmusik setzt ein
     void liveContext()?.resume();
     releaseTitle();
-    if (!force) try { localStorage.setItem(KEY, JSON.stringify({ n: s.n + 1, day: today() })); } catch { /* egal */ }
+    if (trailer && !force) try { localStorage.setItem(KEY, JSON.stringify({ n: s.n + 1, day: today() })); } catch { /* egal */ }
     root.classList.add('out');
     video.pause();
     setTimeout(() => { root.remove(); if (src) URL.revokeObjectURL(src); }, 900);
@@ -99,7 +106,7 @@ export function runIntro(done: () => void, force = false): void {
   };
 
   // Trailer vollständig laden (einmal übers Netz, danach aus dem Zwischenspeicher der App – auch offline)
-  const loaded: Promise<string | null> = (async () => {
+  const loaded: Promise<string | null> = !trailer ? Promise.resolve(null) : (async () => {
     try {
       const res = await fetch(TRAILER_URL);
       if (!res.ok || !res.body) return null;
@@ -127,6 +134,14 @@ export function runIntro(done: () => void, force = false): void {
     if ((e.target as HTMLElement).closest('.intro-skip')) { finish(); return; }
     if (started) return;
     started = true;
+    if (!trailer) {
+      // kein Trailer: Kamerafahrt ins Tor, dabei setzt die Titelmusik ein
+      root.classList.add('warp');
+      void liveContext()?.resume();
+      releaseTitle();
+      setTimeout(finish, 1100);
+      return;
+    }
     root.classList.add('waiting');
     // Klangteppich und Geräusche schweigen, solange der Trailer läuft (er hat eigene Musik)
     setTimeout(() => void liveContext()?.suspend(), 0);

@@ -37,12 +37,14 @@ einem Solarkraftwerk und einem Miner.
   Netlify Forms (Formular „feedback“, Gerüst `public/__forms.html` für die Erkennung beim Bau); Meldungen stehen im
   Netlify-Projekt unter „Forms“, auf Wunsch per E-Mail. Außerhalb der App-Version (Artifact, Einzeldatei) lässt sich der
   Text kopieren. Ein angefangener Text bleibt als Entwurf erhalten.
-- **Intro beim Start (nur App-Version):** Startschirm mit dem Sprungtor (scharf vor unscharfem Nebel, langsame Kamerafahrt,
-  pulsierender Wirbel), Logo mit Lichtschweif und Glanz, Spielknopf mit Wellen – „Antippen zum Starten“ (erst die Berührung erlaubt Ton), dann der
-  Trailer (`public/intro/trailer-1.mp4`, 1080×1920, 60 fps, ~24 MB; wird einmal ganz geladen und vom Service Worker
-  zwischengespeichert). Beim allerersten Start läuft er ganz, danach höchstens einmal am Tag und ist überspringbar;
-  Einstellungen → Darstellung: „Intro beim Start“ an/aus und „Intro jetzt ansehen“. Klangteppich und Titelmusik warten,
-  bis das Intro vorbei ist. Neue Trailer-Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
+- **Startschirm bei jedem Start (überall, auch im Artifact):** Sprungtor scharf vor unscharfem Nebel, langsame
+  Kamerafahrt, pulsierender Wirbel, Logo mit Lichtschweif und Glanz, Spielknopf mit Wellen. „Antippen zum Starten“ –
+  erst die Berührung erlaubt Ton, die Titelmusik setzt damit ein. Ohne fälligen Trailer fliegt die Kamera ins Tor (Lichtblitz)
+  und das Spiel beginnt.
+- **Trailer (nur App-Version):** nach dem Startschirm (`public/intro/trailer-1.mp4`, 1080×1920, 60 fps, ~24 MB; einmal
+  ganz geladen und vom Service Worker zwischengespeichert). Beim allerersten Start ganz, danach höchstens einmal am Tag
+  und überspringbar; Einstellungen → Darstellung: „Trailer beim Start“ an/aus und „Trailer jetzt ansehen“. Klangteppich
+  und Titelmusik warten, bis er vorbei ist. Neue Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
 - **Karrierestart in drei Schritten:** (1) Geschichte – die Sätze erscheinen nacheinander, der letzte hervorgehoben;
   (2) „Vier Dinge, die alles bewegen“ – Bauen, Fördern/Herstellen, Handeln, Kampagne als Karten mit Bild, die
   nacheinander hereingleiten; (3) Schiffswahl im Hangar. Punkte zeigen den Fortschritt, „Weiter“ leuchtet auf, wenn alles

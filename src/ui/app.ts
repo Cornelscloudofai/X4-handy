@@ -25,7 +25,7 @@ import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
 import { initInstall, installApp } from './install';
 import { openFeedback } from './feedback';
-import { introDue, introEnabled, runIntro, setIntroEnabled, welcomeFirstStep } from './intro';
+import { introEnabled, runIntro, setIntroEnabled, startScreenDue, welcomeFirstStep } from './intro';
 import { applyBackup, autoBackup, collect, getBackup, listBackups, parseBackup, saveBackup } from './backup';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, preloadMinigames, setMinigameFeedback, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
@@ -183,7 +183,7 @@ export function start(): void {
   (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector, renderer };
   requestAnimationFrame(frame);
   // Intro beim echten Start (App-Version): Startschirm und Trailer, danach Karrierewahl bzw. Karte mit Titelmusik
-  if (introDue()) {
+  if (startScreenDue()) {
     document.body.classList.add('intro-on');
     runIntro(() => document.body.classList.remove('intro-on'));
   }

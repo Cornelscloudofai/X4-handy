@@ -1457,3 +1457,15 @@ body.intro-on .welcome-hero .logo, body.intro-on .welcome-hero p, body.intro-on 
 @keyframes coreImg { from { transform: scale(1.02); } to { transform: scale(1.12) translateX(-2%); } }
 body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { animation-play-state: paused; }
 .wl-hint { margin: 14px 2px 0; font-size: 13px; color: var(--text-3, var(--text-2)); text-align: center; animation: riseIn 0.9s 1.4s both; }
+/* Startschirm ohne Trailer: kein Ladebalken; beim Antippen fliegt die Kamera ins Tor */
+.intro:not(.trailer) .intro-load { display: none; }
+.intro.warp { cursor: default; }
+.intro.warp .intro-art { animation: warpArt 1.2s cubic-bezier(0.55, 0, 0.85, 0.3) forwards; }
+.intro.warp .intro-bg { animation: warpBg 1.2s ease-in forwards; }
+.intro.warp .intro-gate { animation: warpGate 1.1s ease-in forwards; }
+.intro.warp .intro-start { opacity: 0; transform: scale(1.12) translateY(20px); filter: blur(4px); transition: opacity 0.45s, transform 0.6s, filter 0.45s; }
+.intro.warp .intro-fade { background: radial-gradient(circle at var(--gx) var(--gy), #e8fbff, #7fc8ff 35%, #02060c 80%); animation: warpFlash 1.1s ease-in forwards; }
+@keyframes warpArt { to { transform: scale(4.5); filter: brightness(1.6) blur(2px); } }
+@keyframes warpBg { to { transform: scale(1.6); filter: blur(30px) brightness(0.8) saturate(1.5); } }
+@keyframes warpGate { to { transform: scale(4); opacity: 1; filter: brightness(2); } }
+@keyframes warpFlash { 0%, 55% { opacity: 0; } 100% { opacity: 0.9; } }

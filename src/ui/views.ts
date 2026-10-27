@@ -1434,8 +1434,8 @@ function morePanel(state: GameState, ui: UIState): string {
           <div class="row"><div class="grow"><div class="title" style="font-weight:500">Warensymbole</div><div class="sub">${ui.iconStyle === 'glow' ? 'Leuchtend – gefüllt mit Glühen' : 'Linie – nur Umrisse'} · <a class="link" ${act('ware-icons')}>alle ansehen</a></div></div>
           <div class="toggle"><button class="plain on" ${act('icon-style', { style: ui.iconStyle === 'glow' ? 'line' : 'glow' })}>${ui.iconStyle === 'glow' ? 'Leuchtend' : 'Linie'}</button></div></div>
           ${toggleRow('Animationen und Effekte', 'Funken, Triebwerke, driftende Nebel', !ui.reducedMotion, ui.reducedMotion ? 'Reduziert' : 'Voll', 'motion-toggle')}
-          ${introAvailable() ? `${toggleRow('Intro beim Start', 'Der Trailer läuft höchstens einmal am Tag beim Start der App und lässt sich überspringen', introEnabled(), introEnabled() ? 'An' : 'Aus', 'intro-toggle')}
-          ${linkRow('play', 'Intro jetzt ansehen', 'Den Trailer noch einmal abspielen', 'intro-play')}` : ''}
+          ${introAvailable() ? `${toggleRow('Trailer beim Start', 'Läuft nach dem Startbildschirm höchstens einmal am Tag und lässt sich überspringen', introEnabled(), introEnabled() ? 'An' : 'Aus', 'intro-toggle')}
+          ${linkRow('play', 'Trailer jetzt ansehen', 'Den Trailer noch einmal abspielen', 'intro-play')}` : ''}
         </div></div>
         <div class="section"><h3>Ton</h3><div class="box rows">
           ${toggleRow('Klänge', 'Oberfläche, Effekte, Atmosphäre und Klangteppich', soundEnabled(), soundEnabled() ? 'An' : 'Aus', 'sound-toggle')}
