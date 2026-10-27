@@ -123,57 +123,37 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
  * dunkel ist und kaum weitere helle Punkte enthält (so bleiben Planetenränder, Sonnen und helle Nebel im Grundbild).
  * Grundbild = Original, an Sternen durch die weichgezeichnete Umgebung ersetzt; Sternebene = der Überschuss.
  */
+/**
+ * Ebenen eines Sektorbilds: das Bild selbst unverändert (eine Ebene – nichts liegt doppelt übereinander) und davor
+ * eine eigene Ebene feiner Sterne, die beim Verschieben weiter wandert und so Tiefe gibt.
+ */
 function splitStars(id: string, img: HTMLImageElement): BgLayers {
   const w = img.naturalWidth, h = img.naturalHeight;
-  const [oc, o] = canvas(w, h);
-  o.drawImage(img, 0, 0);
-  const orig = o.getImageData(0, 0, w, h);
-  // Umgebung: weichgezeichnet (Sterne verschwinden darin)
-  const [bc, bctx] = canvas(w, h);
-  bctx.filter = 'blur(3px)';
-  bctx.drawImage(img, 0, 0);
-  const blur = bctx.getImageData(0, 0, w, h);
-  const od = orig.data, bd = blur.data;
-  const n = w * h;
-  const lum = (d: Uint8ClampedArray, i: number) => d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
-  // 1. Kandidaten: heller als die Umgebung
-  const [mc, mctx] = canvas(w, h);
-  const mask = mctx.createImageData(w, h);
-  const md = mask.data;
-  for (let p = 0; p < n; p++) {
-    const i = p * 4;
-    const d = lum(od, i) - lum(bd, i);
-    if (d > 18) { md[i] = md[i + 1] = md[i + 2] = 255; md[i + 3] = 255; }
-  }
-  mctx.putImageData(mask, 0, 0);
-  // 2. Dichte heller Punkte in der Nachbarschaft (vereinzelt = Stern, gehäuft = Kante oder Struktur)
-  const [dc, dctx] = canvas(w, h);
-  dctx.filter = 'blur(6px)';
-  dctx.drawImage(mc, 0, 0);
-  const dens = dctx.getImageData(0, 0, w, h).data;
-  const base = o.createImageData(w, h), sd = o.createImageData(w, h);
-  const ba = base.data, sa = sd.data;
-  for (let p = 0; p < n; p++) {
-    const i = p * 4;
-    const d = lum(od, i) - lum(bd, i);
-    const around = lum(bd, i);
-    const crowd = dens[i + 3] / 255;
-    let s = d > 18 ? Math.min(1, (d - 18) / 30) : 0;
-    s *= 1 - Math.min(1, Math.max(0, (around - 70) / 50));
-    s *= 1 - Math.min(1, Math.max(0, (crowd - 0.18) / 0.15));
-    for (let c = 0; c < 3; c++) {
-      const v = od[i + c], bv = bd[i + c];
-      ba[i + c] = v + (bv - v) * s;
-      sa[i + c] = Math.max(0, v - bv) * s;
-    }
-    ba[i + 3] = 255;
-    sa[i + 3] = s > 0 ? 255 : 0;
-  }
   const [baseC, baseCtx] = canvas(w, h);
-  baseCtx.putImageData(base, 0, 0);
-  const [starC, starCtx] = canvas(w, h);
-  starCtx.putImageData(sd, 0, 0);
-  // nicht mehr gebraucht
-  oc.width = bc.width = mc.width = dc.width = 1;
+  baseCtx.drawImage(img, 0, 0);
+  const [starC, g] = canvas(w, h);
+  let seed = 7;
+  for (const ch of id) seed = (seed * 31 + ch.charCodeAt(0)) % 2147483647;
+  const R = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const count = Math.round((w * h) / 9000);
+  for (let i = 0; i < count; i++) {
+    const x = R() * w, y = R() * h;
+    const big = R() < 0.06;
+    const r = big ? 1.2 + R() * 1.1 : 0.5 + R() * 0.7;
+    const a = big ? 0.55 + R() * 0.35 : 0.2 + R() * 0.4;
+    const tint = R();
+    const col = tint < 0.6 ? '225,235,255' : tint < 0.85 ? '190,220,255' : '255,230,200';
+    if (big) {
+      const glow = g.createRadialGradient(x, y, 0, x, y, r * 4);
+      glow.addColorStop(0, `rgba(${col},${(a * 0.5).toFixed(3)})`);
+      glow.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = glow;
+      g.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
+    }
+    g.fillStyle = `rgba(${col},${a.toFixed(3)})`;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
   return { id, w, h, base: baseC, stars: starC };
 }

@@ -116,7 +116,7 @@ export class SectorRenderer {
   drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, sectorId: string, now: number, mode: 'image' | 'procedural' = 'procedural'): void {
     const W = cam.w, H = cam.h;
     // Bild-Hintergrund in zwei Ebenen: das Bild füllt den Bildschirm (ohne Verzerrung); beim Verschieben gleitet
-    // es leicht mit, die herausgelösten Sterne etwa doppelt so weit – so entsteht Tiefe. In Ruhe = Originalbild.
+    // es leicht mit, eine eigene Ebene feiner Sterne etwa doppelt so weit – so entsteht Tiefe (das Bild liegt nur einmal).
     const lay = mode === 'image' ? sectorLayers(sectorId) : undefined;
     if (lay === null) {
       // Bild lädt noch: dunkler Grund statt kurz aufblitzendem erzeugtem Himmel
