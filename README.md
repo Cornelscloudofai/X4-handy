@@ -45,10 +45,12 @@ einem Solarkraftwerk und einem Miner.
   ganz geladen und vom Service Worker zwischengespeichert). Beim allerersten Start ganz, danach höchstens einmal am Tag
   und überspringbar; Einstellungen → Darstellung: „Trailer beim Start“ an/aus und „Trailer jetzt ansehen“. Klangteppich
   und Titelmusik warten, bis er vorbei ist. Neue Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
-- **Sektorenkarte:** „Sektor“ unten erneut antippen (oder oben auf den Sektornamen) – alle Sektoren als Sechsecke mit
-  ihrem Weltraumbild, Fraktion, Sonne, Rohstoffsymbolen, eigenen Stationen (◆), Schiffen (▲) und Warnungen (⚠);
-  „Du bist hier“, Sprungtore als leuchtende Verbindungen mit Verkehr, Unerforschtes im Nebel mit „?“. Tipp auf einen
-  Sektor zeigt seine Karte („Ansehen“ springt hin), „Zum Sektor …“ führt zurück.
+- **Sektorenkarte:** „Sektor“ unten erneut antippen (oder oben auf den Sektornamen). Ruhiger, dunkler Grund: vier eigene
+  Weltraumbilder (`src/assets/karte/hintergrund-1…4.jpg`), je 30 s, dann 8 s fließende Überblendung ins nächste, Sektoren als Glas-Sechsecke mit eigenem Farbschimmer und Sternenstaub –
+  bewusst ohne Sektorbild, die Überraschung bleibt für den Besuch –, nur der Name. Eigene Sektoren leuchten türkis
+  (orange bei Problemen), ein Winkel zeigt, wo du bist. Sprungtore als Verbindungslinien mit Torringen (eigene mit
+  Verkehr, ins Unerforschte gestrichelt), Unerforschtes nur als Umriss. Tipp zeigt eine Karte (eigenes Gebiet mit Bild,
+  sonst Farbschimmer) mit „Hinfliegen“ und „Details“/„Baulizenz“.
 - **Werft als Schauraum (Schiff kaufen):** oben groß das gewählte Schiff in einer Szene, darunter alle Schiffe als
   Draufsicht zum Durchblättern (Größe, Art, Preis, Anzahl im Besitz), Filter Alle/Miner/Transporter, Werte als Balken im
   Vergleich zum stärksten Schiff, Preisaufstellung, Heimatstation; Hinweis, wenn Dock/Pier oder Geld fehlen.

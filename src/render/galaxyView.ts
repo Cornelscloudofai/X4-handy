@@ -1,11 +1,8 @@
-// Sektorenkarte: Sektoren als Sechsecke mit Sprungtor-Verbindungen
-import { FACTIONS, SECTORS, SECTOR_MAP, hexCorners } from '../data/sectors';
+// Sektorenkarte: Sektoren als Glas-Sechsecke mit Sprungtor-Verbindungslinien auf ruhigem Grund
+import { SECTORS, SECTOR_MAP, hexCorners } from '../data/sectors';
 import type { GameState } from '../engine/types';
 import type { Camera } from './camera';
-import { rgba } from './sprites';
-import { sectorLayers } from './bgImages';
-import { drawWareGlyph } from './glyphs';
-import { WARES } from '../data/wares';
+import { BG_IMAGES } from './bgImages';
 import { stationAlerts } from '../engine/analysis';
 
 const FONT = '"Chakra Petch", "Barlow", system-ui, sans-serif';
@@ -16,11 +13,18 @@ export function sectorCenter(id: string): { x: number; z: number } {
   return { x: GALAXY_HEX * 1.5 * s.q, z: GALAXY_HEX * Math.sqrt(3) * (s.r + s.q / 2) };
 }
 
-/** Rohstoffe eines Sektors (aus seinen Feldern, ohne Altlasten), in fester Reihenfolge */
-function sectorWares(id: string): string[] {
-  const order = ['ore', 'silicon', 'ice', 'nividium', 'hydrogen', 'helium', 'methane'];
-  const set = new Set(SECTOR_MAP[id].fields.filter((f) => !f.legacy).map((f) => f.ware));
-  return order.filter((w) => set.has(w)).concat([...set].filter((w) => !order.includes(w)));
+/** Farbschimmer je Sektor (nur eine Ahnung – wie es dort aussieht, zeigt erst der Besuch) */
+const TINT: Record<string, string> = { zhin: '63,200,190', tkr: '200,150,90', cascade: '230,170,90', ravine: '110,140,210', rhy: '140,120,210', hoa: '90,130,200', zyarth: '210,110,120' };
+export function tintOf(id: string): string {
+  if (TINT[id]) return TINT[id];
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return ['63,200,190', '200,150,90', '110,140,210', '140,120,210', '210,110,120'][h % 5];
+}
+
+function seeded(seed: number): () => number {
+  let x = (seed % 2147483646) + 1;
+  return () => ((x = (x * 16807) % 2147483647) - 1) / 2147483646;
 }
 
 function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
@@ -29,200 +33,234 @@ function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numbe
   ctx.closePath();
 }
 
-/** Kleines Abzeichen (Symbol + Zahl) als Pille; gibt die Breite zurück */
-function badge(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, text: string, color: string, draw: boolean): number {
-  ctx.font = `700 ${h * 0.62}px ${FONT}`;
-  const w = ctx.measureText(text).width + h * 0.9;
-  if (!draw) return w;
-  ctx.fillStyle = 'rgba(2,8,14,0.72)';
-  ctx.strokeStyle = rgba(color, 0.7);
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.roundRect(x, y - h / 2, w, h, h / 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = color;
-  ctx.textAlign = 'left';
-  ctx.fillText(text, x + h * 0.45, y + 0.5);
-  return w;
+// ---- Hintergrund: ruhig und dunkel. Eigene Bilder in src/assets/karte/hintergrund-*.jpg wechseln sich langsam ab
+// (fließende Überblendung); ohne eigene Bilder ein Weltraumbild, stark weichgezeichnet und abgedunkelt. Jedes Bild wird
+// einmal je Bildschirmgröße in voller Auflösung vorberechnet (Abdunkeln zum Rand, feine Sterne). ----
+const OWN_BG = Object.entries(import.meta.glob('../assets/karte/hintergrund*.{jpg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>)
+  .sort(([a], [b]) => a.localeCompare(b)).map(([, url]) => url);
+/** Standzeit je Bild und Dauer der Überblendung (ms) */
+const BG_HOLD = 30000, BG_FADE = 8000;
+const bgImgs: HTMLImageElement[] = [];
+const bgCache = new Map<number, { key: string; canvas: HTMLCanvasElement }>();
+
+function bgSources(): string[] {
+  return OWN_BG.length ? OWN_BG : [BG_IMAGES.find((b) => b.id === 'wirbel-violett')?.url ?? ''];
+}
+
+function backdrop(i: number, w: number, h: number): HTMLCanvasElement | null {
+  const own = OWN_BG.length > 0;
+  let img = bgImgs[i];
+  if (!img) {
+    img = new Image();
+    img.decoding = 'async';
+    img.src = bgSources()[i];
+    bgImgs[i] = img;
+  }
+  const ready = img.complete && img.naturalWidth > 0;
+  if (own && !ready) return null;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const key = `${w}x${h}@${dpr}:${ready ? 1 : 0}`;
+  const hit = bgCache.get(i);
+  if (hit?.key === key) return hit.canvas;
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  const g = c.getContext('2d')!;
+  g.scale(dpr, dpr);
+  g.imageSmoothingQuality = 'high';
+  g.fillStyle = '#01040a';
+  g.fillRect(0, 0, w, h);
+  if (ready) {
+    const k = Math.max(w / img.naturalWidth, h / img.naturalHeight) * (own ? 1 : 1.3);
+    g.save();
+    if (!own) { g.filter = 'blur(18px)'; g.globalAlpha = 0.24; }
+    g.drawImage(img, (w - img.naturalWidth * k) / 2, (h - img.naturalHeight * k) / 2, img.naturalWidth * k, img.naturalHeight * k);
+    g.restore();
+  }
+  const v = g.createRadialGradient(w * 0.45, h * 0.5, 40, w / 2, h / 2, Math.max(w, h) * 0.75);
+  v.addColorStop(0, own ? 'rgba(1,4,10,0)' : 'rgba(14,34,48,0.35)');
+  v.addColorStop(1, own ? 'rgba(1,4,10,0.55)' : 'rgba(1,4,10,0.92)');
+  g.fillStyle = v;
+  g.fillRect(0, 0, w, h);
+  if (!own) {
+    const R = seeded(11);
+    for (let n = 0; n < (w * h) / 600; n++) {
+      g.fillStyle = `rgba(220,235,255,${(0.12 + R() * 0.4).toFixed(3)})`;
+      g.beginPath();
+      g.arc(R() * w, R() * h, R() ** 3 * 1.4 + 0.25, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  bgCache.set(i, { key, canvas: c });
+  return c;
+}
+
+/** Ruhiger Hintergrund der Sektorenkarte; mehrere eigene Bilder blenden langsam ineinander über */
+export function drawGalaxyBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, now: number): void {
+  const n = bgSources().length;
+  const period = BG_HOLD + BG_FADE;
+  const cur = Math.floor(now / period) % n;
+  const t = (now % period) - BG_HOLD;
+  const a = backdrop(cur, cam.w, cam.h);
+  ctx.fillStyle = '#01040a';
+  ctx.fillRect(0, 0, cam.w, cam.h);
+  if (a) ctx.drawImage(a, 0, 0, cam.w, cam.h);
+  if (n > 1 && t > 0) {
+    const b = backdrop((cur + 1) % n, cam.w, cam.h);
+    if (b) {
+      const f = t / BG_FADE;
+      ctx.globalAlpha = f * f * (3 - 2 * f);
+      ctx.drawImage(b, 0, 0, cam.w, cam.h);
+      ctx.globalAlpha = 1;
+    }
+  }
+  // nächstes Bild schon laden
+  if (n > 1) backdrop((cur + 1) % n, cam.w, cam.h);
 }
 
 /**
- * Sektorenkarte: jeder Sektor als Sechseck mit seinem Weltraumbild, Name, Fraktion, Sonne, Rohstoffen, eigenen
- * Stationen/Schiffen und Warnungen. Sprungtore als leuchtende Verbindungen (mit wandernden Lichtern, wo man vertreten
- * ist); Unerforschtes liegt im Nebel.
+ * Sektorenkarte: Sektoren als Glas-Sechsecke mit eigenem Farbschimmer und Sternenstaub (kein Bild – die Überraschung
+ * bleibt für den Besuch), nur der Name. Eigene Sektoren mit leuchtendem Rand (orange bei Problemen). Sprungtore als
+ * Verbindungslinien von Rand zu Rand: eigene türkis mit Verkehr, fremde zart, ins Unerforschte gestrichelt.
  */
 export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, selected: string | null, current: string, now: number): void {
   const known = new Set<string>(state.sectors);
   for (const id of state.sectors) for (const l of SECTOR_MAP[id].links) known.add(l);
   for (const st of state.stations) known.add(st.sector);
-  const r = GALAXY_HEX * cam.zoom * 0.94;
-  // Verbindungen (Sprungtore)
+  const rr = GALAXY_HEX * cam.zoom * 0.8;
+  const warnAt = new Set(state.stations.filter((st) => stationAlerts(state, st).length).map((st) => st.sector));
+  // Verbindungen
   for (const s of SECTORS) {
     for (const l of s.links) {
       if (l < s.id) continue;
       const a = sectorCenter(s.id), b = sectorCenter(l);
       const [ax, ay] = cam.toScreen(a.x, a.z), [bx, by] = cam.toScreen(b.x, b.z);
-      const x1 = ax + (bx - ax) * 0.3, y1 = ay + (by - ay) * 0.3;
-      const x2 = ax + (bx - ax) * 0.7, y2 = ay + (by - ay) * 0.7;
-      const active = state.sectors.includes(s.id) || state.sectors.includes(l);
-      const seen = known.has(s.id) && known.has(l);
+      const d = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / d, uy = (by - ay) / d;
+      const off = rr * 0.87;
+      const x1 = ax + ux * off, y1 = ay + uy * off, x2 = bx - ux * off, y2 = by - uy * off;
+      const mine = state.sectors.includes(s.id) || state.sectors.includes(l);
+      const hidden = !known.has(s.id) || !known.has(l);
       ctx.save();
       ctx.lineCap = 'round';
-      if (active) { ctx.shadowColor = '#ffb547'; ctx.shadowBlur = 10; }
-      ctx.strokeStyle = active ? 'rgba(255,181,71,0.85)' : seen ? 'rgba(160,190,200,0.4)' : 'rgba(120,140,150,0.18)';
-      ctx.lineWidth = active ? 3 : 2;
+      if (mine && !hidden) { ctx.shadowColor = 'rgba(63,224,197,0.9)'; ctx.shadowBlur = 8; ctx.strokeStyle = 'rgba(120,240,220,0.9)'; ctx.lineWidth = 2; }
+      else if (hidden) { ctx.strokeStyle = 'rgba(170,190,210,0.35)'; ctx.lineWidth = 1.2; ctx.setLineDash([2, 4]); }
+      else { ctx.strokeStyle = 'rgba(255,215,160,0.55)'; ctx.lineWidth = 1.4; }
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
       ctx.restore();
-      // Tore an beiden Enden
       for (const [x, y] of [[x1, y1], [x2, y2]]) {
-        ctx.fillStyle = active ? '#ffe2b0' : 'rgba(170,190,200,0.55)';
+        ctx.strokeStyle = mine && !hidden ? 'rgba(160,250,235,0.9)' : hidden ? 'rgba(170,190,210,0.35)' : 'rgba(255,220,170,0.65)';
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(x, y, active ? 4.5 : 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        if (active) { ctx.strokeStyle = 'rgba(255,181,71,0.45)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 8 + Math.sin(now / 400) * 1.5, 0, Math.PI * 2); ctx.stroke(); }
+        ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+        ctx.stroke();
       }
-      // wandernde Lichter (Verkehr durchs Tor)
-      if (active) {
-        for (let k = 0; k < 2; k++) {
-          const t = ((now / 2600 + k * 0.5 + (s.q + s.r) * 0.13) % 1);
-          const dir = k ? 1 - t : t;
-          ctx.fillStyle = `rgba(255,236,200,${Math.sin(t * Math.PI).toFixed(3)})`;
-          ctx.beginPath();
-          ctx.arc(x1 + (x2 - x1) * dir, y1 + (y2 - y1) * dir, 2.2, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      // Verkehr auf eigenen Verbindungen: ein Licht pendelt durchs Tor
+      if (mine && !hidden) {
+        const t = 0.5 + 0.42 * Math.sin(now / 1400 + (s.q + s.r) * 1.7);
+        const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 5);
+        g.addColorStop(0, 'rgba(235,255,250,1)');
+        g.addColorStop(1, 'rgba(63,224,197,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
+  // Sechsecke
   for (const s of SECTORS) {
     const c = sectorCenter(s.id);
     const [cx, cy] = cam.toScreen(c.x, c.z);
     const owned = state.sectors.includes(s.id);
     const visible = known.has(s.id);
-    const col = FACTIONS[s.faction].color;
-    // Füllung: Weltraumbild des Sektors (bekannt) oder Nebel (unerforscht)
+    const tint = tintOf(s.id);
     ctx.save();
-    hexPath(ctx, cx, cy, r);
+    hexPath(ctx, cx, cy, rr);
     ctx.clip();
-    const bg = visible ? sectorLayers(s.id) : undefined;
-    if (bg) {
-      const k = Math.max((r * 2) / bg.w, (r * 2) / bg.h) * 1.05;
-      const drift = Math.sin(now / 9000 + s.q * 1.7 + s.r) * r * 0.04;
-      ctx.globalAlpha = owned ? 1 : 0.8;
-      ctx.drawImage(bg.base, cx - (bg.w * k) / 2 + drift, cy - (bg.h * k) / 2, bg.w * k, bg.h * k);
-      ctx.drawImage(bg.stars, cx - (bg.w * k) / 2 + drift * 1.6, cy - (bg.h * k) / 2, bg.w * k, bg.h * k);
-      ctx.globalAlpha = 1;
-    } else {
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, visible ? rgba(col, 0.16) : 'rgba(60,72,84,0.35)');
-      g.addColorStop(1, 'rgba(6,12,18,0.85)');
-      ctx.fillStyle = g;
-      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    }
     if (!visible) {
-      // Nebelschwaden
-      for (let i = 0; i < 4; i++) {
-        const a = now / (7000 + i * 1300) + i * 1.9 + s.q;
-        const fx = cx + Math.cos(a) * r * 0.35, fy = cy + Math.sin(a * 1.3) * r * 0.3;
-        const f = ctx.createRadialGradient(fx, fy, 0, fx, fy, r * 0.7);
-        f.addColorStop(0, 'rgba(120,140,160,0.16)');
-        f.addColorStop(1, 'rgba(120,140,160,0)');
-        ctx.fillStyle = f;
-        ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.fillStyle = 'rgba(8,14,22,0.35)';
+      ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+    } else {
+      ctx.fillStyle = 'rgba(6,14,22,0.82)';
+      ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+      // Farbschimmer aus einer (je Sektor festen) Richtung, langsam atmend
+      const ox = cx + Math.cos(s.q * 2.1 + s.r) * rr * 0.45, oy = cy + Math.sin(s.q * 1.3 - s.r) * rr * 0.4;
+      const breath = 0.85 + 0.15 * Math.sin(now / 3000 + s.q * 2 + s.r);
+      const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, rr * 1.1);
+      g.addColorStop(0, `rgba(${tint},${((owned ? 0.42 : 0.28) * breath).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${tint},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+      // Sternenstaub
+      const rd = seeded(s.q * 31 + s.r * 7 + 999);
+      for (let i = 0; i < 40; i++) {
+        const tw = 0.6 + 0.4 * Math.sin(now / 700 + i * 1.7);
+        ctx.fillStyle = `rgba(230,240,255,${((0.15 + rd() * 0.35) * tw).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(cx + (rd() - 0.5) * rr * 2, cy + (rd() - 0.5) * rr * 2, rd() * 0.8 + 0.2, 0, Math.PI * 2);
+        ctx.fill();
       }
+      // Glas: Lichtkante oben, dunkler unten
+      const gl = ctx.createLinearGradient(0, cy - rr, 0, cy + rr);
+      gl.addColorStop(0, 'rgba(255,255,255,0.07)');
+      gl.addColorStop(0.4, 'rgba(255,255,255,0)');
+      gl.addColorStop(1, 'rgba(0,0,0,0.35)');
+      ctx.fillStyle = gl;
+      ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
     }
-    // Abdunkeln zum Rand und hinter der Schrift
-    const v = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
-    v.addColorStop(0, owned ? 'rgba(2,8,14,0.12)' : 'rgba(2,8,14,0.25)');
-    v.addColorStop(1, owned ? 'rgba(2,8,14,0.55)' : 'rgba(2,8,14,0.7)');
-    ctx.fillStyle = v;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     ctx.restore();
     // Rahmen
-    hexPath(ctx, cx, cy, r);
+    hexPath(ctx, cx, cy, rr);
     ctx.save();
-    if (owned) { ctx.shadowColor = '#3fe0c5'; ctx.shadowBlur = 18; }
-    ctx.strokeStyle = owned ? '#3fe0c5' : visible ? rgba(col, 0.8) : 'rgba(120,140,150,0.3)';
-    ctx.lineWidth = s.id === selected ? 3.2 : owned ? 2.2 : 1.5;
-    if (!owned) ctx.setLineDash(visible ? [8, 6] : [4, 7]);
+    if (owned) {
+      const col = warnAt.has(s.id) ? '255,154,90' : '63,224,197';
+      ctx.shadowColor = `rgba(${col},0.9)`;
+      ctx.shadowBlur = 14;
+      ctx.strokeStyle = `rgba(${col},0.95)`;
+      ctx.lineWidth = 1.4;
+    } else {
+      const g = ctx.createLinearGradient(0, cy - rr, 0, cy + rr);
+      g.addColorStop(0, visible ? 'rgba(230,240,250,0.5)' : 'rgba(170,190,210,0.26)');
+      g.addColorStop(1, visible ? 'rgba(230,240,250,0.12)' : 'rgba(170,190,210,0.06)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 1;
+    }
     ctx.stroke();
     ctx.restore();
     if (s.id === selected) {
-      const p = (now % 1600) / 1600;
-      ctx.strokeStyle = `rgba(255,255,255,${0.55 * (1 - p)})`;
-      ctx.lineWidth = 2;
-      hexPath(ctx, cx, cy, r + p * 14);
+      const p = (now % 1800) / 1800;
+      ctx.strokeStyle = `rgba(230,255,250,${(0.5 * (1 - p)).toFixed(3)})`;
+      ctx.lineWidth = 1.5;
+      hexPath(ctx, cx, cy, rr + p * 10);
       ctx.stroke();
     }
+    if (!visible) continue;
+    // Name, klein und gesperrt
+    ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const big = Math.max(12, Math.min(19, r / 8));
-    const small = Math.max(10, Math.min(13.5, r / 11));
-    if (!visible) {
-      ctx.font = `700 ${big * 2.2}px ${FONT}`;
-      ctx.fillStyle = `rgba(170,190,200,${0.35 + Math.sin(now / 900 + s.q) * 0.1})`;
-      ctx.fillText('?', cx, cy - big * 0.6);
-      ctx.font = `600 ${small}px ${FONT}`;
-      ctx.fillStyle = '#7d9198';
-      ctx.fillText('Unerforscht', cx, cy + big * 0.9);
-      continue;
-    }
-    ctx.save();
+    const fs = Math.max(8, Math.min(12, rr / 7));
+    ctx.font = `600 ${fs}px ${FONT}`;
+    ctx.letterSpacing = `${(fs * 0.16).toFixed(1)}px`;
     ctx.shadowColor = 'rgba(0,0,0,0.95)';
     ctx.shadowBlur = 6;
-    ctx.font = `700 ${big}px ${FONT}`;
-    ctx.fillStyle = '#f0fbf8';
-    fitText(ctx, s.name, cx, cy - r * 0.34, r * 1.45);
-    ctx.font = `600 ${small}px ${FONT}`;
-    ctx.fillStyle = rgba(col, 1);
-    ctx.fillText(`${FACTIONS[s.faction].short} · ☀ ${s.sunlight} %`, cx, cy - r * 0.34 + big * 1.05);
+    ctx.fillStyle = owned ? 'rgba(225,255,248,0.98)' : 'rgba(225,232,240,0.78)';
+    fitText(ctx, s.name.toUpperCase(), cx, cy + rr * 0.12, rr * 1.5);
     ctx.restore();
-    // Rohstoffe als Symbole
-    const wares = sectorWares(s.id);
-    const gs = Math.max(13, Math.min(22, r * 0.13));
-    const gap = gs * 1.25;
-    wares.forEach((w, i) => {
-      ctx.save();
-      ctx.translate(cx + (i - (wares.length - 1) / 2) * gap, cy + r * 0.08);
-      drawWareGlyph(ctx, w, gs, WARES[w]?.color ?? '#9fd', 0.95);
-      ctx.restore();
-    });
-    // Eigene Stationen, Schiffe, Warnungen
-    const sts = state.stations.filter((x) => x.sector === s.id);
-    const ships = state.ships.filter((x) => x.sector === s.id).length;
-    const warns = sts.reduce((n, st) => n + stationAlerts(state, st).length, 0);
-    const bh = Math.max(16, Math.min(22, r * 0.14));
-    const items: [string, string][] = [];
-    if (sts.length) items.push([`◆ ${sts.length}`, '#3fe0c5']);
-    if (ships) items.push([`▲ ${ships}`, '#bff7ec']);
-    if (warns) items.push([`⚠ ${warns}`, '#ff9a6b']);
-    if (!items.length && !owned) items.push([s.licenseCost ? 'Lizenz erwerbbar' : 'frei', '#9fb4ba']);
-    const by = cy + r * 0.38;
-    const total = items.reduce((t, [txt, c2]) => t + badge(ctx, 0, 0, bh, txt, c2, false) + 6, -6);
-    let bx = cx - total / 2;
-    for (const [txt, c2] of items) bx += badge(ctx, bx, by, bh, txt, c2, true) + 6;
-    ctx.textAlign = 'center';
-    // „Du bist hier“
+    // Hier bist du: kleiner Winkel
     if (s.id === current) {
-      const py = cy - r * 0.56 + Math.sin(now / 500) * 2;
-      ctx.save();
-      ctx.shadowColor = '#3fe0c5';
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = '#3fe0c5';
+      const ty = cy - rr * 0.42 + Math.sin(now / 600) * 1.5;
+      ctx.strokeStyle = 'rgba(225,255,248,0.95)';
+      ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.moveTo(cx, py + 7);
-      ctx.lineTo(cx - 6, py - 2);
-      ctx.lineTo(cx + 6, py - 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-      ctx.font = `700 ${small * 0.85}px ${FONT}`;
-      ctx.fillStyle = '#9ff5e5';
-      ctx.fillText('DU BIST HIER', cx, py - small);
+      ctx.moveTo(cx - 5, ty - 3);
+      ctx.lineTo(cx, ty + 2);
+      ctx.lineTo(cx + 5, ty - 3);
+      ctx.stroke();
     }
   }
 }

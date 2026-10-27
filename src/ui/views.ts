@@ -33,6 +33,7 @@ import { H } from '../engine/history';
 import { bigChart, sparkline, type ChartSpec } from './charts';
 import { tw } from './tween';
 import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
+import { tintOf } from '../render/galaxyView';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
@@ -207,7 +208,7 @@ export function navHtml(state: GameState, ui: UIState): string {
 
 export function cardHtml(state: GameState, ui: UIState): string {
   if (ui.placing) return placeCard(state, ui);
-  if (ui.view === 'galaxy') return ui.galaxySel ? sectorCard(state, ui.galaxySel) : '';
+  if (ui.view === 'galaxy') return ui.galaxySel ? galaxyCard(state, ui.galaxySel) : '';
   const sel = ui.selection;
   if (!sel) return '';
   switch (sel.kind) {
@@ -372,17 +373,26 @@ function gateCard(state: GameState, to: string): string {
     </div>`, true);
 }
 
-function sectorCard(state: GameState, id: string): string {
+/** Karte zu einem Sektor auf der Sektorenkarte: eigenes Gebiet mit seinem Bild, sonst nur der Farbschimmer */
+function galaxyCard(state: GameState, id: string): string {
   const s = SECTOR_MAP[id];
   const owned = state.sectors.includes(id);
   const known = knownSectors(state).includes(id);
-  return cardShell(icon('sector', 24), known ? s.name : 'Unerforschter Sektor', `${esc(FACTIONS[s.faction].name)}${known ? ` · ☀ ${s.sunlight} %` : ''}`, `
-    ${known ? `<p class="small" style="margin:0 0 10px;color:var(--text-2)">${esc(s.description)}</p>
-    <div class="pills" style="margin-bottom:10px">${s.fields.map((f) => `<span class="pill">${wareMark(f.ware, 8)}${esc(WARES[f.ware].name)}${f.richness > 1.05 ? ' ↑' : ''}</span>`).join('')}</div>` : '<p class="small muted" style="margin:0 0 10px">Erwirb Baulizenzen in Nachbarsektoren, um weiter vorzudringen.</p>'}
-    <div class="card-actions">
-      <button class="btn primary ${known ? '' : 'disabled'}" ${act('goto-sector', { id })}>${icon('arrowRight', 20)}Ansehen</button>
-      <button class="btn ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${icon(owned ? 'info' : 'lock', 20)}${owned ? 'Details' : 'Baulizenz'}</button>
-    </div>`);
+  const close = `<button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button>`;
+  if (!known) return `<div class="card gx-card unknown"><div class="gx-body"><span class="gx-eyebrow">Unerforscht</span><h2>Unbekannter Sektor</h2><p>Noch keine Daten – Baulizenzen in Nachbarsektoren öffnen den Weg.</p></div>${close}</div>`;
+  const img = owned ? BG_IMAGES.find((b) => b.id === sectorImageId(id))?.url : undefined;
+  const stations = state.stations.filter((x) => x.sector === id).length;
+  const ships = state.ships.filter((x) => x.sector === id).length;
+  const wares = [...new Set(s.fields.filter((f) => !f.legacy).map((f) => WARES[f.ware].name))];
+  const facts = [
+    stations ? `${stations} Station${stations === 1 ? '' : 'en'}` : '',
+    ships ? `${ships} Schiff${ships === 1 ? '' : 'e'}` : '',
+    wares.join(', '),
+    owned ? '' : `Lizenz ${fmtCr(s.licenseCost)}`,
+  ].filter(Boolean).join(' · ');
+  return `<div class="card gx-card ${owned ? 'own' : ''}" style="--tint:${tintOf(id)}${img ? `;--img:url(${img})` : ''}">
+    <div class="gx-body"><span class="gx-eyebrow">${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>
+    <div class="gx-actions"><button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button><button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div></div>${close}</div>`;
 }
 
 function placeCard(state: GameState, ui: UIState): string {

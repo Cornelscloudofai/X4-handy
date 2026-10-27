@@ -17,7 +17,7 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
-import { GALAXY_HEX, drawGalaxy, galaxyHit, sectorCenter } from '../render/galaxyView';
+import { GALAXY_HEX, drawGalaxy, drawGalaxyBackdrop, galaxyHit, sectorCenter } from '../render/galaxyView';
 import { SectorRenderer, shipLength } from '../render/sectorView';
 import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
@@ -233,7 +233,7 @@ function fitGalaxy(): void {
   // ganze Karte sichtbar (alle Sechsecke samt Rand), unten Platz für die Sektorkarte nach einem Tipp
   // Platz oben: bis unter die Werkzeugleiste (nach dem Umschalten neu gemessen, s. Aufrufer)
   const top = (document.querySelector('#hud .tool-row')?.getBoundingClientRect().bottom ?? 110) + 8;
-  galaxyCam.fit(GALAXY_HEX * 2.4, bottomHeight() + 8, top);
+  galaxyCam.fit(GALAXY_HEX * 3.3, bottomHeight() + 8, top);
   galaxyCam.x = 0;
   galaxyCam.minZoom = galaxyCam.zoom * 0.7;
 }
@@ -264,7 +264,7 @@ function frame(now: number): void {
   c.update(dt, ui.view === 'galaxy' ? GALAXY_HEX * 3 : SECTOR_RADIUS * 1.1);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (ui.view === 'galaxy') {
-    renderer.drawBackdrop(ctx, galaxyCam, 'galaxy', now);
+    drawGalaxyBackdrop(ctx, galaxyCam, now);
     drawGalaxy(ctx, state, galaxyCam, ui.galaxySel, ui.sector, now);
   } else {
     renderer.draw(ctx, state, ui, cam, now, dt);

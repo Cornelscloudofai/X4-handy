@@ -30,6 +30,13 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(1200);
 await page.screenshot({ path: `${out}/sektorenkarte-2.png` });
+// Tipp auf Familie Zhin (Mitte) zeigt die Karte mit Bild und „Hinfliegen“
+await page.mouse.click(195, 440);
+await page.waitForTimeout(900);
+if (!(await page.locator('.gx-card [data-act="goto-sector"]').count())) fail('Antippen zeigt keine Sektorkarte');
+await page.screenshot({ path: `${out}/sektorenkarte-3.png` });
+await page.click('.gx-card [data-act="select-clear"]');
+await page.waitForTimeout(300);
 await page.click('#hud .tool-row .btn.outline-teal');
 await page.waitForTimeout(500);
 if (!(await page.evaluate(() => window.__game.ui.view === 'sector'))) fail('„Zum Sektor“ führt nicht zurück');
