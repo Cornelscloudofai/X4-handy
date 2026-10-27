@@ -60,8 +60,13 @@ einem Solarkraftwerk und einem Miner.
 - **Späher und Suche (`src/engine/explore.ts`):** Späher (140.000 Cr) über die Sektorkarte kaufen und zu einem Sektor
   schicken: Flug Tor für Tor (20 min je Tor), dann 2 h Suche nach Torsignaturen ins Unbekannte (Grundchance 50 %, der
   Peil-Vorsprung erhöht sie). „Keine Spur“ heißt Pech oder wirklich nichts – das verrät die Suche nicht. Auf der Karte
-  fliegt der Späher als Leuchtdreieck, bei der Suche kreist ein Radar über dem Sektor. Als Nächstes: Peil-Minispiel,
-  Durchbruch mit Erstsichtung, Kampagnenkapitel, Inhalte der neuen Sektoren.
+  fliegt der Späher als Leuchtdreieck, bei der Suche kreist ein Radar über dem Sektor.
+- **Peil-Minispiel (`src/ui/peilung.ts`):** „Peilen und schicken“ öffnet ein Radar: Antenne per Wischen drehen, das
+  wandernde Signal (mit gelegentlichen Störsprüngen) finden und halten – klare Welle und heller Punkt zeigen die Nähe.
+  7 s gehalten = volle Peilung; der Anteil hebt die Fundchance von 50 % bis 97 %. „Nur schicken“ geht ohne Minispiel.
+- **Entwicklerregler auf der Sektorenkarte:** „Spiel“/„Alles“ – zeigt alle Sektoren aufgedeckt (nur Ansicht, der
+  Spielstand bleibt unverändert; gemerkt im Browser). Als Nächstes: Durchbruch mit Erstsichtung, Kampagnenkapitel,
+  Inhalte der neuen Sektoren.
 - **Werft als Schauraum (Schiff kaufen):** oben groß das gewählte Schiff in einer Szene, darunter alle Schiffe als
   Draufsicht zum Durchblättern (Größe, Art, Preis, Anzahl im Besitz), Filter Alle/Miner/Transporter, Werte als Balken im
   Vergleich zum stärksten Schiff, Preisaufstellung, Heimatstation; Hinweis, wenn Dock/Pier oder Geld fehlen.

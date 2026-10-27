@@ -1546,3 +1546,24 @@ body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { a
 .gx-scout.found { color: #bfe0ff; background: rgba(150, 200, 255, 0.08); border-color: rgba(160, 210, 255, 0.3); }
 .gx-radar { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; border: 1px solid rgba(63, 224, 197, 0.8); background: conic-gradient(from 0deg, rgba(63, 224, 197, 0.8), transparent 30%); animation: radarSpin 1.6s linear infinite; }
 @keyframes radarSpin { to { transform: rotate(360deg); } }
+/* Entwicklerregler auf der Sektorenkarte */
+.btn.dev-reveal { position: relative; padding: 0 12px 0 22px; font-size: 12px; letter-spacing: 0.06em; color: var(--text-2); border-style: dashed; }
+.btn.dev-reveal::before { content: ''; position: absolute; left: 9px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: rgba(200, 215, 220, 0.4); }
+.btn.dev-reveal.on { color: #ffc46b; border-color: rgba(255, 196, 107, 0.6); }
+.btn.dev-reveal.on::before { background: #ffc46b; box-shadow: 0 0 8px #ffc46b; }
+
+/* ---------- Peil-Minispiel ---------- */
+.peil { position: fixed; inset: 0; z-index: 250; display: grid; grid-template-rows: auto 1fr auto auto; background: radial-gradient(90% 60% at 50% 40%, #071a1f, #02060c 75%); color: var(--text); touch-action: none; user-select: none; animation: fade 0.3s; }
+.peil-head { display: flex; justify-content: space-between; align-items: center; padding: calc(var(--safe-top, 0px) + 16px) 18px 6px; }
+.peil-head span { display: block; font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: var(--teal); }
+.peil-head b { font-family: var(--font-display); font-size: 20px; }
+.peil-x { width: 40px; height: 40px; border-radius: 50%; font-size: 24px; line-height: 1; color: var(--text-2); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); }
+.peil-cv { width: 100%; height: 100%; display: block; }
+.peil-help { padding: 0 24px 10px; text-align: center; font-size: 13px; color: var(--text-2); }
+.peil-lock { position: relative; margin: 0 18px calc(var(--safe-bottom, 0px) + 22px); height: 34px; border-radius: 10px; overflow: hidden; background: rgba(63, 224, 197, 0.08); border: 1px solid rgba(63, 224, 197, 0.3); }
+.peil-lock i { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, rgba(63, 224, 197, 0.35), rgba(63, 224, 197, 0.75)); box-shadow: 0 0 16px rgba(63, 224, 197, 0.6); transition: width 0.1s linear; }
+.peil-lock span { position: relative; display: grid; place-items: center; height: 100%; font-family: var(--font-display); font-size: 13px; letter-spacing: 0.08em; color: #e8fffa; }
+.peil.locked .peil-lock { border-color: rgba(160, 255, 235, 0.9); box-shadow: 0 0 18px rgba(63, 224, 197, 0.4); }
+.peil-end { position: absolute; left: 18px; right: 18px; bottom: calc(var(--safe-bottom, 0px) + 22px); display: grid; gap: 8px; padding: 18px; text-align: center; border-radius: 16px; background: rgba(4, 14, 22, 0.95); border: 1px solid rgba(63, 224, 197, 0.45); box-shadow: 0 0 30px rgba(63, 224, 197, 0.25); animation: riseIn 0.4s both; }
+.peil-end b { font-family: var(--font-display); font-size: 20px; color: #e8fffa; }
+.peil-end span { color: var(--text-2); font-size: 14px; }

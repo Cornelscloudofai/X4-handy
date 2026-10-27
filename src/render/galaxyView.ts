@@ -16,13 +16,22 @@ export function sectorCenter(id: string): { x: number; z: number } {
   return { x: GALAXY_HEX * 1.5 * p.q, z: GALAXY_HEX * Math.sqrt(3) * (p.r + p.q / 2) };
 }
 
+// Entwicklerwerkzeug: alles aufgedeckt zeigen (nur die Ansicht – der Spielstand bleibt unverändert)
+const REVEAL_KEY = 'x4-sektorbau-dev-alles';
+let revealAll = (() => { try { return localStorage.getItem(REVEAL_KEY) === '1'; } catch { return false; } })();
+export function devRevealAll(): boolean { return revealAll; }
+export function setDevRevealAll(on: boolean): void {
+  revealAll = on;
+  try { if (on) localStorage.setItem(REVEAL_KEY, '1'); else localStorage.removeItem(REVEAL_KEY); } catch { /* egal */ }
+}
+
 interface MapNode { id: string; name: string; q: number; r: number; links: string[]; frontier: boolean }
 
 /** Was auf der Karte steht: der Split-Raum und alle schon entdeckten neuen Sektoren (Unentdecktes gar nicht) */
 export function mapNodes(state: GameState): MapNode[] {
   const found = new Set(state.frontier?.discovered ?? []);
   const nodes: MapNode[] = SECTORS.map((s) => ({ id: s.id, name: s.name, ...(SPLIT_MAP_POS[s.id] ?? s), links: s.links, frontier: false }));
-  for (const f of FRONTIER) if (found.has(f.id)) nodes.push({ id: f.id, name: f.name, q: f.q, r: f.r, links: f.links, frontier: true });
+  for (const f of FRONTIER) if (revealAll || found.has(f.id)) nodes.push({ id: f.id, name: f.name, q: f.q, r: f.r, links: f.links, frontier: true });
   return nodes;
 }
 
@@ -156,7 +165,7 @@ export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam:
   const warnAt = new Set(state.stations.filter((st) => stationAlerts(state, st).length).map((st) => st.sector));
   const nodes = mapNodes(state);
   const onMap = new Set(nodes.map((n) => n.id));
-  for (const n of nodes) if (n.frontier) known.add(n.id);
+  for (const n of nodes) if (n.frontier || revealAll) known.add(n.id);
   // Verbindungen (nur zwischen Sektoren, die auf der Karte stehen); entfernte Tore als Bogen
   const drawn = new Set<string>();
   for (const s of nodes) {

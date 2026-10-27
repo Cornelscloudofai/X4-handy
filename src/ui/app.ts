@@ -17,8 +17,9 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
-import { buyScout, sendScout } from '../engine/explore';
-import { GALAXY_HEX, drawGalaxy, drawGalaxyBackdrop, drawScouts, galaxyHit, mapBounds, sectorCenter } from '../render/galaxyView';
+import { buyScout, sectorLabel, sendScout } from '../engine/explore';
+import { runPeilung } from './peilung';
+import { GALAXY_HEX, devRevealAll, drawGalaxy, drawGalaxyBackdrop, drawScouts, setDevRevealAll, galaxyHit, mapBounds, sectorCenter } from '../render/galaxyView';
 import { SectorRenderer, shipLength } from '../render/sectorView';
 import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
@@ -239,7 +240,7 @@ function fitGalaxy(): void {
   galaxyCam.fit(GALAXY_HEX * 3.3, bottom, top);
   const b = mapBounds(state);
   const usable = Math.max(100, galaxyCam.h - top - bottom);
-  galaxyCam.zoom = Math.max(0.42, Math.min(galaxyCam.zoom, usable / (b.z1 - b.z0), galaxyCam.w / (b.x1 - b.x0)));
+  galaxyCam.zoom = Math.max(devRevealAll() ? 0.3 : 0.42, Math.min(galaxyCam.zoom, usable / (b.z1 - b.z0), galaxyCam.w / (b.x1 - b.x0)));
   galaxyCam.fitZoom = galaxyCam.zoom;
   galaxyCam.x = (b.x0 + b.x1) / 2;
   galaxyCam.z = (b.z0 + b.z1) / 2 + (bottom - top) / 2 / galaxyCam.zoom;
@@ -1249,8 +1250,14 @@ function onClick(e: MouseEvent): void {
       }
       case 'modal-close': ui.modal = null; refresh(); break;
       case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all', sel: d.cls }; refresh(); break;
+      case 'dev-reveal': setDevRevealAll(!devRevealAll()); fitGalaxy(); toast(devRevealAll() ? 'Entwickleransicht: alle Sektoren aufgedeckt (nur Ansicht).' : 'Ansicht wie im Spielstand.', 'info'); refresh(); break;
       case 'scout-buy': result(buyScout(state)); break;
       case 'scout-send': result(sendScout(state, d.sc!, d.sec!)); break;
+      case 'scout-peil': {
+        const sc = d.sc!, sec = d.sec!;
+        runPeilung({ sector: sectorLabel(sec), onDone: (bonus) => result(sendScout(state, sc, sec, bonus)), onCancel: () => refresh() });
+        break;
+      }
       case 'buyship-sel': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, sel: d.cls }; refresh(); } break;
       case 'buyship-role': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, role: d.role as 'miner' | 'trader' | 'all', sel: undefined }; refresh(); } break;
       case 'buyship': { const r = A.buyShip(state, d.cls!, d.st!); if (r.ok) sfx.launch(); result(r); break; }

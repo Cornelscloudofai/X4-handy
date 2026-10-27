@@ -33,7 +33,7 @@ import { H } from '../engine/history';
 import { bigChart, sparkline, type ChartSpec } from './charts';
 import { tw } from './tween';
 import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
-import { tintOf } from '../render/galaxyView';
+import { devRevealAll, tintOf } from '../render/galaxyView';
 import { FRONTIER_MAP, REGIONS } from '../data/frontier';
 import { SCOUT_PRICE, scoutPath, scouts } from '../engine/explore';
 import { productionKind } from '../render/stationLayout';
@@ -147,7 +147,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${SECTORS.length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
-  ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor ${esc(sec.name)}</button>${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
+  ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button>${newsBtn}<button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
     <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 16)}Station</button>
     <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 16)}Routen</button>
     ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button>
@@ -392,7 +392,7 @@ function exploreBlock(state: GameState, id: string): string {
   if (!here.length) {
     if (idle.length) {
       const best = idle.map((x) => ({ x, n: scoutPath(state, x.at, id)?.length ?? 99 })).sort((a, b) => a.n - b.n)[0];
-      btn = `<button class="btn small" ${act('scout-send', { sc: best.x.id, sec: id })}>${icon('target', 15)}${esc(best.x.name)} schicken</button>`;
+      btn = `<button class="btn primary small" ${act('scout-peil', { sc: best.x.id, sec: id })}>${icon('target', 15)}Peilen und ${esc(best.x.name)} schicken</button><button class="btn small" ${act('scout-send', { sc: best.x.id, sec: id })}>Nur schicken</button>`;
     } else if (!list.length) btn = `<button class="btn small ${state.credits >= SCOUT_PRICE ? '' : 'disabled'}" ${act('scout-buy')}>${icon('plus', 15)}Späher kaufen · ${fmtCr(SCOUT_PRICE)}</button>`;
     else btn = '<span class="small muted">Alle Späher sind unterwegs.</span>';
   }
@@ -403,7 +403,8 @@ function exploreBlock(state: GameState, id: string): string {
 function galaxyCard(state: GameState, id: string): string {
   const f = FRONTIER_MAP[id];
   if (f) {
-    return `<div class="card gx-card frontier" style="--tint:${tintOf(id)}"><div class="gx-body"><span class="gx-eyebrow">${esc(REGIONS[f.region].name)} · neu entdeckt</span><h2>${esc(f.name)}</h2><p>${esc(f.description)}</p>${exploreBlock(state, id)}</div><button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button></div>`;
+    const found = (state.frontier?.discovered ?? []).includes(id);
+    return `<div class="card gx-card frontier" style="--tint:${tintOf(id)}"><div class="gx-body"><span class="gx-eyebrow">${esc(REGIONS[f.region].name)} · ${found ? 'neu entdeckt' : 'noch unentdeckt (Entwickleransicht)'}</span><h2>${esc(f.name)}</h2><p>${esc(f.description)}</p>${found ? exploreBlock(state, id) : ''}</div><button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button></div>`;
   }
   const s = SECTOR_MAP[id];
   const owned = state.sectors.includes(id);
