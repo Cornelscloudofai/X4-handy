@@ -58,20 +58,34 @@ einem Solarkraftwerk und einem Miner.
   entfernte Tore nur dort, wo sie keinen Sektor schneiden (Test); sie passt sich der bekannten Fläche an und lässt sich
   verschieben.
 - **Späher und Suche (`src/engine/explore.ts`):** Späher (140.000 Cr) über die Sektorkarte kaufen und zu einem Sektor
-  schicken: Flug Tor für Tor (20 min je Tor), dann 2 h Suche nach Torsignaturen ins Unbekannte (Grundchance 50 %, der
-  Peil-Vorsprung erhöht sie). „Keine Spur“ heißt Pech oder wirklich nichts – das verrät die Suche nicht. Auf der Karte
-  fliegt der Späher als Leuchtdreieck, bei der Suche kreist ein Radar über dem Sektor.
-- **Peil-Minispiel (`src/ui/peilung.ts`):** „Peilen und schicken“ öffnet ein Radar: Antenne per Wischen drehen, das
-  wandernde Signal (mit gelegentlichen Störsprüngen) finden und halten – klare Welle und heller Punkt zeigen die Nähe.
-  7 s gehalten = volle Peilung; der Anteil hebt die Fundchance von 50 % bis 97 %. „Nur schicken“ geht ohne Minispiel.
+  schicken: Flug Tor für Tor (20 min je Tor), dann 15 min Suche nach Torsignaturen ins Unbekannte. Die Hürde ist Können,
+  nicht Geld: ohne Peilung 30 % Fundchance, eine volle Peilung findet eine vorhandene Signatur sicher. „Keine Spur“ heißt
+  Pech oder wirklich nichts – das verrät die Suche nicht. Auf der Karte fliegt der Späher als Leuchtdreieck, bei der Suche
+  kreist ein Radar über dem Sektor.
+- **Peil-Minispiel (`src/ui/peilung.ts`):** „Peilen und schicken“ öffnet ein Radar mit zwei Reglern: Antenne (auf dem
+  Radar wischen) und Frequenz (seitlich über die Welle wischen). Verstimmt schwebt die Welle und das Signal bleibt zu
+  schwach. 6 s gehalten = volle Peilung (35 s Zeit); wer das Signal verliert, verliert langsam Peilung. Jedes Gebiet
+  stört anders (kurze Einweisung vor dem Start): Split-Raum ruhig mit Sprüngen, **Glutsee** Sonnenstürme (Rand blinkt
+  rot, danach ist das Signal verrutscht), **Schweigendes Band** Echos (mehrere Punkte, Echos stottern und kosten
+  Peilung), **Kristallgrenze** Brechung (Punkt versetzt, bis die Frequenz stimmt), **Abgrund** Puls (sendet nur im Takt
+  kurz-kurz-lang, dazu ein Echo). Mit dem Erkundungsfortschritt wird es schneller und enger. Manchmal taucht ein
+  **Nebensignal** auf (bernsteinfarben): 1,6 s angepeilt, birgt der Späher ein Wrack (25.000 Cr im Split-Raum bis
+  500.000 Cr im Abgrund) – die Zeit fehlt aber für die eigentliche Peilung. „Nur schicken“ geht ohne Minispiel.
 - **Entwicklerregler auf der Sektorenkarte:** „Spiel“/„Alles“ – zeigt alle Sektoren aufgedeckt (nur Ansicht, der
   Spielstand bleibt unverändert; gemerkt im Browser).
-- **Durchbruch:** Eine gefundene Signatur zeigt ein erloschenes Tor. „Tor instand setzen“ (Glutsee 250.000 Cr, Band
-  600.000, Kristallgrenze 1,2 Mio, Abgrund 2,5 Mio; 3 h), dann einen Späher hindurchschicken. Erstsichtung: Vollbild-
+- **Durchbruch:** Eine gefundene Signatur zeigt ein erloschenes Tor. „Baustelle einrichten“ kostet nichts; das Tor
+  braucht Waren aus der eigenen Wirtschaft (Glutsee 250 Hüllenteile + 1.000 Energiezellen; Band zusätzlich Mikrochips,
+  Kristallgrenze Claytronik und Scannerfelder, Abgrund Claytronik und Quantenröhren – jeweils mehr). „Aus deinen Lagern
+  liefern“ nimmt sie aus den Stationslagern (eingestellte Reserven bleiben liegen), „Rest zukaufen“ kauft Fehlendes mit
+  40 % Aufschlag. Sind alle Waren da, dauert die Montage 30 min; dann einen Späher hindurchschicken. Erstsichtung: Vollbild-
   Enthüllung (Sechseck zeichnet sich in Licht, füllt sich mit dem Schimmer des Gebiets oder dem Bild
-  `src/assets/sektoren/<id>.jpg`, der Name erscheint Buchstabe für Buchstabe). Vom neuen Sektor aus kann weiter gesucht
-  werden. **Forschungsakte** (Stern-Knopf auf der Sektorenkarte): alle Entdeckungen nach Gebieten mit Datum,
-  Unentdecktes als „?“. Als Nächstes: Kampagnenkapitel, Inhalte der neuen Sektoren.
+  `src/assets/sektoren/<id>.jpg`, der Name erscheint Buchstabe für Buchstabe) mit einem **Fundstück**: Logbucheintrag,
+  Funkspruch oder Notiz, die zusammen die Geschichte der verschwundenen Kolonie Vesh'ara erzählen. Vom neuen Sektor aus
+  kann weiter gesucht werden. **Forschungsakte** (Stern-Knopf auf der Sektorenkarte): alle Entdeckungen nach Gebieten mit
+  Datum und Fundstück, Unentdecktes als „?“.
+- **Kampagne „Kanal 9“** (nach „Neue Horizonte“): Tevka Rhy hört auf Kanal 9 ein Knacken aus Richtung des toten Tors.
+  Vier Kapitel führen durch Späherkauf, Peilung, Torbaustelle und die erste Erstsichtung (Rhy's Ausblick). Ab hier
+  gilt für alle Texte: konkret statt Werbesprache – Namen, Zahlen, Stimmen aus der Spielwelt.
 - **Werft als Schauraum (Schiff kaufen):** oben groß das gewählte Schiff in einer Szene, darunter alle Schiffe als
   Draufsicht zum Durchblättern (Größe, Art, Preis, Anzahl im Besitz), Filter Alle/Miner/Transporter, Werte als Balken im
   Vergleich zum stärksten Schiff, Preisaufstellung, Heimatstation; Hinweis, wenn Dock/Pier oder Geld fehlen.

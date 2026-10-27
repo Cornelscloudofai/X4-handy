@@ -1565,6 +1565,15 @@ body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { a
 .peil-lock span { position: relative; display: grid; place-items: center; height: 100%; font-family: var(--font-display); font-size: 13px; letter-spacing: 0.08em; color: #e8fffa; }
 .peil.locked .peil-lock { border-color: rgba(160, 255, 235, 0.9); box-shadow: 0 0 18px rgba(63, 224, 197, 0.4); }
 .peil-end { position: absolute; left: 18px; right: 18px; bottom: calc(var(--safe-bottom, 0px) + 22px); display: grid; gap: 8px; padding: 18px; text-align: center; border-radius: 16px; background: rgba(4, 14, 22, 0.95); border: 1px solid rgba(63, 224, 197, 0.45); box-shadow: 0 0 30px rgba(63, 224, 197, 0.25); animation: riseIn 0.4s both; }
+.peil-brief { position: absolute; left: 18px; right: 18px; top: 50%; transform: translateY(-50%); display: grid; gap: 8px; padding: 20px; text-align: center; border-radius: 16px; background: rgba(4, 14, 22, 0.94); border: 1px solid rgba(63, 224, 197, 0.45); box-shadow: 0 0 30px rgba(63, 224, 197, 0.2); animation: riseIn 0.4s both; }
+.peil-brief span { font-family: var(--font-display); font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--teal); }
+.peil-brief b { font-family: var(--font-display); font-size: 22px; color: #e8fffa; }
+.peil-brief p { margin: 0 0 6px; color: var(--text-2); font-size: 14px; line-height: 1.45; }
+.peil.m-glut .peil-brief { border-color: rgba(255, 140, 90, 0.55); }
+.peil.m-glut .peil-brief span { color: #ff9a6a; }
+.peil.m-abgrund .peil-brief span, .peil.m-kristall .peil-brief span { color: #b9a6ff; }
+.peil.warn .peil-help, .peil.storm .peil-help { color: #ff9a6a; }
+.peil-salv { color: var(--amber) !important; }
 .peil-end b { font-family: var(--font-display); font-size: 20px; color: #e8fffa; }
 .peil-end span { color: var(--text-2); font-size: 14px; }
 
@@ -1612,3 +1621,12 @@ body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { a
 .gx-gate > span { display: flex; align-items: center; gap: 6px; }
 .gx-gate.open { color: #c9fff3; background: rgba(63, 224, 197, 0.1); border-color: rgba(63, 224, 197, 0.45); box-shadow: 0 0 18px rgba(63, 224, 197, 0.15); }
 .gx-gate .btn { justify-self: start; }
+.gx-gate.site { color: #ffe2b8; background: rgba(255, 181, 71, 0.07); border-color: rgba(255, 181, 71, 0.35); }
+.gx-wares { display: grid; gap: 5px; }
+.gx-ware { position: relative; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 8px; overflow: hidden; background: rgba(0, 0, 0, 0.25); color: var(--text); }
+.gx-ware b { font-family: var(--font-display); font-size: 12px; font-weight: 600; color: var(--text-2); }
+.gx-ware i { position: absolute; left: 0; bottom: 0; height: 2px; width: var(--p); background: var(--amber, #ffb547); }
+.gx-ware.done b { color: var(--teal); }
+.gx-ware.done i { background: var(--teal); }
+.akte-item q { display: block; font-size: 12px; font-style: italic; color: #d9e6f5; quotes: none; padding-left: 8px; border-left: 2px solid rgba(var(--tint), 0.6); }
+.rv-text q { display: block; max-width: 520px; margin: 0 auto; font-size: 13.5px; font-style: italic; color: #d9e6f5; quotes: none; animation: fade 0.8s 3.4s both; }

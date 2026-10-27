@@ -1,6 +1,7 @@
 // Simulierter Spieler für die komplette Kampagne (28 Kapitel) mit Dauerlauf-Prüfungen.
 // npx tsx scripts/campaign.ts [seed] [maxStunden]
 import { newGame } from '../src/engine/state';
+import { exploreBot } from './explore-bot';
 import { step } from '../src/engine/sim';
 import * as A from '../src/engine/actions';
 import * as Y from '../src/engine/yard';
@@ -149,6 +150,7 @@ for (let h = 0; h < maxHours; h++) {
       traders(alpha, 2);
     }
     if (m === 'license' && s.credits > 4.5e6) log(A.buyLicense(s, 'tkr').msg);
+    exploreBot(s, m);
     // Kapitel 9: Lager M – Bauplan beim Handelsvertreter
     if (reached('storage') && s.credits > 3e6) for (const t of ['container', 'solid', 'liquid']) blueprint(`storage_${t}_m`);
     if (reached('storage') && s.blueprints.includes('storage_container_m')) ensure(alpha, 'storage_container_m');

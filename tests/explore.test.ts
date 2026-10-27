@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/engine/state';
-import { REPAIR_COST, REPAIR_TIME, SCOUT_HOP, SCOUT_PRICE, SEARCH_TIME, buyScout, gateState, hiddenLinks, repairGate, scoutPath, scouts, sendScout, sendThrough, stepScouts } from '../src/engine/explore';
+import { REPAIR_BUY_MARKUP, REPAIR_TIME, REPAIR_WARES, SALVAGE, buyGateRest, deliverGate, gateBuyCost, SCOUT_HOP, SCOUT_PRICE, SEARCH_TIME, buyScout, gateState, hiddenLinks, repairGate, scoutPath, scouts, sendScout, sendThrough, stepScouts } from '../src/engine/explore';
 import { onGameEvent } from '../src/engine/util';
+import { WARES } from '../src/data/wares';
 
 const run = (s: ReturnType<typeof newGame>, sec: number) => { for (let t = 0; t < sec; t += 10) stepScouts(s, 10); };
 
@@ -62,7 +63,7 @@ describe('Erkundung: Späher und Suche', () => {
       run(s, SEARCH_TIME + 20);
       if (s.frontier!.signatures.length) found++;
     }
-    expect(found).toBeGreaterThan(24);
+    expect(found).toBe(30);
   });
 
   it('Durchbruch: Tor instand setzen, Späher fliegt hindurch, Erstsichtung', () => {
@@ -74,8 +75,29 @@ describe('Erkundung: Späher und Suche', () => {
     expect(sendThrough(s, sp.id, 'rhy>f-ausblick').ok).toBe(false);
     const c0 = s.credits;
     expect(repairGate(s, 'rhy>f-ausblick').ok).toBe(true);
-    expect(c0 - s.credits).toBe(REPAIR_COST.glut);
+    expect(s.credits).toBe(c0);
     expect(repairGate(s, 'rhy>f-ausblick').ok).toBe(false);
+    // ohne Waren tut sich nichts
+    run(s, REPAIR_TIME + 20);
+    expect(gateState(s, 'rhy>f-ausblick').kind).toBe('site');
+    // Lieferung aus dem Stationslager, die Reserve bleibt liegen
+    const st = s.stations[0];
+    st.inventory.hullparts = 400;
+    st.reserve = { hullparts: 100 };
+    st.inventory.energycells = 300;
+    expect(deliverGate(s, 'rhy>f-ausblick').ok).toBe(true);
+    expect(st.inventory.hullparts).toBe(150);
+    expect(st.inventory.energycells ?? 0).toBe(0);
+    const g = gateState(s, 'rhy>f-ausblick');
+    expect(g.kind === 'site' && g.missing.energycells).toBe(REPAIR_WARES.glut.energycells - 300);
+    expect(deliverGate(s, 'rhy>f-ausblick').ok).toBe(false);
+    // den Rest zukaufen: Aufschlag auf den Durchschnittspreis
+    const cost = gateBuyCost(s, 'rhy>f-ausblick');
+    expect(cost).toBe(Math.round(700 * WARES.energycells.price.avg * REPAIR_BUY_MARKUP));
+    const c1 = s.credits;
+    expect(buyGateRest(s, 'rhy>f-ausblick').ok).toBe(true);
+    expect(c1 - s.credits).toBe(cost);
+    expect(gateState(s, 'rhy>f-ausblick').kind).toBe('repair');
     run(s, REPAIR_TIME + 20);
     expect(gateState(s, 'rhy>f-ausblick').kind).toBe('open');
     const seen: string[] = [];
@@ -89,5 +111,16 @@ describe('Erkundung: Späher und Suche', () => {
     expect(sp.at).toBe('f-ausblick');
     // von dort geht es weiter: Glutsee I ist jetzt suchbar
     expect(hiddenLinks(s, 'f-ausblick')).toEqual(['f-glut1']);
+  });
+
+  it('Nebensignal aus der Peilung: der Späher birgt ein Wrack', () => {
+    const s = newGame(2, 'mining');
+    s.credits = 1e6;
+    s.stations[0].sector = 'rhy';
+    buyScout(s);
+    const c0 = s.credits;
+    sendScout(s, scouts(s)[0].id, 'rhy', 0, true);
+    run(s, SEARCH_TIME + 20);
+    expect(s.credits - c0).toBe(SALVAGE.split);
   });
 });

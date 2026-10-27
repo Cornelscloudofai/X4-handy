@@ -36,7 +36,7 @@ import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { devRevealAll, tintOf } from '../render/galaxyView';
 import { FRONTIER, FRONTIER_MAP, REGIONS, type RegionId } from '../data/frontier';
 import { frontierImage } from './reveal';
-import { SCOUT_PRICE, gateState, repairCost, scoutPath, scouts } from '../engine/explore';
+import { SCOUT_PRICE, gateBuyCost, gateState, gateSupply, scoutPath, scouts } from '../engine/explore';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
@@ -388,7 +388,7 @@ function akteModal(state: GameState): string {
     return `<div class="akte-region" style="--tint:${r.tint}"><h3>${esc(r.name)} · ${got.length}/${all.length}</h3><p>${esc(r.mood)}</p><div class="akte-list">${all.map((f) => {
       if (!found.includes(f.id)) return '<div class="akte-item unknown">?</div>';
       const img = frontierImage(f.id);
-      return `<div class="akte-item ${img ? 'img' : ''}" ${img ? `style="--img:url(${img})"` : ''}><b>${esc(f.name)}</b><span>${esc(f.description)}</span><small>entdeckt ${esc(fmtClock(when[f.id] ?? 0))}</small></div>`;
+      return `<div class="akte-item ${img ? 'img' : ''}" ${img ? `style="--img:url(${img})"` : ''}><b>${esc(f.name)}</b><span>${esc(f.description)}</span><q>${esc(f.log)}</q><small>entdeckt ${esc(fmtClock(when[f.id] ?? 0))}</small></div>`;
     }).join('')}</div></div>`;
   }).join('');
   const n = found.length;
@@ -410,9 +410,18 @@ function exploreBlock(state: GameState, id: string): string {
   for (const g of (state.frontier?.signatures ?? []).filter((x) => x.startsWith(id + '>'))) {
     const st = gateState(state, g);
     if (st.kind === 'sig') {
-      rows.push(`<div class="gx-gate"><span>${icon('target', 15)}Torsignatur ins Unbekannte – das Tor ist erloschen.</span><button class="btn small amber ${state.credits >= repairCost(g) ? '' : 'disabled'}" ${act('gate-repair', { sig: g })}>Tor instand setzen · ${fmtCr(repairCost(g))}</button></div>`);
+      rows.push(`<div class="gx-gate"><span>${icon('target', 15)}Ein erloschenes Tor. Die Ringe sind heil, die Energiekopplung ist durchgebrannt.</span><button class="btn small amber" ${act('gate-repair', { sig: g })}>Baustelle einrichten</button></div>`);
+    } else if (st.kind === 'site') {
+      const supply = gateSupply(state, g);
+      const cost = gateBuyCost(state, g);
+      const wares = Object.entries(st.need).map(([w, n]) => {
+        const have = st.have[w] ?? 0;
+        return `<div class="gx-ware ${have >= n - 1e-6 ? 'done' : ''}">${wareIcon(w, 16)}<span>${esc(WARES[w].name)}</span><b>${fmtNum(have)} / ${fmtNum(n)}</b><i style="--p:${Math.min(100, (have / n) * 100).toFixed(1)}%"></i></div>`;
+      }).join('');
+      const n = Object.values(supply).reduce((a, b) => a + b, 0);
+      rows.push(`<div class="gx-gate site"><span>${icon('target', 15)}Baustelle am Tor: Waren anliefern</span><div class="gx-wares">${wares}</div><div class="gx-actions"><button class="btn small primary ${n ? '' : 'disabled'}" ${act('gate-deliver', { sig: g })}>Aus deinen Lagern liefern${n ? ` · ${fmtNum(n)}` : ''}</button><button class="btn small ${state.credits >= cost ? '' : 'disabled'}" ${act('gate-buy', { sig: g })}>Rest zukaufen · ${fmtCr(cost)}</button></div></div>`);
     } else if (st.kind === 'repair') {
-      rows.push(`<div class="gx-scout"><span class="gx-radar"></span>Tor wird instand gesetzt · ${fmtDur(st.left)}<i style="--p:${Math.round(st.p * 100)}%"></i></div>`);
+      rows.push(`<div class="gx-scout"><span class="gx-radar"></span>Montage am Tor · ${fmtDur(st.left)}<i style="--p:${Math.round(st.p * 100)}%"></i></div>`);
     } else {
       const best = idleAll.map((x) => ({ x, n: scoutPath(state, x.at, id)?.length ?? 99 })).sort((a, b) => a.n - b.n)[0];
       rows.push(`<div class="gx-gate open"><span>${icon('target', 15)}Das Tor ist offen. Was liegt dahinter?</span>${best ? `<button class="btn small primary" ${act('gate-through', { sc: best.x.id, sig: g })}>${esc(best.x.name)} hindurchschicken</button>` : '<span class="small muted">Kein Späher frei.</span>'}</div>`);

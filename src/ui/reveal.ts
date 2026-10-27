@@ -34,6 +34,7 @@ export function showReveal(id: string, day: string, onAkte: () => void): void {
       <span class="rv-eyebrow">Erstsichtung · ${esc(r.name)}</span>
       <h1>${letters}</h1>
       <p>${esc(f.description)}</p>
+      <q>${esc(f.log)}</q>
       <small>${esc(day)}</small>
       <div class="rv-actions"><button class="btn" data-rv="akte">Forschungsakte</button><button class="btn primary" data-rv="ok">Weiter</button></div>
     </div>`;

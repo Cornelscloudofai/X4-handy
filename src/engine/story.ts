@@ -9,6 +9,7 @@ import { factoryUtil } from './npcEconomy';
 import { MODULES } from '../data/modules';
 import { vendorsFor } from '../data/vendors';
 import { book } from './ledger';
+import { scouts } from './explore';
 
 export interface StoryMission {
   id: string;
@@ -125,6 +126,47 @@ export const STORY: StoryMission[] = [
     hint: 'Tippe oben links auf den Sektornamen, um die Galaxiekarte zu öffnen.',
     progress: (s) => ({ cur: s.sectors.length - 1, target: 1 }),
     reward: { credits: 1_500_000, rep: { frf: 2 } },
+  },
+  // Unbekannter Raum: Tevka Rhy und das Signal auf Kanal 9 führen zur ersten Erstsichtung
+  {
+    id: 'x-signal',
+    title: 'Kanal 9',
+    about: 'Späher sind kleine, schnelle Schiffe mit Richtantenne. Sie handeln nicht und bauen nichts ab – sie suchen nach erloschenen Toren.',
+    story: 'Tevka Rhy macht den Funk am Handelsposten von Rhy\'s Defiance. Seit dem Frühjahr hört sie auf Kanal 9 alle 40 Sekunden dasselbe Knacken, aus Richtung des alten Tors, das seit 31 Jahren tot ist. Ihre Familie hält es für einen Defekt in der Anlage. Tevka nicht.',
+    goal: 'Kaufe einen Späher',
+    hint: 'Unten „Karte“ → Rhy\'s Defiance antippen → „Späher kaufen“.',
+    progress: (s) => ({ cur: Math.min(1, scouts(s).length), target: 1 }),
+    reward: { credits: 150_000, rep: { zya: 1 } },
+  },
+  {
+    id: 'x-peil',
+    title: 'Zwei kurz, einer lang',
+    about: 'Ein erloschenes Tor sendet schwach und unregelmäßig. Ohne Peilung findet der Späher es nur mit Glück; wer das Signal hält, findet es sicher. Jedes Gebiet stört das Signal auf eigene Art.',
+    story: 'Tevka hat dir ihre Aufzeichnungen geschickt. Das Knacken hat ein Muster: zwei kurze Impulse, ein langer. So melden sich Sprungtore, in deren Ringen noch Restenergie steckt. „Peil es an, solange es sendet“, schreibt sie. „Ich weiß nicht, wie lange noch.“',
+    goal: 'Finde eine Torsignatur',
+    hint: 'Karte → Rhy\'s Defiance → „Peilen und … schicken“. Antenne auf dem Radar drehen, Frequenz unten an der Welle abstimmen, Signal halten.',
+    progress: (s) => ({ cur: Math.min(1, (s.frontier?.signatures.length ?? 0) + (s.frontier?.discovered.length ?? 0)), target: 1 }),
+    reward: { credits: 200_000, rep: { zya: 1 } },
+  },
+  {
+    id: 'x-gate',
+    title: 'Totes Tor',
+    about: 'Ein erloschenes Tor braucht Hüllenteile für die Ringsegmente und Energiezellen, um die Kopplung neu zu laden. Du lieferst aus deinen Stationslagern; was fehlt, verkaufen Händler mit Aufschlag.',
+    story: 'Der Späher hat das Tor gefunden: alte Bauart, 9 km hinter dem Handelsposten, von Trümmern zugesetzt. Die Ringe sind heil, die Energiekopplung ist durchgebrannt. Tevkas Onkel Dravo hat vor dem Ausfall an diesem Tor gearbeitet. Er sagt, mit 250 Hüllenteilen und tausend Zellen läuft es wieder.',
+    goal: 'Setze das Tor in Rhy\'s Defiance instand',
+    hint: 'Karte → Rhy\'s Defiance → „Baustelle einrichten“ → „Aus deinen Lagern liefern“. Danach dauert die Montage eine halbe Stunde.',
+    progress: (s) => ({ cur: Math.min(1, (s.frontier?.open?.length ?? 0) + (s.frontier?.discovered.length ?? 0)), target: 1 }),
+    reward: { credits: 400_000, rep: { zya: 2 } },
+  },
+  {
+    id: 'x-through',
+    title: 'Was dahinter liegt',
+    about: 'Hinter jedem instand gesetzten Tor liegt ein Sektor, den seit Jahrzehnten niemand gesehen hat. Von dort aus geht die Suche weiter – jeder neue Sektor kann eigene tote Tore haben.',
+    story: 'Das Tor läuft. Auf der anderen Seite antwortet niemand auf Funk. Die letzte Meldung von dort ist 31 Jahre alt: Der Horchposten der Familie Rhy meldete Störungen am Tor, dann brach die Verbindung ab. Dravo will mitfliegen. Tevka sagt, er soll warten, bis der Späher zurück ist.',
+    goal: 'Schick deinen Späher durch das Tor',
+    hint: 'Karte → Rhy\'s Defiance → „… hindurchschicken“.',
+    progress: (s) => ({ cur: Math.min(1, s.frontier?.discovered.length ?? 0), target: 1 }),
+    reward: { credits: 1_000_000, rep: { zya: 2, frf: 1 } },
   },
   {
     id: 'storage',

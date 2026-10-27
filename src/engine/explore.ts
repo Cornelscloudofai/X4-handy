@@ -1,8 +1,12 @@
 // Erkundung des unbekannten Raums: Späher fliegen über die bekannten Tore zu einem Sektor und suchen dort nach
 // Torsignaturen ins Unbekannte. Ob es dort überhaupt etwas gibt, verrät die Suche nicht – „keine Spur“ heißt entweder
 // Pech oder wirklich nichts. Gefundene Signaturen erscheinen auf der Sektorenkarte (state.frontier.signatures).
+// Die Hürden sind Können und eigene Wirtschaft statt Geld und Warten: Die Peilung entscheidet über den Fund, ein
+// erloschenes Tor braucht Waren aus den eigenen Lagern (der Rest lässt sich teuer zukaufen).
 import { FRONTIER, FRONTIER_MAP, type RegionId } from '../data/frontier';
 import { SECTOR_MAP } from '../data/sectors';
+import { WARES } from '../data/wares';
+import { addWare } from './economy';
 import { book } from './ledger';
 import type { GameState } from './types';
 import type { Result } from './actions';
@@ -11,9 +15,10 @@ import { emit, log, rand } from './util';
 export const SCOUT_PRICE = 140_000;
 /** Flugzeit je Tor (s Spielzeit) und Dauer einer Suche */
 export const SCOUT_HOP = 20 * 60;
-export const SEARCH_TIME = 2 * 3600;
-/** Grundchance, eine vorhandene Signatur bei einer Suche zu finden (das Peil-Minispiel verbessert sie) */
-export const SEARCH_CHANCE = 0.5;
+export const SEARCH_TIME = 15 * 60;
+/** Chance ohne Peilung, eine vorhandene Signatur zu finden – eine volle Peilung findet sie sicher */
+export const SEARCH_CHANCE = 0.3;
+export const searchChance = (bonus: number): number => Math.min(1, SEARCH_CHANCE + Math.max(0, bonus) * (1 - SEARCH_CHANCE));
 
 export interface Scout {
   id: string;
@@ -21,23 +26,36 @@ export interface Scout {
   /** Sektor, in dem der Späher gerade ist (beim Flug: der letzte erreichte) */
   at: string;
   /** jump: der letzte Schritt führt durch ein instand gesetztes Tor ins Unentdeckte (Erstsichtung) */
-  task?: { kind: 'fly' | 'search'; target: string; path: string[]; t: number; dur: number; bonus?: number; jump?: boolean };
+  task?: { kind: 'fly' | 'search'; target: string; path: string[]; t: number; dur: number; bonus?: number; jump?: boolean; salvage?: boolean };
 }
 
 export interface FrontierState {
   signatures: string[];
   discovered: string[];
   scouts?: Scout[];
-  /** Tore in Reparatur (Signatur „von>nach“) und schon instand gesetzte */
-  repairs?: { sig: string; t: number; dur: number }[];
+  /** Tore in Reparatur (Signatur „von>nach“): need = Waren, have = schon angeliefert; t läuft erst, wenn alles da ist */
+  repairs?: GateRepair[];
   open?: string[];
   /** Zeitpunkt der Entdeckung je Sektor (Forschungsakte) */
   found?: Record<string, number>;
 }
 
-/** Instandsetzung eines erloschenen Tors: je weiter oben, desto teurer */
-export const REPAIR_COST: Record<RegionId, number> = { glut: 250_000, band: 600_000, kristall: 1_200_000, abgrund: 2_500_000 };
-export const REPAIR_TIME = 3 * 3600;
+export interface GateRepair { sig: string; t: number; dur: number; need?: Record<string, number>; have?: Record<string, number> }
+
+/** Waren für die Instandsetzung eines erloschenen Tors: Hüllenteile für die Ringsegmente, Energiezellen für die
+ *  Kopplung, weiter oben auch Elektronik. Je weiter oben, desto mehr. */
+export const REPAIR_WARES: Record<RegionId, Record<string, number>> = {
+  glut: { hullparts: 250, energycells: 1000 },
+  band: { hullparts: 600, energycells: 2500, microchips: 150 },
+  kristall: { hullparts: 1200, energycells: 5000, claytronics: 200, scanningarrays: 100 },
+  abgrund: { hullparts: 2500, energycells: 10000, claytronics: 600, quantumtubes: 400 },
+};
+/** Montage, sobald alle Waren am Tor sind */
+export const REPAIR_TIME = 30 * 60;
+/** Zukauf fehlender Waren über Händler: Aufschlag auf den Durchschnittspreis */
+export const REPAIR_BUY_MARKUP = 1.4;
+/** Bergung eines Nebensignals aus der Peilung: Credits je Gebiet (Split-Raum: wenig) */
+export const SALVAGE: Record<RegionId | 'split', number> = { split: 25_000, glut: 60_000, band: 120_000, kristall: 250_000, abgrund: 500_000 };
 
 export function frontierState(state: GameState): FrontierState {
   if (!state.frontier) state.frontier = { signatures: [], discovered: [] };
@@ -105,40 +123,125 @@ export function buyScout(state: GameState): Result {
 }
 
 /** Späher zu einem Sektor schicken und dort suchen lassen (bonus: Vorsprung aus dem Peil-Minispiel, 0…1) */
-export function sendScout(state: GameState, scoutId: string, target: string, bonus = 0): Result {
+export function sendScout(state: GameState, scoutId: string, target: string, bonus = 0, salvage = false): Result {
   const s = scouts(state).find((x) => x.id === scoutId);
   if (!s) return fail('Späher nicht gefunden.');
   if (s.task) return fail(`${s.name} ist unterwegs.`);
   if (!reachable(state, target)) return fail('Dieser Sektor ist nicht erreichbar.');
   const path = scoutPath(state, s.at, target);
   if (!path) return fail('Kein Weg dorthin bekannt.');
-  if (path.length > 1) s.task = { kind: 'fly', target, path, t: 0, dur: (path.length - 1) * SCOUT_HOP, bonus };
-  else s.task = { kind: 'search', target, path, t: 0, dur: SEARCH_TIME, bonus };
+  if (path.length > 1) s.task = { kind: 'fly', target, path, t: 0, dur: (path.length - 1) * SCOUT_HOP, bonus, salvage };
+  else s.task = { kind: 'search', target, path, t: 0, dur: SEARCH_TIME, bonus, salvage };
   return ok(path.length > 1 ? `${s.name} fliegt nach ${sectorLabel(target)} (${path.length - 1} Tor${path.length > 2 ? 'e' : ''}) und sucht dort.` : `${s.name} beginnt die Suche in ${sectorLabel(target)}.`);
 }
 
-export function repairCost(sig: string): number {
-  const to = sig.split('>')[1];
-  return REPAIR_COST[FRONTIER_MAP[to]?.region ?? 'glut'];
+/** Schwierigkeit der Peilung (0…1): steigt mit dem Erkundungsfortschritt */
+export const peilDepth = (state: GameState): number => Math.min(1, (state.frontier?.discovered.length ?? 0) / 12);
+
+export const regionOf = (id: string): RegionId | 'split' => FRONTIER_MAP[id]?.region ?? 'split';
+
+/** Waren, die ein Tor braucht (nach dem Gebiet dahinter) */
+export function repairWares(sig: string): Record<string, number> {
+  return { ...REPAIR_WARES[FRONTIER_MAP[sig.split('>')[1]]?.region ?? 'glut'] };
 }
 
-/** Zustand eines gefundenen Tors: Signatur, in Reparatur (0…1) oder offen */
-export function gateState(state: GameState, sig: string): { kind: 'sig' } | { kind: 'repair'; p: number; left: number } | { kind: 'open' } {
+const repairOf = (state: GameState, sig: string) => (state.frontier as FrontierState | undefined)?.repairs?.find((x) => x.sig === sig);
+
+/** Was am Tor noch fehlt (alte Spielstände ohne Warenliste: nichts) */
+export function repairMissing(r: GateRepair): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [id, n] of Object.entries(r.need ?? {})) {
+    const m = n - (r.have?.[id] ?? 0);
+    if (m > 1e-6) out[id] = m;
+  }
+  return out;
+}
+
+/** Was die eigenen Stationen davon gerade hergeben (über der eingestellten Reserve) */
+export function gateSupply(state: GameState, sig: string): Record<string, number> {
+  const r = repairOf(state, sig);
+  const out: Record<string, number> = {};
+  if (!r) return out;
+  for (const [id, miss] of Object.entries(repairMissing(r))) {
+    let n = 0;
+    for (const st of state.stations) n += Math.max(0, (st.inventory[id] ?? 0) - (st.reserve?.[id] ?? 0));
+    const take = Math.floor(Math.min(miss, n));
+    if (take > 0) out[id] = take;
+  }
+  return out;
+}
+
+/** Preis für den Zukauf aller noch fehlenden Waren */
+export function gateBuyCost(state: GameState, sig: string): number {
+  const r = repairOf(state, sig);
+  if (!r) return 0;
+  return Math.round(Object.entries(repairMissing(r)).reduce((sum, [id, n]) => sum + Math.ceil(n) * WARES[id].price.avg * REPAIR_BUY_MARKUP, 0));
+}
+
+/** Zustand eines gefundenen Tors: Signatur, Baustelle (Waren fehlen), Montage (0…1) oder offen */
+export type GateView =
+  | { kind: 'sig' }
+  | { kind: 'site'; need: Record<string, number>; have: Record<string, number>; missing: Record<string, number> }
+  | { kind: 'repair'; p: number; left: number }
+  | { kind: 'open' };
+export function gateState(state: GameState, sig: string): GateView {
   const f = state.frontier as FrontierState | undefined;
   if (f?.open?.includes(sig)) return { kind: 'open' };
   const r = f?.repairs?.find((x) => x.sig === sig);
-  return r ? { kind: 'repair', p: r.t / r.dur, left: r.dur - r.t } : { kind: 'sig' };
+  if (!r) return { kind: 'sig' };
+  const missing = repairMissing(r);
+  if (Object.keys(missing).length) return { kind: 'site', need: r.need ?? {}, have: r.have ?? {}, missing };
+  return { kind: 'repair', p: r.t / r.dur, left: r.dur - r.t };
 }
 
+/** Baustelle am Tor einrichten – danach werden die Waren angeliefert */
 export function repairGate(state: GameState, sig: string): Result {
   const fs = frontierState(state);
   if (!fs.signatures.includes(sig)) return fail('Keine Torsignatur bekannt.');
-  if (gateState(state, sig).kind !== 'sig') return fail('Das Tor wird schon instand gesetzt.');
-  const cost = repairCost(sig);
-  if (state.credits < cost) return fail('Nicht genug Credits für die Instandsetzung.');
-  (fs.repairs ??= []).push({ sig, t: 0, dur: REPAIR_TIME });
-  book(state, -cost, 'build', `Tor instand setzen: ${sectorLabel(sig.split('>')[0])}`);
-  return ok(`Ein Reparaturtrupp fliegt nach ${sectorLabel(sig.split('>')[0])} und setzt das Tor instand.`);
+  if (gateState(state, sig).kind !== 'sig') return fail('Am Tor wird schon gearbeitet.');
+  (fs.repairs ??= []).push({ sig, t: 0, dur: REPAIR_TIME, need: repairWares(sig), have: {} });
+  const list = Object.entries(repairWares(sig)).map(([id, n]) => `${n.toLocaleString('de-DE')} ${WARES[id].name}`).join(', ');
+  return ok(`Baustelle am Tor in ${sectorLabel(sig.split('>')[0])} eingerichtet. Gebraucht: ${list}.`);
+}
+
+function addHave(r: GateRepair, id: string, n: number): void {
+  (r.have ??= {})[id] = (r.have[id] ?? 0) + n;
+}
+
+/** Waren aus den eigenen Stationslagern ans Tor liefern (über der Reserve; größte Bestände zuerst) */
+export function deliverGate(state: GameState, sig: string): Result {
+  const r = repairOf(state, sig);
+  if (!r) return fail('Keine Baustelle an diesem Tor.');
+  const supply = gateSupply(state, sig);
+  if (!Object.keys(supply).length) return fail('Deine Lager haben gerade nichts davon übrig.');
+  const parts: string[] = [];
+  for (const [id, want] of Object.entries(supply)) {
+    let left = want;
+    const sts = [...state.stations].sort((a, b) => (b.inventory[id] ?? 0) - (a.inventory[id] ?? 0));
+    for (const st of sts) {
+      if (left <= 0) break;
+      const n = Math.min(left, Math.max(0, (st.inventory[id] ?? 0) - (st.reserve?.[id] ?? 0)));
+      if (n <= 0) continue;
+      addWare(st, id, -n);
+      left -= n;
+    }
+    addHave(r, id, want - left);
+    parts.push(`${Math.round(want - left).toLocaleString('de-DE')} ${WARES[id].name}`);
+  }
+  const done = !Object.keys(repairMissing(r)).length;
+  return ok(`Geliefert: ${parts.join(', ')}.${done ? ' Alles da – die Montage beginnt.' : ''}`);
+}
+
+/** Fehlende Waren bei Händlern zukaufen (mit Aufschlag) */
+export function buyGateRest(state: GameState, sig: string): Result {
+  const r = repairOf(state, sig);
+  if (!r) return fail('Keine Baustelle an diesem Tor.');
+  const cost = gateBuyCost(state, sig);
+  if (cost <= 0) return fail('Es fehlt nichts mehr.');
+  if (state.credits < cost) return fail('Nicht genug Credits für den Zukauf.');
+  for (const [id, n] of Object.entries(repairMissing(r))) addHave(r, id, n);
+  book(state, -cost, 'build', `Torwaren zugekauft: ${sectorLabel(sig.split('>')[0])}`);
+  return ok('Händler liefern den Rest ans Tor. Die Montage beginnt.');
 }
 
 /** Späher durch ein offenes Tor ins Unbekannte schicken */
@@ -168,10 +271,14 @@ export function discover(state: GameState, id: string): void {
 }
 
 /** Abschluss einer Suche: mit Glück eine Signatur ins Unbekannte */
-function finishSearch(state: GameState, s: Scout, sector: string, bonus: number): void {
+function finishSearch(state: GameState, s: Scout, sector: string, bonus: number, salvage: boolean): void {
   const hidden = hiddenLinks(state, sector);
-  const chance = Math.min(0.97, SEARCH_CHANCE + bonus * 0.5);
-  if (hidden.length && rand(state) < chance) {
+  if (salvage) {
+    const cr = SALVAGE[regionOf(sector)];
+    book(state, cr, 'reward', `Bergung: ${sectorLabel(sector)}`, { kind: 'sector', id: sector });
+    log(state, `${s.name} hat das Nebensignal in ${sectorLabel(sector)} angeflogen: ein Wrack. Die Bergung bringt ${cr.toLocaleString('de-DE')} Cr.`, 'good', true, { kind: 'sector', id: sector });
+  }
+  if (hidden.length && rand(state) < searchChance(bonus)) {
     const to = hidden[Math.floor(rand(state) * hidden.length) % hidden.length];
     frontierState(state).signatures.push(`${sector}>${to}`);
     log(state, `${s.name}: Torsignatur in ${sectorLabel(sector)} entdeckt! Sie führt ins Unbekannte.`, 'good', true, { kind: 'sector', id: sector });
@@ -183,6 +290,7 @@ function finishSearch(state: GameState, s: Scout, sector: string, bonus: number)
 export function stepScouts(state: GameState, dt: number): void {
   const fs = state.frontier as FrontierState | undefined;
   for (const r of fs?.repairs ?? []) {
+    if (Object.keys(repairMissing(r)).length) continue;
     r.t += dt;
     if (r.t >= r.dur) {
       (fs!.open ??= []).push(r.sig);
@@ -201,11 +309,11 @@ export function stepScouts(state: GameState, dt: number): void {
       if (task.t >= task.dur) {
         s.at = task.target;
         if (task.jump) { s.task = undefined; discover(state, task.target); }
-        else s.task = { kind: 'search', target: task.target, path: [task.target], t: 0, dur: SEARCH_TIME, bonus: task.bonus };
+        else s.task = { kind: 'search', target: task.target, path: [task.target], t: 0, dur: SEARCH_TIME, bonus: task.bonus, salvage: task.salvage };
       }
     } else if (task.t >= task.dur) {
       s.task = undefined;
-      finishSearch(state, s, task.target, task.bonus ?? 0);
+      finishSearch(state, s, task.target, task.bonus ?? 0, !!task.salvage);
     }
   }
 }

@@ -1,5 +1,6 @@
 // Simulierter Spieler: prüft, ob die Kampagne machbar ist und die Wirtschaft stabil bleibt.
 import { newGame } from '../src/engine/state';
+import { exploreBot } from './explore-bot';
 import { step } from '../src/engine/sim';
 import * as A from '../src/engine/actions';
 import { claimMission, currentMission, missionComplete } from '../src/engine/story';
@@ -47,6 +48,7 @@ for (let h = 0; h < 72; h++) {
       if (miners() < 5 && s.credits > 1.5e6) A.buyShip(s, 'alligator_min', st.id);
     }
     if (m === 'license' && s.credits > 4.2e6) log(A.buyLicense(s, 'tkr').msg);
+    exploreBot(s, m);
   }
   if (h % 4 === 3) log(`Cr ${(s.credits / 1e6).toFixed(2)} Mio | Wert ${(netWorth(s) / 1e6).toFixed(1)} Mio | Ruf ${s.rep.frf.toFixed(1)} | Miner ${miners()} Händler ${traders()} | RM prod ${Math.round(s.totals.produced.refinedmetals ?? 0)} | Erz ${Math.round(s.totals.mined.ore ?? 0)} | verkauft ${(s.totals.sold / 1e6).toFixed(2)} Mio | RM-Preis ${marketPrice(s, 'zhin', 'refinedmetals').toFixed(0)} | Auslastung ${(productionUtil(st) * 100).toFixed(0)}% | NPC ${s.npcs.length} | Mission ${currentMission(s)?.id}`);
 }
