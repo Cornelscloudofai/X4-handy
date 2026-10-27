@@ -37,6 +37,13 @@ einem Solarkraftwerk und einem Miner.
   Netlify Forms (Formular „feedback“, Gerüst `public/__forms.html` für die Erkennung beim Bau); Meldungen stehen im
   Netlify-Projekt unter „Forms“, auf Wunsch per E-Mail. Außerhalb der App-Version (Artifact, Einzeldatei) lässt sich der
   Text kopieren. Ein angefangener Text bleibt als Entwurf erhalten.
+- **Intro beim Start (nur App-Version):** Startschirm „Antippen zum Starten“ (erst die Berührung erlaubt Ton), dann der
+  Trailer (`public/intro/trailer-1.mp4`, 1080×1920, 60 fps, ~24 MB; wird einmal ganz geladen und vom Service Worker
+  zwischengespeichert). Beim allerersten Start läuft er ganz, danach höchstens einmal am Tag und ist überspringbar;
+  Einstellungen → Darstellung: „Intro beim Start“ an/aus und „Intro jetzt ansehen“. Klangteppich und Titelmusik warten,
+  bis das Intro vorbei ist. Neue Trailer-Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
+- **Karrierestart:** Das Willkommensbild driftet langsam (Ken Burns) mit Lichtschweif und Funkenflug, die Startkarten
+  gleiten nacheinander herein und leuchten; nach der Wahl erscheint „Handels-/Schürflizenz erteilt“ mit Startklang.
 - **Als App:** Läuft das Spiel unter eigener Adresse (https, nicht eingebettet), ist es installierbar (Manifest,
   Symbol `public/icon-*.png` aus `node scripts/render-icon.mjs`) und offline spielbar (`public/sw.js`: Seite zuerst aus
   dem Netz, Programmteile und Bilder aus dem Zwischenspeicher). Mehr → Spielstand bietet dann „Als App installieren“

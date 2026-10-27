@@ -25,6 +25,7 @@ import { setWareIconStyle } from './wareIcons';
 import { initTween } from './tween';
 import { initInstall, installApp } from './install';
 import { openFeedback } from './feedback';
+import { introDue, introEnabled, runIntro, setIntroEnabled } from './intro';
 import { applyBackup, autoBackup, collect, getBackup, listBackups, parseBackup, saveBackup } from './backup';
 import { dailyOpts, minigameBack, minigameOpen, openMinigame, preloadMinigames, setMinigameFeedback, type MiniKind, type MiniOpts } from '../minigames/host';
 import { unlocked } from '../minigames/records';
@@ -181,6 +182,11 @@ export function start(): void {
   (window as unknown as { __audio: unknown }).__audio = { names: SOUND_DEMO.map((x) => x[0]), render: (i: number, sec: number) => renderOffline(SOUND_DEMO[i][1], sec), meterPeak, ready: () => preloadSamples(new OfflineAudioContext(2, 1, 44100)), mood: (i: number, sec: number) => renderMood(i, sec) };
   (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), openPanel, gotoSector, renderer };
   requestAnimationFrame(frame);
+  // Intro beim echten Start (App-Version): Startschirm und Trailer, danach Karrierewahl bzw. Karte mit Titelmusik
+  if (introDue()) {
+    document.body.classList.add('intro-on');
+    runIntro(() => document.body.classList.remove('intro-on'));
+  }
   // Feedback auch aus dem Pausenmenü der Minispiele
   setMinigameFeedback((context, cv) => openFeedback({ context, canvas: cv, summary: backupLabel(state), save: () => JSON.stringify(collect(localStorage, backupLabel(state))) }));
   // als App installierbar und offline spielbar (nur unter eigener Adresse)
@@ -1323,6 +1329,13 @@ function onClick(e: MouseEvent): void {
         save();
         openFeedback({ context: feedbackContext(), canvas, summary: backupLabel(state), save: () => JSON.stringify(collect(localStorage, backupLabel(state))) });
         break;
+      case 'intro-toggle': setIntroEnabled(!introEnabled()); refresh(); break;
+      case 'intro-play':
+        document.body.classList.add('intro-on');
+        runIntro(() => document.body.classList.remove('intro-on'), true);
+        // die Berührung, die das Intro öffnet, startet es auch gleich
+        setTimeout(() => document.getElementById('intro')?.click(), 50);
+        break;
       case 'app-install': void installApp().then((ok) => { if (ok) toast('X4 Sektorbau ist jetzt als App installiert.', 'good'); refresh(); }); break;
       case 'copy-export': {
         const t = document.getElementById('exportText') as HTMLTextAreaElement | null;
@@ -1390,6 +1403,13 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'start-game': {
+        // Startfreigabe: kurzer Lichtblitz mit Schriftzug, darunter beginnt das Spiel
+        const fx = document.createElement('div');
+        fx.className = 'launch-fx';
+        fx.innerHTML = `<b><small>Familie Zhin</small>${d.kind === 'trading' ? 'Handelslizenz erteilt' : 'Schürflizenz erteilt'}</b>`;
+        document.body.appendChild(fx);
+        setTimeout(() => fx.remove(), 1700);
+        sfx.launch();
         clearLocal();
         state = newGame(undefined, d.kind === 'trading' ? 'trading' : 'mining');
         ui.panel = null;

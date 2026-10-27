@@ -56,13 +56,28 @@ export async function playTitle(): Promise<void> {
   src.onended = () => { if (playing === me) { playing = null; setTrackActive(false); } };
 }
 
-// Beim Start der Klangwelt einmal pro Sitzung die Titelmusik (nicht mitten im Minispiel)
+// Beim Start der Klangwelt einmal pro Sitzung die Titelmusik (nicht mitten im Minispiel). Während des Intros wartet
+// sie und setzt erst danach ein – zur Karrierewahl bzw. beim Wiedereinstieg.
 let titlePlayed = false;
+let titleHeld = false;
+let titlePending = false;
 onSoundscapeStart(() => {
   if (titlePlayed || currentScene() === 'minigame') return;
+  if (titleHeld) { titlePending = true; return; }
   titlePlayed = true;
   void playTitle();
 });
+
+/** Titelmusik zurückhalten (Intro läuft) */
+export function holdTitle(): void {
+  titleHeld = true;
+}
+
+/** Intro vorbei: Titelmusik jetzt starten, falls die Klangwelt schon läuft */
+export function releaseTitle(): void {
+  titleHeld = false;
+  if (titlePending && !titlePlayed) { titlePending = false; titlePlayed = true; void playTitle(); }
+}
 
 /** Im Minispiel tritt die Titelmusik zurück; außerhalb endet die Minispielmusik */
 export function sceneChanged(scene: string): void {

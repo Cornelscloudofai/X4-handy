@@ -6,6 +6,7 @@ import { MISSIONS, MISSION_IDS, recordKey } from '../minigames/missions';
 import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooterData';
 import { installState } from './install';
+import { introAvailable, introEnabled } from './intro';
 import { tunePanel } from '../minigames/tunePanel';
 import { loadoutView } from './loadoutView';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
@@ -1433,6 +1434,8 @@ function morePanel(state: GameState, ui: UIState): string {
           <div class="row"><div class="grow"><div class="title" style="font-weight:500">Warensymbole</div><div class="sub">${ui.iconStyle === 'glow' ? 'Leuchtend – gefüllt mit Glühen' : 'Linie – nur Umrisse'} · <a class="link" ${act('ware-icons')}>alle ansehen</a></div></div>
           <div class="toggle"><button class="plain on" ${act('icon-style', { style: ui.iconStyle === 'glow' ? 'line' : 'glow' })}>${ui.iconStyle === 'glow' ? 'Leuchtend' : 'Linie'}</button></div></div>
           ${toggleRow('Animationen und Effekte', 'Funken, Triebwerke, driftende Nebel', !ui.reducedMotion, ui.reducedMotion ? 'Reduziert' : 'Voll', 'motion-toggle')}
+          ${introAvailable() ? `${toggleRow('Intro beim Start', 'Der Trailer läuft höchstens einmal am Tag beim Start der App und lässt sich überspringen', introEnabled(), introEnabled() ? 'An' : 'Aus', 'intro-toggle')}
+          ${linkRow('play', 'Intro jetzt ansehen', 'Den Trailer noch einmal abspielen', 'intro-play')}` : ''}
         </div></div>
         <div class="section"><h3>Ton</h3><div class="box rows">
           ${toggleRow('Klänge', 'Oberfläche, Effekte, Atmosphäre und Klangteppich', soundEnabled(), soundEnabled() ? 'An' : 'Aus', 'sound-toggle')}
@@ -1832,7 +1835,7 @@ function appSection(): string {
 function welcomeModal(hint?: UIState['restoreHint']): string {
   const restore = hint ? `<div class="box rows" style="margin:0 0 12px"><div class="row tap" ${act('backup-restore', { id: String(hint.id) })}>${icon('clock', 20)}<div class="grow"><div class="title" style="font-weight:500">Gesicherten Spielstand laden</div><div class="sub wrap">${esc(hint.label || 'Sicherung')} · ${esc(new Date(hint.created).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</div></div>${icon('chev', 20, 'chev')}</div></div>` : '';
   return `<div class="modal" role="dialog" aria-modal="true" aria-label="Willkommen">
-    <div class="welcome-hero art" style="--hero:url(${CAREER.hero})"><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
+    <div class="welcome-hero art" style="--hero:url(${CAREER.hero})"><div class="welcome-embers">${Array.from({ length: 14 }, (_, i) => `<i style="left:${(i * 37 + 11) % 96}%;animation-delay:${((i * 0.71) % 6).toFixed(2)}s;animation-duration:${(5 + (i % 4) * 0.8).toFixed(1)}s;--dx:${((i % 5) - 2) * 14}px"></i>`).join('')}</div><div class="logo">X4 <em>Sektorbau</em></div><p>Familie Zhin, kurz nach dem Xenon-Angriff. Du bekommst Baurechte und eine kleine Station: Kern, Dock, Container- und Erzlager – noch ohne Produktion. Verdiene dein erstes Geld und mach daraus ein Wirtschaftsimperium.</p></div>
     <div class="sheet-body">${restore}<div class="small muted" style="margin:0 0 8px">${hint ? 'Oder neu anfangen:' : 'Wie willst du anfangen?'}</div>
       <div class="start-pick">
         <button class="start-card miner" ${act('start-game', { kind: 'mining' })}><span class="start-img" style="background-image:url(${CAREER.mining})"><em>${icon('miner', 16)}Bergbau</em></span><span class="start-txt"><b>Loslegen mit Bergbau</b><span>Tuatara-Miner (S) · 5.000 Cr</span><small>Erz oder Silizium fördern und damit einen Wirtschaftszweig voranbringen.</small></span></button>

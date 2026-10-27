@@ -1324,3 +1324,66 @@ button.hgr-card:active { transform: scale(0.97); }
 .fb-status { margin: 0; min-height: 1.2em; }
 .fb-status.good { color: #6be38f; }
 .fb-status.neg { color: #ff9aa4; }
+
+/* ---------- Intro: Startschirm und Trailer ---------- */
+.intro { position: fixed; inset: 0; z-index: 300; background: #02060c; display: grid; place-items: center; overflow: hidden; cursor: pointer; animation: fade 0.4s; }
+.intro.out { animation: introOut 0.85s ease forwards; pointer-events: none; }
+@keyframes introOut { to { opacity: 0; transform: scale(1.04); } }
+/* Sternenfeld in drei Tiefen, langsam driftend */
+.intro-stars, .intro-stars::before, .intro-stars::after { position: absolute; inset: -50%; content: ''; background-repeat: repeat; }
+.intro-stars { background-image: radial-gradient(1.2px 1.2px at 20px 30px, #cfe 50%, transparent 52%), radial-gradient(1px 1px at 140px 90px, #9fd 50%, transparent 52%), radial-gradient(1.4px 1.4px at 80px 160px, #fff 50%, transparent 52%); background-size: 200px 200px; opacity: 0.55; animation: starDrift 90s linear infinite; }
+.intro-stars::before { background-image: radial-gradient(1px 1px at 50px 70px, #bff7ec 50%, transparent 52%), radial-gradient(1px 1px at 170px 20px, #fff 50%, transparent 52%); background-size: 260px 260px; opacity: 0.5; animation: starDrift 60s linear infinite reverse; }
+.intro-stars::after { background: radial-gradient(60% 45% at 50% 42%, rgba(63, 224, 197, 0.18), transparent 70%), radial-gradient(40% 30% at 70% 70%, rgba(255, 166, 61, 0.12), transparent 70%); animation: nebulaPulse 8s ease-in-out infinite; }
+@keyframes starDrift { to { transform: translate3d(-200px, 120px, 0); } }
+@keyframes nebulaPulse { 50% { opacity: 0.6; transform: scale(1.06); } }
+.intro-start { position: relative; text-align: center; padding: 24px; transition: opacity 0.6s, transform 0.6s; }
+.intro-logo small { display: block; font-family: var(--font-display); font-weight: 600; letter-spacing: 0.4em; color: var(--teal); font-size: 14px; margin-bottom: 12px; animation: riseIn 1.2s 0.2s both; }
+.intro-logo b { display: block; font-family: var(--font-display); font-weight: 700; font-size: clamp(40px, 13vw, 72px); letter-spacing: 0.08em; line-height: 1.02; color: #effffb; text-shadow: 0 0 28px rgba(63, 224, 197, 0.75), 0 0 6px rgba(63, 224, 197, 0.6); animation: riseIn 1.4s 0.4s both, logoGlow 4s 1.8s ease-in-out infinite; }
+.intro-logo b em { font-style: normal; display: block; color: var(--teal); }
+@keyframes riseIn { from { opacity: 0; transform: translateY(18px); filter: blur(6px); } }
+@keyframes logoGlow { 50% { text-shadow: 0 0 44px rgba(63, 224, 197, 0.95), 0 0 10px rgba(191, 247, 236, 0.8); } }
+.intro-tap { margin-top: 44px; font-family: var(--font-display); font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; font-size: 15px; color: #bff7ec; animation: riseIn 1s 1.4s both, tapPulse 2.2s 2.4s ease-in-out infinite; }
+@keyframes tapPulse { 50% { opacity: 0.35; } }
+.intro-load { margin: 18px auto 0; width: 160px; height: 2px; border-radius: 2px; background: rgba(63, 224, 197, 0.15); overflow: hidden; animation: riseIn 1s 1.6s both; transition: opacity 0.6s; }
+.intro-load i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #3fe0c5, #bff7ec); box-shadow: 0 0 8px #3fe0c5; transition: width 0.2s; }
+.intro.ready .intro-load { opacity: 0; }
+.intro.waiting .intro-tap { animation: tapPulse 0.8s ease-in-out infinite; }
+.intro.waiting .intro-tap::after { content: ' …'; }
+.intro-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.9s; background: #02060c; }
+.intro.playing .intro-video { opacity: 1; }
+.intro.playing .intro-start { opacity: 0; transform: scale(0.96); }
+.intro-skip { position: absolute; right: 14px; top: calc(var(--safe-top, 0px) + 14px); z-index: 2; padding: 9px 14px; border-radius: 999px; font-weight: 600; font-size: 14px; color: #effffb; background: rgba(2, 6, 12, 0.55); border: 1px solid rgba(191, 247, 236, 0.35); backdrop-filter: blur(4px); animation: fade 0.4s; }
+.intro-fade { position: absolute; inset: 0; background: #02060c; pointer-events: none; opacity: 0; }
+
+/* ---------- Karrierewahl: Bewegung und Vorfreude ---------- */
+.welcome-hero.art::before { animation: heroDrift 26s ease-in-out infinite alternate; transform-origin: 60% 40%; }
+@keyframes heroDrift { from { transform: scale(1.02); background-position: 45% top; } to { transform: scale(1.1); background-position: 58% top; } }
+/* Lichtschimmer, der über das Hangar-Bild zieht */
+.welcome-hero.art::after { content: ''; position: absolute; inset: 0 0 auto; z-index: -1; aspect-ratio: 1672 / 941; border-radius: 22px 22px 0 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(191, 247, 236, 0.16) 47%, rgba(255, 210, 140, 0.12) 52%, transparent 64%) -120% 0 / 220% 100% no-repeat; animation: heroSweep 7s 1.2s ease-in-out infinite; -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent); mask-image: linear-gradient(180deg, #000 55%, transparent); }
+@keyframes heroSweep { 0% { background-position: -120% 0; } 45%, 100% { background-position: 220% 0; } }
+.welcome-hero .logo { animation: riseIn 1.1s 0.15s both, logoGlow 5s 1.5s ease-in-out infinite; }
+.welcome-hero p { animation: riseIn 1s 0.45s both; }
+.start-pick .start-card { animation: cardIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.start-pick .start-card:nth-child(1) { animation-delay: 0.7s; }
+.start-pick .start-card:nth-child(2) { animation-delay: 0.9s; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(26px) scale(0.97); } }
+.start-card { position: relative; box-shadow: 0 0 0 0 transparent; transition: box-shadow 0.3s, transform 0.2s; }
+.start-card::after { content: ''; position: absolute; inset: -1px; border-radius: 14px; pointer-events: none; border: 1px solid color-mix(in srgb, var(--c) 60%, transparent); opacity: 0; animation: cardGlow 3.6s 1.8s ease-in-out infinite; }
+.start-card.trader::after { animation-delay: 3.6s; }
+@keyframes cardGlow { 50% { opacity: 1; box-shadow: 0 0 22px color-mix(in srgb, var(--c) 35%, transparent); } }
+.start-card:active { transform: scale(0.985); }
+.start-img { overflow: hidden; }
+.start-img::before { content: ''; position: absolute; inset: 0; background: inherit; background-size: cover; animation: heroDrift 18s ease-in-out infinite alternate; }
+/* Funken, die im Hangar aufsteigen */
+.welcome-embers { position: absolute; inset: 0 0 auto; aspect-ratio: 1672 / 941; pointer-events: none; overflow: hidden; z-index: -1; }
+.welcome-embers i { position: absolute; bottom: 8%; width: 3px; height: 3px; border-radius: 50%; background: #ffc46b; box-shadow: 0 0 8px 2px rgba(255, 170, 70, 0.8); opacity: 0; animation: ember 6s linear infinite; }
+.welcome-embers i:nth-child(3n) { background: #bff7ec; box-shadow: 0 0 8px 2px rgba(63, 224, 197, 0.8); width: 2px; height: 2px; }
+@keyframes ember { 0% { opacity: 0; transform: translate(0, 0); } 10% { opacity: 1; } 80% { opacity: 0.8; } 100% { opacity: 0; transform: translate(var(--dx, 20px), -140px); } }
+/* solange das Intro läuft, warten die Einblendungen */
+body.intro-on .welcome-hero .logo, body.intro-on .welcome-hero p, body.intro-on .start-pick .start-card { animation-play-state: paused; }
+
+/* Startfreigabe nach der Karrierewahl */
+.launch-fx { position: fixed; inset: 0; z-index: 250; pointer-events: none; display: grid; place-items: center; background: radial-gradient(circle at 50% 55%, rgba(191, 247, 236, 0.9), rgba(63, 224, 197, 0.35) 25%, rgba(2, 6, 12, 0.95) 60%); animation: launchFx 1.6s ease forwards; }
+.launch-fx b { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; font-size: 18px; color: #effffb; text-shadow: 0 0 20px rgba(63, 224, 197, 0.9); animation: riseIn 0.6s both; text-align: center; padding: 0 20px; }
+.launch-fx b small { display: block; font-size: 12px; letter-spacing: 0.32em; color: var(--teal); margin-bottom: 8px; }
+@keyframes launchFx { 0% { opacity: 0; } 15% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
