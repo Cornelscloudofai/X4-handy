@@ -1,5 +1,6 @@
 // Sektorenkarte: Sektoren als Glas-Sechsecke mit Sprungtor-Verbindungslinien auf ruhigem Grund
 import { SECTORS, SECTOR_MAP, hexCorners } from '../data/sectors';
+import { FRONTIER, FRONTIER_MAP, REGIONS, SPLIT_MAP_POS } from '../data/frontier';
 import type { GameState } from '../engine/types';
 import type { Camera } from './camera';
 import { BG_IMAGES } from './bgImages';
@@ -8,15 +9,38 @@ import { stationAlerts } from '../engine/analysis';
 const FONT = '"Chakra Petch", "Barlow", system-ui, sans-serif';
 export const GALAXY_HEX = 100;
 
+/** Lage auf der Sektorenkarte (eigene Anordnung: Split-Raum unten, der unbekannte Raum darüber) */
 export function sectorCenter(id: string): { x: number; z: number } {
-  const s = SECTOR_MAP[id];
-  return { x: GALAXY_HEX * 1.5 * s.q, z: GALAXY_HEX * Math.sqrt(3) * (s.r + s.q / 2) };
+  const p = SPLIT_MAP_POS[id] ?? FRONTIER_MAP[id] ?? SECTOR_MAP[id];
+  return { x: GALAXY_HEX * 1.5 * p.q, z: GALAXY_HEX * Math.sqrt(3) * (p.r + p.q / 2) };
+}
+
+interface MapNode { id: string; name: string; q: number; r: number; links: string[]; frontier: boolean }
+
+/** Was auf der Karte steht: der Split-Raum und alle schon entdeckten neuen Sektoren (Unentdecktes gar nicht) */
+export function mapNodes(state: GameState): MapNode[] {
+  const found = new Set(state.frontier?.discovered ?? []);
+  const nodes: MapNode[] = SECTORS.map((s) => ({ id: s.id, name: s.name, ...(SPLIT_MAP_POS[s.id] ?? s), links: s.links, frontier: false }));
+  for (const f of FRONTIER) if (found.has(f.id)) nodes.push({ id: f.id, name: f.name, q: f.q, r: f.r, links: f.links, frontier: true });
+  return nodes;
+}
+
+export function nodeName(id: string): string {
+  return SECTOR_MAP[id]?.name ?? FRONTIER_MAP[id]?.name ?? id;
+}
+
+/** Grenzen der sichtbaren Karte (Weltkoordinaten), für Einpassen und Verschieben */
+export function mapBounds(state: GameState): { x0: number; x1: number; z0: number; z1: number } {
+  const pts = mapNodes(state).map((n) => sectorCenter(n.id));
+  const m = GALAXY_HEX;
+  return { x0: Math.min(...pts.map((p) => p.x)) - m, x1: Math.max(...pts.map((p) => p.x)) + m, z0: Math.min(...pts.map((p) => p.z)) - m, z1: Math.max(...pts.map((p) => p.z)) + m };
 }
 
 /** Farbschimmer je Sektor (nur eine Ahnung – wie es dort aussieht, zeigt erst der Besuch) */
 const TINT: Record<string, string> = { zhin: '63,200,190', tkr: '200,150,90', cascade: '230,170,90', ravine: '110,140,210', rhy: '140,120,210', hoa: '90,130,200', zyarth: '210,110,120' };
 export function tintOf(id: string): string {
   if (TINT[id]) return TINT[id];
+  if (FRONTIER_MAP[id]) return REGIONS[FRONTIER_MAP[id].region].tint;
   let h = 0;
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return ['63,200,190', '200,150,90', '110,140,210', '140,120,210', '210,110,120'][h % 5];
@@ -129,15 +153,25 @@ export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam:
   for (const st of state.stations) known.add(st.sector);
   const rr = GALAXY_HEX * cam.zoom * 0.8;
   const warnAt = new Set(state.stations.filter((st) => stationAlerts(state, st).length).map((st) => st.sector));
-  // Verbindungen
-  for (const s of SECTORS) {
+  const nodes = mapNodes(state);
+  const onMap = new Set(nodes.map((n) => n.id));
+  for (const n of nodes) if (n.frontier) known.add(n.id);
+  // Verbindungen (nur zwischen Sektoren, die auf der Karte stehen); entfernte Tore als Bogen
+  const drawn = new Set<string>();
+  for (const s of nodes) {
     for (const l of s.links) {
-      if (l < s.id) continue;
+      const pair = s.id < l ? `${s.id}|${l}` : `${l}|${s.id}`;
+      if (!onMap.has(l) || drawn.has(pair)) continue;
+      drawn.add(pair);
       const a = sectorCenter(s.id), b = sectorCenter(l);
       const [ax, ay] = cam.toScreen(a.x, a.z), [bx, by] = cam.toScreen(b.x, b.z);
       const d = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / d, uy = (by - ay) / d;
       const off = rr * 0.87;
       const x1 = ax + ux * off, y1 = ay + uy * off, x2 = bx - ux * off, y2 = by - uy * off;
+      const far = Math.hypot(b.x - a.x, b.z - a.z) > GALAXY_HEX * 2.1;
+      const bend = far ? d * 0.22 * (s.id < l ? 1 : -1) : 0;
+      const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
+      const along = (t: number): [number, number] => [(1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * mx + t * t * x2, (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * my + t * t * y2];
       const mine = state.sectors.includes(s.id) || state.sectors.includes(l);
       const hidden = !known.has(s.id) || !known.has(l);
       ctx.save();
@@ -147,7 +181,7 @@ export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam:
       else { ctx.strokeStyle = 'rgba(255,215,160,0.55)'; ctx.lineWidth = 1.4; }
       ctx.beginPath();
       ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.quadraticCurveTo(mx, my, x2, y2);
       ctx.stroke();
       ctx.restore();
       for (const [x, y] of [[x1, y1], [x2, y2]]) {
@@ -160,7 +194,7 @@ export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam:
       // Verkehr auf eigenen Verbindungen: ein Licht pendelt durchs Tor
       if (mine && !hidden) {
         const t = 0.5 + 0.42 * Math.sin(now / 1400 + (s.q + s.r) * 1.7);
-        const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+        const [x, y] = along(t);
         const g = ctx.createRadialGradient(x, y, 0, x, y, 5);
         g.addColorStop(0, 'rgba(235,255,250,1)');
         g.addColorStop(1, 'rgba(63,224,197,0)');
@@ -171,8 +205,40 @@ export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam:
       }
     }
   }
+  // Gefundene Torsignaturen: gestrichelte Linie ins Unbekannte, am Ende ein pulsierendes Signal (kein Sechseck)
+  for (const sig of state.frontier?.signatures ?? []) {
+    const [from, to] = sig.split('>');
+    if (!onMap.has(from) || onMap.has(to) || !FRONTIER_MAP[to]) continue;
+    const a = sectorCenter(from), b = sectorCenter(to);
+    const [ax, ay] = cam.toScreen(a.x, a.z), [bx, by] = cam.toScreen(b.x, b.z);
+    const d = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / d, uy = (by - ay) / d;
+    const x1 = ax + ux * rr * 0.87, y1 = ay + uy * rr * 0.87, x2 = bx - ux * rr * 0.5, y2 = by - uy * rr * 0.5;
+    const g = ctx.createLinearGradient(x1, y1, x2, y2);
+    g.addColorStop(0, 'rgba(160,210,255,0.6)');
+    g.addColorStop(1, 'rgba(160,210,255,0.05)');
+    ctx.save();
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([3, 5]);
+    ctx.lineDashOffset = -now / 60;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+    const p = (now % 2400) / 2400;
+    ctx.strokeStyle = `rgba(170,215,255,${(0.6 * (1 - p)).toFixed(3)})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(x2, y2, 3 + p * 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(200,230,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(x2, y2, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
   // Sechsecke
-  for (const s of SECTORS) {
+  for (const s of nodes) {
     const c = sectorCenter(s.id);
     const [cx, cy] = cam.toScreen(c.x, c.z);
     const owned = state.sectors.includes(s.id);
@@ -275,11 +341,11 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.restore();
 }
 
-export function galaxyHit(cam: Camera, sx: number, sy: number): string | null {
+export function galaxyHit(state: GameState, cam: Camera, sx: number, sy: number): string | null {
   const [wx, wz] = cam.toWorld(sx, sy);
   let best: string | null = null;
   let bd = Infinity;
-  for (const s of SECTORS) {
+  for (const s of mapNodes(state)) {
     const c = sectorCenter(s.id);
     const d = Math.hypot(c.x - wx, c.z - wz);
     if (d < GALAXY_HEX * 0.9 && d < bd) { bd = d; best = s.id; }

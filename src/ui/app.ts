@@ -17,7 +17,7 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
-import { GALAXY_HEX, drawGalaxy, drawGalaxyBackdrop, galaxyHit, sectorCenter } from '../render/galaxyView';
+import { GALAXY_HEX, drawGalaxy, drawGalaxyBackdrop, galaxyHit, mapBounds, sectorCenter } from '../render/galaxyView';
 import { SectorRenderer, shipLength } from '../render/sectorView';
 import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
@@ -233,9 +233,16 @@ function fitGalaxy(): void {
   // ganze Karte sichtbar (alle Sechsecke samt Rand), unten Platz für die Sektorkarte nach einem Tipp
   // Platz oben: bis unter die Werkzeugleiste (nach dem Umschalten neu gemessen, s. Aufrufer)
   const top = (document.querySelector('#hud .tool-row')?.getBoundingClientRect().bottom ?? 110) + 8;
-  galaxyCam.fit(GALAXY_HEX * 3.3, bottomHeight() + 8, top);
-  galaxyCam.x = 0;
-  galaxyCam.minZoom = galaxyCam.zoom * 0.7;
+  const bottom = bottomHeight() + 8;
+  // Maßstab wie gewohnt (Sechsecke gut lesbar); passt die Karte nicht ganz, lässt sie sich verschieben
+  galaxyCam.fit(GALAXY_HEX * 3.3, bottom, top);
+  const b = mapBounds(state);
+  const usable = Math.max(100, galaxyCam.h - top - bottom);
+  galaxyCam.zoom = Math.max(0.42, Math.min(galaxyCam.zoom, usable / (b.z1 - b.z0), galaxyCam.w / (b.x1 - b.x0)));
+  galaxyCam.fitZoom = galaxyCam.zoom;
+  galaxyCam.x = (b.x0 + b.x1) / 2;
+  galaxyCam.z = (b.z0 + b.z1) / 2 + (bottom - top) / 2 / galaxyCam.zoom;
+  galaxyCam.minZoom = galaxyCam.zoom * 0.6;
 }
 
 // ---------- Schleife ----------
@@ -261,7 +268,7 @@ function frame(now: number): void {
   followShip();
   zoomTick(dt);
   const c = ui.view === 'galaxy' ? galaxyCam : cam;
-  c.update(dt, ui.view === 'galaxy' ? GALAXY_HEX * 3 : SECTOR_RADIUS * 1.1);
+  c.update(dt, ui.view === 'galaxy' ? GALAXY_HEX * 14 : SECTOR_RADIUS * 1.1);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (ui.view === 'galaxy') {
     drawGalaxyBackdrop(ctx, galaxyCam, now);
@@ -556,7 +563,7 @@ function openPanel(type: PanelType, id?: string, tab?: string, stack = false): v
 
 function onTap(sx: number, sy: number): void {
   if (ui.view === 'galaxy') {
-    const id = galaxyHit(galaxyCam, sx, sy);
+    const id = galaxyHit(state, galaxyCam, sx, sy);
     ui.galaxySel = id;
     if (id) {
       const c = sectorCenter(id);

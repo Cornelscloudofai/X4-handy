@@ -51,6 +51,12 @@ einem Solarkraftwerk und einem Miner.
   (orange bei Problemen), ein Winkel zeigt, wo du bist. Sprungtore als Verbindungslinien mit Torringen (eigene mit
   Verkehr, ins Unerforschte gestrichelt), Unerforschtes nur als Umriss. Tipp zeigt eine Karte (eigenes Gebiet mit Bild,
   sonst Farbschimmer) mit „Hinfliegen“ und „Details“/„Baulizenz“.
+- **Unbekannter Raum (im Aufbau):** Über dem Split-Raum liegen 19 neue Sektoren in vier Gebieten (Glutsee, Schweigendes
+  Band, Kristallgrenze, Abgrund – `src/data/frontier.ts`). Sie stehen erst auf der Karte, wenn sie entdeckt sind
+  (`state.frontier.discovered`); gefundene Torsignaturen (`state.frontier.signatures`, „von>nach“) zeigen als gestrichelte
+  Linie mit pulsierendem Signal ins Leere. Die Karte hat eine eigene Anordnung (Split-Raum unten, `SPLIT_MAP_POS`), weit
+  entfernte Tore als Bogen; sie passt sich der bekannten Fläche an und lässt sich verschieben. Als Nächstes: Späher und
+  Suche, Peil-Minispiel, Durchbruch mit Erstsichtung, Kampagnenkapitel, Inhalte der neuen Sektoren.
 - **Werft als Schauraum (Schiff kaufen):** oben groß das gewählte Schiff in einer Szene, darunter alle Schiffe als
   Draufsicht zum Durchblättern (Größe, Art, Preis, Anzahl im Besitz), Filter Alle/Miner/Transporter, Werte als Balken im
   Vergleich zum stärksten Schiff, Preisaufstellung, Heimatstation; Hinweis, wenn Dock/Pier oder Geld fehlen.

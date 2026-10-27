@@ -30,8 +30,8 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(1200);
 await page.screenshot({ path: `${out}/sektorenkarte-2.png` });
-// Tipp auf Familie Zhin (Mitte) zeigt die Karte mit Bild und „Hinfliegen“
-await page.mouse.click(195, 440);
+// Auswahl von Familie Zhin zeigt die Karte mit Bild und „Hinfliegen“
+await page.evaluate(() => { const g = window.__game; g.ui.galaxySel = 'zhin'; g.refresh(); });
 await page.waitForTimeout(900);
 if (!(await page.locator('.gx-card [data-act="goto-sector"]').count())) fail('Antippen zeigt keine Sektorkarte');
 await page.screenshot({ path: `${out}/sektorenkarte-3.png` });
@@ -40,6 +40,13 @@ await page.waitForTimeout(300);
 await page.click('#hud .tool-row .btn.outline-teal');
 await page.waitForTimeout(500);
 if (!(await page.evaluate(() => window.__game.ui.view === 'sector'))) fail('„Zum Sektor“ führt nicht zurück');
+// Unbekannter Raum: entdeckte Sektoren erscheinen, gefundene Torsignaturen zeigen ins Leere, Unentdecktes bleibt unsichtbar
+await page.evaluate(() => { const g = window.__game; g.state.frontier = { discovered: ['f-ausblick', 'f-glut1', 'f-asche'], signatures: ['f-asche>f-rhak', 'f-glut1>f-schmiede'] }; g.refresh(); });
+await page.click('#nav [data-act="nav"][data-tab="map"]');
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${out}/sektorenkarte-4-neu.png` });
+const hitNew = await page.evaluate(() => /Sektoren bekannt/i.test(document.getElementById('hud').textContent));
+if (!hitNew) fail('Kopfzeile ohne bekannte Sektoren');
 await browser.close();
 console.log(JSON.stringify({ errors }, null, 1));
 if (errors.length) process.exit(1);

@@ -481,6 +481,8 @@ export interface GameState {
   /** Marktwissen (neue Spiele): Momentaufnahmen je Markt, Satelliten, Takt der Schiffsscans */
   intel?: Record<string, { t: number; stock: Record<string, number> }>;
   satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
+  /** Erkundung des unbekannten Raums: gefundene Torsignaturen („von>nach“) und entdeckte neue Sektoren */
+  frontier?: { signatures: string[]; discovered: string[] };
   scanTimer?: number;
   /** Feldausbau je Feld: erreichte Stufe und laufender Ausbau */
   /** Kontobuch der letzten Buchungen */

@@ -34,6 +34,7 @@ import { bigChart, sparkline, type ChartSpec } from './charts';
 import { tw } from './tween';
 import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { tintOf } from '../render/galaxyView';
+import { FRONTIER_MAP, REGIONS } from '../data/frontier';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
@@ -142,7 +143,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 15)}<b class="num">${alerts.length}</b></button>
   </div>
   <div class="sub-row">
-    <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${state.sectors.length} von ${SECTORS.length} Sektoren` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
+    <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${SECTORS.length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
   ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor ${esc(sec.name)}</button>${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
@@ -375,6 +376,10 @@ function gateCard(state: GameState, to: string): string {
 
 /** Karte zu einem Sektor auf der Sektorenkarte: eigenes Gebiet mit seinem Bild, sonst nur der Farbschimmer */
 function galaxyCard(state: GameState, id: string): string {
+  const f = FRONTIER_MAP[id];
+  if (f) {
+    return `<div class="card gx-card frontier" style="--tint:${tintOf(id)}"><div class="gx-body"><span class="gx-eyebrow">${esc(REGIONS[f.region].name)} · neu entdeckt</span><h2>${esc(f.name)}</h2><p>${esc(f.description)}</p></div><button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button></div>`;
+  }
   const s = SECTOR_MAP[id];
   const owned = state.sectors.includes(id);
   const known = knownSectors(state).includes(id);
