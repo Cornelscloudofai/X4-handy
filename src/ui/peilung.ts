@@ -73,7 +73,11 @@ export function runPeilung(o: PeilOpts): void {
   root.innerHTML = `
     <div class="peil-head"><div><span>Peilung · ${info.title}</span><b>${o.sector}</b></div><button class="peil-x" aria-label="Abbrechen">×</button></div>
     <canvas class="peil-cv"></canvas>
-    <div class="peil-help">Radar: Antenne drehen · Welle: seitlich wischen für die Frequenz</div>
+    <div class="peil-pads">
+      <div class="peil-pad" data-pad="dir"><span>Richtung</span><div class="peil-rib"></div><b>0°</b></div>
+      <div class="peil-pad" data-pad="freq"><span>Frequenz</span><div class="peil-rib"></div><b>–</b></div>
+    </div>
+    <div class="peil-help">Links wischen: Antenne drehen · rechts wischen: Frequenz abstimmen</div>
     <div class="peil-lock"><i></i><span>Peilung 0 %</span></div>
     <div class="peil-brief"><span>Störung</span><b>${info.title}</b><p>${info.tip}</p><button class="btn primary" data-peil="start">Peilung starten</button></div>
     <div class="peil-end" hidden></div>`;
@@ -83,6 +87,8 @@ export function runPeilung(o: PeilOpts): void {
   const lockBar = root.querySelector<HTMLElement>('.peil-lock i')!;
   const lockTxt = root.querySelector<HTMLElement>('.peil-lock span')!;
   const help = root.querySelector<HTMLElement>('.peil-help')!;
+  const padDir = root.querySelector<HTMLElement>('[data-pad="dir"]')!;
+  const padFreq = root.querySelector<HTMLElement>('[data-pad="freq"]')!;
   const end = root.querySelector<HTMLElement>('.peil-end')!;
   const brief = root.querySelector<HTMLElement>('.peil-brief')!;
 
@@ -134,26 +140,38 @@ export function runPeilung(o: PeilOpts): void {
     const W = r.width, H = r.height;
     return { r, W, H, cx: W / 2, cy: H * 0.38, R: Math.min(W, H * 0.72) * 0.42, wy: H * 0.86 };
   };
-  // Steuerung: Radar = Richtung (Finger zeigt), Wellenfeld = Frequenz (seitlich wischen), sonst seitlich = Drehen
-  let drag: { x: number; a: number; f: number; zone: 'scope' | 'wave' | 'free' } | null = null;
+  // Steuerung für zwei Hände: links ein Wischfeld für die Richtung, rechts eins für die Frequenz – beide zugleich
+  // bedienbar (je Finger ein eigener Zeiger) und unterhalb von Radar und Welle, damit kein Finger etwas verdeckt.
+  // Wer mag, kann die Antenne auch direkt auf dem Radar ausrichten.
+  type Touch = { zone: 'dir' | 'freq' | 'scope'; x: number; a: number; f: number; el?: HTMLElement };
+  const touches = new Map<number, Touch>();
   const local = (e: PointerEvent) => { const g = geo(); return { g, x: e.clientX - g.r.left, y: e.clientY - g.r.top }; };
   root.addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement).closest('button') || !started) return;
-    const { g, x, y } = local(e);
-    const zone = Math.hypot(x - g.cx, y - g.cy) < g.R * 1.15 ? 'scope' : y > g.cy + g.R * 1.1 ? 'wave' : 'free';
-    drag = { x: e.clientX, a: antenna, f: freq, zone };
-    if (zone === 'scope') antenna = Math.atan2(y - g.cy, x - g.cx);
+    const pad = (e.target as HTMLElement).closest<HTMLElement>('.peil-pad');
+    let zone: Touch['zone'] | null = pad ? (pad.dataset.pad as 'dir' | 'freq') : null;
+    if (!zone && e.target === cv) {
+      const { g, x, y } = local(e);
+      if (Math.hypot(x - g.cx, y - g.cy) < g.R * 1.15) { zone = 'scope'; antenna = Math.atan2(y - g.cy, x - g.cx); }
+    }
+    if (!zone) return;
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    pad?.classList.add('on');
+    touches.set(e.pointerId, { zone, x: e.clientX, a: antenna, f: freq, el: pad ?? undefined });
   });
   root.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const { g, x, y } = local(e);
-    if (drag.zone === 'scope') antenna = Math.atan2(y - g.cy, x - g.cx);
-    else if (drag.zone === 'wave') freq = clamp01(drag.f + (e.clientX - drag.x) / (g.W * 1.4));
-    else antenna = drag.a + (e.clientX - drag.x) * 0.012;
+    const t = touches.get(e.pointerId);
+    if (!t) return;
+    if (t.zone === 'scope') { const { g, x, y } = local(e); antenna = Math.atan2(y - g.cy, x - g.cx); }
+    else if (t.zone === 'dir') antenna = t.a + (e.clientX - t.x) * 0.014;
+    else freq = clamp01(t.f + (e.clientX - t.x) / ((t.el?.clientWidth ?? 160) * 2.2));
   });
-  const up = () => { drag = null; };
+  const up = (e: PointerEvent) => { touches.get(e.pointerId)?.el?.classList.remove('on'); touches.delete(e.pointerId); };
   root.addEventListener('pointerup', up);
   root.addEventListener('pointercancel', up);
+  const padRibDir = padDir.querySelector<HTMLElement>('.peil-rib')!, padRibFreq = padFreq.querySelector<HTMLElement>('.peil-rib')!;
+  const padValDir = padDir.querySelector('b')!, padValFreq = padFreq.querySelector('b')!;
 
   const begin = () => {
     if (started) return;
@@ -240,13 +258,20 @@ export function runPeilung(o: PeilOpts): void {
     }
     if (onEcho) echoHit = 0.5; else echoHit = Math.max(0, echoHit - dt);
     salvMsg = Math.max(0, salvMsg - dt);
+    const deg = Math.round(((antenna * 180) / Math.PI % 360 + 450) % 360);
+    const ribPos = (x: number) => `0 0, ${x.toFixed(1)}px 0, ${x.toFixed(1)}px 100%`;
+    padRibDir.style.backgroundPosition = ribPos(-antenna * 70);
+    padRibFreq.style.backgroundPosition = ribPos(-freq * 400);
+    padValDir.textContent = `${deg}°`;
+    padValFreq.textContent = `${(118 + freq * 24).toFixed(2).replace(".", ",")} MHz`;
+    padFreq.classList.toggle('tuned', freqS > 0.85);
     const frac = Math.min(1, lock / LOCK_NEED);
     lockBar.style.width = `${(frac * 100).toFixed(1)}%`;
     lockTxt.textContent = `Peilung ${Math.round(frac * 100)} % · noch ${Math.max(0, Math.ceil(DURATION - time))} s`;
     root.classList.toggle('locked', s > LOCK_AT && !onSide);
     root.classList.toggle('warn', warn > 0);
     root.classList.toggle('storm', storm > 0);
-    help.textContent = warn > 0 ? 'Sonnensturm zieht auf …' : storm > 0 ? 'Sturm – das Signal geht unter' : echoHit > 0 ? 'Echo – das ist nicht das Tor' : onSide ? 'Nebensignal: Wrack wird geortet …' : salvMsg > 0 ? 'Wrack geortet – der Späher birgt es unterwegs' : freqS < 0.35 && raw < LOCK_AT && dirStrength(antenna, target) > 0.6 ? 'Richtung stimmt – Frequenz abstimmen' : 'Radar: Antenne drehen · Welle: seitlich wischen für die Frequenz';
+    help.textContent = warn > 0 ? 'Sonnensturm zieht auf …' : storm > 0 ? 'Sturm – das Signal geht unter' : echoHit > 0 ? 'Echo – das ist nicht das Tor' : onSide ? 'Nebensignal: Wrack wird geortet …' : salvMsg > 0 ? 'Wrack geortet – der Späher birgt es unterwegs' : freqS < 0.35 && raw < LOCK_AT && dirStrength(antenna, target) > 0.6 ? 'Richtung stimmt – Frequenz abstimmen' : 'Links wischen: Antenne drehen · rechts wischen: Frequenz abstimmen';
 
     // ---- Radar ----
     ctx.clearRect(0, 0, W, H);

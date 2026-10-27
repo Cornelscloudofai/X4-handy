@@ -37,6 +37,22 @@ await page.click('#peilung [data-peil="start"]');
 await page.waitForTimeout(1200);
 if (!(await page.locator('#peilung').count())) fail('Peilung öffnet sich nicht');
 await page.screenshot({ path: `${out}/peil-1-suche.png` });
+// Zwei Finger zugleich: links Richtung, rechts Frequenz
+{
+  const cdp = await page.context().newCDPSession(page);
+  const box = async (sel) => { const b = await page.locator(sel).boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  const L = await box('#peilung [data-pad="dir"]'), R = await box('#peilung [data-pad="freq"]');
+  const before = await page.evaluate(() => ({ a: window.__peil.antenna, f: window.__peil.freq }));
+  const sign = before.f > 0.5 ? -1 : 1; // zur freien Seite der Skala wischen
+  const pts = (dx) => [{ x: L.x + dx, y: L.y, id: 1 }, { x: R.x + sign * dx, y: R.y, id: 2 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pts(0) });
+  for (let i = 1; i <= 6; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pts(i * 6) }); await page.waitForTimeout(30); }
+  await page.screenshot({ path: `${out}/peil-1b-zwei-finger.png` });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const after = await page.evaluate(() => ({ a: window.__peil.antenna, f: window.__peil.freq }));
+  if (Math.abs(after.a - before.a) < 0.2) fail('Richtung reagiert nicht auf den zweiten Finger: ' + JSON.stringify([before, after]));
+  if (Math.abs(after.f - before.f) < 0.03) fail('Frequenz reagiert nicht gleichzeitig: ' + JSON.stringify([before, after]));
+}
 // Nur Richtung, Frequenz verstimmt: keine Peilung
 for (let i = 0; i < 15; i++) {
   await page.evaluate(() => { const p = window.__peil; p.set(p.target); p.setFreq(p.tf > 0.5 ? p.tf - 0.35 : p.tf + 0.35); });

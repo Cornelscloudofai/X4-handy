@@ -62,8 +62,9 @@ einem Solarkraftwerk und einem Miner.
   nicht Geld: ohne Peilung 30 % Fundchance, eine volle Peilung findet eine vorhandene Signatur sicher. „Keine Spur“ heißt
   Pech oder wirklich nichts – das verrät die Suche nicht. Auf der Karte fliegt der Späher als Leuchtdreieck, bei der Suche
   kreist ein Radar über dem Sektor.
-- **Peil-Minispiel (`src/ui/peilung.ts`):** „Peilen und schicken“ öffnet ein Radar mit zwei Reglern: Antenne (auf dem
-  Radar wischen) und Frequenz (seitlich über die Welle wischen). Verstimmt schwebt die Welle und das Signal bleibt zu
+- **Peil-Minispiel (`src/ui/peilung.ts`):** „Peilen und schicken“ öffnet ein Radar mit zwei Wischfeldern unter Radar
+  und Welle, für zwei Hände gleichzeitig: links die Richtung der Antenne, rechts die Frequenz (die Antenne lässt sich auch
+  direkt auf dem Radar ausrichten). Verstimmt schwebt die Welle und das Signal bleibt zu
   schwach. 6 s gehalten = volle Peilung (35 s Zeit); wer das Signal verliert, verliert langsam Peilung. Jedes Gebiet
   stört anders (kurze Einweisung vor dem Start): Split-Raum ruhig mit Sprüngen, **Glutsee** Sonnenstürme (Rand blinkt
   rot, danach ist das Signal verrutscht), **Schweigendes Band** Echos (mehrere Punkte, Echos stottern und kosten

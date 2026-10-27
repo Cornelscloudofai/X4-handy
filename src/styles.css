@@ -1553,12 +1553,20 @@ body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { a
 .btn.dev-reveal.on::before { background: #ffc46b; box-shadow: 0 0 8px #ffc46b; }
 
 /* ---------- Peil-Minispiel ---------- */
-.peil { position: fixed; inset: 0; z-index: 250; display: grid; grid-template-rows: auto 1fr auto auto; background: radial-gradient(90% 60% at 50% 40%, #071a1f, #02060c 75%); color: var(--text); touch-action: none; user-select: none; animation: fade 0.3s; }
+.peil { position: fixed; inset: 0; z-index: 250; display: grid; grid-template-rows: auto 1fr auto auto auto; background: radial-gradient(90% 60% at 50% 40%, #071a1f, #02060c 75%); color: var(--text); touch-action: none; user-select: none; animation: fade 0.3s; }
 .peil-head { display: flex; justify-content: space-between; align-items: center; padding: calc(var(--safe-top, 0px) + 16px) 18px 6px; }
 .peil-head span { display: block; font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: var(--teal); }
 .peil-head b { font-family: var(--font-display); font-size: 20px; }
 .peil-x { width: 40px; height: 40px; border-radius: 50%; font-size: 24px; line-height: 1; color: var(--text-2); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); }
 .peil-cv { width: 100%; height: 100%; display: block; }
+.peil-pads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 4px 14px 10px; }
+.peil-pad { position: relative; display: grid; gap: 6px; padding: 10px 12px 12px; border-radius: 16px; background: rgba(63, 224, 197, 0.06); border: 1px solid rgba(63, 224, 197, 0.3); touch-action: none; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
+.peil-pad span { font-family: var(--font-display); font-size: 10.5px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--teal); pointer-events: none; }
+.peil-pad b { font-family: var(--font-display); font-size: 15px; font-weight: 600; color: #e8fffa; pointer-events: none; font-variant-numeric: tabular-nums; }
+.peil-rib { height: 46px; border-radius: 10px; pointer-events: none; background-color: rgba(0, 0, 0, 0.35); background-image: linear-gradient(90deg, rgba(2, 6, 12, 0.95), transparent 22%, transparent 78%, rgba(2, 6, 12, 0.95)), repeating-linear-gradient(90deg, rgba(150, 240, 225, 0.55) 0 2px, transparent 2px 14px), repeating-linear-gradient(90deg, rgba(150, 240, 225, 0.25) 0 1px, transparent 1px 7px); background-size: 100% 100%, 70px 100%, 14px 60%; background-repeat: no-repeat, repeat-x, repeat-x; background-position: 0 0, 0 0, 0 100%; box-shadow: inset 0 0 0 1px rgba(63, 224, 197, 0.15); }
+.peil-pad::after { content: ''; position: absolute; left: 50%; top: 32px; width: 2px; height: 50px; margin-left: -1px; background: #fff; box-shadow: 0 0 8px rgba(160, 255, 235, 0.9); pointer-events: none; }
+.peil-pad.on { background: rgba(63, 224, 197, 0.14); border-color: rgba(160, 255, 235, 0.8); box-shadow: 0 0 18px rgba(63, 224, 197, 0.3); }
+.peil-pad.tuned b { color: var(--teal); }
 .peil-help { padding: 0 24px 10px; text-align: center; font-size: 13px; color: var(--text-2); }
 .peil-lock { position: relative; margin: 0 18px calc(var(--safe-bottom, 0px) + 22px); height: 34px; border-radius: 10px; overflow: hidden; background: rgba(63, 224, 197, 0.08); border: 1px solid rgba(63, 224, 197, 0.3); }
 .peil-lock i { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, rgba(63, 224, 197, 0.35), rgba(63, 224, 197, 0.75)); box-shadow: 0 0 16px rgba(63, 224, 197, 0.6); transition: width 0.1s linear; }
