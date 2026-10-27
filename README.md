@@ -65,8 +65,13 @@ einem Solarkraftwerk und einem Miner.
   wandernde Signal (mit gelegentlichen Störsprüngen) finden und halten – klare Welle und heller Punkt zeigen die Nähe.
   7 s gehalten = volle Peilung; der Anteil hebt die Fundchance von 50 % bis 97 %. „Nur schicken“ geht ohne Minispiel.
 - **Entwicklerregler auf der Sektorenkarte:** „Spiel“/„Alles“ – zeigt alle Sektoren aufgedeckt (nur Ansicht, der
-  Spielstand bleibt unverändert; gemerkt im Browser). Als Nächstes: Durchbruch mit Erstsichtung, Kampagnenkapitel,
-  Inhalte der neuen Sektoren.
+  Spielstand bleibt unverändert; gemerkt im Browser).
+- **Durchbruch:** Eine gefundene Signatur zeigt ein erloschenes Tor. „Tor instand setzen“ (Glutsee 250.000 Cr, Band
+  600.000, Kristallgrenze 1,2 Mio, Abgrund 2,5 Mio; 3 h), dann einen Späher hindurchschicken. Erstsichtung: Vollbild-
+  Enthüllung (Sechseck zeichnet sich in Licht, füllt sich mit dem Schimmer des Gebiets oder dem Bild
+  `src/assets/sektoren/<id>.jpg`, der Name erscheint Buchstabe für Buchstabe). Vom neuen Sektor aus kann weiter gesucht
+  werden. **Forschungsakte** (Stern-Knopf auf der Sektorenkarte): alle Entdeckungen nach Gebieten mit Datum,
+  Unentdecktes als „?“. Als Nächstes: Kampagnenkapitel, Inhalte der neuen Sektoren.
 - **Werft als Schauraum (Schiff kaufen):** oben groß das gewählte Schiff in einer Szene, darunter alle Schiffe als
   Draufsicht zum Durchblättern (Größe, Art, Preis, Anzahl im Besitz), Filter Alle/Miner/Transporter, Werte als Balken im
   Vergleich zum stärksten Schiff, Preisaufstellung, Heimatstation; Hinweis, wenn Dock/Pier oder Geld fehlen.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/engine/state';
-import { SCOUT_HOP, SCOUT_PRICE, SEARCH_TIME, buyScout, hiddenLinks, scoutPath, scouts, sendScout, stepScouts } from '../src/engine/explore';
+import { REPAIR_COST, REPAIR_TIME, SCOUT_HOP, SCOUT_PRICE, SEARCH_TIME, buyScout, gateState, hiddenLinks, repairGate, scoutPath, scouts, sendScout, sendThrough, stepScouts } from '../src/engine/explore';
+import { onGameEvent } from '../src/engine/util';
 
 const run = (s: ReturnType<typeof newGame>, sec: number) => { for (let t = 0; t < sec; t += 10) stepScouts(s, 10); };
 
@@ -62,5 +63,31 @@ describe('Erkundung: Späher und Suche', () => {
       if (s.frontier!.signatures.length) found++;
     }
     expect(found).toBeGreaterThan(24);
+  });
+
+  it('Durchbruch: Tor instand setzen, Späher fliegt hindurch, Erstsichtung', () => {
+    const s = newGame(5, 'mining');
+    s.credits = 5e6;
+    buyScout(s);
+    s.frontier!.signatures.push('rhy>f-ausblick');
+    const sp = scouts(s)[0];
+    expect(sendThrough(s, sp.id, 'rhy>f-ausblick').ok).toBe(false);
+    const c0 = s.credits;
+    expect(repairGate(s, 'rhy>f-ausblick').ok).toBe(true);
+    expect(c0 - s.credits).toBe(REPAIR_COST.glut);
+    expect(repairGate(s, 'rhy>f-ausblick').ok).toBe(false);
+    run(s, REPAIR_TIME + 20);
+    expect(gateState(s, 'rhy>f-ausblick').kind).toBe('open');
+    const seen: string[] = [];
+    onGameEvent((e) => { if (e.type === 'discovery') seen.push(e.id); });
+    expect(sendThrough(s, sp.id, 'rhy>f-ausblick').ok).toBe(true);
+    run(s, SCOUT_HOP * 2 + 20);
+    expect(s.frontier!.discovered).toContain('f-ausblick');
+    expect(s.frontier!.signatures).not.toContain('rhy>f-ausblick');
+    expect(s.frontier!.found!['f-ausblick']).toBeDefined();
+    expect(seen).toContain('f-ausblick');
+    expect(sp.at).toBe('f-ausblick');
+    // von dort geht es weiter: Glutsee I ist jetzt suchbar
+    expect(hiddenLinks(s, 'f-ausblick')).toEqual(['f-glut1']);
   });
 });

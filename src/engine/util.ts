@@ -55,7 +55,9 @@ export type GameEvent =
   /** Kapitel abgeschlossen (Belohnung abgeholt) */
   | { type: 'chapter'; index: number; title: string; credits: number; faction: FactionId }
   | { type: 'shipBuilt'; station: string; cls: string }
-  | { type: 'sale'; station: string; sector: string; x: number; z: number; value: number };
+  | { type: 'sale'; station: string; sector: string; x: number; z: number; value: number }
+  /** Erstsichtung eines neuen Sektors */
+  | { type: 'discovery'; id: string };
 
 const listeners: ((e: GameEvent) => void)[] = [];
 let muted = 0;

@@ -28,6 +28,7 @@ export type Modal =
   | { type: 'minigames'; level: 1 | 2 | 3 | 4 | 5; gear: 1 | 2 | 3; tab?: 'games' | 'daily' | 'combat' }
   | { type: 'chart'; spec: ChartSpec; hours: number }
   | { type: 'alerts' }
+  | { type: 'akte' }
   | { type: 'export'; text?: string }
   /** Automatische Sicherungen: Liste, ausgewählte zum Wiederherstellen */
   | { type: 'backups'; list?: import('./backup').BackupMeta[]; confirm?: number; note?: string }

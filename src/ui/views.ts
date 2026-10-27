@@ -34,8 +34,9 @@ import { bigChart, sparkline, type ChartSpec } from './charts';
 import { tw } from './tween';
 import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { devRevealAll, tintOf } from '../render/galaxyView';
-import { FRONTIER_MAP, REGIONS } from '../data/frontier';
-import { SCOUT_PRICE, scoutPath, scouts } from '../engine/explore';
+import { FRONTIER, FRONTIER_MAP, REGIONS, type RegionId } from '../data/frontier';
+import { frontierImage } from './reveal';
+import { SCOUT_PRICE, gateState, repairCost, scoutPath, scouts } from '../engine/explore';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
@@ -147,7 +148,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${SECTORS.length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
-  ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button>${newsBtn}<button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
+  ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button><button class="btn menu-btn" ${act('akte')} aria-label="Forschungsakte">${icon('star', 17)}</button>${newsBtn}<button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
     <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 16)}Station</button>
     <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 16)}Routen</button>
     ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button>
@@ -375,18 +376,48 @@ function gateCard(state: GameState, to: string): string {
     </div>`, true);
 }
 
+/** Forschungsakte: alle entdeckten neuen Sektoren nach Gebieten, Unentdecktes nur als Platzhalter */
+function akteModal(state: GameState): string {
+  const found = state.frontier?.discovered ?? [];
+  const when = state.frontier?.found ?? {};
+  const regions = (Object.keys(REGIONS) as RegionId[]).map((rid) => {
+    const r = REGIONS[rid];
+    const all = FRONTIER.filter((f) => f.region === rid);
+    const got = all.filter((f) => found.includes(f.id));
+    if (!got.length) return `<div class="akte-region" style="--tint:${r.tint}"><h3>Unbekanntes Gebiet</h3><p>${all.length} Sektoren – noch keine Spur.</p></div>`;
+    return `<div class="akte-region" style="--tint:${r.tint}"><h3>${esc(r.name)} · ${got.length}/${all.length}</h3><p>${esc(r.mood)}</p><div class="akte-list">${all.map((f) => {
+      if (!found.includes(f.id)) return '<div class="akte-item unknown">?</div>';
+      const img = frontierImage(f.id);
+      return `<div class="akte-item ${img ? 'img' : ''}" ${img ? `style="--img:url(${img})"` : ''}><b>${esc(f.name)}</b><span>${esc(f.description)}</span><small>entdeckt ${esc(fmtClock(when[f.id] ?? 0))}</small></div>`;
+    }).join('')}</div></div>`;
+  }).join('');
+  const n = found.length;
+  return modalShell('Forschungsakte', `<div class="small muted">${n} von ${FRONTIER.length} Sektoren des unbekannten Raums entdeckt</div><div class="akte-bar"><i style="width:${((n / FRONTIER.length) * 100).toFixed(1)}%"></i></div>${regions}`, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Unbekannter Raum');
+}
+
 /** Erkundung auf der Sektorkarte: Späher kaufen, losschicken, Fortschritt der Suche, gefundene Signaturen */
 function exploreBlock(state: GameState, id: string): string {
   const list = scouts(state);
   const here = list.filter((x) => x.task?.target === id);
-  const sig = (state.frontier?.signatures ?? []).filter((x) => x.startsWith(id + '>')).length;
   const rows: string[] = [];
   for (const sp of here) {
     const t = sp.task!;
     const pct = Math.round((t.t / t.dur) * 100);
     rows.push(`<div class="gx-scout"><span class="gx-radar"></span><b>${esc(sp.name)}</b> ${t.kind === 'fly' ? `fliegt hierher · ${fmtDur(t.dur - t.t)}` : `sucht nach Torsignaturen · ${pct} %`}<i style="--p:${pct}%"></i></div>`);
   }
-  if (sig) rows.push(`<div class="gx-scout found">${icon('target', 15)}${sig === 1 ? 'Eine Torsignatur' : `${sig} Torsignaturen`} ins Unbekannte gefunden</div>`);
+  // gefundene Tore dieses Sektors: Signatur → Instandsetzung → offen → hindurchfliegen
+  const idleAll = list.filter((x) => !x.task);
+  for (const g of (state.frontier?.signatures ?? []).filter((x) => x.startsWith(id + '>'))) {
+    const st = gateState(state, g);
+    if (st.kind === 'sig') {
+      rows.push(`<div class="gx-gate"><span>${icon('target', 15)}Torsignatur ins Unbekannte – das Tor ist erloschen.</span><button class="btn small amber ${state.credits >= repairCost(g) ? '' : 'disabled'}" ${act('gate-repair', { sig: g })}>Tor instand setzen · ${fmtCr(repairCost(g))}</button></div>`);
+    } else if (st.kind === 'repair') {
+      rows.push(`<div class="gx-scout"><span class="gx-radar"></span>Tor wird instand gesetzt · ${fmtDur(st.left)}<i style="--p:${Math.round(st.p * 100)}%"></i></div>`);
+    } else {
+      const best = idleAll.map((x) => ({ x, n: scoutPath(state, x.at, id)?.length ?? 99 })).sort((a, b) => a.n - b.n)[0];
+      rows.push(`<div class="gx-gate open"><span>${icon('target', 15)}Das Tor ist offen. Was liegt dahinter?</span>${best ? `<button class="btn small primary" ${act('gate-through', { sc: best.x.id, sig: g })}>${esc(best.x.name)} hindurchschicken</button>` : '<span class="small muted">Kein Späher frei.</span>'}</div>`);
+    }
+  }
   const idle = list.filter((x) => !x.task);
   let btn = '';
   if (!here.length) {
@@ -1528,6 +1559,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         `<button class="btn primary" ${act('modal-close')}>Weiter</button>`);
     }
     case 'welcome': return welcomeModal(ui.restoreHint, m.step ?? 0);
+    case 'akte': return akteModal(state);
     case 'help': { const h = helpModalParts(m.topic); return modalShell(h.title, h.body, h.foot, m.topic ? 'Hilfe' : 'X4 Sektorbau'); }
     case 'chart':
       return modalShell(m.spec.title, bigChart(state, m.spec, m.hours), `<button class="btn" ${act('modal-close')}>Schließen</button>`, m.spec.sub ?? '');

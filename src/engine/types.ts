@@ -482,7 +482,7 @@ export interface GameState {
   intel?: Record<string, { t: number; stock: Record<string, number> }>;
   satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
   /** Erkundung des unbekannten Raums: gefundene Torsignaturen („von>nach“) und entdeckte neue Sektoren */
-  frontier?: { signatures: string[]; discovered: string[]; scouts?: import('./explore').Scout[] };
+  frontier?: import('./explore').FrontierState;
   scanTimer?: number;
   /** Feldausbau je Feld: erreichte Stufe und laufender Ausbau */
   /** Kontobuch der letzten Buchungen */

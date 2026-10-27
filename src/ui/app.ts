@@ -17,7 +17,8 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
-import { buyScout, sectorLabel, sendScout } from '../engine/explore';
+import { buyScout, repairGate, sectorLabel, sendScout, sendThrough } from '../engine/explore';
+import { showReveal } from './reveal';
 import { runPeilung } from './peilung';
 import { GALAXY_HEX, devRevealAll, drawGalaxy, drawGalaxyBackdrop, drawScouts, setDevRevealAll, galaxyHit, mapBounds, sectorCenter } from '../render/galaxyView';
 import { SectorRenderer, shipLength } from '../render/sectorView';
@@ -40,7 +41,7 @@ import { SHIPS, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout,
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
-import { fmtCr } from './format';
+import { fmtClock, fmtCr } from './format';
 import { icon } from './icons';
 import { setSound, sfx, soundEnabled } from './sound';
 import { initLifecycle, meterPeak, preloadSamples, renderOffline, setLevel, setMusicStyle, settings as audioSettingsRef, type Bus } from '../audio/engine';
@@ -150,6 +151,11 @@ export function start(): void {
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
   window.addEventListener('pagehide', save);
   onGameEvent((e) => {
+    if (e.type === 'discovery') {
+      showReveal(e.id, fmtClock(state.time), () => { ui.modal = { type: 'akte' }; refresh(); });
+      if (ui.view === 'galaxy') { fitGalaxy(); ui.galaxySel = e.id; }
+      refresh();
+    }
     // Während ein Dialog offen ist, stören reine Infomeldungen – sie stehen weiter im Ereignisprotokoll
     if (e.type === 'toast' && !(ui.modal && e.kind === 'info')) toast(e.text, e.kind);
     if (e.type === 'sale' && e.sector === ui.sector && Math.abs(e.value) >= 1000 && ui.view === 'sector') {
@@ -1251,6 +1257,9 @@ function onClick(e: MouseEvent): void {
       case 'modal-close': ui.modal = null; refresh(); break;
       case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all', sel: d.cls }; refresh(); break;
       case 'dev-reveal': setDevRevealAll(!devRevealAll()); fitGalaxy(); toast(devRevealAll() ? 'Entwickleransicht: alle Sektoren aufgedeckt (nur Ansicht).' : 'Ansicht wie im Spielstand.', 'info'); refresh(); break;
+      case 'akte': ui.modal = { type: 'akte' }; refresh(); break;
+      case 'gate-repair': result(repairGate(state, d.sig!)); break;
+      case 'gate-through': result(sendThrough(state, d.sc!, d.sig!)); break;
       case 'scout-buy': result(buyScout(state)); break;
       case 'scout-send': result(sendScout(state, d.sc!, d.sec!)); break;
       case 'scout-peil': {
