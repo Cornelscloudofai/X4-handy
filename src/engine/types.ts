@@ -116,7 +116,8 @@ export interface SectorDef {
   demand: string[];
 }
 
-export type FactionId = 'frf' | 'zya';
+/** rhk: Familie Rhak – verstoßene Split-Familie in der Glutsee (erst nach ihrer Entdeckung im Spiel) */
+export type FactionId = 'frf' | 'zya' | 'rhk';
 
 export interface Gate { to: string; x: number; z: number; angle: number }
 

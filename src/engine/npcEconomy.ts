@@ -105,7 +105,7 @@ const ALL_FIELDS = Object.fromEntries(SECTORS.map((s) => [s.id, [...s.fields]]))
 
 /** Felder passend zum Spielstand: Neue Spiele (mit Startwahl) ohne die Altfelder */
 export function syncFields(state: GameState): void {
-  for (const s of SECTORS) s.fields = ALL_FIELDS[s.id].filter((f) => !state.start || !f.legacy);
+  for (const s of SECTORS) s.fields = (ALL_FIELDS[s.id] ?? s.fields).filter((f) => !state.start || !f.legacy);
 }
 
 /** Legt die Fabrikdaten an (neue Spiele und alte Spielstände) */

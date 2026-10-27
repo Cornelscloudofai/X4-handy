@@ -30,7 +30,7 @@ interface MapNode { id: string; name: string; q: number; r: number; links: strin
 /** Was auf der Karte steht: der Split-Raum und alle schon entdeckten neuen Sektoren (Unentdecktes gar nicht) */
 export function mapNodes(state: GameState): MapNode[] {
   const found = new Set(state.frontier?.discovered ?? []);
-  const nodes: MapNode[] = SECTORS.map((s) => ({ id: s.id, name: s.name, ...(SPLIT_MAP_POS[s.id] ?? s), links: s.links, frontier: false }));
+  const nodes: MapNode[] = SECTORS.filter((s) => !FRONTIER_MAP[s.id]).map((s) => ({ id: s.id, name: s.name, ...(SPLIT_MAP_POS[s.id] ?? s), links: s.links.filter((l) => !FRONTIER_MAP[l]), frontier: false }));
   for (const f of FRONTIER) if (revealAll || found.has(f.id)) nodes.push({ id: f.id, name: f.name, q: f.q, r: f.r, links: f.links, frontier: true });
   return nodes;
 }

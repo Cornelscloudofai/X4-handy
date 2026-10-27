@@ -7,6 +7,7 @@ export const SECTOR_RADIUS = 200; // km, Eckpunkt-Abstand des Sektor-Sechsecks
 export const FACTIONS: Record<FactionId, { name: string; short: string; color: string }> = {
   frf: { name: 'Freie Familien', short: 'FRF', color: '#ffb547' },
   zya: { name: 'Zyarth-Patriarchat', short: 'ZYA', color: '#ff6a5c' },
+  rhk: { name: 'Familie Rhak', short: 'RHK', color: '#e0874f' },
 };
 
 export const SECTORS: SectorDef[] = [

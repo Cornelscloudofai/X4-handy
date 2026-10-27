@@ -222,6 +222,8 @@ export function sectorDistanceHint(a: string, b: string): number {
 export function knownSectors(state: GameState): string[] {
   const set = new Set(state.sectors);
   for (const id of state.sectors) for (const l of sector(id).links) set.add(l);
+  // Entdeckte neue Sektoren kennt man von der Erstsichtung
+  for (const id of state.frontier?.discovered ?? []) if (SECTOR_MAP[id]) set.add(id);
   return [...set];
 }
 

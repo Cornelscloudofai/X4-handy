@@ -84,6 +84,14 @@ einem Solarkraftwerk und einem Miner.
   Funkspruch oder Notiz, die zusammen die Geschichte der verschwundenen Kolonie Vesh'ara erzählen. Vom neuen Sektor aus
   kann weiter gesucht werden. **Forschungsakte** (Stern-Knopf auf der Sektorenkarte): alle Entdeckungen nach Gebieten mit
   Datum und Fundstück, Unentdecktes als „?“.
+- **Spielbare neue Sektoren (`src/data/frontierSectors.ts`, `src/engine/frontierSync.ts`):** Entdeckte Sektoren, die schon
+  ausgebaut sind, werden nach der Erstsichtung wie jeder Split-Sektor: hinfliegen, Handelsposten, Rohstofffelder, NPC-Verkehr,
+  Aufträge, Baulizenz (ohne Lizenz im Nachbarsektor – man kommt durch das Tor). Sie stehen erst nach der Entdeckung in den
+  Sektordaten; ein neues Spiel nimmt sie wieder heraus, Laden hängt sie passend zum Spielstand ein. Bisher spielbar: die
+  **Glutsee** – Rhy's Ausblick (Zyarth, Horchposten), Glutsee I (Sonne 190 %, Wasserstoff/Helium), Die Aschefelder (sehr
+  reiches Erz, Nividium), Familie Rhak (Werft, Siedlung) und Der Schmiedestern (Sonne 260 %). Vier davon gehören der
+  **Familie Rhak**, einer eigenen Fraktion mit eigenem Ruf (Handel, Aufträge; erscheint im Ruf erst nach ihrer Entdeckung).
+  Bilder: `src/assets/sektoren/<id>.jpg` (16:9) – Sektorhintergrund, Erstsichtung und Akte; bis dahin vorhandene Hintergründe.
 - **Kampagne „Kanal 9“** (nach „Neue Horizonte“): Tevka Rhy hört auf Kanal 9 ein Knacken aus Richtung des toten Tors.
   Vier Kapitel führen durch Späherkauf, Peilung, Torbaustelle und die erste Erstsichtung (Rhy's Ausblick). Ab hier
   gilt für alle Texte: konkret statt Werbesprache – Namen, Zahlen, Stimmen aus der Spielwelt.

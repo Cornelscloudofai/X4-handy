@@ -1,4 +1,5 @@
 // Spieleraktionen. Jede Aktion prüft ihre Voraussetzungen und liefert eine Meldung.
+import { FRONTIER_MAP } from '../data/frontier';
 import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
 import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, marketInfo, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
@@ -274,7 +275,8 @@ export function buyLicense(state: GameState, sectorId: string): Result {
   const s = SECTOR_MAP[sectorId];
   if (!s) return fail('Sektor unbekannt.');
   if (state.sectors.includes(sectorId)) return fail('Baulizenz bereits vorhanden.');
-  if (!s.links.some((l) => state.sectors.includes(l))) return fail('Nur Nachbarsektoren deines Gebiets sind erreichbar.');
+  // Entdeckte neue Sektoren erreicht man durch ihr Tor – dort braucht es keine Lizenz im Nachbarsektor
+  if (!FRONTIER_MAP[sectorId] && !s.links.some((l) => state.sectors.includes(l))) return fail('Nur Nachbarsektoren deines Gebiets sind erreichbar.');
   if (state.rep[s.faction] < s.repRequired) return fail(`Benötigt Ruf ${s.repRequired} bei ${FACTIONS[s.faction].name}.`);
   if (state.credits < s.licenseCost) return fail(`Es fehlen ${cr(s.licenseCost - state.credits)}.`);
   book(state, -s.licenseCost, 'build', `Baulizenz: ${s.name}`, { kind: 'sector', id: sectorId });

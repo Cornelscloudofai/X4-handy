@@ -6,7 +6,9 @@
 import { FRONTIER, FRONTIER_MAP, type RegionId } from '../data/frontier';
 import { SECTOR_MAP } from '../data/sectors';
 import { WARES } from '../data/wares';
-import { addWare } from './economy';
+import { addWare, initMarkets } from './economy';
+import { syncFrontier } from './frontierSync';
+import { syncFounded } from './npcEconomy';
 import { book } from './ledger';
 import type { GameState } from './types';
 import type { Result } from './actions';
@@ -72,13 +74,14 @@ const fail = (msg: string): Result => ({ ok: false, msg });
 
 /** Tore in beide Richtungen (Tore aus dem neuen Raum in den Split-Raum stehen nur beim neuen Sektor) */
 const INTO_SPLIT: Record<string, string[]> = {};
-for (const f of FRONTIER) for (const l of f.links) if (SECTOR_MAP[l]) (INTO_SPLIT[l] ??= []).push(f.id);
-export const linksOf = (id: string): string[] => SECTOR_MAP[id] ? [...SECTOR_MAP[id].links, ...(INTO_SPLIT[id] ?? [])] : FRONTIER_MAP[id]?.links ?? [];
+for (const f of FRONTIER) for (const l of f.links) if (SECTOR_MAP[l] && !FRONTIER_MAP[l]) (INTO_SPLIT[l] ??= []).push(f.id);
+/** Alle Tore eines Sektors – bei neuen Sektoren laut Karte (auch zu Unentdecktem), sonst Split-Tore plus Tore ins Neue */
+export const linksOf = (id: string): string[] => FRONTIER_MAP[id] ? FRONTIER_MAP[id].links : SECTOR_MAP[id] ? [...SECTOR_MAP[id].links.filter((l) => !FRONTIER_MAP[l]), ...(INTO_SPLIT[id] ?? [])] : [];
 export const sectorLabel = (id: string): string => SECTOR_MAP[id]?.name ?? FRONTIER_MAP[id]?.name ?? id;
 
 /** Erreichbare Sektoren: der ganze Split-Raum und alle entdeckten neuen Sektoren */
 export function reachable(state: GameState, id: string): boolean {
-  return !!SECTOR_MAP[id] || (state.frontier?.discovered ?? []).includes(id);
+  return (!!SECTOR_MAP[id] && !FRONTIER_MAP[id]) || (state.frontier?.discovered ?? []).includes(id);
 }
 
 /** Kürzester Weg über Tore zwischen erreichbaren Sektoren */
@@ -266,6 +269,10 @@ export function discover(state: GameState, id: string): void {
   (fs.found ??= {})[id] = state.time;
   fs.signatures = fs.signatures.filter((x) => x.split('>')[1] !== id);
   fs.open = (fs.open ?? []).filter((x) => x.split('>')[1] !== id);
+  // Schon ausgebaute Sektoren werden spielbar: Märkte, Tore, NPC-Stationen
+  syncFrontier(state);
+  initMarkets(state);
+  syncFounded(state);
   log(state, `Erstsichtung: ${sectorLabel(id)}!`, 'good', true, { kind: 'sector', id });
   emit({ type: 'discovery', id });
 }

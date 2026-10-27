@@ -54,7 +54,7 @@ import { netWorth } from '../engine/stats';
 import { currentMission, missionComplete, storyOf } from '../engine/story';
 import { deliveryOptions } from '../engine/delivery';
 import { SHIP_BUILD_TIME, hasYard, materialValue, missingFor, yardSizes, yardStations } from '../engine/yard';
-import type { Contract, FieldDef, GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
+import type { Contract, FactionId, FieldDef, GameState, ModuleDef, RestAction, RestCase, Ship, Station, TradeEndpoint } from '../engine/types';
 import { esc } from './dom';
 import { helpBtn, helpList, helpModalParts } from './help';
 import { canUndo, undoLabel } from './undo';
@@ -145,7 +145,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 15)}<b class="num">${alerts.length}</b></button>
   </div>
   <div class="sub-row">
-    <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${SECTORS.length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
+    <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
   ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button><button class="btn menu-btn" ${act('akte')} aria-label="Forschungsakte">${icon('star', 17)}</button>${newsBtn}<button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
@@ -376,6 +376,9 @@ function gateCard(state: GameState, to: string): string {
     </div>`, true);
 }
 
+/** Fraktionen, die man kennt: die Familie Rhak erst nach ihrer Entdeckung */
+const metFactions = (state: GameState): FactionId[] => ['frf', 'zya', ...((state.frontier?.discovered ?? []).includes('f-rhak') ? ['rhk' as const] : [])];
+
 /** Forschungsakte: alle entdeckten neuen Sektoren nach Gebieten, Unentdecktes nur als Platzhalter */
 function akteModal(state: GameState): string {
   const found = state.frontier?.discovered ?? [];
@@ -442,7 +445,8 @@ function exploreBlock(state: GameState, id: string): string {
 /** Karte zu einem Sektor auf der Sektorenkarte: eigenes Gebiet mit seinem Bild, sonst nur der Farbschimmer */
 function galaxyCard(state: GameState, id: string): string {
   const f = FRONTIER_MAP[id];
-  if (f) {
+  // Neue Sektoren: nur Karte und Akte, bis sie spielbar sind (dann wie jeder andere Sektor)
+  if (f && !SECTOR_MAP[id]) {
     const found = (state.frontier?.discovered ?? []).includes(id);
     return `<div class="card gx-card frontier" style="--tint:${tintOf(id)}"><div class="gx-body"><span class="gx-eyebrow">${esc(REGIONS[f.region].name)} · ${found ? 'neu entdeckt' : 'noch unentdeckt (Entwickleransicht)'}</span><h2>${esc(f.name)}</h2><p>${esc(f.description)}</p>${found ? exploreBlock(state, id) : ''}</div><button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button></div>`;
   }
@@ -462,7 +466,7 @@ function galaxyCard(state: GameState, id: string): string {
     owned ? '' : `Lizenz ${fmtCr(s.licenseCost)}`,
   ].filter(Boolean).join(' · ');
   return `<div class="card gx-card ${owned ? 'own' : ''}" style="--tint:${tintOf(id)}${img ? `;--img:url(${img})` : ''}">
-    <div class="gx-body"><span class="gx-eyebrow">${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>
+    <div class="gx-body"><span class="gx-eyebrow">${f ? `${esc(REGIONS[f.region].name)} · ` : ''}${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>
     <div class="gx-actions"><button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button><button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div>${exploreBlock(state, id)}</div>${close}</div>`;
 }
 
@@ -1175,7 +1179,7 @@ function blueprintsPanel(state: GameState, ui: UIState, p: Panel): string {
   };
   const list = tab === 'buy' ? buy : tab === 'locked' ? locked : owned;
   const empty = q ? `Nichts gefunden für „${esc(q)}“.` : tab === 'buy' ? 'Gerade nichts kaufbar – mehr Ruf oder neue Sektoren schalten Vertreter frei.' : tab === 'locked' ? 'Alle Baupläne freigeschaltet.' : 'Noch keine gekauften Baupläne.';
-  const head = `<div class="section"><div class="kv">${(['frf', 'zya'] as const).map((f) => `<div><small>Ruf ${esc(FACTIONS[f].short)}</small><b>${fmtNum(state.rep[f], 1)}</b></div>`).join('')}</div>
+  const head = `<div class="section"><div class="kv">${metFactions(state).map((f) => `<div><small>Ruf ${esc(FACTIONS[f].short)}</small><b>${fmtNum(state.rep[f], 1)}</b></div>`).join('')}</div>
     <p class="small muted" style="margin:8px 0 0">Baupläne gibt es nur vor Ort: Split-Baupläne bei den Handelsvertretern der Handelsposten, waffennahe Baupläne und Schiffsfertigung bei den Werftvertretern, fremde Bauweisen bei den Gesandtschaften. ${helpBtn('blueprints')} Im freien Planer stehen alle zum Ausprobieren bereit.</p></div>`;
   const body = `${head}${searchBox('blueprints', q, 'Bauplan suchen …')}${list.length ? `<div class="box rows">${list.map(row).join('')}</div>` : `<div class="box empty-search">${empty}</div>`}`;
   return sheet('Baupläne', `${state.blueprints.length} vorhanden`, body, { back: !!p.back, tabs });
@@ -1292,7 +1296,7 @@ function missionsPanel(state: GameState): string {
     <div class="section"><h3>Aktive Lieferaufträge${count(active.length)}</h3>${active.length ? `<div class="jobs">${active.map((c) => contractRow(c, false)).join('')}</div>` : '<div class="box empty">Keine aktiven Aufträge. Transporter im Autohandel liefern automatisch für angenommene Aufträge.</div>'}</div>
     <div class="section"><h3>Angebote${count(offers.length)}</h3>${offers.length ? `<div class="jobs">${offers.map((c) => contractRow(c, true)).join('')}</div>` : `<div class="box empty">Gerade keine Angebote. Neue kommen etwa alle ${state.start ? '12–30' : '30–50'} Minuten Spielzeit.</div>`}</div>
     ${shipOrdersSection(state)}
-    <div class="section"><h3>Ruf</h3><div class="kv">${(['frf', 'zya'] as const).map((f) => `<div><small>${esc(FACTIONS[f].name)}</small><b>${fmtNum(state.rep[f], 1)}</b>${bar(Math.max(0, state.rep[f]) / 30, 'amber')}</div>`).join('')}</div>
+    <div class="section"><h3>Ruf</h3><div class="kv">${metFactions(state).map((f) => `<div><small>${esc(FACTIONS[f].name)}</small><b>${fmtNum(state.rep[f], 1)}</b>${bar(Math.max(0, state.rep[f]) / 30, 'amber')}</div>`).join('')}</div>
     <p class="small muted">Ruf öffnet Baupläne und Baulizenzen. Handel bringt Ruf bis Stufe 10, darüber zählen Aufträge.</p>
     <div class="box rows">${blueprintEntry(state)}</div></div>`);
 }
@@ -1402,7 +1406,7 @@ function warePanel(state: GameState, id: string, p: Panel): string {
 function sectorPanel(state: GameState, id: string, p: Panel): string {
   const s = SECTOR_MAP[id];
   const owned = state.sectors.includes(id);
-  const reachable = s.links.some((l) => state.sectors.includes(l));
+  const reachable = !!FRONTIER_MAP[id] || s.links.some((l) => state.sectors.includes(l));
   const rep = state.rep[s.faction];
   const canBuy = !owned && reachable && rep >= s.repRequired && state.credits >= s.licenseCost;
   return sheet(s.name, FACTIONS[s.faction].name, `

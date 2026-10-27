@@ -16,6 +16,8 @@ import ringplanet from '../assets/bg/ringplanet.jpg';
 import finsternis from '../assets/bg/finsternis.jpg';
 import wirbelViolett from '../assets/bg/wirbel-violett.jpg';
 
+import { FRONTIER_MAP } from '../data/frontier';
+
 export interface BgImage { id: string; name: string; url: string }
 
 /** Alle Bilder in der Reihenfolge der Auswahl */
@@ -34,6 +36,13 @@ export const BG_IMAGES: BgImage[] = [
   { id: 'finsternis', name: 'Finsternis', url: finsternis },
   { id: 'wirbel-violett', name: 'Violetter Wirbel', url: wirbelViolett },
 ];
+// Bilder der neuen Sektoren (src/assets/sektoren/<sektor-id>.jpg) – sobald vorhanden, Standard für ihren Sektor
+const FRONTIER_FILES = import.meta.glob('../assets/sektoren/*.{jpg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const FRONTIER_IMAGES: BgImage[] = Object.entries(FRONTIER_FILES).map(([path, url]) => {
+  const id = path.replace(/^.*\//, '').replace(/\.\w+$/, '');
+  return { id, name: FRONTIER_MAP[id]?.name ?? id, url };
+});
+BG_IMAGES.push(...FRONTIER_IMAGES);
 const BY_ID = new Map(BG_IMAGES.map((b) => [b.id, b]));
 
 /** Standard: jeder Sektor ein eigenes, eher dunkles Bild passend zu seinem Charakter */
@@ -45,7 +54,14 @@ const DEFAULT_BY_SECTOR: Record<string, string> = {
   rhy: 'nebel-rot-tuerkis-2',
   hoa: 'nebel-blau-mond',
   zyarth: 'nebel-rot-tuerkis',
+  // Glutsee, bis es eigene Bilder gibt
+  'f-ausblick': 'finsternis',
+  'f-glut1': 'asteroiden-sonne',
+  'f-asche': 'asteroidenstrom-dunkel',
+  'f-rhak': 'nebel-rot-tuerkis',
+  'f-schmiede': 'wirbel-violett',
 };
+for (const b of FRONTIER_IMAGES) DEFAULT_BY_SECTOR[b.id] = b.id;
 
 const PICK_KEY = 'x4-sektorbau-bgpick';
 let picks: Record<string, string> = loadPicks();

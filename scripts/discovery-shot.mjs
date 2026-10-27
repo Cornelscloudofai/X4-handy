@@ -53,6 +53,16 @@ if (!disc.includes('f-ausblick')) fail('Sektor nicht entdeckt');
 await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.ui.galaxySel = null; g.refresh(); });
 await page.waitForTimeout(600);
 await page.screenshot({ path: `${out}/durchbruch-5-karte.png` });
+// Der neue Sektor ist spielbar: Karte zeigt „Hinfliegen“, die Sektoransicht öffnet sich
+await page.evaluate(() => { const g = window.__game; g.ui.galaxySel = 'f-ausblick'; g.refresh(); });
+await page.waitForTimeout(400);
+if (!(await page.locator('.gx-card [data-act="goto-sector"]').count())) fail('Neuer Sektor nicht anfliegbar');
+await page.screenshot({ path: `${out}/durchbruch-6-karte-spielbar.png` });
+await page.click('.gx-card [data-act="goto-sector"]');
+await page.waitForTimeout(1500);
+const sec = await page.evaluate(() => window.__game.ui.sector);
+if (sec !== 'f-ausblick') fail('Sektoransicht nicht geöffnet: ' + sec);
+await page.screenshot({ path: `${out}/durchbruch-7-sektor.png` });
 await browser.close();
 console.log(JSON.stringify({ errors }, null, 1));
 if (errors.length) process.exit(1);

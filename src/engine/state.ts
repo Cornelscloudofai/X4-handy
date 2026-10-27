@@ -3,6 +3,7 @@ import { MODULES, MODULE_MAP } from '../data/modules';
 import { SECTOR_MAP } from '../data/sectors';
 import { SHIP_MAP, shipName } from '../data/ships';
 import { addBuildStore, initMarkets } from './economy';
+import { syncFrontier } from './frontierSync';
 import { initNpcEconomy } from './npcEconomy';
 
 import { initIntel, resetIntelCache } from './intel';
@@ -48,6 +49,7 @@ export function resetEngine(): void {
   resetSimTimers();
   resetIntelCache();
   resetStoryNotes();
+  syncFrontier(null);
   clearFieldReserve();
   setNetWorthCache(0);
 }
@@ -60,7 +62,7 @@ export function newGame(seed = Date.now() % 2147483647, start?: StartKind): Game
   resetEngine();
   const state: GameState = {
     version: SAVE_VERSION, seed, time: 0, credits: START_CREDITS, stations: [], ships: [], npcs: [], markets: {},
-    sectors: ['zhin'], blueprints: MODULES.filter((m) => m.starter).map((m) => m.id), rep: { frf: 0, zya: 0 },
+    sectors: ['zhin'], blueprints: MODULES.filter((m) => m.starter).map((m) => m.id), rep: { frf: 0, zya: 0, rhk: 0 },
     contracts: [], story: { index: 0, claimed: false, startedAt: 0, base: {}, contractFloor: 0 },
     totals: { produced: {}, sold: 0, bought: 0, mined: {}, delivered: 0 }, log: [], nextId: 1, npcTimer: {},
     contractTimer: 20 * 60, savedAt: Date.now(), speed: 5,
@@ -139,6 +141,8 @@ export function deserialize(text: string): GameState {
   }
   const base = newGame(raw.seed || 1);
   const state: GameState = { ...base, ...raw };
+  // Entdeckte neue Sektoren vor allem anderen einhängen – Stationen und Schiffe dort brauchen ihre Sektordaten
+  syncFrontier(state);
   for (const s of raw.stations) if (s?.build && MODULE_MAP[s.build.def]) s.build = migrateBuild(s);
   state.stations = raw.stations.filter((s) => s && SECTOR_MAP[s.sector]).map((s) => ({
     ...s,
