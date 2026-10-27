@@ -17,7 +17,8 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
-import { GALAXY_HEX, drawGalaxy, drawGalaxyBackdrop, galaxyHit, mapBounds, sectorCenter } from '../render/galaxyView';
+import { buyScout, sendScout } from '../engine/explore';
+import { GALAXY_HEX, drawGalaxy, drawGalaxyBackdrop, drawScouts, galaxyHit, mapBounds, sectorCenter } from '../render/galaxyView';
 import { SectorRenderer, shipLength } from '../render/sectorView';
 import { ScreenFx } from '../render/screenFx';
 import { stepSectorImage } from '../render/bgImages';
@@ -273,6 +274,7 @@ function frame(now: number): void {
   if (ui.view === 'galaxy') {
     drawGalaxyBackdrop(ctx, galaxyCam, now);
     drawGalaxy(ctx, state, galaxyCam, ui.galaxySel, ui.sector, now);
+    drawScouts(ctx, state, galaxyCam, now);
   } else {
     renderer.draw(ctx, state, ui, cam, now, dt);
   }
@@ -1247,6 +1249,8 @@ function onClick(e: MouseEvent): void {
       }
       case 'modal-close': ui.modal = null; refresh(); break;
       case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all', sel: d.cls }; refresh(); break;
+      case 'scout-buy': result(buyScout(state)); break;
+      case 'scout-send': result(sendScout(state, d.sc!, d.sec!)); break;
       case 'buyship-sel': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, sel: d.cls }; refresh(); } break;
       case 'buyship-role': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, role: d.role as 'miner' | 'trader' | 'all', sel: undefined }; refresh(); } break;
       case 'buyship': { const r = A.buyShip(state, d.cls!, d.st!); if (r.ok) sfx.launch(); result(r); break; }

@@ -35,6 +35,7 @@ import { tw } from './tween';
 import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { tintOf } from '../render/galaxyView';
 import { FRONTIER_MAP, REGIONS } from '../data/frontier';
+import { SCOUT_PRICE, scoutPath, scouts } from '../engine/explore';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
@@ -374,11 +375,35 @@ function gateCard(state: GameState, to: string): string {
     </div>`, true);
 }
 
+/** Erkundung auf der Sektorkarte: Späher kaufen, losschicken, Fortschritt der Suche, gefundene Signaturen */
+function exploreBlock(state: GameState, id: string): string {
+  const list = scouts(state);
+  const here = list.filter((x) => x.task?.target === id);
+  const sig = (state.frontier?.signatures ?? []).filter((x) => x.startsWith(id + '>')).length;
+  const rows: string[] = [];
+  for (const sp of here) {
+    const t = sp.task!;
+    const pct = Math.round((t.t / t.dur) * 100);
+    rows.push(`<div class="gx-scout"><span class="gx-radar"></span><b>${esc(sp.name)}</b> ${t.kind === 'fly' ? `fliegt hierher · ${fmtDur(t.dur - t.t)}` : `sucht nach Torsignaturen · ${pct} %`}<i style="--p:${pct}%"></i></div>`);
+  }
+  if (sig) rows.push(`<div class="gx-scout found">${icon('target', 15)}${sig === 1 ? 'Eine Torsignatur' : `${sig} Torsignaturen`} ins Unbekannte gefunden</div>`);
+  const idle = list.filter((x) => !x.task);
+  let btn = '';
+  if (!here.length) {
+    if (idle.length) {
+      const best = idle.map((x) => ({ x, n: scoutPath(state, x.at, id)?.length ?? 99 })).sort((a, b) => a.n - b.n)[0];
+      btn = `<button class="btn small" ${act('scout-send', { sc: best.x.id, sec: id })}>${icon('target', 15)}${esc(best.x.name)} schicken</button>`;
+    } else if (!list.length) btn = `<button class="btn small ${state.credits >= SCOUT_PRICE ? '' : 'disabled'}" ${act('scout-buy')}>${icon('plus', 15)}Späher kaufen · ${fmtCr(SCOUT_PRICE)}</button>`;
+    else btn = '<span class="small muted">Alle Späher sind unterwegs.</span>';
+  }
+  return `<div class="gx-explore">${rows.join('')}${btn ? `<div class="gx-actions">${btn}</div>` : ''}</div>`;
+}
+
 /** Karte zu einem Sektor auf der Sektorenkarte: eigenes Gebiet mit seinem Bild, sonst nur der Farbschimmer */
 function galaxyCard(state: GameState, id: string): string {
   const f = FRONTIER_MAP[id];
   if (f) {
-    return `<div class="card gx-card frontier" style="--tint:${tintOf(id)}"><div class="gx-body"><span class="gx-eyebrow">${esc(REGIONS[f.region].name)} · neu entdeckt</span><h2>${esc(f.name)}</h2><p>${esc(f.description)}</p></div><button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button></div>`;
+    return `<div class="card gx-card frontier" style="--tint:${tintOf(id)}"><div class="gx-body"><span class="gx-eyebrow">${esc(REGIONS[f.region].name)} · neu entdeckt</span><h2>${esc(f.name)}</h2><p>${esc(f.description)}</p>${exploreBlock(state, id)}</div><button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button></div>`;
   }
   const s = SECTOR_MAP[id];
   const owned = state.sectors.includes(id);
@@ -397,7 +422,7 @@ function galaxyCard(state: GameState, id: string): string {
   ].filter(Boolean).join(' · ');
   return `<div class="card gx-card ${owned ? 'own' : ''}" style="--tint:${tintOf(id)}${img ? `;--img:url(${img})` : ''}">
     <div class="gx-body"><span class="gx-eyebrow">${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>
-    <div class="gx-actions"><button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button><button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div></div>${close}</div>`;
+    <div class="gx-actions"><button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button><button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div>${exploreBlock(state, id)}</div>${close}</div>`;
 }
 
 function placeCard(state: GameState, ui: UIState): string {

@@ -11,6 +11,7 @@ import { netWorth } from './stats';
 import { stepStory } from './story';
 import { stepHistory } from './history';
 import { stepShipOrders, stepYard } from './yard';
+import { stepScouts } from './explore';
 import type { GameState } from './types';
 import { log, muteEvents, rand } from './util';
 
@@ -41,6 +42,7 @@ function substep(state: GameState, dt: number): void {
   stepIntel(state, dt);
   stepFields(state, dt);
   stepShipOrders(state, dt);
+  stepScouts(state, dt);
   stepHistory(state, dt);
   slowTimer -= dt;
   if (slowTimer <= 0) {

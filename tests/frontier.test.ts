@@ -33,4 +33,23 @@ describe('Unbekannter Raum (Sektorenkarte)', () => {
     const splitTop = Math.min(...Object.values(SPLIT_MAP_POS).map(y));
     for (const f of FRONTIER) expect(y(f), f.id).toBeLessThanOrEqual(splitTop + 0.01);
   });
+
+  it('keine Torlinie schneidet durch einen fremden Sektor (Split-Raum und neuer Raum zusammen)', () => {
+    const P = (id: string) => { const p = SPLIT_MAP_POS[id] ?? FRONTIER_MAP[id]; return { x: 1.5 * p.q, y: Math.sqrt(3) * (p.r + p.q / 2) }; };
+    const ids = [...SECTORS.map((s) => s.id), ...FRONTIER.map((f) => f.id)];
+    const links = new Set<string>();
+    for (const s of SECTORS) for (const l of s.links) links.add([s.id, l].sort().join('|'));
+    for (const f of FRONTIER) for (const l of f.links) links.add([f.id, l].sort().join('|'));
+    for (const pair of links) {
+      const [a, b] = pair.split('|');
+      const A = P(a), B = P(b);
+      for (const c of ids) {
+        if (c === a || c === b) continue;
+        const C = P(c);
+        const t = Math.max(0, Math.min(1, ((C.x - A.x) * (B.x - A.x) + (C.y - A.y) * (B.y - A.y)) / ((B.x - A.x) ** 2 + (B.y - A.y) ** 2)));
+        const d = Math.hypot(A.x + (B.x - A.x) * t - C.x, A.y + (B.y - A.y) * t - C.y);
+        expect(d, `${a}–${b} schneidet ${c}`).toBeGreaterThan(0.9);
+      }
+    }
+  });
 });

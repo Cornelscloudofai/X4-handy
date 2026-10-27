@@ -5,6 +5,7 @@ import type { GameState } from '../engine/types';
 import type { Camera } from './camera';
 import { BG_IMAGES } from './bgImages';
 import { stationAlerts } from '../engine/analysis';
+import { SCOUT_HOP, scouts } from '../engine/explore';
 
 const FONT = '"Chakra Petch", "Barlow", system-ui, sans-serif';
 export const GALAXY_HEX = 100;
@@ -169,7 +170,7 @@ export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam:
       const off = rr * 0.87;
       const x1 = ax + ux * off, y1 = ay + uy * off, x2 = bx - ux * off, y2 = by - uy * off;
       const far = Math.hypot(b.x - a.x, b.z - a.z) > GALAXY_HEX * 2.1;
-      const bend = far ? d * 0.22 * (s.id < l ? 1 : -1) : 0;
+      const bend = far ? d * 0.08 * (s.id < l ? 1 : -1) : 0;
       const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
       const along = (t: number): [number, number] => [(1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * mx + t * t * x2, (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * my + t * t * y2];
       const mine = state.sectors.includes(s.id) || state.sectors.includes(l);
@@ -329,6 +330,63 @@ export function drawGalaxy(ctx: CanvasRenderingContext2D, state: GameState, cam:
       ctx.stroke();
     }
   }
+}
+
+/** Späher auf der Karte: kleines Leuchtdreieck; im Flug entlang der Tore, bei der Suche mit kreisendem Radar */
+export function drawScouts(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, now: number): void {
+  const rr = GALAXY_HEX * cam.zoom * 0.8;
+  scouts(state).forEach((sp, i) => {
+    let x: number, y: number, ang = -Math.PI / 2;
+    const t = sp.task;
+    if (t?.kind === 'fly' && t.path.length > 1) {
+      const f = Math.min(t.path.length - 1 - 1e-6, t.t / SCOUT_HOP);
+      const k = Math.floor(f), u = f - k;
+      const a = sectorCenter(t.path[k]), b = sectorCenter(t.path[k + 1]);
+      const [ax, ay] = cam.toScreen(a.x, a.z), [bx, by] = cam.toScreen(b.x, b.z);
+      x = ax + (bx - ax) * u;
+      y = ay + (by - ay) * u;
+      ang = Math.atan2(by - ay, bx - ax);
+    } else {
+      const c = sectorCenter(t?.target ?? sp.at);
+      [x, y] = cam.toScreen(c.x, c.z);
+      x += rr * (0.42 - i * 0.18);
+      y += rr * 0.42;
+      if (t?.kind === 'search') {
+        // Radar: kreisender Strahl über dem Sektor
+        const [cx, cy] = cam.toScreen(c.x, c.z);
+        const a0 = (now / 900) % (Math.PI * 2);
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr * 0.75);
+        g.addColorStop(0, 'rgba(63,224,197,0.22)');
+        g.addColorStop(1, 'rgba(63,224,197,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, rr * 0.75, a0, a0 + 0.9);
+        ctx.closePath();
+        ctx.fill();
+        const p = (now % 2000) / 2000;
+        ctx.strokeStyle = `rgba(63,224,197,${(0.5 * (1 - p)).toFixed(3)})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr * 0.2 + p * rr * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang + Math.PI / 2);
+    ctx.shadowColor = 'rgba(63,224,197,0.95)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#bff7ec';
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(4.5, 5);
+    ctx.lineTo(0, 2.5);
+    ctx.lineTo(-4.5, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
 }
 
 function fitText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number): void {

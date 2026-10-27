@@ -33,11 +33,11 @@ await page.fill('#fbName', 'Tester');
 await page.check('#fbSave');
 await page.screenshot({ path: `${out}/feedback-1-formular.png` });
 await page.click('#feedback [data-fb="send"]');
-await page.waitForTimeout(1200);
-if (!(await page.locator('#fbStatus', { hasText: 'noch nicht eingerichtet' }).count())) fail('Fehler 404 ohne klare Meldung');
+// auf die Meldung warten statt fester Zeit (Bildschirmfoto und Senden dauern unter Last länger)
+await page.locator('#fbStatus', { hasText: 'noch nicht eingerichtet' }).waitFor({ timeout: 8000 }).catch(() => fail('Fehler 404 ohne klare Meldung'));
 if (!(await page.inputValue('#fbText')).includes('Testmeldung')) fail('Text nach Fehlschlag verloren');
 await page.click('#feedback [data-fb="send"]');
-await page.waitForTimeout(1200);
+await page.locator('#fbStatus', { hasText: 'Danke' }).waitFor({ timeout: 8000 }).catch(() => {});
 const body = posts.join('\n');
 for (const [k, v] of [['form-name', 'feedback'], ['art', 'Fehler'], ['text', 'Testmeldung'], ['name', 'Tester'], ['version', ''], ['geraet', '']]) {
   if (!new RegExp(`name="${k}"\\r?\\n\\r?\\n${v}`).test(body)) fail(`Feld ${k} fehlt oder falsch`);

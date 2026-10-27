@@ -55,8 +55,13 @@ einem Solarkraftwerk und einem Miner.
   Band, Kristallgrenze, Abgrund – `src/data/frontier.ts`). Sie stehen erst auf der Karte, wenn sie entdeckt sind
   (`state.frontier.discovered`); gefundene Torsignaturen (`state.frontier.signatures`, „von>nach“) zeigen als gestrichelte
   Linie mit pulsierendem Signal ins Leere. Die Karte hat eine eigene Anordnung (Split-Raum unten, `SPLIT_MAP_POS`), weit
-  entfernte Tore als Bogen; sie passt sich der bekannten Fläche an und lässt sich verschieben. Als Nächstes: Späher und
-  Suche, Peil-Minispiel, Durchbruch mit Erstsichtung, Kampagnenkapitel, Inhalte der neuen Sektoren.
+  entfernte Tore nur dort, wo sie keinen Sektor schneiden (Test); sie passt sich der bekannten Fläche an und lässt sich
+  verschieben.
+- **Späher und Suche (`src/engine/explore.ts`):** Späher (140.000 Cr) über die Sektorkarte kaufen und zu einem Sektor
+  schicken: Flug Tor für Tor (20 min je Tor), dann 2 h Suche nach Torsignaturen ins Unbekannte (Grundchance 50 %, der
+  Peil-Vorsprung erhöht sie). „Keine Spur“ heißt Pech oder wirklich nichts – das verrät die Suche nicht. Auf der Karte
+  fliegt der Späher als Leuchtdreieck, bei der Suche kreist ein Radar über dem Sektor. Als Nächstes: Peil-Minispiel,
+  Durchbruch mit Erstsichtung, Kampagnenkapitel, Inhalte der neuen Sektoren.
 - **Werft als Schauraum (Schiff kaufen):** oben groß das gewählte Schiff in einer Szene, darunter alle Schiffe als
   Draufsicht zum Durchblättern (Größe, Art, Preis, Anzahl im Besitz), Filter Alle/Miner/Transporter, Werte als Balken im
   Vergleich zum stärksten Schiff, Preisaufstellung, Heimatstation; Hinweis, wenn Dock/Pier oder Geld fehlen.
