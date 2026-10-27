@@ -132,7 +132,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
   const newsBtn = `<button class="btn menu-btn news-btn" ${act('open-news')} aria-label="Nachrichten${unread ? ` – ${unread} neu` : ''}">${icon('info', 17)}${unread ? `<b class="badge num">${unread > 99 ? '99+' : unread}</b>` : ''}</button>`;
   return `
   <div class="hud-row">
-    <button class="chip sector" ${act('galaxy')} aria-label="Galaxiekarte öffnen">${icon(inGalaxy ? 'sector' : 'galaxy', 15)}<b>${esc(inGalaxy ? 'Galaxie' : sec.name)}</b></button>
+    <button class="chip sector" ${act('galaxy')} aria-label="${inGalaxy ? 'Zurück zum Sektor' : 'Sektorenkarte öffnen'}">${icon(inGalaxy ? 'sector' : 'galaxy', 15)}<b>${esc(inGalaxy ? 'Karte' : sec.name)}</b></button>
     <button class="chip credits ${creditFlash}" ${act('open-ledger')} aria-label="Credits – Kontobuch öffnen"><b class="num">${fmtCr(shownCredits)}</b></button>
     <div class="chip time ${ui.paused ? 'paused' : ''}">
       <button ${act('pause')} aria-label="${ui.paused ? 'Fortsetzen' : 'Pausieren'}">${icon(ui.paused ? 'play' : 'pause', 15)}</button>
@@ -144,7 +144,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${state.sectors.length} von ${SECTORS.length} Sektoren` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
-  ${inGalaxy ? `<div class="tool-row">${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
+  ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor ${esc(sec.name)}</button>${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
     <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 16)}Station</button>
     <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 16)}Routen</button>
     ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button>
@@ -193,7 +193,7 @@ export function navHtml(state: GameState, ui: UIState): string {
   const active = ui.panel ? ({ stations: 'stations', station: 'stations', fleet: 'fleet', ship: 'fleet', missions: 'missions', market: 'market', ware: 'market', more: 'map', sector: 'map', planner: 'planner' } as Record<string, string>)[ui.panel.type] : 'map';
   const offers = state.contracts.filter((c) => c.status === 'offer').length + (missionComplete(state) ? 1 : 0);
   const items: [string, string, string, number][] = [
-    ['map', 'sector', 'Sektor', 0],
+    ui.view === 'galaxy' && !ui.panel ? ['map', 'galaxy', 'Karte', 0] : ['map', 'sector', 'Sektor', 0],
     ['stations', 'station', 'Stationen', 0],
     ['fleet', 'fleet', 'Flotte', 0],
     ['planner', 'planner', 'Planer', 0],

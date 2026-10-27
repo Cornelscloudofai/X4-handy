@@ -230,7 +230,10 @@ function fitSector(): void {
 }
 
 function fitGalaxy(): void {
-  galaxyCam.fit(GALAXY_HEX * 2.2, bottomHeight() + 150, 90);
+  // ganze Karte sichtbar (alle Sechsecke samt Rand), unten Platz für die Sektorkarte nach einem Tipp
+  // Platz oben: bis unter die Werkzeugleiste (nach dem Umschalten neu gemessen, s. Aufrufer)
+  const top = (document.querySelector('#hud .tool-row')?.getBoundingClientRect().bottom ?? 110) + 8;
+  galaxyCam.fit(GALAXY_HEX * 2.4, bottomHeight() + 8, top);
   galaxyCam.x = 0;
   galaxyCam.minZoom = galaxyCam.zoom * 0.7;
 }
@@ -993,7 +996,13 @@ function onClick(e: MouseEvent): void {
       }
       case 'nav': {
         ui.modal = null;
-        if (d.tab === 'map') { ui.panel = null; if (ui.view === 'galaxy') ui.view = 'sector'; refresh(); }
+        if (d.tab === 'map') {
+          // „Sektor“ erneut antippen: Sektorenkarte auf/zu (mit offenem Fenster erst zurück zur Karte)
+          if (ui.panel) ui.panel = null;
+          else if (ui.view === 'galaxy') ui.view = 'sector';
+          else { ui.view = 'galaxy'; ui.galaxySel = null; ui.placing = null; fitGalaxy(); requestAnimationFrame(fitGalaxy); }
+          refresh();
+        }
         else openPanel(d.tab as PanelType);
         break;
       }
@@ -1020,7 +1029,7 @@ function onClick(e: MouseEvent): void {
         ui.panel = null;
         ui.placing = null;
         if (ui.view === 'galaxy') { ui.view = 'sector'; }
-        else { ui.view = 'galaxy'; ui.galaxySel = ui.sector; fitGalaxy(); }
+        else { ui.view = 'galaxy'; ui.galaxySel = null; fitGalaxy(); requestAnimationFrame(fitGalaxy); }
         refresh();
         break;
       }
