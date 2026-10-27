@@ -45,6 +45,12 @@ einem Solarkraftwerk und einem Miner.
   ganz geladen und vom Service Worker zwischengespeichert). Beim allerersten Start ganz, danach höchstens einmal am Tag
   und überspringbar; Einstellungen → Darstellung: „Trailer beim Start“ an/aus und „Trailer jetzt ansehen“. Klangteppich
   und Titelmusik warten, bis er vorbei ist. Neue Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
+- **Werft als Schauraum (Schiff kaufen):** oben groß das gewählte Schiff in einer Szene, darunter alle Schiffe als
+  Draufsicht zum Durchblättern (Größe, Art, Preis, Anzahl im Besitz), Filter Alle/Miner/Transporter, Werte als Balken im
+  Vergleich zum stärksten Schiff, Preisaufstellung, Heimatstation; Hinweis, wenn Dock/Pier oder Geld fehlen.
+  Szenenbilder: `src/assets/schiffe/<Klasse>.jpg` (z. B. `boa.jpg`, Querformat 16:9, volle Auflösung, JPEG ≥ 0,92) –
+  werden automatisch erkannt; fehlt eins, schwebt die Draufsicht vor einem passenden Weltraum-Hintergrund. Die Tuatara
+  nutzt vorerst die Bilder der Startwahl.
 - **Karrierestart in drei Schritten:** (1) Geschichte – die Sätze erscheinen nacheinander, der letzte hervorgehoben;
   (2) „Vier Dinge, die alles bewegen“ – Bauen, Fördern/Herstellen, Handeln, Kampagne als Karten mit Bild, die
   nacheinander hereingleiten; (3) Schiffswahl im Hangar. Punkte zeigen den Fortschritt, „Weiter“ leuchtet auf, wenn alles

@@ -1230,7 +1230,9 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'modal-close': ui.modal = null; refresh(); break;
-      case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all' }; refresh(); break;
+      case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all', sel: d.cls }; refresh(); break;
+      case 'buyship-sel': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, sel: d.cls }; refresh(); } break;
+      case 'buyship-role': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, role: d.role as 'miner' | 'trader' | 'all', sel: undefined }; refresh(); } break;
       case 'buyship': { const r = A.buyShip(state, d.cls!, d.st!); if (r.ok) sfx.launch(); result(r); break; }
       case 'buy-price-off': {
         const st = stationById(state, d.st!);

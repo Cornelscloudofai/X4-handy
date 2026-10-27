@@ -16,7 +16,7 @@ export interface Panel { type: PanelType; id?: string; tab?: string; back?: Pane
 
 export type Modal =
   | { type: 'modules'; station: string; cat: string; at?: number }
-  | { type: 'buyShip'; station: string; role: 'miner' | 'trader' | 'all' }
+  | { type: 'buyShip'; station: string; role: 'miner' | 'trader' | 'all'; /** gewählte Schiffsklasse im Schauraum */ sel?: string }
   | { type: 'confirm'; title: string; text: string; action: string; args: Record<string, string>; danger?: boolean; label: string }
   | { type: 'rename'; station: string }
   | { type: 'offline'; seconds: number; credits: number; produced: Record<string, number>; modules: number }

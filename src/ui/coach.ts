@@ -41,7 +41,11 @@ export function coachNotify(state: GameState, ui: UIState, action: string): void
 
 /** Schiff kaufen: Weg über Flotte → Kaufdialog → passendes Schiff */
 function buyShipStep(ui: UIState, id: string, cls: string, intro: string, buy: string): CoachStep {
-  if (ui.modal?.type === 'buyShip') return { id: id + '-buy', sel: `#modal [data-act="buyship"][data-cls="${cls}"]`, text: buy };
+  if (ui.modal?.type === 'buyShip') {
+    // im Schauraum erst das Schiff wählen, dann kaufen
+    const chosen = document.querySelector(`#modal [data-act="buyship"][data-cls="${cls}"]`);
+    return chosen ? { id: id + '-buy', sel: `#modal [data-act="buyship"][data-cls="${cls}"]`, text: buy } : { id: id + '-pick', sel: `#modal [data-act="buyship-sel"][data-cls="${cls}"]`, text: buy };
+  }
   if (ui.modal) return { id: id + '-wait', sel: null, text: '' };
   if (ui.panel?.type === 'station' && ui.panel.tab === 'ships') return { id: id + '-open', sel: '#panel [data-act="buyship-modal"]', text: 'Hier kaufst du Schiffe für diese Station.' };
   if (ui.panel?.type === 'fleet') return { id: id + '-open', sel: '#panel [data-act="buyship-modal"]', text: 'Tippe auf „Schiff kaufen“.' };
@@ -205,9 +209,10 @@ export function renderCoach(state: GameState, ui: UIState): void {
   if (step.id !== lastStep) scrollTries = 0;
   const box = target?.closest('.sheet-body')?.getBoundingClientRect();
   const top = Math.max(60, box?.top ?? 0), bottom = Math.min(window.innerHeight - 80, box?.bottom ?? window.innerHeight);
-  if (target && scrollTries < 3 && (rect!.top < top || rect!.bottom > bottom)) {
+  // auch seitlich (z. B. Schiff in der Leiste der Werft)
+  if (target && scrollTries < 3 && (rect!.top < top || rect!.bottom > bottom || rect!.left < 0 || rect!.right > window.innerWidth)) {
     scrollTries++;
-    target.scrollIntoView({ block: 'center' });
+    target.scrollIntoView({ block: 'center', inline: 'center' });
   }
   lastStep = step.id;
   const r = target?.getBoundingClientRect();

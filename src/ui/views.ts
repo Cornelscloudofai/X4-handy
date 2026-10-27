@@ -63,6 +63,7 @@ import { SOUND_DEMO } from '../audio/sounds';
 import { buildModal, diagramEditor, pickerModal, plannerPanel } from './plannerView';
 import { sellModalHtml } from './sellView';
 import { buyModalHtml } from './buyView';
+import { shipyardModal } from './shipyardView';
 import { holdSellModalHtml, tradeModalHtml, wareBuyers } from './tradeView';
 import { deliverySources, deliveryModalHtml } from './deliveryView';
 import { isDelivery } from '../engine/contracts';
@@ -1472,7 +1473,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
   if (!m) return '';
   switch (m.type) {
     case 'modules': return modulesModal(state, ui, m);
-    case 'buyShip': return buyShipModal(state, m);
+    case 'buyShip': return shipyardModal(state, m);
     case 'confirm': return modalShell(m.title, `<p class="lead" style="margin:0">${esc(m.text)}</p>`, `<button class="btn" ${act('modal-close')}>Abbrechen</button><button class="btn ${m.danger ? 'danger' : 'primary'}" ${act('confirm')}>${esc(m.label)}</button>`);
     case 'rename': {
       const st = stationById(state, m.station);
@@ -1795,23 +1796,6 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
     ${nBuy ? `<button class="bp-hint" ${act('open-blueprints')}>${icon('lock', 16)}<span>${nBuy === 1 ? '1 Bauplan' : `${nBuy} Baupläne`} hier kaufbar – bei den Vertretern vor Ort</span>${icon('chev', 16)}</button>` : ''}
     ${cards ? `<div style="display:grid;gap:10px">${cards}</div>` : `<div class="box empty-search">Nichts gefunden${q ? ` für „${esc(q)}“` : ''}.</div>`}`;
   return modalShell(m.at === undefined ? 'Modul einplanen' : `Modul an Position ${m.at + 1} einfügen`, body, `<button class="btn" ${act('modal-close')}>Fertig</button>`, `${st.name} · ${fmtCr(state.credits)} verfügbar`);
-}
-
-function buyShipModal(state: GameState, m: Extract<Modal, { type: 'buyShip' }>): string {
-  const st = stationById(state, m.station) ?? state.stations[0];
-  if (!st) return '';
-  const list = SHIP_CLASSES.filter((c) => m.role === 'all' || c.role === m.role);
-  const cards = list.map((c) => {
-    const dock = hasDockFor(st, c.size);
-    const afford = state.credits >= c.price;
-    return `<div class="module-card box" data-key="${c.id}"><span class="ware-tile" style="--c:${c.role === 'miner' ? '#ffc45e' : '#5ff0d8'}">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
-      <div style="min-width:0"><div class="title" style="font-weight:600">${esc(c.name)} <span class="pill" style="padding:1px 7px">${c.size}</span></div><div class="small muted">${esc(c.description)}</div></div>
-      <div class="meta" style="grid-column:1/-1"><span>Fracht <b>${fmtInt(c.capacity)} m³</b> ${esc(STORAGE_LABEL[c.storage])}</span><span>Reise <b>${fmtNum(c.speed, 1)} km/s</b></span><span>max <b>${fmtInt(c.maxSpeed)} m/s</b></span>${c.miningRate ? `<span>Abbau <b>${c.miningRate} m³/s</b>*</span>` : ''}</div>
-      <div class="price-breakdown" style="grid-column:1/-1"><span>Rumpf <b>${fmtCr(c.hullPrice)}</b></span>${c.parts.map((p) => `<span>${p.count}× ${esc(p.name)} <b>${fmtCr(p.count * p.price)}</b></span>`).join('')}</div>
-      <div class="actions">${dock ? '' : `<span class="small warn-text" style="margin-right:auto">${c.size === 'L' ? 'Pier fehlt' : 'Dock fehlt'}</span>`}<button class="btn small ${afford ? 'primary' : 'disabled'}" ${act('buyship', { st: st.id, cls: c.id })}>Kaufen · ${fmtCr(c.price)}</button></div></div>`;
-  }).join('');
-  const picker = state.stations.length > 1 ? `<div class="field" style="margin-bottom:12px"><label>Heimatstation</label><select data-change="buy-home">${state.stations.map((x) => `<option value="${x.id}" ${x.id === st.id ? 'selected' : ''}>${esc(x.name)} · ${esc(sector(x.sector).name)}</option>`).join('')}</select></div>` : '';
-  return modalShell('Schiff kaufen', `${picker}<div style="display:grid;gap:10px">${cards}</div><p class="small muted" style="margin-top:10px">Preis = Rumpf + Grundausstattung (Triebwerke, Schilde, bei Mineral-Minern Abbautürme) zu X4-Durchschnittspreisen; ohne Waffen. Tempo aus Schub und Luftwiderstand. *Abbaurate ist ein Spielwert.</p>`, `<button class="btn" ${act('modal-close')}>Fertig</button>`, `Split-Werft · ${fmtCr(state.credits)} verfügbar`);
 }
 
 /** Als App installieren (nur sichtbar, wenn das Spiel unter eigener Adresse läuft) */
