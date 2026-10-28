@@ -91,7 +91,11 @@ function tipStep(state: GameState, ui: UIState): CoachStep | null {
   if (m?.type === 'sell' && m.mode === 'order') return tip('tip-order-sell', '#modal #sellOrderPrice', 'Verkaufsorder: Mindestpreis und Restbestand festlegen – fremde Händler kaufen direkt an deiner Station. Mit einer Kauforder derselben Ware wird deine Station zum Handelsplatz.');
   if (m) return null;
   const p = ui.panel;
-  if (p?.type === 'sector' && state.start && !state.sectors.includes(p.id ?? '')) return tip('tip-rights', '#panel .section.rights h3', 'Abbauen darfst du hier erst mit Schürfrecht: Grundrohstoffe ab Ruf 2, Nividium mit mehr Ruf. Ruf bringen Kapitel, Aufträge und Handel mit der Fraktion.');
+  if (p?.type === 'sector' && state.start && !state.sectors.includes(p.id ?? '')) {
+    // Schürfrechte stehen im Reiter „Wirtschaft“ – ist er nicht offen, zeigt der Tipp auf den Reiter
+    const open = !!document.querySelector('#panel .section.rights h3');
+    return tip('tip-rights', open ? '#panel .section.rights h3' : '#panel .sec-tabs [data-tab="economy"]', `Abbauen darfst du hier erst mit Schürfrecht: Grundrohstoffe ab Ruf 2, Nividium mit mehr Ruf.${open ? '' : ' Kaufen kannst du es unter „Wirtschaft“.'} Ruf bringen Kapitel, Aufträge und Handel mit der Fraktion.`);
+  }
   if (p?.type === 'ledger') return tip('tip-ledger-panel', null, 'Das Kontobuch: oben die Summen der letzten Stunde und des Tages, darunter jede Buchung mit Grund. Antippen springt zum Schiff, zur Station oder zum Auftrag.');
   if (p?.type === 'news') return tip('tip-news-panel', null, 'Hier landen alle Meldungen. „Jetzt kaufen …“ öffnet ein Sonderangebot direkt, „Annehmen …“ einen Lieferauftrag; „NEU“ markiert, was seit dem letzten Blick dazukam.');
   if (p) return null;
