@@ -571,6 +571,8 @@ function openPanel(type: PanelType, id?: string, tab?: string, stack = false): v
 // ---------- Karte ----------
 
 function onTap(sx: number, sy: number): void {
+  // offenes Bauen-Menü: der Tipp auf die Karte schließt es nur
+  if (ui.buildMenu) { ui.buildMenu = false; refresh(); return; }
   if (ui.view === 'galaxy') {
     const id = galaxyHit(state, galaxyCam, sx, sy);
     ui.galaxySel = id;
@@ -1068,7 +1070,8 @@ function onClick(e: MouseEvent): void {
       case 'news-filter': ui.newsFilter = (d.f as NewsFilter) || 'all'; state.newsSeen = state.time; refresh(); break;
       case 'ledger-filter': ui.ledgerFilter = (d.f as LedgerFilter) || 'all'; refresh(); break;
       case 'news-go': { const l = linkFrom(d); if (l) followLink(l); break; }
-      case 'layer-menu': ui.layerMenu = !ui.layerMenu; refresh(); break;
+      case 'build-menu': ui.buildMenu = !ui.buildMenu; refresh(); break;
+      case 'layer-menu': ui.layerMenu = !ui.layerMenu; ui.buildMenu = false; refresh(); break;
       case 'layer-toggle':
         if (d.layer === 'flows') ui.flows = !ui.flows;
         else ui.routes = !ui.routes;
@@ -1206,6 +1209,7 @@ function onClick(e: MouseEvent): void {
       case 'zoom-in': cam.zoomAt(1.5, cam.w / 2, cam.h / 2); break;
       case 'zoom-out': cam.zoomAt(1 / 1.5, cam.w / 2, cam.h / 2); break;
       case 'place-start': {
+        ui.buildMenu = false;
         if (!state.sectors.includes(ui.sector)) { toast('Für diesen Sektor fehlt die Baulizenz.', 'warn'); break; }
         ui.panel = null;
         ui.selection = null;

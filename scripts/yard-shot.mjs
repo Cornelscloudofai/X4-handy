@@ -48,7 +48,7 @@ const clipped = () => page.evaluate(() => {
   for (const c of document.querySelectorAll('.card, .modal')) { const r = c.getBoundingClientRect(); for (const btn of c.querySelectorAll('.btn')) { const q = btn.getBoundingClientRect(); if (q.width && q.right > r.right + 1) res.push('Knopf ragt heraus: ' + btn.textContent.trim()); } }
   for (const h of document.querySelectorAll('.card-head h2')) if (h.scrollHeight > h.clientHeight + 1) res.push('Kartentitel abgeschnitten: ' + h.textContent);
   for (const t of document.querySelectorAll('.two-lines')) if (t.offsetParent && t.scrollHeight > t.clientHeight + 2) res.push('Titel gekürzt: ' + t.textContent.trim());
-  const b = document.querySelector('.chip.sector b');
+  const b = document.querySelector('.hb-text b');
   if (b && b.scrollHeight > b.clientHeight + 1) res.push('Sektorname abgeschnitten');
   if (document.documentElement.scrollWidth > innerWidth) res.push('Seite breiter als Bildschirm');
   return res;

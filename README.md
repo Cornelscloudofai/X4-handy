@@ -45,8 +45,11 @@ einem Solarkraftwerk und einem Miner.
   ganz geladen und vom Service Worker zwischengespeichert). Beim allerersten Start ganz, danach höchstens einmal am Tag
   und überspringbar; Einstellungen → Darstellung: „Trailer beim Start“ an/aus und „Trailer jetzt ansehen“. Klangteppich
   und Titelmusik warten, bis er vorbei ist. Neue Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
-- **Sektorinfo im Sektor:** Die Zeile unter dem Sektornamen (z. B. „Fremdsektor · Staub ⓘ“) antippen – die Sektorkarte mit
-  Baulizenz, Details, Späher und Erkundung erscheint direkt im Sektor, ohne Umweg über die Sektorenkarte.
+- **Kopfleiste (zwei Zeilen):** Oben eine gebündelte Leiste: rundes Sektorbild, Name und Spielzeit (antippen:
+  Sektorenkarte), **Sektorinfo** (Baulizenz, Details, Späher und Erkundung direkt im Sektor), Credits (Kontobuch),
+  Pause/Tempo, Warnungen. Darunter **Bauen ▾** (Station errichten, Routen und Warenflüsse), Nachrichten (Sprechblase),
+  Menü (Zahnrad), die Eigenheit des Sektors als Knopf (z. B. „Sturm · 34 min“) und rechts der Zoom.
+  Ansehen: `node scripts/hud-shot.mjs <ordner>`.
 - **Sektorenkarte:** „Sektor“ unten erneut antippen (oder oben auf den Sektornamen). Ruhiger, dunkler Grund: vier eigene
   Weltraumbilder (`src/assets/karte/hintergrund-1…4.jpg`), je 30 s, dann 8 s fließende Überblendung ins nächste, Sektoren als Glas-Sechsecke mit eigenem Farbschimmer und Sternenstaub –
   bewusst ohne Sektorbild, die Überraschung bleibt für den Besuch –, nur der Name. Eigene Sektoren leuchten türkis

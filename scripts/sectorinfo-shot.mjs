@@ -11,7 +11,7 @@ await page.click('text=Loslegen mit Bergbau');
 await page.waitForTimeout(1500);
 await page.evaluate(() => { window.__game.state.help = { coachOff: true }; window.__game.refresh(); });
 await page.screenshot({ path: `${out}/info-0.png` });
-await page.click('button.crumb');
+await page.click('[data-act="sector-info"]');
 await page.waitForTimeout(500);
 await page.screenshot({ path: `${out}/info-1.png` });
 if (!(await page.locator('.gx-card').count())) errors.push('Keine Sektorkarte');

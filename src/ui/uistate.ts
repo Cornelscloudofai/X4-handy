@@ -68,6 +68,8 @@ export interface UIState {
   flows: boolean;
   /** Auswahl der Kartenebenen unter der Werkzeugleiste geöffnet */
   layerMenu: boolean;
+  /** Ausklappmenü „Bauen“ in der Kopfleiste */
+  buildMenu: boolean;
   /** Warenfilter der Flusslinien ('' = alle Waren) */
   flowWare: string;
   galaxySel: string | null;
@@ -112,6 +114,7 @@ export const ui: UIState = {
   routes: initialLayers().routes,
   flows: initialLayers().flows,
   layerMenu: false,
+  buildMenu: false,
   flowWare: '',
   galaxySel: null,
   reducedMotion: initialReducedMotion(),

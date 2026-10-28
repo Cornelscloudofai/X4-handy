@@ -134,25 +134,36 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
   const speedLabel = `×${state.speed}`;
   const inGalaxy = ui.view === 'galaxy';
   const unread = unreadNews(state);
-  const newsBtn = `<button class="btn menu-btn news-btn" ${act('open-news')} aria-label="Nachrichten${unread ? ` – ${unread} neu` : ''}">${icon('info', 17)}${unread ? `<b class="badge num">${unread > 99 ? '99+' : unread}</b>` : ''}</button>`;
+  const newsBtn = `<button class="hud-icon news-btn" ${act('open-news')} aria-label="Nachrichten${unread ? ` – ${unread} neu` : ''}">${icon('chat', 20)}${unread ? `<b class="badge num">${unread > 99 ? '99+' : unread}</b>` : ''}</button>`;
+  const phen = inGalaxy ? '' : phenomenonShort(sec.id, state.time);
+  const thumb = inGalaxy ? '' : BG_IMAGES.find((b) => b.id === sectorImageId(sec.id))?.url;
+  const known = SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0);
+  const menuBtn = `<button class="hud-icon menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü und Einstellungen">${icon('gear', 19)}</button>`;
+  // gebündelte Leiste (Sektor, Sektorinfo, Credits, Tempo, Warnungen) · Werkzeuge (Bauen, Zoom)
   return `
-  <div class="hud-row">
-    <button class="chip sector" ${act('galaxy')} aria-label="${inGalaxy ? 'Zurück zum Sektor' : 'Sektorenkarte öffnen'}">${icon(inGalaxy ? 'sector' : 'galaxy', 15)}<b>${esc(inGalaxy ? 'Karte' : sec.name)}</b></button>
-    <button class="chip credits ${creditFlash}" ${act('open-ledger')} aria-label="Credits – Kontobuch öffnen"><b class="num">${fmtCr(shownCredits)}</b></button>
+  <div class="hud-bar">
+    <button class="hb-sector" ${act('galaxy')} aria-label="${inGalaxy ? 'Zurück zum Sektor' : 'Sektorenkarte öffnen'}">
+      <i class="hb-thumb" style="--tint:${inGalaxy ? '#3fe0c5' : tintOf(sec.id)}${thumb ? `;background-image:url(${thumb})` : ''}">${inGalaxy ? icon('galaxy', 16) : ''}</i>
+      <span class="hb-text"><b>${esc(inGalaxy ? 'Sektorenkarte' : sec.name)}</b><small>${inGalaxy ? `${known} Sektoren bekannt` : fmtClock(state.time)}</small></span>
+    </button>
+    ${inGalaxy ? '' : `<button class="hb-info ${ui.selection?.kind === 'sector' ? 'on' : ''}" ${act('sector-info')} aria-label="Sektorinfo: Lizenz, Satelliten, Erkundung">${icon('info', 16)}<span>Sektorinfo</span></button>`}
+    <button class="chip credits ${creditFlash}" ${act('open-ledger')} aria-label="Credits – Kontobuch öffnen">${icon('market', 15)}<b class="num">${fmtCr(shownCredits)}</b></button>
     <div class="chip time ${ui.paused ? 'paused' : ''}">
       <button ${act('pause')} aria-label="${ui.paused ? 'Fortsetzen' : 'Pausieren'}">${icon(ui.paused ? 'play' : 'pause', 15)}</button>
       <button class="speed" ${act('speed')} aria-label="Spieltempo">${speedLabel}</button>
     </div>
-    <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 15)}<b class="num">${alerts.length}</b></button>
+    <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 16)}<b class="num">${alerts.length}</b></button>
   </div>
-  <div class="sub-row">
-    <${inGalaxy ? 'div' : `button ${act('sector-info')} aria-label="Sektorinfo: Lizenz, Satelliten, Erkundung"`} class="crumb">${inGalaxy ? 'Split-Raum<span>·</span>' : phenomenonShort(sec.id, state.time) ? '' : `${esc(FACTIONS[sec.faction].name)}<span>·</span>`}${inGalaxy ? `${SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}${!inGalaxy && phenomenonShort(sec.id, state.time) ? `<span>·</span><b class="phen">${esc(phenomenonShort(sec.id, state.time))}</b>` : ''}${inGalaxy ? '</div>' : `${icon('info', 13)}</button>`}
-    <div class="clock">${fmtClock(state.time)}</div>
-  </div>
-  ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button><button class="btn menu-btn" ${act('akte')} aria-label="Forschungsakte">${icon('star', 17)}</button>${newsBtn}<button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
-    <button class="btn outline-teal" ${act('place-start')}>${icon('plus', 16)}Station</button>
-    <button class="btn ${ui.routes || ui.flows ? 'on' : ''} ${ui.layerMenu ? 'open' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}">${icon('routes', 16)}Routen</button>
-    ${newsBtn}<button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button>
+  ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button><button class="btn menu-btn" ${act('akte')} aria-label="Forschungsakte">${icon('star', 17)}</button><button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><span class="hud-icons">${newsBtn}${menuBtn}</span></div>` : `<div class="tool-row">
+    <div class="build-wrap">
+      <button class="btn outline-teal build-btn ${ui.buildMenu ? 'open' : ''} ${ui.routes || ui.flows ? 'layers-on' : ''}" ${act('build-menu')} aria-expanded="${ui.buildMenu}">${icon('plus', 17)}Bauen${icon('down', 15)}</button>
+      ${ui.buildMenu ? `<div class="build-menu" role="menu">
+        <button role="menuitem" ${act('place-start')}>${icon('factory', 20)}<span>Station errichten</span></button>
+        <button role="menuitem" class="${ui.layerMenu ? 'on' : ''}" ${act('layer-menu')}>${icon('routes', 20)}<span>Routen und Warenflüsse</span>${ui.routes || ui.flows ? '<i class="dot"></i>' : ''}</button>
+      </div>` : ''}
+    </div>
+    <span class="hud-icons">${newsBtn}${menuBtn}</span>
+    ${phen ? `<button class="phen-pill" ${act('sector-info')} aria-label="Eigenheit des Sektors – Sektorinfo öffnen">${icon('sun', 15)}${phen.includes(' · ') ? `<span class="pl">${esc(phen.split(' · ')[0])} · </span>${esc(phen.split(' · ').slice(1).join(' · '))}` : esc(phen)}</button>` : ''}
     <div class="zoom"><button data-zoom="in" aria-label="Hineinzoomen (halten für stufenlos)">${icon('plus', 16)}</button><div class="zoom-track" data-zoom="track" role="slider" aria-label="Zoom stufenlos"><i class="zoom-knob" style="top:${((1 - (ui.zoomFrac ?? 0.5)) * 100).toFixed(1)}%"></i></div><button data-zoom="out" aria-label="Herauszoomen (halten für stufenlos)">${icon('minus', 16)}</button></div>
   </div>${flowFilter(state, ui)}`}`;
 }
