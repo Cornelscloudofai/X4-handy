@@ -105,7 +105,8 @@ einem Solarkraftwerk und einem Miner.
   schützt bis zu 6 Produktionsmodule, jedes geschützte Modul verbraucht je Sturm 40 Supraflüssiges Kühlmittel aus dem
   Lager – fehlen Mäntel oder geht das Kühlmittel aus, überhitzt die Station. Wer vorgesorgt hat, produziert im Sturm mit
   3000 % Sonne, und Sonnenöfen arbeiten dann doppelt so schnell. Der **Sonnenofen** (Rhak, Ruf 4, nur ab 500 % Sonne)
-  schmilzt je Stunde 100 Silizium mit 4.000 Energiezellen zu 12 **Glutglas** (≈ 5.200 Cr) – gebraucht für die Tore der
+  schmilzt je Stunde 100 Silizium mit 100.000 Energiezellen zu 12 **Glutglas** (≈ 5.200 Cr; Zyklus 15 min) – genau die
+  Leistung eines Solarkraftwerks bei 1000 % Sonne (1 Kraftwerk : 1 Ofen; bei 100 % wären es zehn Kraftwerke je Ofen) – gebraucht für die Tore der
   Kristallgrenze (200) und des Abgrunds (600) und von der Rhak-Werft gekauft. Glutglas gibt es nur im neuen Raum. Station und
   Modulliste zeigen nötige Kühlmäntel, Kühlmittel je Sturm und die Zeit bis zum nächsten Sturm.
 - **Mehrschichtige Sektorszenen (`src/render/sceneBg.ts`):** Aus freigestellten Bildebenen (Sterne, Nebel, Sonne, Plasma,

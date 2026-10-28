@@ -77,11 +77,13 @@ function build(): Record<string, WareDef> {
     estimated: true,
   };
   // Glutglas: im Sonnenofen von Glutsee I aus Silizium und sehr viel Energie geschmolzen (eigene Ware dieses Spiels).
-  // Gebraucht für die Tore weiter oben und von der Rhak-Werft.
+  // Gebraucht für die Tore weiter oben und von der Rhak-Werft. Ein Ofen braucht so viel Energie, wie ein Solarkraftwerk
+  // bei 1000 % Sonne liefert (100.000 je Stunde) – bei normalem Sonnenlicht wären es zehn Kraftwerke je Ofen.
+  // Zyklus 15 min: je 25 Silizium + 25.000 Energiezellen → 3 Glutglas (12 je Stunde).
   out.glutglas = {
     id: 'glutglas', name: 'Glutglas', nameEn: 'Ember Glass', group: 'refined', tier: 2, storage: 'Container', volume: 10,
-    price: { min: 3800, avg: 5200, max: 6800 }, cycle: 3600, batch: 12,
-    inputs: [{ ware: 'silicon', amount: 100 }, { ware: 'energycells', amount: 4000 }], mined: false, color: SPECIAL_COLOR.glutglas,
+    price: { min: 3800, avg: 5200, max: 6800 }, cycle: 900, batch: 3,
+    inputs: [{ ware: 'silicon', amount: 25 }, { ware: 'energycells', amount: 25000 }], mined: false, color: SPECIAL_COLOR.glutglas,
   };
   return out;
 }

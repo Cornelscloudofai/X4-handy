@@ -8,6 +8,7 @@ import { moveAlong } from '../src/engine/logistics';
 import { isLive } from '../src/engine/intel';
 import { mineRate } from '../src/engine/fleet';
 import { SHIP_MAP } from '../src/data/ships';
+import { inputsPerHour, outputPerHour } from '../src/data/wares';
 import { queueModule } from '../src/engine/actions';
 import { vendorsFor } from '../src/data/vendors';
 
@@ -114,42 +115,56 @@ describe('Eigenheiten der Glutsee', () => {
     expect(st.inventory.superfluidcoolant).toBeLessThan(265);
   });
 
-  it('Ein Kühlmantel schützt höchstens 6 Produktionsmodule; Sonnenöfen laufen im Sturm doppelt so schnell', () => {
+  it('Ein Kühlmantel schützt höchstens 6 Produktionsmodule', () => {
     const s = glut(9);
     const st = s.stations[0];
     st.sector = 'f-glut1';
     const mod = (uid: number, def: string) => ({ ...st.modules[0], uid, def, util: 1, running: false, stall: '' as const, t: 0 });
-    for (let i = 0; i < 7; i++) st.modules.push(mod(9100 + i, 'prod_glutglas'));
-    st.modules.push(mod(9200, 'cooling_mantle'));
-    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 10000 };
-    st.modules.push(mod(9300, 'storage_container_l'), mod(9301, 'storage_solid_l'));
-    s.time = 0;
-    while (!stormActive(s.time)) s.time += 60;
-    s.time -= 60;
+    for (let i = 0; i < 7; i++) st.modules.push(mod(9100 + i, 'prod_energycells'));
+    st.modules.push(mod(9200, 'cooling_mantle'), mod(9300, 'storage_container_l'));
+    st.inventory = { superfluidcoolant: 1000 };
+    while (!stormActive(s.time + 60)) s.time += 60;
+    step(s, 60);
     step(s, 600);
     expect(st.heat).toBeGreaterThan(0);
-    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 10000 };
-    // mit zweitem Mantel geschützt – und im Sturm doppelt so schnell
+    // mit zweitem Mantel geschützt: 7 Module × 40 Kühlmittel je Sturm
     st.heat = 0;
     st.modules.push(mod(9201, 'cooling_mantle'));
-    s.time += STORM_CYCLE;
-    while (stormActive(s.time)) s.time += 60;
-    const t0 = s.time;
-    const before = st.produced.glutglas ?? 0;
-    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 40000 };
-    step(s, 3700);
-    const calm = (st.produced.glutglas ?? 0) - before;
-    s.time = t0;
-    while (!stormActive(s.time + 60)) s.time += 60;
-    step(s, 60); // Uhr der Kühlung auf die neue Zeit setzen
-    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 40000 };
+    s.time += STORM_CYCLE - 700;
+    step(s, 60);
+    st.inventory.superfluidcoolant = 1000;
+    while (!stormActive(s.time)) step(s, 60);
+    step(s, STORM_TIME_FULL);
+    expect(st.heat ?? 0).toBe(0);
+    expect(1000 - (st.inventory.superfluidcoolant ?? 0)).toBeGreaterThan(260);
+    expect(1000 - (st.inventory.superfluidcoolant ?? 0)).toBeLessThan(300);
+  });
+
+  it('Sonnenofen: 1 Solarkraftwerk bei 1000 % versorgt 1 Ofen; im Sturm läuft er doppelt so schnell', () => {
+    expect(outputPerHour('energycells', 1000)).toBeGreaterThanOrEqual(inputsPerHour('glutglas').find((i) => i.ware === 'energycells')!.amount);
+    expect(outputPerHour('energycells', 100) * 10).toBeLessThanOrEqual(inputsPerHour('glutglas').find((i) => i.ware === 'energycells')!.amount * 1.1);
+    expect(outputPerHour('glutglas')).toBe(12);
+    const s = glut(10);
+    const st = s.stations[0];
+    st.sector = 'f-glut1';
+    const mod = (uid: number, def: string) => ({ ...st.modules[0], uid, def, util: 1, running: false, stall: '' as const, t: 0 });
+    st.modules.push(mod(9100, 'prod_glutglas'), mod(9200, 'cooling_mantle'), mod(9300, 'storage_container_l'), mod(9301, 'storage_solid_l'));
+    const fill = () => { st.inventory = { superfluidcoolant: 1000, silicon: 1000, energycells: 400000 }; };
+    while (stormActive(s.time) || !stormActive(s.time + STORM_CYCLE - 4000)) s.time += 60;
+    step(s, 60);
+    fill();
+    const b1 = st.produced.glutglas ?? 0;
+    step(s, 1800);
+    const calm = (st.produced.glutglas ?? 0) - b1;
+    while (!stormActive(s.time + 60)) step(s, 60);
+    step(s, 60);
+    fill();
     const b2 = st.produced.glutglas ?? 0;
     step(s, 1800);
     const stormy = (st.produced.glutglas ?? 0) - b2;
     expect(st.heat ?? 0).toBe(0);
     expect(calm).toBeGreaterThan(0);
-    // im Sturm schafft ein Ofen in einer halben Stunde so viel wie sonst in einer Stunde
-    expect(stormy).toBeGreaterThanOrEqual(calm);
+    expect(stormy).toBeGreaterThanOrEqual(calm * 1.5);
   });
 
   it('Sonnenofen nur in Glutsee I, Baupläne nur bei der Familie Rhak, Glutglas nicht im Split-Raum', () => {
