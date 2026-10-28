@@ -5,6 +5,8 @@
 // Ebenen aus demselben 16:9-Rahmen (z. B. Station und ihre Verkehrslichter) bekommen denselben Anker und dieselbe Breite
 // und liegen so deckungsgleich.
 
+import { stormNow } from '../engine/phenomena';
+
 const FILES = import.meta.glob('../assets/szenen/*/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const URLS: Record<string, Record<string, string>> = {};
 for (const [path, url] of Object.entries(FILES)) {
@@ -49,7 +51,9 @@ type Effect =
   | { fx: 'traffic'; on: string; n: number; rx: number; ry: number }
   | { fx: 'glimmer'; on: string; r: number; rgb: string; every: number }
   | { fx: 'beat'; on: string; rgb: string; period: number; r: number }
-  | { fx: 'vignette'; rgb: string; a: number };
+  | { fx: 'vignette'; rgb: string; a: number }
+  /** Strahlungssturm (nur während er im Spiel tobt): rote Schlieren, Blitze, Funkenregen */
+  | { fx: 'storm'; on: string };
 type Item = Cover | Sprite | Effect;
 
 const SCENES: Record<string, Item[]> = {
@@ -74,6 +78,7 @@ const SCENES: Record<string, Item[]> = {
     { fx: 'glow', on: 'sonne', r: 0.7, rgb: '255,170,80', a: 0.5, pulse: 0.06, rays: 14 },
     { img: 'plasma', on: 'sonne', depth: 0.45, at: [0.99, 0.03], p: [0, 0], l: [0, 0], w: 1.75, wl: 1.45, rot: 0.62, rotL: 0.05, blend: 'lighter', flicker: [0.22, 1.3] },
     { fx: 'sparks', on: 'sonne', n: 60, rgb: '255,150,70', dirP: 2.25, dirL: 2.9, spread: 0.55, speed: 1 },
+    { fx: 'storm', on: 'sonne' },
     { img: 'fels-b', depth: 1.35, p: [0.0, 0.8], l: [0.04, 0.88], w: 0.46, rot: 0.4, spin: 0.006, dark: 0.12 },
     { img: 'fels-a', depth: 1.2, p: [1.02, 0.72], l: [0.97, 0.8], w: 0.42, rot: -0.3, spin: -0.008, dark: 0.08 },
     { img: 'fels-a', depth: 0.85, p: [0.16, 0.68], l: [0.12, 0.6], w: 0.13, rot: 1.6, spin: 0.012, dark: 0.35 },
@@ -382,6 +387,31 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, key: string, where
       g.addColorStop(1, `rgba(${e.rgb},0)`);
       ctx.fillStyle = g;
       ctx.fillRect(o.x - R, o.y - R, R * 2, R * 2);
+      break;
+    }
+    case 'storm': {
+      if (!stormNow()) break;
+      const o = where[e.on];
+      if (!o) break;
+      // Funkenregen von der Sonne weg, schnell und dicht
+      const r = randoms(key, 360);
+      for (let i = 0; i < 120; i++) {
+        const life = (t * (0.18 + r[i * 3] * 0.2) + r[i * 3 + 1]) % 1;
+        const ang = (portrait ? 2.2 : 2.85) + (r[i * 3 + 2] - 0.5) * 1.1;
+        const d0 = life * S * 1.1, d1 = d0 + S * 0.05;
+        const a = Math.sin(life * Math.PI) * 0.5;
+        ctx.strokeStyle = `rgba(255,${120 + Math.round(r[i * 3] * 80)},70,${a.toFixed(3)})`;
+        ctx.lineWidth = 1 + r[i * 3 + 1];
+        ctx.beginPath();
+        ctx.moveTo(o.x + Math.cos(ang) * d0, o.y + Math.sin(ang) * d0);
+        ctx.lineTo(o.x + Math.cos(ang) * d1, o.y + Math.sin(ang) * d1);
+        ctx.stroke();
+      }
+      // rötlicher Schleier, der unruhig pulsiert, und gelegentliche Blitze
+      ctx.globalCompositeOperation = 'source-over';
+      const flash = Math.max(0, Math.sin(t * 7.3) * Math.sin(t * 2.1) - 0.75) * 4;
+      ctx.fillStyle = `rgba(255,70,30,${(0.1 + 0.05 * Math.sin(t * 1.7) + flash * 0.12).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
       break;
     }
     case 'vignette': {

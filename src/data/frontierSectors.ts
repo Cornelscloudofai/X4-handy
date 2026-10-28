@@ -58,7 +58,7 @@ const DEFS: Record<string, FrontierSector> = {
     surplus: ['methane', 'ice'], demand: ['medicalsupplies', 'engineparts', 'claytronics', 'advancedelectronics'],
   },
   'f-schmiede': {
-    id: 'f-schmiede', faction: 'rhk', sunlight: 260,
+    id: 'f-schmiede', faction: 'rhk', sunlight: 180, // schwankt mit dem Pulsar zwischen 60 und 300 % (engine/phenomena.ts)
     fields: [
       { id: 'schmiede-helium', ware: 'helium', x: 90, z: 40, r: 30, richness: 1.1 },
     ],

@@ -57,6 +57,7 @@ await page.screenshot({ path: `${out}/durchbruch-5-karte.png` });
 await page.evaluate(() => { const g = window.__game; g.ui.galaxySel = 'f-ausblick'; g.refresh(); });
 await page.waitForTimeout(400);
 if (!(await page.locator('.gx-card [data-act="goto-sector"]').count())) fail('Neuer Sektor nicht anfliegbar');
+if (!(await page.locator('.gx-card [data-act="outpost-buy"]').count())) fail('Horchposten fehlt');
 await page.screenshot({ path: `${out}/durchbruch-6-karte-spielbar.png` });
 await page.click('.gx-card [data-act="goto-sector"]');
 await page.waitForTimeout(1500);

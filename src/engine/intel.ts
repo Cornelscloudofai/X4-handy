@@ -3,6 +3,7 @@
 // Sonst gilt die letzte Momentaufnahme – von einem Schiff, das dort angedockt hat oder nahe vorbeigeflogen ist.
 // Gilt nur in neuen Spielen (mit Startwahl); alte Spielstände sehen wie bisher alles.
 import { NPC_STATIONS, SECTORS, marketInfo } from '../data/sectors';
+import { FRONTIER_MAP } from '../data/frontier';
 import { priceAt } from './economy';
 import type { GameState } from './types';
 import { log } from './util';
@@ -34,11 +35,14 @@ export function resetIntelCache(): void {
 
 /** Live abgedeckte Quadranten: eigene Stationen und Satelliten */
 export function coveredQuadrants(state: GameState): Set<string> {
-  const n = state.stations.length * 1000 + (state.satellites?.length ?? 0);
+  const ear = !!state.frontier?.outpost?.done;
+  const n = state.stations.length * 1000 + (state.satellites?.length ?? 0) + (ear ? 1e6 + SECTORS.length * 1e7 : 0);
   if (coverCache && coverCache.at === state.time && coverCache.n === n) return coverCache.set;
   const set = new Set<string>();
   for (const st of state.stations) set.add(`${st.sector}:${quadrantOf(st.x, st.z)}`);
   for (const s of state.satellites ?? []) set.add(`${s.sector}:${s.q}`);
+  // Der Horchposten in Rhy's Ausblick hört die ganze Glutsee ab
+  if (ear) for (const s of SECTORS) if (FRONTIER_MAP[s.id]?.region === 'glut') for (const q of [0, 1, 2, 3]) set.add(`${s.id}:${q}`);
   coverCache = { at: state.time, n, set };
   return set;
 }

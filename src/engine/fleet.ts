@@ -1,5 +1,6 @@
 // Verhalten der eigenen Schiffe: Miner fördern für ihre Heimatstation,
 // Transporter handeln automatisch oder fliegen feste Versorgungslinien.
+import { fieldMining } from './phenomena';
 import { NPC_MAP, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { MODULE_MAP } from '../data/modules';
 import { DOCK_TIME, SHIP_MAP } from '../data/ships';
@@ -34,7 +35,8 @@ export function fieldLevel(state: GameState, fieldId: string): number {
 export function mineRate(state: GameState, cls: ShipClassDef, fieldId?: string): number {
   if (!fieldId) return cls.miningRate;
   const floor = fieldFloor(state, fieldId);
-  return cls.miningRate * (floor + (1 - floor) * fieldLevel(state, fieldId));
+  // Aschefelder: im Staub fördern Miner mehr
+  return cls.miningRate * fieldMining(fieldId) * (floor + (1 - floor) * fieldLevel(state, fieldId));
 }
 function depleteField(state: GameState, f: FieldDef, m3: number): void {
   if (!state.start) return;

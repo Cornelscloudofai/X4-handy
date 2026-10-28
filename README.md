@@ -92,6 +92,13 @@ einem Solarkraftwerk und einem Miner.
   reiches Erz, Nividium), Familie Rhak (Werft, Siedlung) und Der Schmiedestern (Sonne 260 %). Vier davon gehören der
   **Familie Rhak**, einer eigenen Fraktion mit eigenem Ruf (Handel, Aufträge; erscheint im Ruf erst nach ihrer Entdeckung).
   Bilder: `src/assets/sektoren/<id>.jpg` (16:9) – Sektorhintergrund, Erstsichtung und Akte; bis dahin vorhandene Hintergründe.
+- **Eigenheiten der Glutsee (`src/engine/phenomena.ts`):** hängen nur an der Spielzeit. **Glutsee I:** alle 3 h ein
+  Strahlungssturm (35 min) – Schiffe im Sektor fliegen dann mit 60 %, die Szene zeigt Funkenregen und rötliche Blitze,
+  eine Meldung kündigt ihn an. **Die Aschefelder:** Staub – Schiffe immer mit 80 %, Miner fördern 30 % mehr. **Der
+  Schmiedestern:** Pulsar – Sonnenlicht schwankt im Zwei-Stunden-Takt zwischen 60 % und 300 % (Solarmodule entsprechend).
+  **Horchposten in Rhy's Ausblick:** mit 150 Hüllenteilen, 600 Energiezellen und 300 Veredelten Metallen (aus den Lagern
+  oder zugekauft) wieder in Betrieb – dann sind alle Märkte der Glutsee live sichtbar und Suchen dort finden 25 % leichter
+  etwas. Kartenkarte und Kopfzeile der Sektoransicht zeigen die Eigenheit (Sturm mit Restzeit, Sonne in Prozent).
 - **Mehrschichtige Sektorszenen (`src/render/sceneBg.ts`):** Aus freigestellten Bildebenen (Sterne, Nebel, Sonne, Plasma,
   Felsen) entsteht ein lebendiger Hintergrund: jede Ebene mit eigener Tiefe (Parallaxe beim Verschieben), dazu gezeichnete
   Effekte – funkelnde Sterne, atmender Nebel, Sonne mit pulsierender Korona und langsam drehenden Strahlen, flackernde

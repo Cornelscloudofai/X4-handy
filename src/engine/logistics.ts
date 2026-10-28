@@ -1,4 +1,5 @@
 // Bedarf, Überschuss, Reservierungen und Wegberechnung.
+import { sectorSpeed } from './phenomena';
 import { SECTOR_MAP, gate, marketInfo, sector, sectorPath } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
@@ -75,7 +76,8 @@ export function travelDistance(from: Place, to: Place): number {
  * Beim Erreichen eines Sprungtors wechselt das Objekt in den Nachbarsektor.
  */
 export function moveAlong(ship: { sector: string; x: number; z: number; heading: number; path: Ship['path'] }, speed: number, dt: number): boolean {
-  let budget = speed * dt;
+  // Sektor-Eigenheiten: Sturm in Glutsee I, Staub in den Aschefeldern
+  let budget = speed * dt * sectorSpeed(ship.sector);
   let guard = 0;
   while (ship.path.length && guard++ < 20) {
     const p = ship.path[0];

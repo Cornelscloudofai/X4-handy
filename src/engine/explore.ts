@@ -40,6 +40,8 @@ export interface FrontierState {
   open?: string[];
   /** Zeitpunkt der Entdeckung je Sektor (Forschungsakte) */
   found?: Record<string, number>;
+  /** Horchposten in Rhy's Ausblick: angelieferte Waren, done = wieder in Betrieb */
+  outpost?: { have: Record<string, number>; done?: boolean };
 }
 
 export interface GateRepair { sig: string; t: number; dur: number; need?: Record<string, number>; have?: Record<string, number> }
@@ -151,7 +153,7 @@ export function repairWares(sig: string): Record<string, number> {
 const repairOf = (state: GameState, sig: string) => (state.frontier as FrontierState | undefined)?.repairs?.find((x) => x.sig === sig);
 
 /** Was am Tor noch fehlt (alte Spielstände ohne Warenliste: nichts) */
-export function repairMissing(r: GateRepair): Record<string, number> {
+export function repairMissing(r: { need?: Record<string, number>; have?: Record<string, number> }): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [id, n] of Object.entries(r.need ?? {})) {
     const m = n - (r.have?.[id] ?? 0);
@@ -163,8 +165,12 @@ export function repairMissing(r: GateRepair): Record<string, number> {
 /** Was die eigenen Stationen davon gerade hergeben (über der eingestellten Reserve) */
 export function gateSupply(state: GameState, sig: string): Record<string, number> {
   const r = repairOf(state, sig);
+  return r ? siteSupply(state, r) : {};
+}
+
+/** Lieferbares für eine Baustelle (Tor oder Horchposten) aus den eigenen Lagern */
+function siteSupply(state: GameState, r: { need?: Record<string, number>; have?: Record<string, number> }): Record<string, number> {
   const out: Record<string, number> = {};
-  if (!r) return out;
   for (const [id, miss] of Object.entries(repairMissing(r))) {
     let n = 0;
     for (const st of state.stations) n += Math.max(0, (st.inventory[id] ?? 0) - (st.reserve?.[id] ?? 0));
@@ -177,7 +183,9 @@ export function gateSupply(state: GameState, sig: string): Record<string, number
 /** Preis für den Zukauf aller noch fehlenden Waren */
 export function gateBuyCost(state: GameState, sig: string): number {
   const r = repairOf(state, sig);
-  if (!r) return 0;
+  return r ? siteBuyCost(r) : 0;
+}
+function siteBuyCost(r: { need?: Record<string, number>; have?: Record<string, number> }): number {
   return Math.round(Object.entries(repairMissing(r)).reduce((sum, [id, n]) => sum + Math.ceil(n) * WARES[id].price.avg * REPAIR_BUY_MARKUP, 0));
 }
 
@@ -207,7 +215,7 @@ export function repairGate(state: GameState, sig: string): Result {
   return ok(`Baustelle am Tor in ${sectorLabel(sig.split('>')[0])} eingerichtet. Gebraucht: ${list}.`);
 }
 
-function addHave(r: GateRepair, id: string, n: number): void {
+function addHave(r: { have?: Record<string, number> }, id: string, n: number): void {
   (r.have ??= {})[id] = (r.have[id] ?? 0) + n;
 }
 
@@ -215,7 +223,13 @@ function addHave(r: GateRepair, id: string, n: number): void {
 export function deliverGate(state: GameState, sig: string): Result {
   const r = repairOf(state, sig);
   if (!r) return fail('Keine Baustelle an diesem Tor.');
-  const supply = gateSupply(state, sig);
+  const res = deliverSite(state, r);
+  if (res.ok && !Object.keys(repairMissing(r)).length) res.msg += ' Alles da – die Montage beginnt.';
+  return res;
+}
+
+function deliverSite(state: GameState, r: { need?: Record<string, number>; have?: Record<string, number> }): Result {
+  const supply = siteSupply(state, r);
   if (!Object.keys(supply).length) return fail('Deine Lager haben gerade nichts davon übrig.');
   const parts: string[] = [];
   for (const [id, want] of Object.entries(supply)) {
@@ -231,8 +245,7 @@ export function deliverGate(state: GameState, sig: string): Result {
     addHave(r, id, want - left);
     parts.push(`${Math.round(want - left).toLocaleString('de-DE')} ${WARES[id].name}`);
   }
-  const done = !Object.keys(repairMissing(r)).length;
-  return ok(`Geliefert: ${parts.join(', ')}.${done ? ' Alles da – die Montage beginnt.' : ''}`);
+  return ok(`Geliefert: ${parts.join(', ')}.`);
 }
 
 /** Fehlende Waren bei Händlern zukaufen (mit Aufschlag) */
@@ -285,7 +298,9 @@ function finishSearch(state: GameState, s: Scout, sector: string, bonus: number,
     book(state, cr, 'reward', `Bergung: ${sectorLabel(sector)}`, { kind: 'sector', id: sector });
     log(state, `${s.name} hat das Nebensignal in ${sectorLabel(sector)} angeflogen: ein Wrack. Die Bergung bringt ${cr.toLocaleString('de-DE')} Cr.`, 'good', true, { kind: 'sector', id: sector });
   }
-  if (hidden.length && rand(state) < searchChance(bonus)) {
+  // Der Horchposten hört mit: In der Glutsee findet auch eine schwache Peilung leichter etwas
+  const ear = state.frontier?.outpost?.done && regionOf(sector) === 'glut' ? OUTPOST_SEARCH : 0;
+  if (hidden.length && rand(state) < Math.min(1, searchChance(bonus) + ear)) {
     const to = hidden[Math.floor(rand(state) * hidden.length) % hidden.length];
     frontierState(state).signatures.push(`${sector}>${to}`);
     log(state, `${s.name}: Torsignatur in ${sectorLabel(sector)} entdeckt! Sie führt ins Unbekannte.`, 'good', true, { kind: 'sector', id: sector });
@@ -323,4 +338,56 @@ export function stepScouts(state: GameState, dt: number): void {
       finishSearch(state, s, task.target, task.bonus ?? 0, !!task.salvage);
     }
   }
+}
+
+// ---------- Horchposten in Rhy's Ausblick ----------
+
+/** Waren, um den Horchposten wieder in Betrieb zu nehmen */
+export const OUTPOST_WARES: Record<string, number> = { hullparts: 150, energycells: 600, refinedmetals: 300 };
+/** Zusätzliche Fundchance bei Suchen in der Glutsee, sobald der Horchposten läuft */
+export const OUTPOST_SEARCH = 0.25;
+
+/** Zustand des Horchpostens: null = noch nicht entdeckt */
+export function outpostState(state: GameState): { done: boolean; need: Record<string, number>; have: Record<string, number>; missing: Record<string, number> } | null {
+  const f = state.frontier as FrontierState | undefined;
+  if (!f?.discovered.includes('f-ausblick')) return null;
+  const o = f.outpost ?? { have: {} };
+  const site = { need: OUTPOST_WARES, have: o.have };
+  return { done: !!o.done, need: OUTPOST_WARES, have: o.have, missing: o.done ? {} : repairMissing(site) };
+}
+
+function outpostSite(state: GameState): { need: Record<string, number>; have: Record<string, number> } | null {
+  const fs = frontierState(state);
+  if (!fs.discovered.includes('f-ausblick') || fs.outpost?.done) return null;
+  fs.outpost ??= { have: {} };
+  return { need: OUTPOST_WARES, have: fs.outpost.have };
+}
+
+export const outpostSupply = (state: GameState): Record<string, number> => { const s = outpostSite(state); return s ? siteSupply(state, s) : {}; };
+export const outpostBuyCost = (state: GameState): number => { const s = outpostSite(state); return s ? siteBuyCost(s) : 0; };
+
+function outpostCheck(state: GameState, res: Result): Result {
+  const fs = frontierState(state);
+  if (res.ok && fs.outpost && !Object.keys(repairMissing({ need: OUTPOST_WARES, have: fs.outpost.have })).length) {
+    fs.outpost.done = true;
+    log(state, "Der Horchposten in Rhy's Ausblick läuft wieder. Auf Kanal 9 ist das Knacken jetzt klar: Es kommt aus Richtung des Bandtors, hinter der Familie Rhak.", 'good', true, { kind: 'sector', id: 'f-ausblick' });
+    res.msg += ' Der Horchposten ist wieder in Betrieb.';
+  }
+  return res;
+}
+
+export function deliverOutpost(state: GameState): Result {
+  const s = outpostSite(state);
+  if (!s) return fail('Der Horchposten braucht nichts mehr.');
+  return outpostCheck(state, deliverSite(state, s));
+}
+
+export function buyOutpostRest(state: GameState): Result {
+  const s = outpostSite(state);
+  if (!s) return fail('Der Horchposten braucht nichts mehr.');
+  const cost = siteBuyCost(s);
+  if (state.credits < cost) return fail('Nicht genug Credits für den Zukauf.');
+  for (const [id, n] of Object.entries(repairMissing(s))) addHave(s, id, n);
+  book(state, -cost, 'build', 'Horchposten: Waren zugekauft', { kind: 'sector', id: 'f-ausblick' });
+  return outpostCheck(state, ok('Händler liefern den Rest zum Horchposten.'));
 }

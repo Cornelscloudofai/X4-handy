@@ -36,7 +36,8 @@ import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { devRevealAll, tintOf } from '../render/galaxyView';
 import { FRONTIER, FRONTIER_MAP, REGIONS, type RegionId } from '../data/frontier';
 import { frontierImage } from './reveal';
-import { SCOUT_PRICE, gateBuyCost, gateState, gateSupply, scoutPath, scouts } from '../engine/explore';
+import { SCOUT_PRICE, gateBuyCost, gateState, gateSupply, outpostBuyCost, outpostState, outpostSupply, scoutPath, scouts } from '../engine/explore';
+import { phenomenonShort, phenomenonText } from '../engine/phenomena';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
@@ -145,7 +146,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 15)}<b class="num">${alerts.length}</b></button>
   </div>
   <div class="sub-row">
-    <div class="crumb">${inGalaxy ? 'Split-Raum' : esc(FACTIONS[sec.faction].name)}<span>·</span>${inGalaxy ? `${SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}</div>
+    <div class="crumb">${inGalaxy ? 'Split-Raum<span>·</span>' : phenomenonShort(sec.id, state.time) ? '' : `${esc(FACTIONS[sec.faction].name)}<span>·</span>`}${inGalaxy ? `${SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}${!inGalaxy && phenomenonShort(sec.id, state.time) ? `<span>·</span><b class="phen">${esc(phenomenonShort(sec.id, state.time))}</b>` : ''}</div>
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
   ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button><button class="btn menu-btn" ${act('akte')} aria-label="Forschungsakte">${icon('star', 17)}</button>${newsBtn}<button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
@@ -466,8 +467,22 @@ function galaxyCard(state: GameState, id: string): string {
     owned ? '' : `Lizenz ${fmtCr(s.licenseCost)}`,
   ].filter(Boolean).join(' · ');
   return `<div class="card gx-card ${owned ? 'own' : ''}" style="--tint:${tintOf(id)}${img ? `;--img:url(${img})` : ''}">
-    <div class="gx-body"><span class="gx-eyebrow">${f ? `${esc(REGIONS[f.region].name)} · ` : ''}${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>
-    <div class="gx-actions"><button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button><button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div>${exploreBlock(state, id)}</div>${close}</div>`;
+    <div class="gx-body"><span class="gx-eyebrow">${f ? `${esc(REGIONS[f.region].name)} · ` : ''}${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>${phenomenonText(id, state.time) ? `<div class="gx-phen">${icon('target', 14)}${esc(phenomenonText(id, state.time))}</div>` : ''}
+    <div class="gx-actions"><button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button><button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div>${id === 'f-ausblick' ? outpostBlock(state) : ''}${exploreBlock(state, id)}</div>${close}</div>`;
+}
+
+/** Horchposten in Rhy's Ausblick: mit Waren wieder in Betrieb nehmen */
+function outpostBlock(state: GameState): string {
+  const o = outpostState(state);
+  if (!o) return '';
+  if (o.done) return `<div class="gx-gate open"><span>${icon('target', 15)}Horchposten in Betrieb: Marktdaten der ganzen Glutsee live, Suchen dort finden leichter etwas.</span></div>`;
+  const wares = Object.entries(o.need).map(([w, n]) => {
+    const have = o.have[w] ?? 0;
+    return `<div class="gx-ware ${have >= n - 1e-6 ? 'done' : ''}">${wareIcon(w, 16)}<span>${esc(WARES[w].name)}</span><b>${fmtNum(have)} / ${fmtNum(n)}</b><i style="--p:${Math.min(100, (have / n) * 100).toFixed(1)}%"></i></div>`;
+  }).join('');
+  const n = Object.values(outpostSupply(state)).reduce((a, b) => a + b, 0);
+  const cost = outpostBuyCost(state);
+  return `<div class="gx-gate site"><span>${icon('target', 15)}Der Horchposten steht still. Mit Strom und Ersatzteilen hört er wieder mit – die ganze Glutsee.</span><div class="gx-wares">${wares}</div><div class="gx-actions"><button class="btn small primary ${n ? '' : 'disabled'}" ${act('outpost-deliver')}>Aus deinen Lagern liefern${n ? ` · ${fmtNum(n)}` : ''}</button><button class="btn small ${state.credits >= cost ? '' : 'disabled'}" ${act('outpost-buy')}>Rest zukaufen · ${fmtCr(cost)}</button></div></div>`;
 }
 
 function placeCard(state: GameState, ui: UIState): string {

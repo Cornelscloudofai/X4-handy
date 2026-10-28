@@ -17,7 +17,7 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
-import { buyGateRest, buyScout, deliverGate, discover, peilDepth, regionOf, repairGate, sectorLabel, sendScout, sendThrough } from '../engine/explore';
+import { buyGateRest, buyOutpostRest, buyScout, deliverGate, deliverOutpost, discover, peilDepth, regionOf, repairGate, sectorLabel, sendScout, sendThrough } from '../engine/explore';
 import { showReveal } from './reveal';
 import { runPeilung } from './peilung';
 import { GALAXY_HEX, devRevealAll, drawGalaxy, drawGalaxyBackdrop, drawScouts, setDevRevealAll, galaxyHit, mapBounds, sectorCenter } from '../render/galaxyView';
@@ -1261,6 +1261,8 @@ function onClick(e: MouseEvent): void {
       case 'gate-repair': result(repairGate(state, d.sig!)); break;
       case 'gate-deliver': { const r = deliverGate(state, d.sig!); if (r.ok) sfx.success(); result(r); break; }
       case 'gate-buy': result(buyGateRest(state, d.sig!)); break;
+      case 'outpost-deliver': { const r = deliverOutpost(state); if (r.ok) sfx.success(); result(r); break; }
+      case 'outpost-buy': result(buyOutpostRest(state)); break;
       case 'gate-through': result(sendThrough(state, d.sc!, d.sig!)); break;
       case 'scout-buy': result(buyScout(state)); break;
       case 'scout-send': result(sendScout(state, d.sc!, d.sec!)); break;

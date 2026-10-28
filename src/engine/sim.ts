@@ -12,6 +12,7 @@ import { stepStory } from './story';
 import { stepHistory } from './history';
 import { stepShipOrders, stepYard } from './yard';
 import { stepScouts } from './explore';
+import { resetPhenomena, stepPhenomena } from './phenomena';
 import type { GameState } from './types';
 import { log, muteEvents, rand } from './util';
 
@@ -24,10 +25,12 @@ let eventTimer = 3600;
 export function resetSimTimers(): void {
   slowTimer = 0;
   eventTimer = 3600;
+  resetPhenomena();
 }
 
 function substep(state: GameState, dt: number): void {
   state.time += dt;
+  stepPhenomena(state);
   for (const st of state.stations) {
     stepConstruction(state, st, dt);
     stepProduction(state, st, dt);
