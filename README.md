@@ -92,6 +92,14 @@ einem Solarkraftwerk und einem Miner.
   reiches Erz, Nividium), Familie Rhak (Werft, Siedlung) und Der Schmiedestern (Sonne 260 %). Vier davon gehören der
   **Familie Rhak**, einer eigenen Fraktion mit eigenem Ruf (Handel, Aufträge; erscheint im Ruf erst nach ihrer Entdeckung).
   Bilder: `src/assets/sektoren/<id>.jpg` (16:9) – Sektorhintergrund, Erstsichtung und Akte; bis dahin vorhandene Hintergründe.
+- **Mehrschichtige Sektorszenen (`src/render/sceneBg.ts`):** Aus freigestellten Bildebenen (Sterne, Nebel, Sonne, Plasma,
+  Felsen) entsteht ein lebendiger Hintergrund: jede Ebene mit eigener Tiefe (Parallaxe beim Verschieben), dazu gezeichnete
+  Effekte – funkelnde Sterne, atmender Nebel, Sonne mit pulsierender Korona und langsam drehenden Strahlen, flackernde
+  Plasmaschleier, Funken, die von der Sonne fortgetragen werden, sich langsam drehende Felsen im Vordergrund, Vignette.
+  Die Anordnung richtet sich nach dem Bildschirm (im Hochformat wird der Nebel gedreht, Sonne und Felsen bleiben am Rand,
+  die Mitte ruhig). Ebenen aufbereiten: `node scripts/import-scene.mjs <sektor> sterne=<a.png> nebel=<b.png>:8 sonne=<c.png>:5 …`
+  – entfernt grelle Freistellsäume (Farbe aus dem Inneren ausbluten, weich auslaufende Ränder) und speichert in voller
+  Auflösung als WebP 0,95 nach `src/assets/szenen/<sektor>/`. Bisher: Glutsee I.
 - **Kampagne „Kanal 9“** (nach „Neue Horizonte“): Tevka Rhy hört auf Kanal 9 ein Knacken aus Richtung des toten Tors.
   Vier Kapitel führen durch Späherkauf, Peilung, Torbaustelle und die erste Erstsichtung (Rhy's Ausblick). Ab hier
   gilt für alle Texte: konkret statt Werbesprache – Namen, Zahlen, Stimmen aus der Spielwelt.

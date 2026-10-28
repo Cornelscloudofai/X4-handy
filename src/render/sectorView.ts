@@ -16,7 +16,8 @@ import { Effects } from './effects';
 import { drawMiningRock, drawRockDetail, drawRockField } from './fields';
 import { drawWareGlyph } from './glyphs';
 import { ensurePlaced, layoutReach, plannedPlaces, productionKind, stationStyle, tubeCurve } from './stationLayout';
-import { sectorLayers } from './bgImages';
+import { sectorImageId, sectorLayers } from './bgImages';
+import { drawScene, hasScene } from './sceneBg';
 import { paintSun, nebulaLayer, sectorTheme, starParams } from './sectorTheme';
 import { backgroundSprite, fieldSprite, isGas, rgba } from './sprites';
 import { mapShipSprite, moduleSprite, stationCoreSprite } from './shipArt';
@@ -117,6 +118,12 @@ export class SectorRenderer {
     const W = cam.w, H = cam.h;
     // Bild-Hintergrund in zwei Ebenen: das Bild füllt den Bildschirm (ohne Verzerrung); beim Verschieben gleitet
     // es leicht mit, eine eigene Ebene feiner Sterne etwa doppelt so weit – so entsteht Tiefe (das Bild liegt nur einmal).
+    // Mehrschichtige Szene (eigene Ebenen und Effekte), wenn der Sektor eine hat und sein eigenes Bild gewählt ist
+    if (mode === 'image' && hasScene(sectorId) && sectorImageId(sectorId) === sectorId) {
+      const limit = SECTOR_RADIUS * 1.1;
+      drawScene(ctx, sectorId, W, H, Math.max(-1, Math.min(1, cam.x / limit)), Math.max(-1, Math.min(1, cam.z / limit)), now / 1000);
+      return;
+    }
     const lay = mode === 'image' ? sectorLayers(sectorId) : undefined;
     if (lay === null) {
       // Bild lädt noch: dunkler Grund statt kurz aufblitzendem erzeugtem Himmel
