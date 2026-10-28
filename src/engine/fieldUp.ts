@@ -6,6 +6,7 @@ import type { FieldDef, GameState } from './types';
 import { log } from './util';
 import { setFieldReserve } from './logistics';
 import { book } from './ledger';
+import { fieldRegen } from './phenomena';
 
 export interface FieldStep {
   level: 1 | 2 | 3;
@@ -34,7 +35,7 @@ export function fieldCapFactor(state: GameState, fieldId: string): number {
   return (l >= 1 ? 1.5 : 1) * (l >= 3 ? 2 : 1);
 }
 export function fieldRegenFactor(state: GameState, fieldId: string): number {
-  return fieldUp(state, fieldId).level >= 2 ? 2 : 1;
+  return (fieldUp(state, fieldId).level >= 2 ? 2 : 1) * fieldRegen(fieldId);
 }
 /** Abbautempo auf einem erschöpften Feld */
 export function fieldFloor(state: GameState, fieldId: string): number {

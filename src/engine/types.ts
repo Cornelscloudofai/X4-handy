@@ -115,6 +115,8 @@ export interface SectorDef {
   licenseCost: number;
   repRequired: number;
   description: string;
+  /** Fundstück aus der Spielwelt (Aushang, Funkspruch, Logbuch) – in der Sektorinfo */
+  note?: string;
   /** Waren, die hier im Überfluss produziert werden (günstiger) */
   surplus: string[];
   /** Waren, nach denen hier große Nachfrage herrscht (teurer) */

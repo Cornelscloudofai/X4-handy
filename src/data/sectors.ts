@@ -33,7 +33,8 @@ export const SECTORS: SectorDef[] = [
       { id: 'zhin-silizium', name: 'Zhin-Siliziumwerk', kind: 'factory', x: -80, z: -150, buys: ['silicon', 'energycells'], makes: ['siliconwafers'] },
     ],
     links: ['tkr', 'rhy', 'hoa', 'cascade'], licenseCost: 0, repRequired: 0,
-    description: 'Heimat der Familie Zhin. Nach dem Xenon-Angriff wird jede Fabrik gebraucht.',
+    description: 'Stammsektor der Familie Zhin. Seit dem Xenon-Angriff stehen zwei der drei Werftdocks leer, die Hütte läuft im Notbetrieb. Für Hüllenteile und Claytronik zahlt die Werft einen Aufschlag.',
+    note: 'Aushang an Werftdock 2: „Hüllenteile und Claytronik – Abnahme jede Menge, Aufschlag zwölf vom Hundert. Sae Zhin, Werftmeisterin.“',
     surplus: ['ore', 'silicon', 'energycells'], demand: ['refinedmetals', 'hullparts', 'engineparts'],
   },
   {
@@ -50,7 +51,8 @@ export const SECTORS: SectorDef[] = [
       { id: 'tkr-wacht', name: 'Tkr-Wachstation', kind: 'defence', x: 100, z: 20, buys: ['weaponscomponents', 'turretcomponents', 'missilecomponents', 'cheltmeat', 'scruffinfruit', 'energycells'] },
     ],
     links: ['zhin', 'cascade', 'ravine'], licenseCost: 4_000_000, repRequired: 4,
-    description: 'Erzreiche Felder und eine hungrige Werft. Wenig Sonne.',
+    description: 'Die Familie Tkr baut Rümpfe für andere Familien. Erz liegt hier in dicken Adern, Sonnenlicht ist knapp. Alle vier Stunden läuft ein Schiff vom Stapel – kurz davor kauft die Werft, was noch fehlt.',
+    note: 'Funk der Tkr-Werft, 06:40: „Rumpf 117 geht in zwei Stunden raus. Uns fehlen 340 Hüllenteile und die Scannerarrays für die Brücke. Wir zahlen den Stapellauf-Aufschlag.“',
     surplus: ['ore', 'teladianium'], demand: ['hullparts', 'claytronics', 'siliconwafers', 'microchips', 'scanningarrays'],
   },
   {
@@ -67,7 +69,8 @@ export const SECTORS: SectorDef[] = [
       { id: 'cascade-elektronik', name: 'Tharka-Elektronikwerk', kind: 'factory', x: 60, z: 60, buys: ['siliconwafers', 'graphene', 'superfluidcoolant', 'antimattercells', 'microchips', 'quantumtubes', 'energycells', 'helium'], makes: ['claytronics', 'microchips', 'quantumtubes', 'advancedelectronics', 'superfluidcoolant'], miner: { ware: 'helium' } },
     ],
     links: ['zhin', 'tkr'], licenseCost: 6_000_000, repRequired: 8,
-    description: 'Gasnebel und 140 % Sonnenlicht – ideal für Solarkraftwerke.',
+    description: 'Drei Gaswolken um einen hellen Stern, 140 % Sonnenlicht. Die Dichte der Wolken steigt und fällt im Drei-Stunden-Takt; Gassammler, die zur Flut kommen, sind schneller voll.',
+    note: 'Logbuch der Kaskaden-Raffinerie: „Flut 14:10, Helium 148 %. Ebbe 15:40, 71 %. Sammler ab sofort nach Tabelle schicken, nicht nach Gefühl.“',
     surplus: ['hydrogen', 'helium', 'methane'], demand: ['energycells', 'graphene', 'antimattercells', 'plasmaconductors'],
   },
   {
@@ -82,7 +85,8 @@ export const SECTORS: SectorDef[] = [
       { id: 'ravine-bastion', name: 'Schluchtbastion', kind: 'defence', x: 60, z: 60, buys: ['weaponscomponents', 'turretcomponents', 'shieldcomponents', 'missilecomponents', 'foodrations', 'medicalsupplies', 'energycells'] },
     ],
     links: ['tkr', 'rhy'], licenseCost: 9_000_000, repRequired: 12,
-    description: 'Dunkel, gefährlich und reich an Nividium.',
+    description: 'Eine Schlucht aus Gesteinstrümmern mit dem reichsten Nividium der Gegend und nur 60 % Licht. Etwa alle fünf Stunden kommt eine Xenon-Streife durch die Lücke im Nordosten. Solange sie da ist, fördert hier niemand.',
+    note: 'Schluchtwacht an alle Miner: „Kontakt Nordost, drei Jäger. Felder räumen, Transponder aus, auf Freigabe warten.“',
     surplus: ['silicon', 'nividium'], demand: ['foodrations', 'medicalsupplies', 'weaponscomponents', 'turretcomponents'],
   },
   {
@@ -98,7 +102,8 @@ export const SECTORS: SectorDef[] = [
       { id: 'rhy-raffinerie', name: 'Rhy-Raffinerie', kind: 'factory', x: 80, z: 20, buys: ['ore', 'hydrogen', 'refinedmetals', 'antimattercells', 'energycells'], makes: ['refinedmetals', 'antimattercells', 'engineparts'] },
     ],
     links: ['zhin', 'zyarth', 'ravine'], licenseCost: 5_000_000, repRequired: 3,
-    description: 'Grenzsektor des Zyarth-Patriarchats. Die Flotte braucht Nachschub.',
+    description: 'Grenzsektor des Patriarchats und Haltepunkt der Nachschubflotte. Patrouillen halten den Korridor frei, Frachter kommen hier schneller durch als anderswo. Hinter dem Handelsposten liegt ein Tor, das seit 31 Jahren tot ist.',
+    note: 'Tevka Rhy, Funkstelle Patriarchenhafen: „Korridor frei, Zhin bis Zyarth zwölf Minuten. Kanal 9 knackt wieder.“',
     surplus: ['hydrogen', 'energycells'], demand: ['antimattercells', 'engineparts', 'missilecomponents', 'shieldcomponents'],
   },
   {
@@ -114,7 +119,8 @@ export const SECTORS: SectorDef[] = [
       { id: 'hoa-chemie', name: 'Acrimony-Chemiewerk', kind: 'factory', x: 60, z: 80, buys: ['methane', 'graphene', 'superfluidcoolant', 'energycells'], makes: ['graphene', 'plasmaconductors', 'quantumtubes'] },
     ],
     links: ['zhin', 'zyarth'], licenseCost: 7_000_000, repRequired: 6,
-    description: 'Eis und Methan im Überfluss. Die Bevölkerung verlangt nach Nahrung.',
+    description: 'Ein Komet zieht durch den Sektor und schüttet Eis und Methan nach – die Felder wachsen doppelt so schnell nach wie anderswo. Im Habitat leben 40.000 Split, und Nahrung ist immer knapp.',
+    note: 'Tafel am Dock des Acrimony-Markts: „Fleischrationen aus, nächste Lieferung unbekannt. Eis bitte nicht mehr anbieten, Lager voll.“',
     surplus: ['ice', 'methane', 'water'], demand: ['cheltmeat', 'scruffinfruit', 'foodrations', 'spacefuel', 'quantumtubes'],
   },
   {
@@ -131,7 +137,8 @@ export const SECTORS: SectorDef[] = [
       { id: 'zyarth-arsenal', name: 'Zyarth-Arsenal', kind: 'defence', x: 80, z: 20, buys: ['weaponscomponents', 'turretcomponents', 'shieldcomponents', 'missilecomponents', 'energycells'] },
     ],
     links: ['rhy', 'hoa'], licenseCost: 12_000_000, repRequired: 12,
-    description: 'Hauptwelt des Patriarchats. Höchste Preise für Schiffstechnik.',
+    description: 'Thronwelt des Patriarchats. Thron und Thronwerft zahlen für Schiffstechnik mehr als jeder andere Markt. Eine Baulizenz bekommt nur, wer sich beim Patriarchen einen Namen gemacht hat.',
+    note: 'Erlass des Throns, Abschnitt 4: „Waffen-, Schild- und Elektronikteile aus Familienwerften werden mit einem Zehntel über Marktpreis vergütet.“',
     surplus: ['refinedmetals', 'graphene'], demand: ['advancedelectronics', 'claytronics', 'dronecomponents', 'fieldcoils', 'shieldcomponents', 'weaponscomponents'],
   },
 ];

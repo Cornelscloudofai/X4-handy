@@ -49,7 +49,7 @@ const ENVOYS: { race: Race; sector: string; name: string }[] = [
   { race: 'paranid', sector: 'hoa', name: 'Priesterherzog Xa’Dil' },
 ];
 
-const SPLIT_NAMES = ['Tar Zhin', 'Rha Tkr', 'Dal Kaskade', 'Kro Schlucht', 'Zyr Rhy', 'Vex Acrimony', 'Thar Zyarth'];
+const SPLIT_NAMES = ['Tar Zhin', 'Rha Tkr', 'Dal Rhan', 'Kro Tharka', 'Zyr Rhy', 'Vex Dravh', 'Thar Zyarth'];
 const WHARF_NAMES = ['Werftmeisterin Sae Zhin', 'Werftmeister Tuk', 'Werftmeister Gra Rhy', 'Werftmeisterin Zor'];
 
 function buildVendors(): Vendor[] {

@@ -4,6 +4,14 @@
 //                      sonst überhitzt die Station: Produktion steht, danach Reparatur mit Hüllenteilen
 //   Die Aschefelder  – Staub: Schiffe immer mit 80 %, Miner fördern 30 % mehr
 //   Der Schmiedestern – Pulsar: das Sonnenlicht schwankt im Zwei-Stunden-Takt zwischen 60 % und 300 %
+// Split-Raum:
+//   Familie Zhin      – Wiederaufbau: die Zhin-Werft zahlt 12 % mehr für Hüllenteile und Claytronik
+//   Familie Tkr       – Stapellauf: alle 4 h zahlt die Tkr-Werft eine Stunde lang 30 % mehr für ihre Bauteile
+//   Tharka's Cascade  – Gasgezeiten: die Gasfelder geben im Drei-Stunden-Takt zwischen 70 % und 150 % her
+//   Tharka's Ravine   – Xenon-Streifen: alle 5 h für 25 min; Miner ziehen sich zurück, Schiffe fliegen mit 60 %
+//   Rhy's Defiance    – Patrouillenkorridor: Schiffe fliegen im Sektor mit 120 %
+//   Heart of Acrimony – Kometenschweif: Eis- und Methanfelder wachsen doppelt so schnell nach
+//   Zyarth's Dominion – Thronmarkt: Thron und Thronwerft zahlen für Schiffstechnik 10 % mehr
 import { SECTOR_MAP } from '../data/sectors';
 import { MODULE_MAP } from '../data/modules';
 import { addWare } from './economy';
@@ -28,6 +36,51 @@ export const MANTLE_COVERS = 6;
 export const COOLANT_PER_MODULE = 40;
 /** Hüllenteile je Produktionsmodul, um nach einer Überhitzung wieder anzulaufen */
 export const HEAT_REPAIR = 25;
+
+export const ZHIN_REBUILD = 1.12;
+export const TKR_CYCLE = 4 * 3600;
+export const TKR_TIME = 3600;
+/** Erster Stapellauf nach 2 h Spielzeit (beim Start läuft keiner) */
+const TKR_OFFSET = 2 * 3600;
+export const TKR_BONUS = 1.3;
+export const TKR_WARES = ['hullparts', 'claytronics', 'siliconwafers', 'microchips', 'scanningarrays'];
+export const TIDE_PERIOD = 3 * 3600;
+export const TIDE: [number, number] = [0.7, 1.5];
+export const XENON_CYCLE = 5 * 3600;
+export const XENON_TIME = 25 * 60;
+const XENON_OFFSET = 2 * 3600;
+export const XENON_SPEED = 0.6;
+export const RHY_SPEED = 1.2;
+export const COMET_REGEN = 2;
+export const THRONE_BONUS = 1.1;
+export const THRONE_WARES = ['advancedelectronics', 'claytronics', 'dronecomponents', 'fieldcoils', 'shieldcomponents', 'weaponscomponents', 'hullparts', 'engineparts'];
+
+/** Wiederkehrendes Ereignis: läuft es gerade, und wie lange noch bzw. bis zum nächsten? */
+function cycleClock(time: number, cycle: number, len: number, offset: number): { active: boolean; left: number } {
+  const ph = (((time + offset) % cycle) + cycle) % cycle;
+  return ph < len ? { active: true, left: len - ph } : { active: false, left: cycle - ph };
+}
+export const launchClock = (time: number) => cycleClock(time, TKR_CYCLE, TKR_TIME, TKR_OFFSET);
+export const xenonClock = (time: number) => cycleClock(time, XENON_CYCLE, XENON_TIME, XENON_OFFSET);
+/** Ertrag der Gasfelder in Tharka's Cascade (Faktor) */
+export function tideFactor(time: number): number {
+  const [lo, hi] = TIDE;
+  return (lo + hi) / 2 + ((hi - lo) / 2) * Math.sin((time / TIDE_PERIOD) * Math.PI * 2);
+}
+
+/** Spielzeit des letzten Simulationsschritts – für Faktoren, die ohne Spielstand abgefragt werden */
+let clock = 0;
+
+/** Preisfaktor eines Markts für eine Ware (1 = normal) */
+export function marketFactor(key: string, ware: string): number {
+  if (key === 'zhin-werft' && (ware === 'hullparts' || ware === 'claytronics')) return ZHIN_REBUILD;
+  if (key === 'tkr' && TKR_WARES.includes(ware) && launchClock(clock).active) return TKR_BONUS;
+  if ((key === 'zyarth' || key === 'zyarth-werft') && THRONE_WARES.includes(ware)) return THRONE_BONUS;
+  return 1;
+}
+
+/** Nachwuchs-Faktor eines Rohstofffelds */
+export const fieldRegen = (fieldId: string): number => (fieldId === 'hoa-ice' || fieldId === 'hoa-methane' ? COMET_REGEN : 1);
 
 /** Sonnenlicht laut Sektordaten (ohne Sturm und Pulsar) – für Baubedingungen */
 export function baseSun(sectorId: string): number {
@@ -57,21 +110,33 @@ export function pulsarSun(time: number): number {
 const speed: Record<string, number> = {};
 export const sectorSpeed = (sectorId: string): number => speed[sectorId] ?? 1;
 /** Abbau-Faktor je Rohstofffeld (über die Feld-ID; die Felder der Aschefelder beginnen mit „asche-“) */
-export const fieldMining = (fieldId: string): number => (fieldId.startsWith('asche-') ? DUST_MINING : 1);
+export function fieldMining(fieldId: string): number {
+  if (fieldId.startsWith('asche-')) return DUST_MINING;
+  if (fieldId === 'cascade-hydrogen' || fieldId === 'cascade-helium' || fieldId === 'cascade-methane') return tideFactor(clock);
+  if (fieldId.startsWith('ravine-') && xenonClock(clock).active) return 0;
+  return 1;
+}
 
 let lastStorm: boolean | null = null;
+let lastLaunch: boolean | null = null;
+let lastXenon: boolean | null = null;
 /** Für die Darstellung: tobt gerade der Sturm in Glutsee I? */
 export const stormNow = (): boolean => !!lastStorm;
 
 export function resetPhenomena(): void {
   for (const k of Object.keys(speed)) delete speed[k];
   lastStorm = null;
+  lastLaunch = null;
+  lastXenon = null;
   lastHeatT = -1;
+  clock = 0;
 }
 
 /** Je Simulationsschritt: aktuelle Werte setzen und Wechsel melden */
 export function stepPhenomena(state: GameState): void {
   const t = state.time;
+  clock = t;
+  stepSplit(state, t);
   if (SECTOR_MAP['f-schmiede']) SECTOR_MAP['f-schmiede'].sunlight = pulsarSun(t);
   speed['f-asche'] = DUST_SPEED;
   const storm = stormActive(t);
@@ -83,6 +148,21 @@ export function stepPhenomena(state: GameState): void {
     else log(state, 'Der Sturm in Glutsee I ist vorbei.', 'info', false, { kind: 'sector', id: 'f-glut1' });
   }
   lastStorm = storm;
+}
+
+/** Eigenheiten des Split-Raums: Tempo setzen, Beginn und Ende der Ereignisse melden */
+function stepSplit(state: GameState, t: number): void {
+  speed.rhy = RHY_SPEED;
+  const x = xenonClock(t).active;
+  speed.ravine = x ? XENON_SPEED : 1;
+  if (lastXenon !== null && x !== lastXenon) {
+    if (x) log(state, "Xenon-Streife in Tharka's Ravine: Die Miner dort ziehen sich zurück, Schiffe fliegen vorsichtig. Etwa 25 Minuten.", 'warn', true, { kind: 'sector', id: 'ravine' });
+    else log(state, "Die Xenon-Streife hat Tharka's Ravine verlassen. Die Miner fördern wieder.", 'info', false, { kind: 'sector', id: 'ravine' });
+  }
+  lastXenon = x;
+  const l = launchClock(t).active;
+  if (lastLaunch !== null && l && !lastLaunch) log(state, 'Stapellauf in der Tkr-Werft: Eine Stunde lang zahlt sie 30 % mehr für Hüllenteile, Claytronik, Siliziumscheiben, Mikrochips und Scannerarrays.', 'good', true, { kind: 'sector', id: 'tkr' });
+  lastLaunch = l;
 }
 
 /**
@@ -121,6 +201,9 @@ export function phenomenonShort(sectorId: string, time: number): string {
   if (sectorId === 'f-glut1') { const c = stormClock(time); return c.active ? `Sturm · ${Math.ceil(c.left / 60)} min` : ''; }
   if (sectorId === 'f-asche') return 'Staub';
   if (sectorId === 'f-schmiede') return `Sonne ${pulsarSun(time)} %`;
+  if (sectorId === 'cascade') return `Gas ${Math.round(tideFactor(time) * 100)} %`;
+  if (sectorId === 'tkr') { const c = launchClock(time); return c.active ? `Stapellauf · ${Math.ceil(c.left / 60)} min` : ''; }
+  if (sectorId === 'ravine') { const c = xenonClock(time); return c.active ? `Xenon · ${Math.ceil(c.left / 60)} min` : ''; }
   return '';
 }
 
@@ -133,5 +216,13 @@ export function phenomenonText(sectorId: string, time: number): string {
   }
   if (sectorId === 'f-asche') return 'Staub · Abbau +30 % · Schiffe 80 %';
   if (sectorId === 'f-schmiede') return `Pulsar · Sonne jetzt ${pulsarSun(time)} % (60–300 %)`;
+  const inH = (sec: number) => { const m = Math.ceil(sec / 60); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
+  if (sectorId === 'zhin') return 'Wiederaufbau · Zhin-Werft zahlt 12 % mehr für Hüllenteile und Claytronik';
+  if (sectorId === 'tkr') { const c = launchClock(time); return c.active ? `Stapellauf · Tkr-Werft zahlt 30 % mehr für Bauteile · noch ${inH(c.left)}` : `Stapellauf alle 4 h · Werft zahlt dann 30 % mehr · nächster in ${inH(c.left)}`; }
+  if (sectorId === 'cascade') return `Gasgezeiten · Gasfelder geben jetzt ${Math.round(tideFactor(time) * 100)} % her (70–150 %)`;
+  if (sectorId === 'ravine') { const c = xenonClock(time); return c.active ? `Xenon-Streife · Miner ruhen, Schiffe 60 % · noch ${inH(c.left)}` : `Xenon-Streife alle 5 h · nächste in ${inH(c.left)}`; }
+  if (sectorId === 'rhy') return 'Patrouillenkorridor · Schiffe fliegen mit 120 %';
+  if (sectorId === 'hoa') return 'Kometenschweif · Eis und Methan wachsen doppelt so schnell nach';
+  if (sectorId === 'zyarth') return 'Thronmarkt · Schiffstechnik bringt hier 10 % mehr';
   return '';
 }

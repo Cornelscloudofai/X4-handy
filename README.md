@@ -110,6 +110,15 @@ einem Solarkraftwerk und einem Miner.
   **Horchposten in Rhy's Ausblick:** mit 150 Hüllenteilen, 600 Energiezellen und 300 Veredelten Metallen (aus den Lagern
   oder zugekauft) wieder in Betrieb – dann sind alle Märkte der Glutsee live sichtbar und Suchen dort finden 25 % leichter
   etwas. Kartenkarte und Kopfzeile der Sektoransicht zeigen die Eigenheit (Sturm mit Restzeit, Sonne in Prozent).
+- **Eigenheiten des Split-Raums** (in der Sektorinfo unter „Allgemein“, mit Aushang, Funkspruch oder Logbuch-Zeile aus
+  dem Sektor): **Familie Zhin** – Wiederaufbau, die Zhin-Werft zahlt 12 % mehr für Hüllenteile und Claytronik.
+  **Familie Tkr** – Stapellauf alle 4 h (erster nach 2 h): eine Stunde lang zahlt die Tkr-Werft 30 % mehr für Hüllenteile,
+  Claytronik, Siliziumscheiben, Mikrochips und Scannerarrays. **Tharka's Cascade** – Gasgezeiten: Wasserstoff, Helium und
+  Methan geben im Drei-Stunden-Takt 70–150 % her (Knopf „Gas … %“ in der Werkzeugzeile). **Tharka's Ravine** –
+  Xenon-Streife alle 5 h für 25 min (erste nach 3 h): Miner ruhen, Schiffe fliegen mit 60 %. **Rhy's Defiance** –
+  Patrouillenkorridor, Schiffe fliegen mit 120 %. **Heart of Acrimony** – Kometenschweif, Eis- und Methanfelder wachsen
+  doppelt so schnell nach. **Zyarth's Dominion** – Thronmarkt, Thron und Thronwerft zahlen für Schiffstechnik 10 % mehr.
+  Sektorbeschreibungen und Kapiteltexte sind konkreter geworden (Namen, Zahlen, Aushänge statt Floskeln).
 - **Glutsee I – Sonnenkerne: „Wer die Glutsee hat, hat die Energie.“** 1000 % Sonne, im Strahlungssturm 3000 %.
   Energiezellen sind sperrig und billig – der **Sonnenofen** (Bauplan nur bei der Familie Rhak, Ruf 4, nur ab 500 % Sonne)
   verdichtet sie zu **Sonnenkernen**: je 15 min 25.000 Energiezellen + 5 Silizium → 1 Kern (4 je Stunde, genau die Leistung

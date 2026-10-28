@@ -5,6 +5,7 @@
 import { NPC_STATIONS, SECTORS, marketInfo } from '../data/sectors';
 import { FRONTIER_MAP } from '../data/frontier';
 import { priceAt } from './economy';
+import { marketFactor } from './phenomena';
 import type { GameState } from './types';
 import { log } from './util';
 import { book } from './ledger';
@@ -96,7 +97,7 @@ export function seenPrice(state: GameState, key: string, ware: string): number |
   const m = state.markets[key]?.[ware];
   const stock = seenStock(state, key, ware);
   if (!m || stock == null) return null;
-  return priceAt(ware, stock / m.cap);
+  return priceAt(ware, stock / m.cap) * marketFactor(key, ware);
 }
 
 /** Bekannter freier Platz; null = unbekannt */

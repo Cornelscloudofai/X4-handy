@@ -163,7 +163,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
       </div>` : ''}
     </div>
     <span class="hud-icons">${newsBtn}${menuBtn}</span>
-    ${phen ? `<button class="phen-pill" ${act('sector-info')} aria-label="Eigenheit des Sektors – Sektorinfo öffnen">${icon('sun', 15)}${phen.includes(' · ') ? `<span class="pl">${esc(phen.split(' · ')[0])} · </span>${esc(phen.split(' · ').slice(1).join(' · '))}` : esc(phen)}</button>` : ''}
+    ${phen ? `<button class="phen-pill" ${act('sector-info')} aria-label="Eigenheit des Sektors – Sektorinfo öffnen">${icon(sec.id === 'f-glut1' || sec.id === 'f-schmiede' ? 'sun' : sec.id === 'ravine' ? 'warn' : 'target', 15)}${phen.includes(' · ') ? `<span class="pl">${esc(phen.split(' · ')[0])} · </span>${esc(phen.split(' · ').slice(1).join(' · '))}` : esc(phen)}</button>` : ''}
     <div class="zoom"><button data-zoom="in" aria-label="Hineinzoomen (halten für stufenlos)">${icon('plus', 16)}</button><div class="zoom-track" data-zoom="track" role="slider" aria-label="Zoom stufenlos"><i class="zoom-knob" style="top:${((1 - (ui.zoomFrac ?? 0.5)) * 100).toFixed(1)}%"></i></div><button data-zoom="out" aria-label="Herauszoomen (halten für stufenlos)">${icon('minus', 16)}</button></div>
   </div>${flowFilter(state, ui)}`}`;
 }
@@ -507,6 +507,7 @@ function sectorGeneral(state: GameState, id: string): string {
     : `<div class="sec-license"><span><b>Baulizenz ${fmtCr(s.licenseCost)}</b><small>Ruf ${s.repRequired} bei ${esc(FACTIONS[s.faction].short)} nötig · du hast <span class="${rep >= s.repRequired ? 'pos' : 'neg'}">${fmtNum(rep, 1)}</span></small></span>
       <button class="btn small ${canBuy ? 'amber' : 'disabled'}" ${act('license', { id })}>${icon('lock', 16)}${!reachable ? 'Nicht erreichbar' : rep < s.repRequired ? 'Ruf fehlt' : 'Kaufen'}</button></div>`;
   return `<p class="sec-desc">${esc(s.description)}</p>
+    ${s.note ? `<q class="sec-log">${esc(s.note)}</q>` : ''}
     ${phen ? `<div class="gx-phen">${icon('target', 14)}${esc(phen)}</div>` : ''}
     <div class="kv sec-kv"><div><small>Sonne</small><b>${s.sunlight} %</b></div><div><small>Eigene Stationen</small><b>${stations}</b></div><div><small>Eigene Schiffe</small><b>${ships}</b></div><div><small>Ruf ${esc(FACTIONS[s.faction].short)}</small><b>${fmtNum(rep, 1)}</b></div></div>
     ${license}`;

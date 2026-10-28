@@ -6,6 +6,7 @@ import { CORE_CELLS, UNTRADED_WARES, WARES, WARE_IDS, inputsPerHour, outputPerHo
 import type { GameState, LedgerCat, LogLink, Market, NpcEco, Station, StorageType, TradeRule } from './types';
 import { clamp, emit, log, rand } from './util';
 import { book } from './ledger';
+import { marketFactor } from './phenomena';
 
 const TYPES: StorageType[] = ['Container', 'Solid', 'Liquid'];
 
@@ -545,7 +546,7 @@ export function priceAt(id: string, ratio: number): number {
 export function marketPrice(state: GameState, key: string, id: string): number {
   const m = state.markets[key]?.[id];
   if (!m) return WARES[id].price.avg;
-  return priceAt(id, m.stock / m.cap);
+  return priceAt(id, m.stock / m.cap) * marketFactor(key, id);
 }
 
 /** Wie viel der Markt aufnehmen kann (Einheiten), bevor er voll ist */
@@ -581,7 +582,7 @@ export function marketTradeValue(state: GameState, key: string, id: string, amou
   if (!m) return 0;
   // Ein Preis für die ganze Ladung: der Preis bei Abschluss (vor dem Handel) – wie in X4. Große Laderäume handeln so
   // eine ganze Fuhre zum selben Preis; erst die nächste Ladung sieht den veränderten Lagerstand.
-  return Math.abs(amount) * priceAt(id, m.stock / m.cap);
+  return Math.abs(amount) * priceAt(id, m.stock / m.cap) * marketFactor(key, id);
 }
 
 /** Wer handelt (fürs Kontobuch): z. B. Schiffsname, Kategorie und Verweis */
