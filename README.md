@@ -99,7 +99,9 @@ einem Solarkraftwerk und einem Miner.
   Die Anordnung richtet sich nach dem Bildschirm (im Hochformat wird der Nebel gedreht, Sonne und Felsen bleiben am Rand,
   die Mitte ruhig). Ebenen aufbereiten: `node scripts/import-scene.mjs <sektor> sterne=<a.png> nebel=<b.png>:8 sonne=<c.png>:5 …`
   – entfernt grelle Freistellsäume (Farbe aus dem Inneren ausbluten, weich auslaufende Ränder) und speichert in voller
-  Auflösung als WebP 0,95 nach `src/assets/szenen/<sektor>/`. Bisher: Glutsee I.
+  Auflösung als WebP 0,95 nach `src/assets/szenen/<sektor>/` (bei sauber freigestellten Ebenen `:0` = unverändert).
+  Szenen sind Listen aus ganzflächigen Ebenen, Objekten mit Anker und Lage je Format und Effekten (Funkeln, Glühen,
+  Strahlen, Funken, Staub, Schwaden, Verkehr, Glimmen, Pulsar-Takt, Vignette). Fertig: die ganze Glutsee.
 - **Kampagne „Kanal 9“** (nach „Neue Horizonte“): Tevka Rhy hört auf Kanal 9 ein Knacken aus Richtung des toten Tors.
   Vier Kapitel führen durch Späherkauf, Peilung, Torbaustelle und die erste Erstsichtung (Rhy's Ausblick). Ab hier
   gilt für alle Texte: konkret statt Werbesprache – Namen, Zahlen, Stimmen aus der Spielwelt.
