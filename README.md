@@ -99,16 +99,19 @@ einem Solarkraftwerk und einem Miner.
   **Horchposten in Rhy's Ausblick:** mit 150 Hüllenteilen, 600 Energiezellen und 300 Veredelten Metallen (aus den Lagern
   oder zugekauft) wieder in Betrieb – dann sind alle Märkte der Glutsee live sichtbar und Suchen dort finden 25 % leichter
   etwas. Kartenkarte und Kopfzeile der Sektoransicht zeigen die Eigenheit (Sturm mit Restzeit, Sonne in Prozent).
-- **Glutsee I – Sonnenofen und Sturm:** 1000 % Sonne, im Strahlungssturm 3000 %. Ohne ausreichenden Schutz überhitzen
-  Stationen im Sturm: die Produktion steht, zum Wiederanlauf braucht jedes Produktionsmodul 25 Hüllenteile (aus dem
-  Stationslager oder zugekauft). Schutz ist der **Kühlmantel** (Bauplan nur bei der Familie Rhak, Ruf 3): Ein Mantel
-  schützt bis zu 6 Produktionsmodule, jedes geschützte Modul verbraucht je Sturm 40 Supraflüssiges Kühlmittel aus dem
-  Lager – fehlen Mäntel oder geht das Kühlmittel aus, überhitzt die Station. Wer vorgesorgt hat, produziert im Sturm mit
-  3000 % Sonne, und Sonnenöfen arbeiten dann doppelt so schnell. Der **Sonnenofen** (Rhak, Ruf 4, nur ab 500 % Sonne)
-  schmilzt je Stunde 100 Silizium mit 100.000 Energiezellen zu 12 **Glutglas** (≈ 5.200 Cr; Zyklus 15 min) – genau die
-  Leistung eines Solarkraftwerks bei 1000 % Sonne (1 Kraftwerk : 1 Ofen; bei 100 % wären es zehn Kraftwerke je Ofen) – gebraucht für die Tore der
-  Kristallgrenze (200) und des Abgrunds (600) und von der Rhak-Werft gekauft. Glutglas gibt es nur im neuen Raum. Station und
-  Modulliste zeigen nötige Kühlmäntel, Kühlmittel je Sturm und die Zeit bis zum nächsten Sturm.
+- **Glutsee I – Sonnenkerne: „Wer die Glutsee hat, hat die Energie.“** 1000 % Sonne, im Strahlungssturm 3000 %.
+  Energiezellen sind sperrig und billig – der **Sonnenofen** (Bauplan nur bei der Familie Rhak, Ruf 4, nur ab 500 % Sonne)
+  verdichtet sie zu **Sonnenkernen**: je 15 min 25.000 Energiezellen + 5 Silizium → 1 Kern (4 je Stunde, genau die Leistung
+  eines Solarkraftwerks bei 1000 % – bei normalem Licht wären es zehn Kraftwerke je Ofen; im Sturm lädt der Ofen dreimal so
+  schnell). Ein Kern (25 m³) gibt am Ziel **30.000 Energiezellen** ab und ist mehr wert als seine Vorprodukte. Drei Zwecke:
+  1. **Kraftwerk des Imperiums** – jede eigene Station, die Energiezellen verbraucht, nimmt Kerne an (eigene Transporter
+  bringen sie) und entlädt einen, sobald Zellen fehlen. 2. **Schlüssel nach oben** – tote Tore brauchen Kerne zum Zünden
+  (Schweigendes Band 4, Kristallgrenze 20, Abgrund 60). 3. **Erbe der Vesh'ara** – sie haben im Schmiedestern Sonnenlicht
+  verdichtet; das Stille Tor wird am Ende sehr viele Kerne brauchen. Sonnenkerne werden nicht frei gehandelt.
+  **Sturm:** Ohne ausreichenden Schutz überhitzen Stationen in Glutsee I: die Produktion steht, zum Wiederanlauf braucht
+  jedes Produktionsmodul 25 Hüllenteile. Ein **Kühlmantel** (Rhak, Ruf 3) schützt bis zu 6 Produktionsmodule, jedes
+  geschützte Modul verbraucht je Sturm 40 Supraflüssiges Kühlmittel – wer vorgesorgt hat, erlebt im Sturm seine ergiebigste
+  Phase. Station und Modulliste zeigen nötige Kühlmäntel, Kühlmittel je Sturm und die Zeit bis zum nächsten Sturm.
 - **Mehrschichtige Sektorszenen (`src/render/sceneBg.ts`):** Aus freigestellten Bildebenen (Sterne, Nebel, Sonne, Plasma,
   Felsen) entsteht ein lebendiger Hintergrund: jede Ebene mit eigener Tiefe (Parallaxe beim Verschieben), dazu gezeichnete
   Effekte – funkelnde Sterne, atmender Nebel, Sonne mit pulsierender Korona und langsam drehenden Strahlen, flackernde

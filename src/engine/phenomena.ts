@@ -1,6 +1,6 @@
 // Eigenheiten der neuen Sektoren. Alles hängt nur an der Spielzeit (nichts davon steht im Spielstand):
 //   Glutsee I        – 1000 % Sonne; Strahlungssturm alle 3 h für 35 min: Sonne 3000 %, Schiffe 60 %, Sonnenöfen
-//                      doppelt so schnell. Je 6 Produktionsmodule ein Kühlmantel, je Modul 40 Kühlmittel pro Sturm –
+//                      dreimal so schnell. Je 6 Produktionsmodule ein Kühlmantel, je Modul 40 Kühlmittel pro Sturm –
 //                      sonst überhitzt die Station: Produktion steht, danach Reparatur mit Hüllenteilen
 //   Die Aschefelder  – Staub: Schiffe immer mit 80 %, Miner fördern 30 % mehr
 //   Der Schmiedestern – Pulsar: das Sonnenlicht schwankt im Zwei-Stunden-Takt zwischen 60 % und 300 %
@@ -26,8 +26,6 @@ export const STORM_SUN = 3000;
 export const MANTLE_COVERS = 6;
 /** Kühlmittel je geschütztem Produktionsmodul und Sturm */
 export const COOLANT_PER_MODULE = 40;
-/** Sonnenöfen laufen im Sturm so viel schneller */
-export const OVEN_STORM_SPEED = 2;
 /** Hüllenteile je Produktionsmodul, um nach einer Überhitzung wieder anzulaufen */
 export const HEAT_REPAIR = 25;
 

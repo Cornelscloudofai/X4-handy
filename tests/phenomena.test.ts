@@ -8,7 +8,9 @@ import { moveAlong } from '../src/engine/logistics';
 import { isLive } from '../src/engine/intel';
 import { mineRate } from '../src/engine/fleet';
 import { SHIP_MAP } from '../src/data/ships';
-import { inputsPerHour, outputPerHour } from '../src/data/wares';
+import { CORE_CELLS, CORE_INPUT, WARES, inputsPerHour, outputPerHour } from '../src/data/wares';
+import { consumesWare } from '../src/engine/economy';
+import { REPAIR_WARES } from '../src/engine/explore';
 import { queueModule } from '../src/engine/actions';
 import { vendorsFor } from '../src/data/vendors';
 
@@ -140,45 +142,62 @@ describe('Eigenheiten der Glutsee', () => {
     expect(1000 - (st.inventory.superfluidcoolant ?? 0)).toBeLessThan(300);
   });
 
-  it('Sonnenofen: 1 Solarkraftwerk bei 1000 % versorgt 1 Ofen; im Sturm läuft er doppelt so schnell', () => {
-    expect(outputPerHour('energycells', 1000)).toBeGreaterThanOrEqual(inputsPerHour('glutglas').find((i) => i.ware === 'energycells')!.amount);
-    expect(outputPerHour('energycells', 100) * 10).toBeLessThanOrEqual(inputsPerHour('glutglas').find((i) => i.ware === 'energycells')!.amount * 1.1);
-    expect(outputPerHour('glutglas')).toBe(12);
+  it('Sonnenofen: 1 Solarkraftwerk bei 1000 % versorgt 1 Ofen; im Sturm lädt er dreimal so schnell', () => {
+    const cellsIn = inputsPerHour('sonnenkern').find((i) => i.ware === 'energycells')!.amount;
+    expect(outputPerHour('energycells', 1000)).toBeGreaterThanOrEqual(cellsIn);
+    expect(outputPerHour('energycells', 100) * 10).toBeLessThanOrEqual(cellsIn * 1.1);
+    expect(outputPerHour('sonnenkern')).toBe(4);
+    // Der Kern ist mehr wert als seine Vorprodukte und gibt mehr Energie ab, als hineinging
+    expect(CORE_CELLS).toBeGreaterThan(CORE_INPUT);
+    expect(WARES.sonnenkern.price.avg).toBeGreaterThan(CORE_INPUT * WARES.energycells.price.avg + 5 * WARES.silicon.price.avg);
     const s = glut(10);
     const st = s.stations[0];
     st.sector = 'f-glut1';
     const mod = (uid: number, def: string) => ({ ...st.modules[0], uid, def, util: 1, running: false, stall: '' as const, t: 0 });
-    st.modules.push(mod(9100, 'prod_glutglas'), mod(9200, 'cooling_mantle'), mod(9300, 'storage_container_l'), mod(9301, 'storage_solid_l'));
+    st.modules.push(mod(9100, 'prod_sonnenkern'), mod(9200, 'cooling_mantle'), mod(9300, 'storage_container_l'), mod(9301, 'storage_solid_l'));
     const fill = () => { st.inventory = { superfluidcoolant: 1000, silicon: 1000, energycells: 400000 }; };
     while (stormActive(s.time) || !stormActive(s.time + STORM_CYCLE - 4000)) s.time += 60;
     step(s, 60);
     fill();
-    const b1 = st.produced.glutglas ?? 0;
+    const b1 = st.produced.sonnenkern ?? 0;
     step(s, 1800);
-    const calm = (st.produced.glutglas ?? 0) - b1;
+    const calm = (st.produced.sonnenkern ?? 0) - b1;
     while (!stormActive(s.time + 60)) step(s, 60);
     step(s, 60);
     fill();
-    const b2 = st.produced.glutglas ?? 0;
+    const b2 = st.produced.sonnenkern ?? 0;
     step(s, 1800);
-    const stormy = (st.produced.glutglas ?? 0) - b2;
+    const stormy = (st.produced.sonnenkern ?? 0) - b2;
     expect(st.heat ?? 0).toBe(0);
-    expect(calm).toBeGreaterThan(0);
-    expect(stormy).toBeGreaterThanOrEqual(calm * 1.5);
+    expect(calm).toBeGreaterThanOrEqual(1);
+    expect(stormy).toBeGreaterThanOrEqual(calm * 2.5);
   });
 
-  it('Sonnenofen nur in Glutsee I, Baupläne nur bei der Familie Rhak, Glutglas nicht im Split-Raum', () => {
+  it('Sonnenkerne versorgen ferne Stationen: fehlen Energiezellen, wird ein Kern entladen', () => {
+    const s = glut(11);
+    const st = s.stations[0];
+    const mod = (uid: number, def: string) => ({ ...st.modules[0], uid, def, util: 1, running: false, stall: '' as const, t: 0 });
+    st.modules.push(mod(9100, 'prod_refinedmetals'), mod(9300, 'storage_container_l'), mod(9301, 'storage_solid_l'));
+    st.inventory = { ore: 5000, sonnenkern: 2 };
+    expect(consumesWare(st, 'sonnenkern')).toBe(true);
+    step(s, WARES.refinedmetals.cycle + 60);
+    expect(st.inventory.sonnenkern).toBe(1);
+    expect(st.produced.refinedmetals ?? 0).toBeGreaterThan(0);
+    // die Kernstation selbst entlädt nicht
+    st.modules.push(mod(9101, 'prod_sonnenkern'));
+    expect(consumesWare(st, 'sonnenkern')).toBe(false);
+  });
+
+  it('Sonnenofen nur in Glutsee I, Baupläne nur bei der Familie Rhak, Sonnenkerne nirgends im Handel', () => {
     const s = glut(7);
-    s.blueprints.push('prod_glutglas');
-    expect(queueModule(s, s.stations[0].id, 'prod_glutglas').ok).toBe(false);
+    s.blueprints.push('prod_sonnenkern');
+    expect(queueModule(s, s.stations[0].id, 'prod_sonnenkern').ok).toBe(false);
     s.stations[0].sector = 'f-glut1';
-    expect(queueModule(s, s.stations[0].id, 'prod_glutglas').ok).toBe(true);
-    expect(vendorsFor('prod_glutglas').map((v) => v.id)).toEqual(['v-rhak']);
+    expect(queueModule(s, s.stations[0].id, 'prod_sonnenkern').ok).toBe(true);
+    expect(vendorsFor('prod_sonnenkern').map((v) => v.id)).toEqual(['v-rhak']);
     expect(vendorsFor('cooling_mantle').map((v) => v.id)).toEqual(['v-rhak']);
-    expect(s.markets.zhin.glutglas).toBeUndefined();
-    expect(s.markets['f-rhak'].glutglas).toBeDefined();
-    const fresh = newGame(8, 'mining');
-    expect(vendorsFor('prod_glutglas')).toEqual([]);
-    expect(fresh.markets.zhin.glutglas).toBeUndefined();
+    for (const m of Object.values(s.markets)) expect(m.sonnenkern).toBeUndefined();
+    expect(REPAIR_WARES.band.sonnenkern).toBeGreaterThan(0);
+    expect(newGame(8, 'mining') && vendorsFor('prod_sonnenkern')).toEqual([]);
   });
 });

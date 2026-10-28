@@ -139,6 +139,20 @@ export function deserialize(text: string): GameState {
     }
     raw.version = SAVE_VERSION;
   }
+  // Zwischenstand der Glutsee-Entwicklung: Glutglas und sein Ofen wurden zum Sonnenkern
+  const glas = (d: string) => (d === 'prod_glutglas' ? 'prod_sonnenkern' : d);
+  for (const s of raw.stations ?? []) {
+    for (const m of s.modules ?? []) m.def = glas(m.def);
+    for (const q of s.queue ?? []) q.def = glas(q.def);
+    if (s.build) s.build.def = glas(s.build.def);
+    if (s.inventory) delete (s.inventory as Record<string, number>).glutglas;
+  }
+  if (raw.blueprints) raw.blueprints = raw.blueprints.map(glas);
+  for (const m of Object.values(raw.markets ?? {})) delete (m as Record<string, unknown>).glutglas;
+  for (const r of (raw.frontier as { repairs?: { need?: Record<string, number>; have?: Record<string, number> }[] } | undefined)?.repairs ?? []) {
+    if (r.need?.glutglas) { r.need.sonnenkern = r.need.glutglas / 50; delete r.need.glutglas; }
+    if (r.have?.glutglas) { r.have.sonnenkern = r.have.glutglas / 50; delete r.have.glutglas; }
+  }
   const base = newGame(raw.seed || 1);
   const state: GameState = { ...base, ...raw };
   // Entdeckte neue Sektoren vor allem anderen einhängen – Stationen und Schiffe dort brauchen ihre Sektordaten

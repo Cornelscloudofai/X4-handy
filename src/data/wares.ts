@@ -44,7 +44,7 @@ export const GROUP_COLOR: Record<WareGroup, string> = {
 
 const SPECIAL_COLOR: Record<string, string> = {
   ore: '#e0913d', silicon: '#b8c2cf', ice: '#a8e2ff', nividium: '#f0c75a', hydrogen: '#5a9dff', helium: '#9fd0ff',
-  methane: '#46d8a6', energycells: '#ffd84d', rawscrap: '#a88f78', glutglas: '#ff7a3c',
+  methane: '#46d8a6', energycells: '#ffd84d', rawscrap: '#a88f78', sonnenkern: '#ffb03c',
 };
 
 function build(): Record<string, WareDef> {
@@ -76,21 +76,25 @@ function build(): Record<string, WareDef> {
     price: { min: 480, avg: 560, max: 650 }, cycle: 0, batch: 0, inputs: [], mined: true, color: SPECIAL_COLOR.nividium,
     estimated: true,
   };
-  // Glutglas: im Sonnenofen von Glutsee I aus Silizium und sehr viel Energie geschmolzen (eigene Ware dieses Spiels).
-  // Gebraucht für die Tore weiter oben und von der Rhak-Werft. Ein Ofen braucht so viel Energie, wie ein Solarkraftwerk
-  // bei 1000 % Sonne liefert (100.000 je Stunde) – bei normalem Sonnenlicht wären es zehn Kraftwerke je Ofen.
-  // Zyklus 15 min: je 25 Silizium + 25.000 Energiezellen → 3 Glutglas (12 je Stunde).
-  out.glutglas = {
-    id: 'glutglas', name: 'Glutglas', nameEn: 'Ember Glass', group: 'refined', tier: 2, storage: 'Container', volume: 10,
-    price: { min: 3800, avg: 5200, max: 6800 }, cycle: 900, batch: 3,
-    inputs: [{ ware: 'silicon', amount: 25 }, { ware: 'energycells', amount: 25000 }], mined: false, color: SPECIAL_COLOR.glutglas,
+  // Sonnenkern: im Sonnenofen von Glutsee I verdichtetes Sonnenlicht (eigene Ware dieses Spiels). Energiezellen sind
+  // sperrig und billig – ein Kern macht die Energie der Glutsee transportfähig: Er nimmt 25.000 Zellen auf (dazu 5 Silizium
+  // für die Hülle) und gibt am Ziel 30.000 wieder ab. Ein Ofen braucht so viel, wie ein Solarkraftwerk bei 1000 % liefert.
+  // Wird nicht frei gehandelt: Vorrat für die eigenen Stationen und die toten Tore weiter oben.
+  out.sonnenkern = {
+    id: 'sonnenkern', name: 'Sonnenkern', nameEn: 'Sun Core', group: 'energy', tier: 2, storage: 'Container', volume: 25,
+    price: { min: 360_000, avg: 480_000, max: 600_000 }, cycle: 900, batch: 1,
+    inputs: [{ ware: 'energycells', amount: CORE_INPUT }, { ware: 'silicon', amount: 5 }], mined: false, color: SPECIAL_COLOR.sonnenkern,
   };
   return out;
 }
 
+/** Sonnenkern: Energiezellen, die ein Kern aufnimmt bzw. am Ziel wieder abgibt */
+export const CORE_INPUT = 25_000;
+export const CORE_CELLS = 30_000;
+
 export const WARES = build();
-/** Waren, die es nur im neuen Raum gibt (nicht an Split-Handelsposten, keine Split-Fabriken) */
-export const FRONTIER_WARES = new Set(['glutglas']);
+/** Waren, die nicht frei gehandelt werden (kein Handelsposten, keine NPC-Fabrik) */
+export const UNTRADED_WARES = new Set(['sonnenkern']);
 export const WARE_IDS = Object.keys(WARES);
 
 export function ware(id: string): WareDef {

@@ -51,11 +51,11 @@ const DEFS: Record<string, FrontierSector> = {
     ],
     tradeStation: { name: 'Rhak-Halle', x: 0, z: 0 },
     npcStations: [
-      { id: 'rhak-werft', name: 'Rhak-Werft', kind: 'wharf', x: -60, z: 80, buys: ['hullparts', 'engineparts', 'claytronics', 'scanningarrays', 'shieldcomponents', 'glutglas', 'energycells'] },
+      { id: 'rhak-werft', name: 'Rhak-Werft', kind: 'wharf', x: -60, z: 80, buys: ['hullparts', 'engineparts', 'claytronics', 'scanningarrays', 'shieldcomponents', 'energycells'] },
       { id: 'rhak-siedlung', name: 'Rhak-Siedlung', kind: 'habitat', x: 90, z: -60, buys: ['medicalsupplies', 'foodrations', 'spacefuel', 'water', 'energycells'] },
     ],
     licenseCost: 9_000_000, repRequired: 8,
-    surplus: ['methane', 'ice'], demand: ['medicalsupplies', 'engineparts', 'claytronics', 'glutglas'],
+    surplus: ['methane', 'ice'], demand: ['medicalsupplies', 'engineparts', 'claytronics', 'advancedelectronics'],
   },
   'f-schmiede': {
     id: 'f-schmiede', faction: 'rhk', sunlight: 180, // schwankt mit dem Pulsar zwischen 60 und 300 % (engine/phenomena.ts)

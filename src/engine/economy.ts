@@ -2,7 +2,7 @@
 import { MODULE_MAP, moduleDef } from '../data/modules';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { NPC_STATIONS, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
-import { FRONTIER_WARES, WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
+import { CORE_CELLS, UNTRADED_WARES, WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
 import type { GameState, LedgerCat, LogLink, Market, NpcEco, Station, StorageType, TradeRule } from './types';
 import { clamp, emit, log, rand } from './util';
 import { book } from './ledger';
@@ -251,6 +251,8 @@ export function producesWare(st: Station, id: string): boolean {
 }
 
 export function consumesWare(st: Station, id: string, includePlanned = false): boolean {
+  // Sonnenkerne braucht jede Station, die Energiezellen verbraucht (außer der, die sie herstellt)
+  if (id === 'sonnenkern') return !producesWare(st, 'sonnenkern') && consumesWare(st, 'energycells', includePlanned);
   if ((pendingNeeds(st)[id] ?? 0) > 0) return true;
   // Werft hält ihr Material immer auf Vorrat – nicht erst, wenn ein Schiff bestellt ist
   if (yardStockWares(st).includes(id)) return true;
@@ -303,13 +305,19 @@ export function stepProduction(state: GameState, st: Station, dt: number): void 
     // Glutsee I: überhitzte Station steht still
     if (st.heat) { m.stall = 'heat'; m.running = false; m.util += (0 - m.util) * Math.min(1, dt / 400); continue; }
     const w = ware(d.ware);
-    // Sonnenöfen laufen im Strahlungssturm (3000 % Sonne) doppelt so schnell
-    const fast = w.id === 'glutglas' && sun >= 3000 ? 2 : 1;
+    // Sonnenöfen laufen schneller, je mehr Licht: im Strahlungssturm (3000 %) dreimal so schnell
+    const fast = w.id === 'sonnenkern' && sun > 1000 ? sun / 1000 : 1;
     let left = dt * fast;
     let ranFor = 0;
     let guard = 0;
     while (left > 0 && guard++ < 50) {
       if (!m.running) {
+        // Fehlen Energiezellen, wird ein Sonnenkern aus dem Lager entladen (nicht an der Station, die Kerne herstellt)
+        const cells = w.inputs.find((i) => i.ware === 'energycells');
+        if (cells && (st.inventory.energycells ?? 0) + 1e-6 < cells.amount && (st.inventory.sonnenkern ?? 0) >= 1 && !producesWare(st, 'sonnenkern')) {
+          addWare(st, 'sonnenkern', -1);
+          addWare(st, 'energycells', CORE_CELLS);
+        }
         const missing = w.inputs.find((i) => (st.inventory[i.ware] ?? 0) + 1e-6 < i.amount);
         if (missing) { m.stall = 'input'; break; }
         const batch = w.id === 'energycells' ? (w.batch * sun) / 100 : w.batch;
@@ -492,7 +500,7 @@ export function initMarkets(state: GameState): void {
     if (state.markets[s.id]) continue;
     const m: Market = {};
     for (const id of WARE_IDS) {
-      if (FRONTIER_WARES.has(id) && !s.id.startsWith('f-')) continue;
+      if (UNTRADED_WARES.has(id)) continue;
       let eq = 0.5 + (rand(state) - 0.5) * 0.16;
       if (s.surplus.includes(id)) eq = 0.75 + rand(state) * 0.08;
       if (s.demand.includes(id)) eq = 0.18 + rand(state) * 0.08;
@@ -501,7 +509,7 @@ export function initMarkets(state: GameState): void {
       const cap = baseDemand(id) * 12 * (s.demand.includes(id) ? 1.5 : 1) * rawFactor;
       // Gefertigte Waren: nur ein kleiner Startbestand im Umlauf (Grundwaren fest: zusammen 300–500 Claytronik)
       const scarce = !!state.start;
-      const start = FRONTIER_WARES.has(id) ? 0 : !scarce ? cap * eq : START_STOCK[id] ? START_STOCK[id][0] + rand(state) * (START_STOCK[id][1] - START_STOCK[id][0]) : manufactured(id) ? cap * eq * 0.35 : cap * eq;
+      const start = !scarce ? cap * eq : START_STOCK[id] ? START_STOCK[id][0] + rand(state) * (START_STOCK[id][1] - START_STOCK[id][0]) : manufactured(id) ? cap * eq * 0.35 : cap * eq;
       m[id] = { stock: Math.min(cap, start), cap, eq };
     }
     state.markets[s.id] = m;

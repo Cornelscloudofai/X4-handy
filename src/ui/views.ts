@@ -654,7 +654,7 @@ function heatBox(state: GameState, st: Station): string {
   const rule = `Je ${MANTLE_COVERS} Produktionsmodule ein Kühlmantel, je Modul ${COOLANT_PER_MODULE} Kühlmittel pro Sturm.`;
   if (!n.covered) return `<div class="section"><div class="box heat-box warn"><b>${icon('warn', 18)}${n.mantles ? `Zu wenig Kühlmäntel: ${n.mantles} von ${n.needMantles}` : 'Kein Kühlmantel'}</b><p>${esc(when)}. ${n.prod} Produktionsmodule brauchen ${n.needMantles} Kühlmantel${n.needMantles === 1 ? '' : '/-mäntel'} – sonst überhitzt die Station im Sturm. ${rule} Den Bauplan verkauft die Familie Rhak (Ruf 3).</p></div></div>`;
   const ok = cool >= n.coolant;
-  return `<div class="section"><div class="box heat-box ${ok ? 'ok' : 'warn'}"><b>${icon(ok ? 'check' : 'warn', 18)}Kühlung ${c.active ? 'arbeitet' : 'bereit'} · ${n.mantles} Kühlmantel${n.mantles === 1 ? '' : '/-mäntel'}</b><p>${esc(when)}. Kühlmittel im Lager: <b>${fmtInt(cool)}</b> von ${fmtInt(n.coolant)} je Sturm${ok ? '' : ' – zu wenig, die Station würde überhitzen'}. Im Sturm liefern Solarkraftwerke 3000 %, Sonnenöfen arbeiten doppelt so schnell.</p></div></div>`;
+  return `<div class="section"><div class="box heat-box ${ok ? 'ok' : 'warn'}"><b>${icon(ok ? 'check' : 'warn', 18)}Kühlung ${c.active ? 'arbeitet' : 'bereit'} · ${n.mantles} Kühlmantel${n.mantles === 1 ? '' : '/-mäntel'}</b><p>${esc(when)}. Kühlmittel im Lager: <b>${fmtInt(cool)}</b> von ${fmtInt(n.coolant)} je Sturm${ok ? '' : ' – zu wenig, die Station würde überhitzen'}. Im Sturm liefern Solarkraftwerke 3000 %, Sonnenöfen laden dreimal so schnell.</p></div></div>`;
 }
 
 /** Verlaufskachel mit Beschriftung (leer, solange zu wenig Daten da sind) */

@@ -35,7 +35,7 @@ export const FRONTIER: FrontierDef[] = [
   { id: 'f-rhak', name: 'Familie Rhak', region: 'glut', q: 0, r: -2, links: ['f-asche', 'ravine', 'f-bandtor'], description: 'Die Familie Rhak wurde vor 40 Jahren aus dem Rat der Familien verstoßen. Als die Tore erloschen, war sie auf sich gestellt – und ist es gern geblieben.',
     log: 'Funkspruch der Rhak-Zentrale: „Zhin? Ihr habt euch Zeit gelassen. Unsere Preise gelten trotzdem.“' },
   { id: 'f-schmiede', name: 'Der Schmiedestern', region: 'glut', q: -3, r: -1, links: ['f-glut1'], description: 'Ein Pulsar, dessen Strahl alle 1,3 Sekunden über den Sektor streicht. Wer seine Kollektoren im Takt ausrichtet, bekommt Energie fast umsonst.',
-    log: 'Ein ausgebrannter Kollektorring der Vesh\'ara. Hier haben sie Energiezellen geladen, bevor sie weiterzogen.' },
+    log: 'Ein ausgebrannter Kollektorring der Vesh\'ara. In den Halterungen stecken leere Kernhülsen – hier haben sie Sonnenlicht verdichtet, bevor sie weiterzogen.' },
   // Gebiet 2: Das Schweigende Band
   { id: 'f-bandtor', name: 'Bandtor', region: 'band', q: 0, r: -3, links: ['f-rhak', 'f-polar'], description: 'Das Tor fängt sich alle paar Stunden für einige Minuten, dann fällt es wieder aus. Die Rhak nennen es den Atem.',
     log: 'Am Torring kleben Markierungen in Vesh\'ara-Schrift: Strichlisten, Hunderte. Hier hat jemand lange gewartet.' },
