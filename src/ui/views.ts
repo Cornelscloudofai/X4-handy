@@ -36,6 +36,7 @@ import { BG_IMAGES, bgImageInfo, sectorImageId } from '../render/bgImages';
 import { devRevealAll, tintOf } from '../render/galaxyView';
 import { FRONTIER, FRONTIER_MAP, REGIONS, type RegionId } from '../data/frontier';
 import { frontierImage } from './reveal';
+import { BOARD_REP_CAP, boardFor, boardRepLeft, incidentText } from '../engine/incidents';
 import { SCOUT_PRICE, gateBuyCost, gateState, gateSupply, outpostBuyCost, outpostState, outpostSupply, scoutPath, scouts } from '../engine/explore';
 import { COOLANT_PER_MODULE, MANTLE_COVERS, baseSun, coolingNeed, phenomenonShort, phenomenonText, stormClock } from '../engine/phenomena';
 import { productionKind } from '../render/stationLayout';
@@ -186,8 +187,25 @@ function flowFilter(state: GameState, ui: UIState): string {
 }
 
 export function objectiveHtml(state: GameState, ui: UIState): string {
+  if (ui.panel || ui.placing) return '';
+  return incidentBar(state) + (ui.view === 'galaxy' ? '' : objectiveInner(state, ui));
+}
+
+/** Offene Vorfälle: der dringendste mit „Selbst übernehmen“ (weitere als Zahl) */
+function incidentBar(state: GameState): string {
+  const open = [...(state.incidents?.open ?? [])].sort((a, b) => a.expires - b.expires);
+  if (!open.length) return '';
+  const inc = open[0];
+  const t = incidentText(state, inc);
+  const left = Math.max(0, inc.expires - state.time);
+  const ic = inc.kind === 'raid' ? 'warn' : inc.kind === 'fault' ? 'wrench' : 'miner';
+  return `<div class="incident-bar ${inc.kind}"><span class="inc-ic">${icon(ic, 20)}</span><div class="inc-txt"><b>${esc(t.title)}</b><small>${esc(t.text)} · noch ${fmtDur(left)}${open.length > 1 ? ` · +${open.length - 1} weitere` : ''}</small></div>
+    <button class="btn small primary" ${act('incident-play', { id: inc.id })}>Selbst übernehmen</button></div>`;
+}
+
+function objectiveInner(state: GameState, ui: UIState): string {
   const m = currentMission(state);
-  if (!m || ui.panel || ui.placing || ui.view === 'galaxy') return '';
+  if (!m) return '';
   const p = m.progress(state);
   const done = p.cur >= p.target;
   const frac = Math.min(1, p.cur / Math.max(1e-9, p.target));
@@ -346,8 +364,29 @@ function tradeCard(state: GameState, secId: string): string {
   if (!knows(state, secId)) return cardShell(icon('market', 24), s.tradeStation.name, `${esc(FACTIONS[s.faction].name)} · Handelsposten`, unknownBox(secId), true);
   return cardShell(icon('market', 24), s.tradeStation.name, `${esc(FACTIONS[s.faction].name)} · Handelsposten ${intelTag(state, secId)}`, `
     <div class="stats3">${top.map((id) => `<div>${wareMark(id, 10)}<span><b>${fmtInt(seenPrice(state, secId, id) ?? 0)} Cr</b>${esc(WARES[id].name)}</span></div>`).join('')}</div>
-    <div class="card-actions"><button class="btn primary" ${act('open-market', { id: secId })}>${icon('market', 20)}Marktpreise</button>${vendorButton(state, secId)}</div>`, true);
+    <div class="card-actions"><button class="btn primary" ${act('open-market', { id: secId })}>${icon('market', 20)}Marktpreise</button>${vendorButton(state, secId)}</div>
+    ${taskList(state, secId, secId)}`, true);
 }
+
+/** Aufgaben an einer Station (key) oder im ganzen Sektor (key leer) */
+function taskList(state: GameState, sector: string, key?: string): string {
+  const tasks = boardFor(state, sector).filter((t) => !key || t.key === key);
+  if (!tasks.length) return '';
+  const f = SECTOR_MAP[sector].faction;
+  const repLeft = boardRepLeft(state, f);
+  const rows = tasks.map((t) => {
+    const where = key ? '' : `${esc(marketInfo(t.key).name)} · `;
+    const rep = repLeft > 0 ? ` · Ruf +${fmtNum(Math.min(t.rep, repLeft), 2)}` : '';
+    return `<div class="task ${t.done ? 'done' : ''}"><div class="task-head"><b>${esc(t.title)}</b><span class="task-lvl">${'★'.repeat(t.level)}</span></div>
+      <p>${esc(t.text)}</p><div class="task-foot"><small>${where}${MINI_LABEL[t.game]} · bis ${fmtCr(t.credits)}${rep} · ${t.parts} Modteile</small>
+      ${t.done ? `<span class="small pos">${icon('check', 14)}Erledigt</span>` : `<button class="btn small primary" ${act('task-play', { sec: sector, id: t.id })}>Annehmen</button>`}</div></div>`;
+  }).join('');
+  const until = state.incidents?.boards[sector]?.until ?? 0;
+  const note = repLeft <= 0 ? (state.rep[f] >= BOARD_REP_CAP ? `Ruf gibt es für Aufgaben nur bis Stufe ${BOARD_REP_CAP}.` : 'Ruf aus Aufgaben: Tagesgrenze erreicht.') : '';
+  return `<div class="section tasks"><h3>Aufgaben${key ? '' : ' im Sektor'}</h3>${rows}<p class="small muted" style="margin:6px 0 0">Neue Aufgaben in ${fmtDur(Math.max(0, until - state.time))}.${note ? ' ' + note : ''}</p></div>`;
+}
+
+const MINI_LABEL: Record<string, string> = { pipes: 'Rohr-Puzzle', ore: 'Erzabbau', gas: 'Gassammeln', cargo: 'Frachtraum', highway: 'Superhighway', orbit: 'Andocken', pirates: 'Kampf', xenon: 'Kampf', khaak: 'Kampf' };
 
 /** Knopf zum Vertreter – zeigt, wie viele Baupläne dort jetzt kaufbar sind */
 function vendorButton(state: GameState, sector: string, npc?: string): string {
@@ -375,7 +414,8 @@ function npcCard(state: GameState, id: string): string {
     ${eco ? `<div class="small muted" style="margin:0 0 6px">Stellt her und verkauft ${helpBtn('economy')}</div><div class="box rows npc-buys" style="margin-bottom:10px">${made}</div><div class="small muted" style="margin:0 0 6px">Kauft an (Vorprodukte)</div>` : ''}
     <div class="box rows npc-buys">${rows}</div>
     <p class="small muted" style="margin:8px 0 0">${eco ? 'Produziert nach X4-Rezepten. Eigene Frachter bringen nur gut ein Drittel der Vorprodukte – der Rest muss geliefert werden. Gut ausgelastete Fabriken bauen langsam aus.' : 'Kleine Lager, meist gute Preise. Wer viel liefert, drückt den Preis – nach einigen Stunden ist wieder Bedarf da.'}</p>
-    ${vendorsAt(n.sector, n.id).length ? `<div class="card-actions one" style="margin-top:10px">${vendorButton(state, n.sector, n.id)}</div>` : ''}`, true);
+    ${vendorsAt(n.sector, n.id).length ? `<div class="card-actions one" style="margin-top:10px">${vendorButton(state, n.sector, n.id)}</div>` : ''}
+    ${taskList(state, n.sector, n.id)}`, true);
 }
 
 function gateCard(state: GameState, to: string): string {
@@ -510,7 +550,8 @@ function sectorGeneral(state: GameState, id: string): string {
     ${s.note ? `<q class="sec-log">${esc(s.note)}</q>` : ''}
     ${phen ? `<div class="gx-phen">${icon('target', 14)}${esc(phen)}</div>` : ''}
     <div class="kv sec-kv"><div><small>Sonne</small><b>${s.sunlight} %</b></div><div><small>Eigene Stationen</small><b>${stations}</b></div><div><small>Eigene Schiffe</small><b>${ships}</b></div><div><small>Ruf ${esc(FACTIONS[s.faction].short)}</small><b>${fmtNum(rep, 1)}</b></div></div>
-    ${license}`;
+    ${license}
+    ${taskList(state, id)}`;
 }
 
 function sectorEconomy(state: GameState, id: string): string {

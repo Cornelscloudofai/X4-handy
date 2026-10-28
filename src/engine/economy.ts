@@ -7,6 +7,7 @@ import type { GameState, LedgerCat, LogLink, Market, NpcEco, Station, StorageTyp
 import { clamp, emit, log, rand } from './util';
 import { book } from './ledger';
 import { marketFactor } from './phenomena';
+import { FAULT_SPEED } from './incidents';
 
 const TYPES: StorageType[] = ['Container', 'Solid', 'Liquid'];
 
@@ -307,7 +308,8 @@ export function stepProduction(state: GameState, st: Station, dt: number): void 
     if (st.heat) { m.stall = 'heat'; m.running = false; m.util += (0 - m.util) * Math.min(1, dt / 400); continue; }
     const w = ware(d.ware);
     // Sonnenöfen laufen schneller, je mehr Licht: im Strahlungssturm (3000 %) dreimal so schnell
-    const fast = w.id === 'sonnenkern' && sun > 1000 ? sun / 1000 : 1;
+    // Störung (Vorfall): halbe Leistung, bis sie behoben ist
+    const fast = (w.id === 'sonnenkern' && sun > 1000 ? sun / 1000 : 1) * (m.fault ? FAULT_SPEED : 1);
     let left = dt * fast;
     let ranFor = 0;
     let guard = 0;

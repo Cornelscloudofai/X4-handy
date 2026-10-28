@@ -13,10 +13,12 @@ import { consumesWare } from '../src/engine/economy';
 import { REPAIR_WARES } from '../src/engine/explore';
 import { queueModule } from '../src/engine/actions';
 import { vendorsFor } from '../src/data/vendors';
+import { pauseIncidents } from '../src/engine/incidents';
 
 const glut = (seed: number) => {
   const s = newGame(seed, 'mining');
   for (const id of ['f-ausblick', 'f-glut1', 'f-asche', 'f-rhak', 'f-schmiede']) discover(s, id);
+  pauseIncidents(s);
   return s;
 };
 

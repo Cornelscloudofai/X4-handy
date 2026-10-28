@@ -1758,3 +1758,30 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .hb-thumb { width: 30px; height: 30px; }
 .hb-sector { gap: 6px; }
 @media (max-width: 420px) { .hud-bar .chip.credits b { font-size: 12.5px; } .hud-bar .chip.alert { padding: 0 5px; } .hud-bar .chip.time button.speed { padding: 0 2px; } }
+
+/* Vorfälle: Hinweisleiste über dem Kapitelziel */
+.incident-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; padding: 8px 8px 8px 10px; border-radius: 14px; pointer-events: auto;
+  background: rgba(30, 14, 6, 0.92); border: 1px solid rgba(255, 150, 80, 0.55); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 14px rgba(255, 120, 50, 0.18);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: riseIn 0.35s both; }
+.incident-bar.vein { background: rgba(8, 26, 22, 0.92); border-color: rgba(63, 224, 197, 0.55); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 14px rgba(63, 224, 197, 0.18); }
+.incident-bar .inc-ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #ffb06b; background: rgba(255, 140, 60, 0.14); }
+.incident-bar.vein .inc-ic { color: var(--teal); background: rgba(63, 224, 197, 0.12); }
+.incident-bar .inc-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.incident-bar .inc-txt b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.incident-bar .inc-txt small { font-size: 11px; color: var(--text-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.incident-bar .btn { flex: none; white-space: nowrap; }
+/* Aufgaben an Stationen */
+.section.tasks { margin-top: 12px; }
+.task { padding: 10px 12px; border-radius: 12px; background: rgba(4, 14, 22, 0.6); border: 1px solid var(--line); }
+.task + .task { margin-top: 6px; }
+.task.done { opacity: 0.6; }
+.task-head { display: flex; align-items: baseline; gap: 8px; }
+.task-head b { flex: 1; font-size: 13.5px; }
+.task-lvl { color: #ffc46b; font-size: 11px; letter-spacing: 1px; }
+.task p { margin: 3px 0 7px; font-size: 12.5px; line-height: 1.4; color: var(--text-2); }
+.task-foot { display: flex; align-items: center; gap: 8px; }
+.task-foot small { flex: 1; min-width: 0; font-size: 11px; color: var(--muted); }
+.task-foot .btn { flex: none; }
+.incident-bar .inc-txt b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; }
+.incident-bar .btn { font-size: 12.5px; padding: 0 10px; min-height: 36px; }
+@media (max-width: 380px) { .incident-bar .inc-ic { display: none; } }

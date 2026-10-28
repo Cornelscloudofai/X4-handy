@@ -138,6 +138,8 @@ export interface ModuleInst {
   running: boolean;
   /** Grund, warum das Modul steht */
   stall: '' | 'input' | 'storage' | 'heat';
+  /** Störung (Vorfall): läuft mit halber Leistung, bis sie behoben ist */
+  fault?: boolean;
   /** Gleitender Auslastungswert 0..1 */
   util: number;
   /** Fester Platz in der Station (wird beim ersten Zeichnen vergeben und bleibt dann) */
@@ -438,6 +440,7 @@ export type LogLink =
   | { kind: 'ship'; id: string }
   | { kind: 'market'; key: string }
   | { kind: 'sector'; id: string }
+  | { kind: 'incident'; id: number }
   | { kind: 'contract'; id: number }
   | { kind: 'opp'; id: number; key: string; ware: string }
   | { kind: 'shipOrder'; id: number }
@@ -491,6 +494,8 @@ export interface GameState {
   /** Marktwissen (neue Spiele): Momentaufnahmen je Markt, Satelliten, Takt der Schiffsscans */
   intel?: Record<string, { t: number; stock: Record<string, number> }>;
   satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
+  /** Vorfälle (Minispiele im Spiel) und Aufgaben an Stationen */
+  incidents?: import('./incidents').IncidentState;
   /** Erkundung des unbekannten Raums: gefundene Torsignaturen („von>nach“) und entdeckte neue Sektoren */
   frontier?: import('./explore').FrontierState;
   scanTimer?: number;

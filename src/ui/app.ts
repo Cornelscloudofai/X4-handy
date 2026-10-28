@@ -37,6 +37,8 @@ import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/s
 import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
 import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutView';
 import { tuneFromSlider } from '../minigames/tunePanel';
+import { earnParts } from '../minigames/mods';
+import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
 import { SHIPS, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode } from '../minigames/common';
 import { FACTIONS } from '../data/sectors';
@@ -558,7 +560,43 @@ function followLink(l: LogLink): void {
       break;
     }
     case 'shipOrder': case 'story': openPanel('missions', undefined, undefined, back); break;
+    case 'incident': playIncident(l.id); break;
   }
+}
+
+/** Vorfall selbst übernehmen: passendes Minispiel, das Ergebnis wirkt auf den Spielstand */
+function playIncident(id: number): void {
+  const inc = incidentById(state, id);
+  if (!inc) { toast('Das ist schon erledigt.', 'info'); return; }
+  const g = incidentGame(inc);
+  const combat = g.game === 'pirates' || g.game === 'xenon' || g.game === 'khaak';
+  const opts: MiniOpts = { level: g.level, mutator: null, ...(combat ? { gear: { weapon: 2, shield: 2, engine: 2 } } : { ware: inc.ware }) };
+  ui.panel = null;
+  ui.modal = null;
+  openMinigame(g.game, opts, (r) => {
+    if (r) { const msg = resolveIncident(state, id, r.stars); if (msg) toast(msg, r.stars ? 'good' : 'info'); }
+    refresh();
+  });
+}
+
+/** Aufgabe an einer Station annehmen: Minispiel, danach Lohn (Credits, Ruf mit Deckel, Modteile) */
+function playTask(sector: string, id: number): void {
+  const t = boardFor(state, sector).find((x) => x.id === id);
+  if (!t || t.done) return;
+  const sec = SECTOR_MAP[sector];
+  const combat = t.game === 'pirates' || t.game === 'xenon' || t.game === 'khaak';
+  const field = sec.fields.find((f) => !f.legacy && (t.game === 'gas' ? WARES[f.ware].storage === 'Liquid' : WARES[f.ware].storage === 'Solid'));
+  const opts: MiniOpts = { level: t.level, ...(combat ? { gear: { weapon: 2, shield: 2, engine: 2 } } : {}), ...(field && (t.game === 'ore' || t.game === 'gas') ? { ware: field.ware } : {}) };
+  ui.panel = null;
+  ui.modal = null;
+  openMinigame(t.game, opts, (r) => {
+    if (r) {
+      const res = finishTask(state, sector, id, r.stars);
+      if (res) { earnParts(res.parts); toast(`${t.title}: ${fmtCr(res.credits)}${res.rep > 0 ? `, Ruf +${res.rep.toFixed(2).replace('.', ',')}` : ''}, ${res.parts} Modteile`, 'good'); }
+      else toast('Ohne Stern gibt es keinen Lohn – die Aufgabe bleibt offen.', 'info');
+    }
+    refresh();
+  });
 }
 
 function openPanel(type: PanelType, id?: string, tab?: string, stack = false): void {
@@ -1032,6 +1070,8 @@ function onClick(e: MouseEvent): void {
       case 'open-sector': openPanel('sector', d.id, undefined, !!ui.panel); break;
       case 'open-market': ui.marketSector = d.id!; openPanel('market'); break;
       case 'station-tab': if (ui.panel) { ui.panel = { ...ui.panel, tab: d.tab }; refresh(); } break;
+      case 'incident-play': playIncident(Number(d.id)); break;
+      case 'task-play': playTask(d.sec!, Number(d.id)); break;
       case 'sector-tab': setSectorTab(d.tab ?? 'general'); refresh(); break;
       case 'sector-info':
         ui.selection = ui.selection?.kind === 'sector' ? null : { kind: 'sector', id: ui.sector };

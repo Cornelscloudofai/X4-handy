@@ -110,6 +110,20 @@ einem Solarkraftwerk und einem Miner.
   **Horchposten in Rhy's Ausblick:** mit 150 Hüllenteilen, 600 Energiezellen und 300 Veredelten Metallen (aus den Lagern
   oder zugekauft) wieder in Betrieb – dann sind alle Märkte der Glutsee live sichtbar und Suchen dort finden 25 % leichter
   etwas. Kartenkarte und Kopfzeile der Sektoransicht zeigen die Eigenheit (Sturm mit Restzeit, Sonne in Prozent).
+- **Minispiele im echten Spiel** (zusätzlich zum Menü „Minispiele“, das bleibt):
+  **Vorfälle** – etwa einmal je Spielstunde (erst ab Kapitel 5, also nach der geführten Einführung; frühestens nach 40 min Spielzeit, höchstens zwei offen) entsteht aus dem Geschehen ein
+  Ereignis, angekündigt als Meldung und als Leiste über dem Kapitelziel mit **„Selbst übernehmen“**:
+  *Überfall* auf einen beladenen Frachter (Kampf; Piraten, in der Ravine Xenon, im neuen Raum Kha'ak) – ohne Eingreifen
+  gehen nach 20 min 15 % der Ladung verloren, selbst verteidigt nichts, mit drei Sternen dazu 3.000 Cr Kopfgeld.
+  *Störung* in einem Produktionsmodul (Rohr-Puzzle) – das Modul läuft mit halber Leistung; gelöst sofort wieder voll,
+  sonst nach 90 min Reparatur mit 20 Hüllenteilen. *Reiche Ader* bei einem Miner (Erz- bzw. Gasabbau) – Bonusware ins
+  Heimatlager, ohne Eingreifen 15 % eines Laderaums, selbst abgebaut bis 105 % (nur so viel, wie ins Lager passt).
+  Selbst spielen ist nie Pflicht. **Aufgaben an Stationen** – in jedem bekannten Sektor bieten zwei Stationen je eine
+  Aufgabe an (Werft: Leitungen, Rumpfteile verladen; Wache: Geleit, Xenon-Streife; Habitat: Umladen, Fähre; Handelsposten:
+  Eilsendung, Frachtraum, Andockhilfe; Felder: Probebohrung, Gasprobe), alle 3 h neu. Lohn ab einem Stern, nach Sternen:
+  Credits (nach Lizenzpreis des Sektors), Modteile und Ruf bei der Fraktion – Ruf aber nur bis Stufe 3 und höchstens
+  0,5 je Fraktion und Spieltag (Einstiegshilfe in neuen Sektoren, kein Ersatz für Handel und Aufträge). Zu finden in der
+  Sektorinfo unter „Allgemein“ und in der Karte der jeweiligen Station. Ansehen: `node scripts/incident-shot.mjs <ordner>`.
 - **Eigenheiten des Split-Raums** (in der Sektorinfo unter „Allgemein“, mit Aushang, Funkspruch oder Logbuch-Zeile aus
   dem Sektor): **Familie Zhin** – Wiederaufbau, die Zhin-Werft zahlt 12 % mehr für Hüllenteile und Claytronik.
   **Familie Tkr** – Stapellauf alle 4 h (erster nach 2 h): eine Stunde lang zahlt die Tkr-Werft 30 % mehr für Hüllenteile,

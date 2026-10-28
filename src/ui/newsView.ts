@@ -23,6 +23,7 @@ export function linkData(l: LogLink): Record<string, string | number> {
     case 'contract': case 'shipOrder': return { lk: l.kind, id: l.id };
     case 'opp': return { lk: l.kind, id: l.id, key: l.key, ware: l.ware };
     case 'story': return { lk: l.kind, id: '' };
+    case 'incident': return { lk: l.kind, id: l.id };
   }
 }
 
@@ -35,6 +36,7 @@ export function linkFrom(d: Record<string, string | undefined>): LogLink | null 
     case 'contract': case 'shipOrder': return { kind: d.lk, id: Number(id) };
     case 'opp': return { kind: 'opp', id: Number(id), key: d.key ?? '', ware: d.ware ?? '' };
     case 'story': return { kind: 'story' };
+    case 'incident': return { kind: 'incident', id: Number(id) };
   }
   return null;
 }
@@ -57,6 +59,7 @@ function linkLabel(state: GameState, l: LogLink): string {
     }
     case 'shipOrder': return 'Bestellungen';
     case 'story': return 'Kapitel';
+    case 'incident': return state.incidents?.open.some((x) => x.id === l.id) ? 'Selbst übernehmen' : '';
   }
 }
 
