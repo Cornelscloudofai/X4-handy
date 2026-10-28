@@ -50,6 +50,12 @@ einem Solarkraftwerk und einem Miner.
   Pause/Tempo, Warnungen. Darunter **Bauen ▾** (Station errichten, Routen und Warenflüsse), Nachrichten (Sprechblase),
   Menü (Zahnrad), die Eigenheit des Sektors als Knopf (z. B. „Sturm · 34 min“) und rechts der Zoom.
   Ansehen: `node scripts/hud-shot.mjs <ordner>`.
+- **Sektorinfo in drei Reitern** (ⓘ in der Kopfleiste, Sektor auf der Sektorenkarte antippen oder Detailseite – überall
+  gleich gegliedert): **Allgemein** (Beschreibung, Eigenheit, Sonne, eigene Stationen und Schiffe, Ruf, Baulizenz mit
+  Kaufknopf), **Wirtschaft** (Rohstofffelder als Kacheln, Schürfrechte, gefragte und günstige Waren, Preise, Marktdaten
+  je Quadrant mit Satelliten), **Erkundung** (Logbuch-Fundstück, Späher kaufen, peilen und schicken, Torbaustellen,
+  Horchposten, Forschungsakte; ein Punkt am Reiter zeigt laufende Suchen und Baustellen). Der gewählte Reiter bleibt.
+  Ansehen: `node scripts/sectortabs-shot.mjs <ordner>`.
 - **Sektorenkarte:** „Sektor“ unten erneut antippen (oder oben auf den Sektornamen). Ruhiger, dunkler Grund: vier eigene
   Weltraumbilder (`src/assets/karte/hintergrund-1…4.jpg`), je 30 s, dann 8 s fließende Überblendung ins nächste, Sektoren als Glas-Sechsecke mit eigenem Farbschimmer und Sternenstaub –
   bewusst ohne Sektorbild, die Überraschung bleibt für den Besuch –, nur der Name. Eigene Sektoren leuchten türkis

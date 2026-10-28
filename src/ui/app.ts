@@ -65,7 +65,7 @@ import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, node
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
 import { MODULE_MAP } from '../data/modules';
 import { WARES } from '../data/wares';
-import { cardHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml } from './views';
+import { cardHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml, setSectorTab } from './views';
 import { linkFrom, type LedgerFilter, type NewsFilter } from './newsView';
 
 let state: GameState;
@@ -1032,6 +1032,7 @@ function onClick(e: MouseEvent): void {
       case 'open-sector': openPanel('sector', d.id, undefined, !!ui.panel); break;
       case 'open-market': ui.marketSector = d.id!; openPanel('market'); break;
       case 'station-tab': if (ui.panel) { ui.panel = { ...ui.panel, tab: d.tab }; refresh(); } break;
+      case 'sector-tab': setSectorTab(d.tab ?? 'general'); refresh(); break;
       case 'sector-info':
         ui.selection = ui.selection?.kind === 'sector' ? null : { kind: 'sector', id: ui.sector };
         ui.follow = undefined;

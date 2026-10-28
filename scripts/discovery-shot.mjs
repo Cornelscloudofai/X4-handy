@@ -17,6 +17,8 @@ await page.click('#nav [data-act="nav"][data-tab="map"]');
 await page.waitForTimeout(900);
 await page.evaluate(() => { const g = window.__game; g.ui.galaxySel = 'rhy'; g.refresh(); });
 await page.waitForTimeout(300);
+await page.click('.gx-card [data-act="sector-tab"][data-tab="explore"]');
+await page.waitForTimeout(200);
 await page.click('.gx-card [data-act="scout-buy"]');
 await page.waitForTimeout(200);
 await page.screenshot({ path: `${out}/durchbruch-1-signatur.png` });

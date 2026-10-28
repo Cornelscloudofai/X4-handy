@@ -470,18 +470,71 @@ function galaxyCard(state: GameState, id: string, here = false): string {
   const close = `<button class="x" ${act('select-clear')} aria-label="Schließen">${icon('close', 20)}</button>`;
   if (!known) return `<div class="card gx-card unknown"><div class="gx-body"><span class="gx-eyebrow">Unerforscht</span><h2>Unbekannter Sektor</h2><p>Noch keine Daten – Baulizenzen in Nachbarsektoren öffnen den Weg.</p></div>${close}</div>`;
   const img = owned ? BG_IMAGES.find((b) => b.id === sectorImageId(id))?.url : undefined;
+  return `<div class="card gx-card tabbed ${owned ? 'own' : ''}" style="--tint:${tintOf(id)}${img ? `;--img:url(${img})` : ''}">
+    <div class="gx-body"><div class="sec-head"><div><span class="gx-eyebrow">${f ? `${esc(REGIONS[f.region].name)} · ` : ''}${esc(FACTIONS[s.faction].name)}</span><h2>${esc(s.name)}</h2></div>
+    ${here ? '' : `<button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button>`}</div>
+    ${sectorTabs(state, id)}</div>${close}</div>`;
+}
+
+export type SectorTab = 'general' | 'economy' | 'explore';
+const SECTOR_TABS: [SectorTab, string][] = [['general', 'Allgemein'], ['economy', 'Wirtschaft'], ['explore', 'Erkundung']];
+let sectorTab: SectorTab = 'general';
+/** Reiter der Sektorinfo wechseln (gilt für Karte und Detailseite) */
+export function setSectorTab(t: string): void { if (SECTOR_TABS.some(([k]) => k === t)) sectorTab = t as SectorTab; }
+
+/**
+ * Sektorinfo in drei Reitern – dieselbe Gliederung in der Karte (Sektor, Sektorenkarte) und auf der Detailseite:
+ * Allgemein (Lage, Eigenheit, Lizenz), Wirtschaft (Felder, Schürfrechte, Markt, Marktdaten), Erkundung (Späher, Tore, Akte).
+ */
+function sectorTabs(state: GameState, id: string): string {
+  const busy = scouts(state).some((x) => x.task?.target === id) || (state.frontier?.signatures ?? []).some((g) => g.startsWith(id + '>') && gateState(state, g).kind !== 'open');
+  const tabs = `<div class="tabs sec-tabs">${SECTOR_TABS.map(([t, l]) => `<button class="${sectorTab === t ? 'active' : ''}" ${act('sector-tab', { tab: t })}>${l}${t === 'explore' && busy ? '<i class="tab-dot"></i>' : ''}</button>`).join('')}</div>`;
+  const body = sectorTab === 'economy' ? sectorEconomy(state, id) : sectorTab === 'explore' ? sectorExplore(state, id) : sectorGeneral(state, id);
+  return `${tabs}<div class="sec-body">${body}</div>`;
+}
+
+function sectorGeneral(state: GameState, id: string): string {
+  const s = SECTOR_MAP[id];
+  const owned = state.sectors.includes(id);
+  const reachable = !!FRONTIER_MAP[id] || s.links.some((l) => state.sectors.includes(l));
+  const rep = state.rep[s.faction];
+  const canBuy = !owned && reachable && rep >= s.repRequired && state.credits >= s.licenseCost;
   const stations = state.stations.filter((x) => x.sector === id).length;
   const ships = state.ships.filter((x) => x.sector === id).length;
-  const wares = [...new Set(s.fields.filter((f) => !f.legacy).map((f) => WARES[f.ware].name))];
-  const facts = [
-    stations ? `${stations} Station${stations === 1 ? '' : 'en'}` : '',
-    ships ? `${ships} Schiff${ships === 1 ? '' : 'e'}` : '',
-    wares.join(', '),
-    owned ? '' : `Lizenz ${fmtCr(s.licenseCost)}`,
-  ].filter(Boolean).join(' · ');
-  return `<div class="card gx-card ${owned ? 'own' : ''}" style="--tint:${tintOf(id)}${img ? `;--img:url(${img})` : ''}">
-    <div class="gx-body"><span class="gx-eyebrow">${f ? `${esc(REGIONS[f.region].name)} · ` : ''}${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>${phenomenonText(id, state.time) ? `<div class="gx-phen">${icon('target', 14)}${esc(phenomenonText(id, state.time))}</div>` : ''}
-    <div class="gx-actions">${here ? '' : `<button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button>`}<button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div>${id === 'f-ausblick' ? outpostBlock(state) : ''}${exploreBlock(state, id)}</div>${close}</div>`;
+  const phen = phenomenonText(id, state.time);
+  const license = owned
+    ? `<div class="sec-license own">${icon('check', 18)}<span><b>Baulizenz vorhanden</b><small>Du darfst hier Stationen errichten.</small></span></div>`
+    : `<div class="sec-license"><span><b>Baulizenz ${fmtCr(s.licenseCost)}</b><small>Ruf ${s.repRequired} bei ${esc(FACTIONS[s.faction].short)} nötig · du hast <span class="${rep >= s.repRequired ? 'pos' : 'neg'}">${fmtNum(rep, 1)}</span></small></span>
+      <button class="btn small ${canBuy ? 'amber' : 'disabled'}" ${act('license', { id })}>${icon('lock', 16)}${!reachable ? 'Nicht erreichbar' : rep < s.repRequired ? 'Ruf fehlt' : 'Kaufen'}</button></div>`;
+  return `<p class="sec-desc">${esc(s.description)}</p>
+    ${phen ? `<div class="gx-phen">${icon('target', 14)}${esc(phen)}</div>` : ''}
+    <div class="kv sec-kv"><div><small>Sonne</small><b>${s.sunlight} %</b></div><div><small>Eigene Stationen</small><b>${stations}</b></div><div><small>Eigene Schiffe</small><b>${ships}</b></div><div><small>Ruf ${esc(FACTIONS[s.faction].short)}</small><b>${fmtNum(rep, 1)}</b></div></div>
+    ${license}`;
+}
+
+function sectorEconomy(state: GameState, id: string): string {
+  const s = SECTOR_MAP[id];
+  const owned = state.sectors.includes(id);
+  const reachable = !!FRONTIER_MAP[id] || s.links.some((l) => state.sectors.includes(l));
+  const fields = s.fields.filter((f) => !f.legacy);
+  const intel = state.start && (owned || reachable || state.sectors.some((x) => SECTOR_MAP[x].links.includes(id)));
+  return `<div class="section"><h3>Rohstofffelder</h3>${fields.length ? `<div class="sec-fields">${fields.map((f) => `<div class="sec-field">${wareIcon(f.ware, 20)}<span><b>${esc(WARES[f.ware].name)}</b><small>Ertrag ${pct(f.richness)} · ${f.r} km${state.start && !hasMineRight(state, id, f.ware === 'nividium' ? 'nividium' : 'base') ? ' · <em class="neg">kein Recht</em>' : ''}</small></span></div>`).join('')}</div>` : '<p class="small muted">Keine Rohstofffelder.</p>'}</div>
+    ${mineRightsBox(state, id)}
+    <div class="section"><h3>Markt</h3><div class="pills">${s.demand.map((w) => `<span class="pill amber">${esc(WARES[w].name)} gefragt</span>`).join('')}${s.surplus.map((w) => `<span class="pill">${esc(WARES[w].name)} günstig</span>`).join('')}</div>
+      <div class="card-actions" style="margin-top:8px"><button class="btn small" ${act('open-market', { id })}>${icon('market', 16)}Preise ansehen</button></div></div>
+    ${intel ? `<div class="section"><h3>Marktdaten</h3><div class="quad-grid">${([0, 1, 2, 3] as const).map((q) => {
+      const on = quadrantCovered(state, id, q);
+      const sat = state.satellites?.some((x) => x.sector === id && x.q === q);
+      return `<div class="quad ${on ? 'on' : ''}"><b>${QUADRANT_NAME[q]}</b><small>${on ? (sat ? 'Satellit · live' : 'eigene Station · live') : 'nur Momentaufnahmen'}</small>${on ? '' : `<button class="btn small ${state.credits >= SAT_COST ? 'amber' : 'disabled'}" ${act('satellite', { sec: id, q })}>Satellit · ${fmtCr(SAT_COST)}</button>`}</div>`;
+    }).join('')}</div><p class="small muted" style="margin:6px 0 0">Live sichtbar sind Preise nur in Quadranten mit eigener Station oder Satellit. Sonst gilt der Stand, als zuletzt ein Schiff dort angedockt hat oder vorbeigeflogen ist.</p></div>` : ''}`;
+}
+
+function sectorExplore(state: GameState, id: string): string {
+  const f = FRONTIER_MAP[id];
+  const sigs = (state.frontier?.signatures ?? []).filter((g) => g.startsWith(id + '>')).length;
+  const intro = f ? `<q class="sec-log">${esc(f.log)}</q>` : `<p class="sec-desc">${sigs ? `${sigs} Torsignatur${sigs === 1 ? '' : 'en'} gefunden.` : 'Späher suchen hier nach erloschenen Toren in den unbekannten Raum. Mit Peilung finden sie schneller etwas.'}</p>`;
+  return `${intro}${id === 'f-ausblick' ? outpostBlock(state) : ''}${exploreBlock(state, id)}
+    <div class="card-actions" style="margin-top:10px"><button class="btn small" ${act('akte')}>${icon('star', 16)}Forschungsakte</button></div>`;
 }
 
 /** Horchposten in Rhy's Ausblick: mit Waren wieder in Betrieb nehmen */
@@ -524,7 +577,7 @@ export function panelHtml(state: GameState, ui: UIState): string {
     case 'missions': return missionsPanel(state);
     case 'market': return marketPanel(state, ui);
     case 'ware': return warePanel(state, p.id ?? 'ore', p);
-    case 'sector': return sectorPanel(state, p.id ?? 'zhin', p);
+    case 'sector': return sectorPanel(state, p.id ?? 'zhin', p, ui);
     case 'more': return morePanel(state, ui);
     case 'blueprints': return blueprintsPanel(state, ui, p);
     case 'planner': return sheet('Stationsplaner', 'Produktionsketten nach X4', panelHero('planner') + plannerPanel(state, ui));
@@ -1450,28 +1503,10 @@ function warePanel(state: GameState, id: string, p: Panel): string {
 
 // ---- Sektor ----
 
-function sectorPanel(state: GameState, id: string, p: Panel): string {
+function sectorPanel(state: GameState, id: string, p: Panel, ui: UIState): string {
   const s = SECTOR_MAP[id];
-  const owned = state.sectors.includes(id);
-  const reachable = !!FRONTIER_MAP[id] || s.links.some((l) => state.sectors.includes(l));
-  const rep = state.rep[s.faction];
-  const canBuy = !owned && reachable && rep >= s.repRequired && state.credits >= s.licenseCost;
-  return sheet(s.name, FACTIONS[s.faction].name, `
-    <p class="lead">${esc(s.description)}</p>
-    <div class="section"><div class="kv">
-      <div><small>Sonnenlicht</small><b>${s.sunlight} %</b></div><div><small>Stationen</small><b>${state.stations.filter((x) => x.sector === id).length}</b></div>
-      <div><small>Baulizenz</small><b style="font-size:15px">${owned ? 'vorhanden' : fmtCr(s.licenseCost)}</b></div><div><small>Ruf nötig</small><b style="font-size:15px">${s.repRequired} ${FACTIONS[s.faction].short} <span class="small ${rep >= s.repRequired ? 'pos' : 'neg'}">(${fmtNum(rep, 1)})</span></b></div>
-    </div></div>
-    <div class="section"><h3>Rohstofffelder</h3><div class="box rows">${s.fields.map((f) => `<div class="row">${wareTile(f.ware)}<div class="grow"><div class="title" style="font-weight:500">${esc(WARES[f.ware].name)}</div><div class="sub">Ertrag ${pct(f.richness)} · Radius ${f.r} km${state.start && !hasMineRight(state, id, f.ware === 'nividium' ? 'nividium' : 'base') ? ' · <span class="neg">kein Schürfrecht</span>' : ''}</div></div></div>`).join('')}</div></div>
-    ${mineRightsBox(state, id)}
-    ${state.start && (owned || reachable || state.sectors.some((x) => SECTOR_MAP[x].links.includes(id))) ? `<div class="section"><h3>Aufklärung</h3><div class="quad-grid">${([0, 1, 2, 3] as const).map((q) => {
-      const on = quadrantCovered(state, id, q);
-      const sat = state.satellites?.some((x) => x.sector === id && x.q === q);
-      return `<div class="quad ${on ? 'on' : ''}"><b>${QUADRANT_NAME[q]}</b><small>${on ? (sat ? 'Satellit · live' : 'eigene Station · live') : 'nur Momentaufnahmen'}</small>${on ? '' : `<button class="btn small ${state.credits >= SAT_COST ? 'amber' : 'disabled'}" ${act('satellite', { sec: id, q })}>Satellit · ${fmtCr(SAT_COST)}</button>`}</div>`;
-    }).join('')}</div><p class="small muted" style="margin:6px 0 0">Live sichtbar sind Preise nur in Quadranten mit eigener Station oder Satellit. Sonst gilt der Stand, als zuletzt ein Schiff dort angedockt hat oder vorbeigeflogen ist.</p></div>` : ''}
-    <div class="section"><h3>Markt</h3><div class="pills">${s.demand.map((w) => `<span class="pill amber">${esc(WARES[w].name)} gefragt</span>`).join('')}${s.surplus.map((w) => `<span class="pill">${esc(WARES[w].name)} günstig</span>`).join('')}</div></div>
-    ${owned ? '' : `<button class="btn ${canBuy ? 'amber' : 'disabled'} block" ${act('license', { id })}>${icon('lock', 20)}${!reachable ? 'Nur über Nachbarsektoren erreichbar' : rep < s.repRequired ? `Ruf ${s.repRequired} nötig` : `Baulizenz kaufen · ${fmtCr(s.licenseCost)}`}</button>`}
-    <button class="btn block" style="margin-top:8px" ${act('goto-sector', { id })}>${icon('arrowRight', 20)}Sektor ansehen</button>`, { back: !!p.back });
+  return sheet(s.name, FACTIONS[s.faction].name, `${sectorTabs(state, id)}
+    ${ui.view === 'sector' && ui.sector === id ? '' : `<button class="btn block" style="margin-top:12px" ${act('goto-sector', { id })}>${icon('arrowRight', 20)}Sektor ansehen</button>`}`, { back: !!p.back });
 }
 
 // ---- Mehr ----

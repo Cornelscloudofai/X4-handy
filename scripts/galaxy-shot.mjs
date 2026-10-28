@@ -50,6 +50,8 @@ if (!hitNew) fail('Kopfzeile ohne bekannte Sektoren');
 // Späher: kaufen und nach Rhy's Defiance schicken, Flug und Suche laufen, danach Spur oder Signatur
 await page.evaluate(() => { const g = window.__game; g.ui.galaxySel = 'rhy'; g.refresh(); });
 await page.waitForTimeout(400);
+await page.click('.gx-card [data-act="sector-tab"][data-tab="explore"]');
+await page.waitForTimeout(200);
 await page.click('.gx-card [data-act="scout-buy"]');
 await page.waitForTimeout(300);
 await page.click('.gx-card [data-act="scout-send"]');
