@@ -109,8 +109,47 @@ describe('Eigenheiten der Glutsee', () => {
     s.time -= 60;
     step(s, STORM_TIME_FULL);
     expect(st.heat ?? 0).toBe(0);
-    expect(st.inventory.superfluidcoolant).toBeGreaterThan(80);
-    expect(st.inventory.superfluidcoolant).toBeLessThan(120);
+    // ein Produktionsmodul: 40 Kühlmittel je Sturm
+    expect(st.inventory.superfluidcoolant).toBeGreaterThan(255);
+    expect(st.inventory.superfluidcoolant).toBeLessThan(265);
+  });
+
+  it('Ein Kühlmantel schützt höchstens 6 Produktionsmodule; Sonnenöfen laufen im Sturm doppelt so schnell', () => {
+    const s = glut(9);
+    const st = s.stations[0];
+    st.sector = 'f-glut1';
+    const mod = (uid: number, def: string) => ({ ...st.modules[0], uid, def, util: 1, running: false, stall: '' as const, t: 0 });
+    for (let i = 0; i < 7; i++) st.modules.push(mod(9100 + i, 'prod_glutglas'));
+    st.modules.push(mod(9200, 'cooling_mantle'));
+    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 10000 };
+    st.modules.push(mod(9300, 'storage_container_l'), mod(9301, 'storage_solid_l'));
+    s.time = 0;
+    while (!stormActive(s.time)) s.time += 60;
+    s.time -= 60;
+    step(s, 600);
+    expect(st.heat).toBeGreaterThan(0);
+    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 10000 };
+    // mit zweitem Mantel geschützt – und im Sturm doppelt so schnell
+    st.heat = 0;
+    st.modules.push(mod(9201, 'cooling_mantle'));
+    s.time += STORM_CYCLE;
+    while (stormActive(s.time)) s.time += 60;
+    const t0 = s.time;
+    const before = st.produced.glutglas ?? 0;
+    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 40000 };
+    step(s, 3700);
+    const calm = (st.produced.glutglas ?? 0) - before;
+    s.time = t0;
+    while (!stormActive(s.time + 60)) s.time += 60;
+    step(s, 60); // Uhr der Kühlung auf die neue Zeit setzen
+    st.inventory = { superfluidcoolant: 1000, silicon: 2000, energycells: 40000 };
+    const b2 = st.produced.glutglas ?? 0;
+    step(s, 1800);
+    const stormy = (st.produced.glutglas ?? 0) - b2;
+    expect(st.heat ?? 0).toBe(0);
+    expect(calm).toBeGreaterThan(0);
+    // im Sturm schafft ein Ofen in einer halben Stunde so viel wie sonst in einer Stunde
+    expect(stormy).toBeGreaterThanOrEqual(calm);
   });
 
   it('Sonnenofen nur in Glutsee I, Baupläne nur bei der Familie Rhak, Glutglas nicht im Split-Raum', () => {

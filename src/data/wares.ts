@@ -80,7 +80,7 @@ function build(): Record<string, WareDef> {
   // Gebraucht für die Tore weiter oben und von der Rhak-Werft.
   out.glutglas = {
     id: 'glutglas', name: 'Glutglas', nameEn: 'Ember Glass', group: 'refined', tier: 2, storage: 'Container', volume: 10,
-    price: { min: 3800, avg: 5200, max: 6800 }, cycle: 3600, batch: 20,
+    price: { min: 3800, avg: 5200, max: 6800 }, cycle: 3600, batch: 12,
     inputs: [{ ware: 'silicon', amount: 100 }, { ware: 'energycells', amount: 4000 }], mined: false, color: SPECIAL_COLOR.glutglas,
   };
   return out;

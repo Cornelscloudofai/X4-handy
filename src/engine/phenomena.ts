@@ -1,6 +1,7 @@
 // Eigenheiten der neuen Sektoren. Alles hängt nur an der Spielzeit (nichts davon steht im Spielstand):
-//   Glutsee I        – 1000 % Sonne; Strahlungssturm alle 3 h für 35 min: Sonne 3000 %, Schiffe 60 %. Stationen ohne
-//                      Kühlmantel (oder ohne Kühlmittel) überhitzen: Produktion steht, danach Reparatur mit Hüllenteilen
+//   Glutsee I        – 1000 % Sonne; Strahlungssturm alle 3 h für 35 min: Sonne 3000 %, Schiffe 60 %, Sonnenöfen
+//                      doppelt so schnell. Je 6 Produktionsmodule ein Kühlmantel, je Modul 40 Kühlmittel pro Sturm –
+//                      sonst überhitzt die Station: Produktion steht, danach Reparatur mit Hüllenteilen
 //   Die Aschefelder  – Staub: Schiffe immer mit 80 %, Miner fördern 30 % mehr
 //   Der Schmiedestern – Pulsar: das Sonnenlicht schwankt im Zwei-Stunden-Takt zwischen 60 % und 300 %
 import { SECTOR_MAP } from '../data/sectors';
@@ -21,8 +22,12 @@ export const PULSAR_PERIOD = 2 * 3600;
 export const PULSAR_SUN: [number, number] = [60, 300];
 export const GLUT_SUN = 1000;
 export const STORM_SUN = 3000;
-/** Kühlmittel, das ein Kühlmantel je Sturm verbraucht */
-export const COOLANT_PER_STORM = 200;
+/** Ein Kühlmantel schützt so viele Produktionsmodule */
+export const MANTLE_COVERS = 6;
+/** Kühlmittel je geschütztem Produktionsmodul und Sturm */
+export const COOLANT_PER_MODULE = 40;
+/** Sonnenöfen laufen im Sturm so viel schneller */
+export const OVEN_STORM_SPEED = 2;
 /** Hüllenteile je Produktionsmodul, um nach einer Überhitzung wieder anzulaufen */
 export const HEAT_REPAIR = 25;
 
@@ -31,10 +36,13 @@ export function baseSun(sectorId: string): number {
   return sectorId === 'f-glut1' ? GLUT_SUN : sectorId === 'f-schmiede' ? PULSAR_SUN[1] : SECTOR_MAP[sectorId]?.sunlight ?? 100;
 }
 
-/** Hat die Station einen Kühlmantel? */
-export const hasMantle = (st: Station): boolean => st.modules.some((m) => MODULE_MAP[m.def]?.kind === 'cooling');
-/** Überhitzt: Produktion steht (im Sturm ohne Schutz oder bis zur Reparatur) */
-export const overheated = (st: Station): boolean => !!st.heat;
+/** Sturmschutz einer Station: Kühlmäntel, nötige Kühlmäntel, Kühlmittel je Sturm */
+export function coolingNeed(st: Station): { mantles: number; prod: number; needMantles: number; coolant: number; covered: boolean } {
+  const mantles = st.modules.filter((m) => MODULE_MAP[m.def]?.kind === 'cooling').length;
+  const prod = st.modules.filter((m) => MODULE_MAP[m.def]?.kind === 'production').length;
+  const needMantles = Math.ceil(prod / MANTLE_COVERS);
+  return { mantles, prod, needMantles, coolant: prod * COOLANT_PER_MODULE, covered: mantles >= needMantles };
+}
 
 export const stormActive = (time: number): boolean => ((time + STORM_OFFSET) % STORM_CYCLE) < STORM_TIME;
 /** Wie lange der laufende Sturm noch dauert bzw. bis der nächste kommt (s) */
@@ -90,10 +98,12 @@ function stepHeat(state: GameState, storm: boolean): void {
   lastHeatT = state.time;
   for (const st of state.stations) {
     if (st.sector !== 'f-glut1') continue;
-    const prod = st.modules.filter((m) => MODULE_MAP[m.def]?.kind === 'production').length;
+    const c = coolingNeed(st);
+    const prod = c.prod;
     if (storm && !st.heat && prod) {
-      const need = (COOLANT_PER_STORM / STORM_TIME) * dt;
-      if (hasMantle(st) && (st.inventory.superfluidcoolant ?? 0) >= need) addWare(st, 'superfluidcoolant', -need);
+      // genug Kühlmäntel für alle Produktionsmodule und Kühlmittel im Lager?
+      const need = (c.coolant / STORM_TIME) * dt;
+      if (c.covered && (st.inventory.superfluidcoolant ?? 0) >= need) addWare(st, 'superfluidcoolant', -need);
       else if (dt > 0) {
         st.heat = prod * HEAT_REPAIR;
         log(state, `${st.name} ist im Sturm überhitzt. Die Produktion steht – zum Wiederanlauf braucht sie ${st.heat} Hüllenteile.`, 'bad', true, { kind: 'station', id: st.id });

@@ -303,7 +303,9 @@ export function stepProduction(state: GameState, st: Station, dt: number): void 
     // Glutsee I: überhitzte Station steht still
     if (st.heat) { m.stall = 'heat'; m.running = false; m.util += (0 - m.util) * Math.min(1, dt / 400); continue; }
     const w = ware(d.ware);
-    let left = dt;
+    // Sonnenöfen laufen im Strahlungssturm (3000 % Sonne) doppelt so schnell
+    const fast = w.id === 'glutglas' && sun >= 3000 ? 2 : 1;
+    let left = dt * fast;
     let ranFor = 0;
     let guard = 0;
     while (left > 0 && guard++ < 50) {
@@ -330,7 +332,7 @@ export function stepProduction(state: GameState, st: Station, dt: number): void 
       }
     }
     const k = Math.min(1, dt / 400);
-    m.util += ((dt > 0 ? ranFor / dt : 0) - m.util) * k;
+    m.util += ((dt > 0 ? Math.min(1, ranFor / (dt * fast)) : 0) - m.util) * k;
   }
 }
 

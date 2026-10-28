@@ -37,7 +37,7 @@ import { devRevealAll, tintOf } from '../render/galaxyView';
 import { FRONTIER, FRONTIER_MAP, REGIONS, type RegionId } from '../data/frontier';
 import { frontierImage } from './reveal';
 import { SCOUT_PRICE, gateBuyCost, gateState, gateSupply, outpostBuyCost, outpostState, outpostSupply, scoutPath, scouts } from '../engine/explore';
-import { COOLANT_PER_STORM, baseSun, hasMantle, phenomenonShort, phenomenonText, stormClock } from '../engine/phenomena';
+import { COOLANT_PER_MODULE, MANTLE_COVERS, baseSun, coolingNeed, phenomenonShort, phenomenonText, stormClock } from '../engine/phenomena';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
@@ -649,9 +649,12 @@ function heatBox(state: GameState, st: Station): string {
   const c = stormClock(state.time);
   const cool = st.inventory.superfluidcoolant ?? 0;
   const when = c.active ? `Sturm tobt · noch ${fmtDur(c.left)}` : `Nächster Sturm in ${fmtDur(c.left)}`;
-  if (!hasMantle(st)) return `<div class="section"><div class="box heat-box warn"><b>${icon('warn', 18)}Kein Kühlmantel</b><p>${esc(when)}. Ohne Kühlmantel überhitzt die Station im Sturm. Den Bauplan verkauft die Familie Rhak (Ruf 3).</p></div></div>`;
-  const ok = cool >= COOLANT_PER_STORM;
-  return `<div class="section"><div class="box heat-box ${ok ? 'ok' : 'warn'}"><b>${icon(ok ? 'check' : 'warn', 18)}Kühlmantel ${c.active ? 'arbeitet' : 'bereit'}</b><p>${esc(when)}. Kühlmittel im Lager: <b>${fmtInt(cool)}</b> von ${COOLANT_PER_STORM} je Sturm${ok ? '' : ' – zu wenig, die Station würde überhitzen'}. Im Sturm liefern Solarkraftwerke mit 3000 % Sonne.</p></div></div>`;
+  const n = coolingNeed(st);
+  if (!n.prod) return '';
+  const rule = `Je ${MANTLE_COVERS} Produktionsmodule ein Kühlmantel, je Modul ${COOLANT_PER_MODULE} Kühlmittel pro Sturm.`;
+  if (!n.covered) return `<div class="section"><div class="box heat-box warn"><b>${icon('warn', 18)}${n.mantles ? `Zu wenig Kühlmäntel: ${n.mantles} von ${n.needMantles}` : 'Kein Kühlmantel'}</b><p>${esc(when)}. ${n.prod} Produktionsmodule brauchen ${n.needMantles} Kühlmantel${n.needMantles === 1 ? '' : '/-mäntel'} – sonst überhitzt die Station im Sturm. ${rule} Den Bauplan verkauft die Familie Rhak (Ruf 3).</p></div></div>`;
+  const ok = cool >= n.coolant;
+  return `<div class="section"><div class="box heat-box ${ok ? 'ok' : 'warn'}"><b>${icon(ok ? 'check' : 'warn', 18)}Kühlung ${c.active ? 'arbeitet' : 'bereit'} · ${n.mantles} Kühlmantel${n.mantles === 1 ? '' : '/-mäntel'}</b><p>${esc(when)}. Kühlmittel im Lager: <b>${fmtInt(cool)}</b> von ${fmtInt(n.coolant)} je Sturm${ok ? '' : ' – zu wenig, die Station würde überhitzen'}. Im Sturm liefern Solarkraftwerke 3000 %, Sonnenöfen arbeiten doppelt so schnell.</p></div></div>`;
 }
 
 /** Verlaufskachel mit Beschriftung (leer, solange zu wenig Daten da sind) */
@@ -1894,7 +1897,7 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
       io = `<div class="flow" style="grid-column:1/-1">${ins.map((i) => `<span class="io">${wareMark(i.ware, 7)}<b>${fmtAmount(i.amount)}</b>${esc(WARES[i.ware].name)}</span>`).join('')}${ins.length ? `<span class="arrow">${icon('arrowRight', 16)}</span>` : ''}<span class="io" style="border-color:${WARES[d.ware].color}">${wareMark(d.ware, 7)}<b>${fmtAmount(outputPerHour(d.ware, sun))}</b>${esc(WARES[d.ware].name)} / h</span></div>`;
     }
     const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
-    const desc = d.kind === 'cooling' ? 'Schützt die Station in Glutsee I vor dem Strahlungssturm. Verbraucht je Sturm 200 Supraflüssiges Kühlmittel aus dem Lager – geht es aus, überhitzt die Station. Baumaterial:' : d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'habitat' ? `Wohnraum für ${fmtInt(d.housing ?? 0)} Bewohner. Arbeitskräfte siedeln sich später an, wenn Nahrung und Medizin da sind.` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe – die kommen mit den Kampfschiffen. Größte und teuerste Werft.' : d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
+    const desc = d.kind === 'cooling' ? `Schützt bis zu ${MANTLE_COVERS} Produktionsmodule in Glutsee I vor dem Strahlungssturm. Jedes geschützte Modul verbraucht je Sturm ${COOLANT_PER_MODULE} Supraflüssiges Kühlmittel aus dem Lager – geht es aus, überhitzt die Station. Baumaterial:` : d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'habitat' ? `Wohnraum für ${fmtInt(d.housing ?? 0)} Bewohner. Arbeitskräfte siedeln sich später an, wenn Nahrung und Medizin da sind.` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe – die kommen mit den Kampfschiffen. Größte und teuerste Werft.' : d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
     const sunLow = !!d.minSun && baseSun(st.sector) < d.minSun;
     const action = sunLow ? `<span class="small muted" style="margin-right:auto">Braucht mindestens ${d.minSun} % Sonne – nur in Glutsee I</span>` : bp === 'owned'
       ? `${afford ? '' : '<span class="small muted" style="margin-right:auto">startet, sobald Credits reichen</span>'}<button class="btn small primary" ${act('queue', m.at === undefined ? { st: st.id, def: d.id } : { st: st.id, def: d.id, at: m.at })}>${icon('plus', 16)}${m.at === undefined ? 'Einplanen' : `An Position ${m.at + 1}`}</button>`
