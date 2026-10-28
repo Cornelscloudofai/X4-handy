@@ -45,6 +45,8 @@ einem Solarkraftwerk und einem Miner.
   ganz geladen und vom Service Worker zwischengespeichert). Beim allerersten Start ganz, danach höchstens einmal am Tag
   und überspringbar; Einstellungen → Darstellung: „Trailer beim Start“ an/aus und „Trailer jetzt ansehen“. Klangteppich
   und Titelmusik warten, bis er vorbei ist. Neue Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
+- **Sektorinfo im Sektor:** Die Zeile unter dem Sektornamen (z. B. „Fremdsektor · Staub ⓘ“) antippen – die Sektorkarte mit
+  Baulizenz, Details, Späher und Erkundung erscheint direkt im Sektor, ohne Umweg über die Sektorenkarte.
 - **Sektorenkarte:** „Sektor“ unten erneut antippen (oder oben auf den Sektornamen). Ruhiger, dunkler Grund: vier eigene
   Weltraumbilder (`src/assets/karte/hintergrund-1…4.jpg`), je 30 s, dann 8 s fließende Überblendung ins nächste, Sektoren als Glas-Sechsecke mit eigenem Farbschimmer und Sternenstaub –
   bewusst ohne Sektorbild, die Überraschung bleibt für den Besuch –, nur der Name. Eigene Sektoren leuchten türkis
@@ -112,6 +114,9 @@ einem Solarkraftwerk und einem Miner.
   jedes Produktionsmodul 25 Hüllenteile. Ein **Kühlmantel** (Rhak, Ruf 3) schützt bis zu 6 Produktionsmodule, jedes
   geschützte Modul verbraucht je Sturm 40 Supraflüssiges Kühlmittel – wer vorgesorgt hat, erlebt im Sturm seine ergiebigste
   Phase. Station und Modulliste zeigen nötige Kühlmäntel, Kühlmittel je Sturm und die Zeit bis zum nächsten Sturm.
+- **Szenen-Feinschliff:** Der zerbrochene Mond der Aschefelder läuft am Rand weich aus, ist in Staubfarbe getönt und von
+  treibenden Schwaden umgeben (keine harte Kontur mehr). In Glutsee I schlängeln sich langsame Magnetfeldlinien von der
+  Sonne weg (im Sturm doppelt so viele und heller) statt schneller Striche. Ansehen: `node scripts/scene-shot.mjs <ordner> [sektor] [storm]`.
 - **Mehrschichtige Sektorszenen (`src/render/sceneBg.ts`):** Aus freigestellten Bildebenen (Sterne, Nebel, Sonne, Plasma,
   Felsen) entsteht ein lebendiger Hintergrund: jede Ebene mit eigener Tiefe (Parallaxe beim Verschieben), dazu gezeichnete
   Effekte – funkelnde Sterne, atmender Nebel, Sonne mit pulsierender Korona und langsam drehenden Strahlen, flackernde

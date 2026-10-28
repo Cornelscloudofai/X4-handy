@@ -1030,6 +1030,11 @@ function onClick(e: MouseEvent): void {
       case 'open-sector': openPanel('sector', d.id, undefined, !!ui.panel); break;
       case 'open-market': ui.marketSector = d.id!; openPanel('market'); break;
       case 'station-tab': if (ui.panel) { ui.panel = { ...ui.panel, tab: d.tab }; refresh(); } break;
+      case 'sector-info':
+        ui.selection = ui.selection?.kind === 'sector' ? null : { kind: 'sector', id: ui.sector };
+        ui.follow = undefined;
+        refresh();
+        break;
       case 'select-clear': ui.selection = null; ui.galaxySel = null; ui.follow = undefined; refresh(); break;
       case 'follow-stop': ui.follow = undefined; cam.followPos = null; refresh(); break;
       case 'follow': ui.follow = d.id; if (ui.panel) ui.panel = null; refresh(); break;

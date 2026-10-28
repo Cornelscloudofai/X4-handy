@@ -40,6 +40,8 @@ interface Sprite {
   alpha?: number; blend?: Blend; dark?: number;
   /** Flackern: Stärke und Tempo; Puls: Größe schwingt leicht */
   flicker?: [number, number]; pulse?: number; bob?: number;
+  /** im Dunst versinken: Rand weich auslaufen lassen (Anteil der Bildbreite) und in Farbe rgb einfärben (Anteil a) */
+  veil?: { soft: number; rgb: string; a: number };
 }
 /** Gezeichnete Effekte */
 type Effect =
@@ -52,7 +54,11 @@ type Effect =
   | { fx: 'glimmer'; on: string; r: number; rgb: string; every: number }
   | { fx: 'beat'; on: string; rgb: string; period: number; r: number }
   | { fx: 'vignette'; rgb: string; a: number }
-  /** Strahlungssturm (nur während er im Spiel tobt): rote Schlieren, Blitze, Funkenregen */
+  /** Staubschwaden, die über einem Objekt (vor allem seinem Rand) treiben und seine Kontur verwischen */
+  | { fx: 'shroud'; on: string; n: number; rgb: string; a: number; r: number }
+  /** Magnetfeldlinien: leuchtende Schlangenlinien, die langsam von der Sonne weg wandern (im Sturm stärker) */
+  | { fx: 'flux'; on: string; n: number; rgb: string; dirP: number; dirL: number; spread: number }
+  /** Strahlungssturm (nur während er im Spiel tobt): rötlicher, unruhiger Schleier mit Blitzen */
   | { fx: 'storm'; on: string };
 type Item = Cover | Sprite | Effect;
 
@@ -78,6 +84,7 @@ const SCENES: Record<string, Item[]> = {
     { fx: 'glow', on: 'sonne', r: 0.7, rgb: '255,170,80', a: 0.5, pulse: 0.06, rays: 14 },
     { img: 'plasma', on: 'sonne', depth: 0.45, at: [0.99, 0.03], p: [0, 0], l: [0, 0], w: 1.75, wl: 1.45, rot: 0.62, rotL: 0.05, blend: 'lighter', flicker: [0.22, 1.3] },
     { fx: 'sparks', on: 'sonne', n: 60, rgb: '255,150,70', dirP: 2.25, dirL: 2.9, spread: 0.55, speed: 1 },
+    { fx: 'flux', on: 'sonne', n: 7, rgb: '255,150,80', dirP: 2.25, dirL: 2.9, spread: 1.1 },
     { fx: 'storm', on: 'sonne' },
     { img: 'fels-b', depth: 1.35, p: [0.0, 0.8], l: [0.04, 0.88], w: 0.46, rot: 0.4, spin: 0.006, dark: 0.12 },
     { img: 'fels-a', depth: 1.2, p: [1.02, 0.72], l: [0.97, 0.8], w: 0.42, rot: -0.3, spin: -0.008, dark: 0.08 },
@@ -94,7 +101,8 @@ const SCENES: Record<string, Item[]> = {
     { fx: 'twinkle', n: 60, rgb: '230,200,180', depth: 0.2 },
     { img: 'sonne', id: 'sonne', depth: 0.25, p: [0.78, 0.17], l: [0.8, 0.14], w: 0.5, wl: 0.4, pulse: 0.015 },
     { fx: 'glow', on: 'sonne', r: 0.5, rgb: '255,90,60', a: 0.35, pulse: 0.05 },
-    { img: 'mond', depth: 0.35, p: [0.12, 0.2], l: [0.16, 0.22], w: 0.95, wl: 0.75, rot: -0.15, spin: 0.0008 },
+    { img: 'mond', id: 'mond', depth: 0.35, p: [0.12, 0.2], l: [0.16, 0.22], w: 0.95, wl: 0.75, rot: -0.15, spin: 0.0008, veil: { soft: 0.05, rgb: '120,82,60', a: 0.22 } },
+    { fx: 'shroud', on: 'mond', n: 16, rgb: '118,86,66', a: 0.22, r: 0.52 },
     { cover: 'staub', depth: 0.5, turn: true, scale: 1.18, alpha: 0.9, drift: 0.025, breathe: 0.06 },
     { fx: 'haze', rgb: '120,90,70', a: 0.1, n: 6 },
     { cover: 'truemmer', depth: 0.8, turn: true, scale: 1.2, drift: 0.04 },
@@ -169,6 +177,34 @@ function randoms(key: string, n: number): number[] {
   return r;
 }
 
+/** Bild mit weich auslaufendem Rand und Dunstfarbe (einmal berechnet, in voller Auflösung) */
+const veils = new Map<HTMLImageElement, HTMLCanvasElement>();
+function veiled(img: HTMLImageElement, v: { soft: number; rgb: string; a: number }): HTMLCanvasElement {
+  let c = veils.get(img);
+  if (c) return c;
+  const W = img.naturalWidth, H = img.naturalHeight;
+  c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d')!;
+  g.drawImage(img, 0, 0);
+  // Dunstfarbe über das Bild legen (nur wo es deckt)
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = `rgba(${v.rgb},${v.a})`;
+  g.fillRect(0, 0, W, H);
+  // Kontur auflösen: Deckkraft mit einer stark geglätteten, nach innen geschrumpften Kopie der Form multiplizieren
+  const m = document.createElement('canvas');
+  m.width = W; m.height = H;
+  const mg = m.getContext('2d')!;
+  const blur = Math.round(W * v.soft);
+  mg.filter = `blur(${blur}px)`;
+  const k = 1 - v.soft * 1.2;
+  mg.drawImage(img, (W * (1 - k)) / 2, (H * (1 - k)) / 2, W * k, H * k);
+  g.globalCompositeOperation = 'destination-in';
+  g.drawImage(m, 0, 0);
+  veils.set(img, c);
+  return c;
+}
+
 const isCover = (i: Item): i is Cover => 'cover' in i;
 const isSprite = (i: Item): i is Sprite => 'img' in i;
 
@@ -235,7 +271,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
       ctx.translate(x, y);
       ctx.rotate((portrait ? it.rot ?? 0 : it.rotL ?? it.rot ?? 0) + t * (it.spin ?? 0));
       if (it.dark) ctx.filter = `brightness(${(1 - it.dark).toFixed(2)})`;
-      ctx.drawImage(img, -cx * w, -cy * h, w, h);
+      ctx.drawImage(it.veil ? veiled(img, it.veil) : img, -cx * w, -cy * h, w, h);
       ctx.restore();
       return;
     }
@@ -393,25 +429,79 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, key: string, where
       if (!stormNow()) break;
       const o = where[e.on];
       if (!o) break;
-      // Funkenregen von der Sonne weg, schnell und dicht
-      const r = randoms(key, 360);
-      for (let i = 0; i < 120; i++) {
-        const life = (t * (0.18 + r[i * 3] * 0.2) + r[i * 3 + 1]) % 1;
-        const ang = (portrait ? 2.2 : 2.85) + (r[i * 3 + 2] - 0.5) * 1.1;
-        const d0 = life * S * 1.1, d1 = d0 + S * 0.05;
-        const a = Math.sin(life * Math.PI) * 0.5;
-        ctx.strokeStyle = `rgba(255,${120 + Math.round(r[i * 3] * 80)},70,${a.toFixed(3)})`;
-        ctx.lineWidth = 1 + r[i * 3 + 1];
-        ctx.beginPath();
-        ctx.moveTo(o.x + Math.cos(ang) * d0, o.y + Math.sin(ang) * d0);
-        ctx.lineTo(o.x + Math.cos(ang) * d1, o.y + Math.sin(ang) * d1);
-        ctx.stroke();
-      }
       // rötlicher Schleier, der unruhig pulsiert, und gelegentliche Blitze
       ctx.globalCompositeOperation = 'source-over';
       const flash = Math.max(0, Math.sin(t * 7.3) * Math.sin(t * 2.1) - 0.75) * 4;
       ctx.fillStyle = `rgba(255,70,30,${(0.1 + 0.05 * Math.sin(t * 1.7) + flash * 0.12).toFixed(3)})`;
       ctx.fillRect(0, 0, W, H);
+      break;
+    }
+    case 'shroud': {
+      // Weiche Schwaden auf einem Ring um die Objektmitte – dort, wo sonst die harte Kontur läge
+      ctx.globalCompositeOperation = 'source-over';
+      const o = where[e.on];
+      if (!o) break;
+      const r = randoms(key, e.n * 4);
+      for (let i = 0; i < e.n; i++) {
+        const ang = r[i * 4] * Math.PI * 2 + t * 0.006 * (i % 2 ? 1 : -1);
+        const rad = o.w * e.r * (0.55 + r[i * 4 + 1] * 0.55);
+        const x = o.x + Math.cos(ang) * rad + Math.sin(t * 0.05 + i) * o.w * 0.03;
+        const y = o.y + Math.sin(ang) * rad + Math.cos(t * 0.04 + i * 1.3) * o.w * 0.03;
+        const R = o.w * (0.16 + r[i * 4 + 2] * 0.2);
+        const a = e.a * (0.55 + 0.45 * Math.sin(t * 0.12 + i * 2.3)) * (0.6 + 0.4 * r[i * 4 + 3]);
+        const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+        g.addColorStop(0, `rgba(${e.rgb},${a.toFixed(3)})`);
+        g.addColorStop(0.55, `rgba(${e.rgb},${(a * 0.45).toFixed(3)})`);
+        g.addColorStop(1, `rgba(${e.rgb},0)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(x - R, y - R, R * 2, R * 2);
+      }
+      break;
+    }
+    case 'flux': {
+      // Magnetfeldlinien: Bögen, die von der Sonne aus nach außen wachsen, sich langsam schlängeln und verblassen
+      const o = where[e.on];
+      if (!o) break;
+      const storm = stormNow();
+      const r = randoms(key, e.n * 4);
+      const base = portrait ? e.dirP : e.dirL;
+      const n = storm ? e.n * 2 : e.n;
+      for (let i = 0; i < n; i++) {
+        const j = i % e.n;
+        const life = (t * (storm ? 0.03 : 0.018) * (0.7 + r[j * 4] * 0.6) + r[j * 4 + 1] + (i >= e.n ? 0.5 : 0)) % 1;
+        const ang = base + (r[j * 4 + 2] - 0.5) * e.spread * 2;
+        const len = S * (0.35 + 0.55 * life);
+        const amp = S * (0.025 + r[j * 4 + 3] * 0.035);
+        const waves = 2.2 + r[j * 4 + 3] * 1.6;
+        const ph = t * 0.35 + i * 1.7;
+        const fade = Math.sin(life * Math.PI);
+        const a = fade * (storm ? 0.38 : 0.18);
+        if (a < 0.01) continue;
+        const cs = Math.cos(ang), sn = Math.sin(ang);
+        const steps = 48;
+        ctx.beginPath();
+        for (let k = 0; k <= steps; k++) {
+          const u = k / steps;
+          const d = o.w * 0.12 + u * len;
+          // Ausschlag wächst nach außen, die Welle wandert die Linie entlang
+          const off = Math.sin(u * waves * Math.PI * 2 - ph) * amp * u + Math.sin(u * 3 + i) * amp * 0.6 * u;
+          const x = o.x + cs * d - sn * off, y = o.y + sn * d + cs * off;
+          if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        }
+        const lg = ctx.createLinearGradient(o.x, o.y, o.x + cs * (o.w * 0.12 + len), o.y + sn * (o.w * 0.12 + len));
+        lg.addColorStop(0, `rgba(${e.rgb},0)`);
+        lg.addColorStop(0.15, `rgba(${e.rgb},${a.toFixed(3)})`);
+        lg.addColorStop(1, `rgba(${e.rgb},0)`);
+        ctx.strokeStyle = lg;
+        ctx.lineCap = 'round';
+        // weicher Schein und heller Kern
+        ctx.lineWidth = 7 + r[j * 4] * 6;
+        ctx.globalAlpha = 0.25;
+        ctx.stroke();
+        ctx.lineWidth = 1.2 + r[j * 4 + 1] * 1.2;
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+      }
       break;
     }
     case 'vignette': {

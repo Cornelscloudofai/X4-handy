@@ -1,0 +1,20 @@
+// Sektorinfo im Sektor: Zeile unter dem Sektornamen antippen → Sektorkarte. node scripts/sectorinfo-shot.mjs <outdir>
+import { chromium } from 'playwright';
+import { launchOpts } from './browser.mjs';
+import { distUrl } from './serve.mjs';
+const out = process.argv[2];
+const b = await chromium.launch(launchOpts());
+const page = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+const errors = []; page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(await distUrl());
+await page.click('text=Loslegen mit Bergbau');
+await page.waitForTimeout(1500);
+await page.evaluate(() => { window.__game.state.help = { coachOff: true }; window.__game.refresh(); });
+await page.screenshot({ path: `${out}/info-0.png` });
+await page.click('button.crumb');
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/info-1.png` });
+if (!(await page.locator('.gx-card').count())) errors.push('Keine Sektorkarte');
+console.log(JSON.stringify({ errors }));
+await b.close();
+if (errors.length) process.exit(1);

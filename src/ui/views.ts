@@ -146,7 +146,7 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 15)}<b class="num">${alerts.length}</b></button>
   </div>
   <div class="sub-row">
-    <div class="crumb">${inGalaxy ? 'Split-Raum<span>·</span>' : phenomenonShort(sec.id, state.time) ? '' : `${esc(FACTIONS[sec.faction].name)}<span>·</span>`}${inGalaxy ? `${SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}${!inGalaxy && phenomenonShort(sec.id, state.time) ? `<span>·</span><b class="phen">${esc(phenomenonShort(sec.id, state.time))}</b>` : ''}</div>
+    <${inGalaxy ? 'div' : `button ${act('sector-info')} aria-label="Sektorinfo: Lizenz, Satelliten, Erkundung"`} class="crumb">${inGalaxy ? 'Split-Raum<span>·</span>' : phenomenonShort(sec.id, state.time) ? '' : `${esc(FACTIONS[sec.faction].name)}<span>·</span>`}${inGalaxy ? `${SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0)} Sektoren bekannt` : state.sectors.includes(sec.id) ? 'Baulizenz' : 'Fremdsektor'}${!inGalaxy && phenomenonShort(sec.id, state.time) ? `<span>·</span><b class="phen">${esc(phenomenonShort(sec.id, state.time))}</b>` : ''}${inGalaxy ? '</div>' : `${icon('info', 13)}</button>`}
     <div class="clock">${fmtClock(state.time)}</div>
   </div>
   ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button><button class="btn menu-btn" ${act('akte')} aria-label="Forschungsakte">${icon('star', 17)}</button>${newsBtn}<button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><button class="btn menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü">${icon('more', 17)}</button></div>` : `<div class="tool-row">
@@ -222,6 +222,7 @@ export function cardHtml(state: GameState, ui: UIState): string {
     case 'trade': return tradeCard(state, sel.id);
     case 'npcst': return npcCard(state, sel.id);
     case 'gate': return gateCard(state, sel.id);
+    case 'sector': return galaxyCard(state, sel.id, true);
     default: return '';
   }
 }
@@ -444,7 +445,8 @@ function exploreBlock(state: GameState, id: string): string {
 }
 
 /** Karte zu einem Sektor auf der Sektorenkarte: eigenes Gebiet mit seinem Bild, sonst nur der Farbschimmer */
-function galaxyCard(state: GameState, id: string): string {
+/** Sektorkarte – auf der Sektorenkarte oder (here) für den Sektor, in dem man gerade ist */
+function galaxyCard(state: GameState, id: string, here = false): string {
   const f = FRONTIER_MAP[id];
   // Neue Sektoren: nur Karte und Akte, bis sie spielbar sind (dann wie jeder andere Sektor)
   if (f && !SECTOR_MAP[id]) {
@@ -468,7 +470,7 @@ function galaxyCard(state: GameState, id: string): string {
   ].filter(Boolean).join(' · ');
   return `<div class="card gx-card ${owned ? 'own' : ''}" style="--tint:${tintOf(id)}${img ? `;--img:url(${img})` : ''}">
     <div class="gx-body"><span class="gx-eyebrow">${f ? `${esc(REGIONS[f.region].name)} · ` : ''}${esc(FACTIONS[s.faction].name)} · Sonne ${s.sunlight} %</span><h2>${esc(s.name)}</h2><p>${esc(facts)}</p>${phenomenonText(id, state.time) ? `<div class="gx-phen">${icon('target', 14)}${esc(phenomenonText(id, state.time))}</div>` : ''}
-    <div class="gx-actions"><button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button><button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div>${id === 'f-ausblick' ? outpostBlock(state) : ''}${exploreBlock(state, id)}</div>${close}</div>`;
+    <div class="gx-actions">${here ? '' : `<button class="btn primary small" ${act('goto-sector', { id })}>Hinfliegen ${icon('chev', 16)}</button>`}<button class="btn small ${owned ? '' : 'amber'}" ${act('open-sector', { id })}>${owned ? 'Details' : 'Baulizenz'}</button></div>${id === 'f-ausblick' ? outpostBlock(state) : ''}${exploreBlock(state, id)}</div>${close}</div>`;
 }
 
 /** Horchposten in Rhy's Ausblick: mit Waren wieder in Betrieb nehmen */

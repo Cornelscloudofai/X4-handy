@@ -1647,3 +1647,7 @@ body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { a
 .gx-ware.done i { background: var(--teal); }
 .akte-item q { display: block; font-size: 12px; font-style: italic; color: #d9e6f5; quotes: none; padding-left: 8px; border-left: 2px solid rgba(var(--tint), 0.6); }
 .rv-text q { display: block; max-width: 520px; margin: 0 auto; font-size: 13.5px; font-style: italic; color: #d9e6f5; quotes: none; animation: fade 0.8s 3.4s both; }
+
+/* Sektorinfo: die Zeile unter dem Sektornamen ist antippbar */
+button.crumb { font-weight: inherit; display: inline-flex; align-items: center; gap: 0; background: none; border: 0; padding: 4px 0; margin: -4px 0; cursor: pointer; text-align: left; }
+button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
