@@ -51,8 +51,8 @@ export interface GateRepair { sig: string; t: number; dur: number; need?: Record
 export const REPAIR_WARES: Record<RegionId, Record<string, number>> = {
   glut: { hullparts: 250, energycells: 1000 },
   band: { hullparts: 600, energycells: 2500, microchips: 150 },
-  kristall: { hullparts: 1200, energycells: 5000, claytronics: 200, scanningarrays: 100 },
-  abgrund: { hullparts: 2500, energycells: 10000, claytronics: 600, quantumtubes: 400 },
+  kristall: { hullparts: 1200, energycells: 5000, claytronics: 200, scanningarrays: 100, glutglas: 200 },
+  abgrund: { hullparts: 2500, energycells: 10000, claytronics: 600, quantumtubes: 400, glutglas: 600 },
 };
 /** Montage, sobald alle Waren am Tor sind */
 export const REPAIR_TIME = 30 * 60;

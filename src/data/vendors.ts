@@ -38,7 +38,7 @@ export function isWeaponBlueprint(d: ModuleDef): boolean {
   return d.kind === 'shipyard' || (!!d.ware && WEAPON_WARES.has(d.ware));
 }
 
-const PURCHASABLE = MODULES.filter((d) => !d.starter);
+const PURCHASABLE = MODULES.filter((d) => !d.starter && !d.rhak);
 
 /** Gesandte fremder Völker: Handelsposten, an dem sie sitzen */
 const ENVOYS: { race: Race; sector: string; name: string }[] = [
@@ -68,6 +68,8 @@ function buildVendors(): Vendor[] {
     const sells = PURCHASABLE.filter((d) => raceOf(d) === e.race).map((d) => d.id);
     if (sells.length) list.push({ id: 'v-' + e.race, name: e.name, role: `Gesandtschaft der ${RACE_LABEL[e.race]}`, race: e.race, sector: e.sector, faction: SECTOR_MAP[e.sector].faction, sells });
   }
+  // Familie Rhak (Glutsee): eigene Baupläne für Glutsee I – erst nach ihrer Entdeckung erreichbar
+  list.push({ id: 'v-rhak', name: 'Vorarbeiterin Sel Rhak', role: 'Handelsvertreterin der Familie Rhak', race: 'split', sector: 'f-rhak', faction: 'rhk', sells: MODULES.filter((d) => d.rhak).map((d) => d.id) });
   return list;
 }
 
@@ -76,7 +78,7 @@ export const VENDOR_MAP: Record<string, Vendor> = Object.fromEntries(VENDORS.map
 
 /** Name des Ortes, an dem der Vertreter sitzt */
 export function vendorPlace(v: Vendor): string {
-  return v.npc ? NPC_MAP[v.npc].name : SECTOR_MAP[v.sector].tradeStation.name;
+  return v.npc ? NPC_MAP[v.npc].name : SECTOR_MAP[v.sector]?.tradeStation.name ?? v.sector;
 }
 
 export function vendorsAt(sector: string, npc?: string): Vendor[] {
@@ -84,5 +86,6 @@ export function vendorsAt(sector: string, npc?: string): Vendor[] {
 }
 
 export function vendorsFor(defId: string): Vendor[] {
-  return VENDORS.filter((v) => v.sells.includes(defId));
+  // Vertreter in noch unentdeckten Sektoren zählen nicht
+  return VENDORS.filter((v) => v.sells.includes(defId) && !!SECTOR_MAP[v.sector]);
 }

@@ -37,13 +37,13 @@ import { devRevealAll, tintOf } from '../render/galaxyView';
 import { FRONTIER, FRONTIER_MAP, REGIONS, type RegionId } from '../data/frontier';
 import { frontierImage } from './reveal';
 import { SCOUT_PRICE, gateBuyCost, gateState, gateSupply, outpostBuyCost, outpostState, outpostSupply, scoutPath, scouts } from '../engine/explore';
-import { phenomenonShort, phenomenonText } from '../engine/phenomena';
+import { COOLANT_PER_STORM, baseSun, hasMantle, phenomenonShort, phenomenonText, stormClock } from '../engine/phenomena';
 import { productionKind } from '../render/stationLayout';
 import { MODULES, MODULE_MAP, PLOT_COST } from '../data/modules';
 import { FACTIONS, NPC_MAP, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { GROUP_LABEL, STORAGE_LABEL, WARES, WARE_IDS, inputsPerHour, outputPerHour } from '../data/wares';
-import { bestRepFor, bestStorage, blueprintState, stationCost, vendorOffer } from '../engine/actions';
+import { bestRepFor, bestStorage, blueprintState, heatRepairCost, stationCost, vendorOffer } from '../engine/actions';
 import { RACE_LABEL, raceOf, vendorPlace, vendorsAt, vendorsFor } from '../data/vendors';
 import { byName, matches, searchBox } from './search';
 import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutputValue, storageUse } from '../engine/analysis';
@@ -92,7 +92,7 @@ function canDownload(): boolean {
 
 /** Symbol für Module ohne Produkt */
 function moduleIcon(kind: string): string {
-  return kind === 'storage' ? 'storage' : kind === 'core' || kind === 'habitat' ? 'station' : kind === 'shipyard' ? 'yard' : 'dock';
+  return kind === 'storage' ? 'storage' : kind === 'core' || kind === 'habitat' || kind === 'cooling' ? 'station' : kind === 'shipyard' ? 'yard' : 'dock';
 }
 
 function wareTile(id: string): string {
@@ -599,7 +599,7 @@ function stationOverview(state: GameState, st: Station): string {
   const prodRows = [...prodMods].map(([id, e]) => {
     const w = WARES[id];
     const u = e.util / e.n;
-    const stall = e.stall === 'input' ? `wartet auf ${w.inputs.filter((i) => (st.inventory[i.ware] ?? 0) < i.amount).map((i) => WARES[i.ware].name).join(', ')}` : e.stall === 'storage' ? 'Lager voll' : '';
+    const stall = e.stall === 'heat' ? 'überhitzt – Sturmschaden' : e.stall === 'input' ? `wartet auf ${w.inputs.filter((i) => (st.inventory[i.ware] ?? 0) < i.amount).map((i) => WARES[i.ware].name).join(', ')}` : e.stall === 'storage' ? 'Lager voll' : '';
     return `<div class="row tap" ${act('open-ware', { id })}>${wareTile(id)}<div class="grow"><div class="title">${esc(w.name)} <span class="muted small">× ${e.n}</span></div>
       <div class="sub ${stall ? 'warn-text' : ''}">${stall ? esc(stall) : `${fmtInt(outputPerHour(id, sun) * e.n)} / h Nennleistung`}</div>${bar(u, stall ? 'amber' : '')}</div>
       <div class="right"><b>${tw(u, 'pct')}</b><div class="small muted">Auslastung</div></div></div>`;
@@ -624,6 +624,7 @@ function stationOverview(state: GameState, st: Station): string {
     <div class="st-hero-b">${status}</div></div>`;
   return `
     ${hero}
+    ${heatBox(state, st)}
     ${alerts.length > 1 || alerts[0]?.ware ? `<div class="section"><div class="box rows">${alerts.filter((a, i) => i > 0 || a.ware).map((a) => `<div class="row">${icon('warn', 20, a.severity === 'bad' ? 'neg' : 'warn-text')}<div class="grow"><div class="sub wrap" style="color:var(--text)">${esc(a.text.split(': ').slice(1).join(': '))}</div>${a.ware ? `<div class="sub wrap">${esc(hintFor(state, st, a.ware))}</div>` : ''}</div></div>`).join('')}</div></div>` : ''}
     <div class="section"><div class="kv">
       <div><small>Umsatz gesamt</small><b class="pos">${tw(st.income, 'cr')}</b></div>
@@ -636,6 +637,21 @@ function stationOverview(state: GameState, st: Station): string {
     ${balance ? `<div class="section"><h3>Stundenbilanz bei voller Leistung</h3><div class="box rows">${balance}</div></div>` : ''}
     <div class="section"><h3>Lager</h3><div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr))">${stor}</div></div>
     <div class="section card-actions"><button class="btn" ${act('plan-from-station', { st: st.id })}>${icon('planner', 18)}Im Planer prüfen</button><button class="btn ghost" ${act('rename-modal', { st: st.id })}>Umbenennen</button></div>`;
+}
+
+/** Glutsee I: Schutz vor dem Strahlungssturm und Reparatur nach Überhitzung */
+function heatBox(state: GameState, st: Station): string {
+  if (st.sector !== 'f-glut1') return '';
+  if (st.heat) {
+    const cost = heatRepairCost(st);
+    return `<div class="section"><div class="box heat-box bad"><b>${icon('warn', 18)}Überhitzt</b><p>Der Sturm hat die Station lahmgelegt. Zum Wiederanlauf fehlen noch <b>${fmtInt(st.heat)} Hüllenteile</b> – sie werden aus dem Stationslager genommen, sobald welche da sind.</p><button class="btn small amber ${state.credits >= cost ? '' : 'disabled'}" ${act('heat-buy', { st: st.id })}>Hüllenteile zukaufen · ${fmtCr(cost)}</button></div></div>`;
+  }
+  const c = stormClock(state.time);
+  const cool = st.inventory.superfluidcoolant ?? 0;
+  const when = c.active ? `Sturm tobt · noch ${fmtDur(c.left)}` : `Nächster Sturm in ${fmtDur(c.left)}`;
+  if (!hasMantle(st)) return `<div class="section"><div class="box heat-box warn"><b>${icon('warn', 18)}Kein Kühlmantel</b><p>${esc(when)}. Ohne Kühlmantel überhitzt die Station im Sturm. Den Bauplan verkauft die Familie Rhak (Ruf 3).</p></div></div>`;
+  const ok = cool >= COOLANT_PER_STORM;
+  return `<div class="section"><div class="box heat-box ${ok ? 'ok' : 'warn'}"><b>${icon(ok ? 'check' : 'warn', 18)}Kühlmantel ${c.active ? 'arbeitet' : 'bereit'}</b><p>${esc(when)}. Kühlmittel im Lager: <b>${fmtInt(cool)}</b> von ${COOLANT_PER_STORM} je Sturm${ok ? '' : ' – zu wenig, die Station würde überhitzen'}. Im Sturm liefern Solarkraftwerke mit 3000 % Sonne.</p></div></div>`;
 }
 
 /** Verlaufskachel mit Beschriftung (leer, solange zu wenig Daten da sind) */
@@ -1345,7 +1361,7 @@ function marketPanel(state: GameState, ui: UIState): string {
   const known = knownSectors(state);
   const secId = known.includes(ui.marketSector) ? ui.marketSector : 'zhin';
   const groups = ['all', 'mineral', 'gas', 'energy', 'refined', 'hightech', 'shiptech', 'food', 'agri', 'pharma'];
-  const ids = WARE_IDS.filter((id) => ui.marketGroup === 'all' || WARES[id].group === ui.marketGroup).sort((a, b) => WARES[a].tier - WARES[b].tier || WARES[a].name.localeCompare(WARES[b].name));
+  const ids = WARE_IDS.filter((id) => !!state.markets[secId]?.[id] && (ui.marketGroup === 'all' || WARES[id].group === ui.marketGroup)).sort((a, b) => WARES[a].tier - WARES[b].tier || WARES[a].name.localeCompare(WARES[b].name));
   const secKnown = knows(state, secId);
   const rows = !secKnown ? '' : ids.map((id) => {
     const w = WARES[id];
@@ -1861,12 +1877,13 @@ function modalShell(title: string, body: string, foot: string, eyebrow = ''): st
 function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: 'modules' }>): string {
   const st = stationById(state, m.station);
   if (!st) return '';
-  const cats: [string, string][] = [['production', 'Produktion'], ['storage', 'Lager'], ['habitat', 'Wohnen'], ['dock', 'Andocken'], ['shipyard', 'Werft']];
+  const cats: [string, string][] = [['production', 'Produktion'], ['storage', 'Lager'], ['habitat', 'Wohnen'], ['dock', 'Andocken'], ['shipyard', 'Werft'], ...(state.blueprints.includes('cooling_mantle') || st.sector === 'f-glut1' ? [['cooling', 'Schutz'] as [string, string]] : [])];
   const sun = sector(st.sector).sunlight;
   const q = ui.search.modules ?? '';
-  const inCat = (d: ModuleDef) => (m.cat === 'production' || m.cat === 'storage' || m.cat === 'shipyard' || m.cat === 'habitat' ? d.kind === m.cat : d.kind === 'dock' || d.kind === 'pier');
+  const inCat = (d: ModuleDef) => (m.cat === 'production' || m.cat === 'storage' || m.cat === 'shipyard' || m.cat === 'habitat' || m.cat === 'cooling' ? d.kind === m.cat : d.kind === 'dock' || d.kind === 'pier');
   // Mit Suchtext wird über alle Kategorien gesucht; immer alphabetisch
-  const list = MODULES.filter((d) => d.kind !== 'core' && (q ? true : inCat(d)) && (!ui.ownedOnly || state.blueprints.includes(d.id)) && matches(q, d.name, d.ware && WARES[d.ware].name, d.ware && GROUP_LABEL[WARES[d.ware].group]))
+  // Rhak-Baupläne erst, wenn die Familie entdeckt ist
+  const list = MODULES.filter((d) => d.kind !== 'core' && (!d.rhak || !!SECTOR_MAP['f-rhak']) && (q ? true : inCat(d)) && (!ui.ownedOnly || state.blueprints.includes(d.id)) && matches(q, d.name, d.ware && WARES[d.ware].name, d.ware && GROUP_LABEL[WARES[d.ware].group]))
     .sort(byName);
   const cards = list.map((d) => {
     const bp = blueprintState(state, d.id);
@@ -1877,8 +1894,9 @@ function modulesModal(state: GameState, ui: UIState, m: Extract<Modal, { type: '
       io = `<div class="flow" style="grid-column:1/-1">${ins.map((i) => `<span class="io">${wareMark(i.ware, 7)}<b>${fmtAmount(i.amount)}</b>${esc(WARES[i.ware].name)}</span>`).join('')}${ins.length ? `<span class="arrow">${icon('arrowRight', 16)}</span>` : ''}<span class="io" style="border-color:${WARES[d.ware].color}">${wareMark(d.ware, 7)}<b>${fmtAmount(outputPerHour(d.ware, sun))}</b>${esc(WARES[d.ware].name)} / h</span></div>`;
     }
     const lead = d.kind === 'production' && d.ware ? wareTile(d.ware) : `<span class="ware-tile" style="--c:#8fb7c4">${icon(moduleIcon(d.kind), 18)}</span>`;
-    const desc = d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'habitat' ? `Wohnraum für ${fmtInt(d.housing ?? 0)} Bewohner. Arbeitskräfte siedeln sich später an, wenn Nahrung und Medizin da sind.` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe – die kommen mit den Kampfschiffen. Größte und teuerste Werft.' : d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
-    const action = bp === 'owned'
+    const desc = d.kind === 'cooling' ? 'Schützt die Station in Glutsee I vor dem Strahlungssturm. Verbraucht je Sturm 200 Supraflüssiges Kühlmittel aus dem Lager – geht es aus, überhitzt die Station. Baumaterial:' : d.kind === 'storage' ? `${fmtInt(d.capacity ?? 0)} m³ ${STORAGE_LABEL[d.storage!]}` : d.kind === 'habitat' ? `Wohnraum für ${fmtInt(d.housing ?? 0)} Bewohner. Arbeitskräfte siedeln sich später an, wenn Nahrung und Medizin da sind.` : d.kind === 'dock' ? 'Andockplätze für M- und S-Schiffe' : d.kind === 'pier' ? 'Andockplätze für L-Schiffe (Wyvern, Buffalo)' : d.kind === 'shipyard' ? (d.yardSize === 'XL' ? 'Für Träger und Schlachtschiffe – die kommen mit den Kampfschiffen. Größte und teuerste Werft.' : d.yardSize === 'L' ? 'Baut Wyvern und Buffalo aus eigenen Waren. Braucht einen Pier für die fertigen Schiffe.' : 'Baut Alligator, Tuatara und Boa aus eigenen Waren. Bietet auch Andockplätze für S/M.') + ' Baumaterial:' : `${esc(GROUP_LABEL[WARES[d.ware!].group])} · Stufe ${WARES[d.ware!].tier}${['Split', 'Universal', 'Argon'].includes(d.method) ? '' : ' · ' + esc(d.method)}`;
+    const sunLow = !!d.minSun && baseSun(st.sector) < d.minSun;
+    const action = sunLow ? `<span class="small muted" style="margin-right:auto">Braucht mindestens ${d.minSun} % Sonne – nur in Glutsee I</span>` : bp === 'owned'
       ? `${afford ? '' : '<span class="small muted" style="margin-right:auto">startet, sobald Credits reichen</span>'}<button class="btn small primary" ${act('queue', m.at === undefined ? { st: st.id, def: d.id } : { st: st.id, def: d.id, at: m.at })}>${icon('plus', 16)}${m.at === undefined ? 'Einplanen' : `An Position ${m.at + 1}`}</button>`
       : (() => {
         const go = vendorsFor(d.id).find((v) => vendorOffer(state, v, d.id) !== 'far');

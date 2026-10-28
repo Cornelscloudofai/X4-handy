@@ -99,6 +99,13 @@ einem Solarkraftwerk und einem Miner.
   **Horchposten in Rhy's Ausblick:** mit 150 Hüllenteilen, 600 Energiezellen und 300 Veredelten Metallen (aus den Lagern
   oder zugekauft) wieder in Betrieb – dann sind alle Märkte der Glutsee live sichtbar und Suchen dort finden 25 % leichter
   etwas. Kartenkarte und Kopfzeile der Sektoransicht zeigen die Eigenheit (Sturm mit Restzeit, Sonne in Prozent).
+- **Glutsee I – Sonnenofen und Sturm:** 1000 % Sonne, im Strahlungssturm 3000 %. Ohne Schutz überhitzen Stationen im
+  Sturm: die Produktion steht, zum Wiederanlauf braucht jedes Produktionsmodul 25 Hüllenteile (aus dem Stationslager oder
+  zugekauft). Schutz ist der **Kühlmantel** (Bauplan nur bei der Familie Rhak, Ruf 3), der je Sturm 200 Supraflüssiges
+  Kühlmittel aus dem Lager verbraucht – geht es aus, überhitzt die Station trotzdem. Wer vorgesorgt hat, produziert im Sturm
+  mit 3000 % Sonne. Der **Sonnenofen** (Rhak, Ruf 4, nur ab 500 % Sonne) schmilzt je Stunde 100 Silizium mit 4.000
+  Energiezellen zu 20 **Glutglas** – gebraucht für die Tore der Kristallgrenze (200) und des Abgrunds (600) und von der
+  Rhak-Werft gekauft. Glutglas gibt es nur im neuen Raum (keine Split-Handelsposten, keine Split-Fabriken).
 - **Mehrschichtige Sektorszenen (`src/render/sceneBg.ts`):** Aus freigestellten Bildebenen (Sterne, Nebel, Sonne, Plasma,
   Felsen) entsteht ein lebendiger Hintergrund: jede Ebene mit eigener Tiefe (Parallaxe beim Verschieben), dazu gezeichnete
   Effekte – funkelnde Sterne, atmender Nebel, Sonne mit pulsierender Korona und langsam drehenden Strahlen, flackernde

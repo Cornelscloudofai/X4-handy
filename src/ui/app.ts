@@ -1263,6 +1263,7 @@ function onClick(e: MouseEvent): void {
       case 'gate-buy': result(buyGateRest(state, d.sig!)); break;
       case 'outpost-deliver': { const r = deliverOutpost(state); if (r.ok) sfx.success(); result(r); break; }
       case 'outpost-buy': result(buyOutpostRest(state)); break;
+      case 'heat-buy': result(A.buyHeatRepair(state, d.st!)); break;
       case 'gate-through': result(sendThrough(state, d.sc!, d.sig!)); break;
       case 'scout-buy': result(buyScout(state)); break;
       case 'scout-send': result(sendScout(state, d.sc!, d.sec!)); break;

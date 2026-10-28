@@ -1,5 +1,6 @@
 // Spieleraktionen. Jede Aktion prüft ihre Voraussetzungen und liefert eine Meldung.
 import { FRONTIER_MAP } from '../data/frontier';
+import { baseSun } from './phenomena';
 import { MODULE_MAP, PLOT_COST, moduleDef } from '../data/modules';
 import { SECTOR_MAP, SECTOR_RADIUS, FACTIONS, insideHex, marketInfo, sector } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
@@ -10,7 +11,7 @@ import { courierTrip, expectedCargo } from './fleet';
 import { knownSectors, sellableStock, stationById } from './logistics';
 import { VENDOR_MAP, vendorPlace, vendorsFor, type Vendor } from '../data/vendors';
 import { newModule, newShip, newStation } from './state';
-import type { FactionId, GameState, RouteOrder, Ship, TradeEndpoint, TradeJob, TradeRule } from './types';
+import type { FactionId, GameState, RouteOrder, Ship, Station, TradeEndpoint, TradeJob, TradeRule } from './types';
 import { log } from './util';
 import { acceptContract, isDelivery } from './contracts';
 import { canMine } from './mineRights';
@@ -84,12 +85,26 @@ export function queueModule(state: GameState, stationId: string, defId: string, 
     const v = vendorsFor(defId)[0];
     return fail(`Dafür fehlt der Bauplan${v ? ` – erhältlich bei ${v.role === 'Handelsvertreter' ? 'den Handelsvertretern' : vendorPlace(v)}` : ''}.`);
   }
+  if (d.minSun && SECTOR_MAP[st.sector] && baseSun(st.sector) < d.minSun) return fail(`${d.name} braucht mindestens ${d.minSun} % Sonnenlicht – das gibt es nur in Glutsee I.`);
   if (st.modules.length + st.queue.length + (st.build ? 1 : 0) >= MAX_MODULES) return fail(`Höchstens ${MAX_MODULES} Module pro Station.`);
   const item = { uid: state.nextId++, def: defId, paid: 0 };
   const pos = at === undefined ? st.queue.length : Math.max(0, Math.min(st.queue.length, at));
   st.queue.splice(pos, 0, item);
   return { ...ok(`${d.name} als Position ${pos + 1} eingeplant.`), uid: item.uid };
 }
+
+/** Glutsee I: Reparatur nach Überhitzung mit zugekauften Hüllenteilen (40 % Aufschlag) */
+export function buyHeatRepair(state: GameState, stationId: string): Result {
+  const st = stationById(state, stationId);
+  if (!st?.heat) return fail('Hier ist nichts zu reparieren.');
+  const cost = heatRepairCost(st);
+  if (state.credits < cost) return fail('Nicht genug Credits für die Reparatur.');
+  book(state, -cost, 'build', `Reparatur nach Sturm: ${st.name}`, { kind: 'station', id: st.id });
+  st.heat = 0;
+  for (const m of st.modules) if (m.stall === 'heat') m.stall = '';
+  return ok(`${st.name} ist repariert und produziert wieder.`);
+}
+export const heatRepairCost = (st: Station): number => Math.round((st.heat ?? 0) * WARES.hullparts.price.avg * 1.4);
 
 /** Verschiebt eine geplante Position an einen neuen Index */
 export function moveQueued(state: GameState, stationId: string, uid: number, to: number): Result {

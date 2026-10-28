@@ -3,11 +3,13 @@ import { newGame } from '../src/engine/state';
 import { step } from '../src/engine/sim';
 import { SECTOR_MAP } from '../src/data/sectors';
 import { discover, deliverOutpost, buyOutpostRest, outpostState, OUTPOST_WARES } from '../src/engine/explore';
-import { STORM_CYCLE, pulsarSun, sectorSpeed, stormActive, stepPhenomena, fieldMining, DUST_MINING } from '../src/engine/phenomena';
+import { STORM_TIME as STORM_TIME_FULL, STORM_CYCLE, pulsarSun, sectorSpeed, stormActive, stepPhenomena, fieldMining, DUST_MINING } from '../src/engine/phenomena';
 import { moveAlong } from '../src/engine/logistics';
 import { isLive } from '../src/engine/intel';
 import { mineRate } from '../src/engine/fleet';
 import { SHIP_MAP } from '../src/data/ships';
+import { queueModule } from '../src/engine/actions';
+import { vendorsFor } from '../src/data/vendors';
 
 const glut = (seed: number) => {
   const s = newGame(seed, 'mining');
@@ -68,5 +70,61 @@ describe('Eigenheiten der Glutsee', () => {
     expect(isLive(s, 'f-rhak')).toBe(true);
     expect(isLive(s, 'rhak-werft')).toBe(true);
     expect(deliverOutpost(s).ok).toBe(false);
+  });
+
+  it('Glutsee I: 1000 % Sonne, im Sturm 3000 %; ohne Kühlmantel überhitzt die Station', () => {
+    const s = glut(5);
+    let t = 0;
+    while (stormActive(t)) t += 60;
+    s.time = t;
+    stepPhenomena(s);
+    expect(SECTOR_MAP['f-glut1'].sunlight).toBe(1000);
+    // Station in Glutsee I mit Solarkraftwerk, ohne Mantel
+    const st = s.stations[0];
+    st.sector = 'f-glut1';
+    st.modules.push({ ...st.modules[0], uid: 9001, def: 'prod_energycells', util: 1, running: false, stall: '', t: 0 });
+    // in den Sturm hinein
+    while (!stormActive(s.time + 60)) s.time += 60;
+    step(s, 600);
+    expect(SECTOR_MAP['f-glut1'].sunlight).toBe(3000);
+    expect(st.heat).toBeGreaterThan(0);
+    const made = st.produced.energycells ?? 0;
+    step(s, 300);
+    expect(st.produced.energycells ?? 0).toBe(made);
+    // Reparatur mit Hüllenteilen nach dem Sturm
+    st.inventory.hullparts = 500;
+    step(s, 3600);
+    expect(st.heat).toBe(0);
+  });
+
+  it('Mit Kühlmantel und Kühlmittel läuft die Station im Sturm weiter (Kühlmittel wird verbraucht)', () => {
+    const s = glut(6);
+    const st = s.stations[0];
+    st.sector = 'f-glut1';
+    st.modules.push({ ...st.modules[0], uid: 9001, def: 'prod_energycells', util: 1, running: false, stall: '', t: 0 });
+    st.modules.push({ ...st.modules[0], uid: 9002, def: 'cooling_mantle', util: 1, running: false, stall: '', t: 0 });
+    st.inventory.superfluidcoolant = 300;
+    s.time = 0;
+    while (!stormActive(s.time)) s.time += 60;
+    s.time -= 60;
+    step(s, STORM_TIME_FULL);
+    expect(st.heat ?? 0).toBe(0);
+    expect(st.inventory.superfluidcoolant).toBeGreaterThan(80);
+    expect(st.inventory.superfluidcoolant).toBeLessThan(120);
+  });
+
+  it('Sonnenofen nur in Glutsee I, Baupläne nur bei der Familie Rhak, Glutglas nicht im Split-Raum', () => {
+    const s = glut(7);
+    s.blueprints.push('prod_glutglas');
+    expect(queueModule(s, s.stations[0].id, 'prod_glutglas').ok).toBe(false);
+    s.stations[0].sector = 'f-glut1';
+    expect(queueModule(s, s.stations[0].id, 'prod_glutglas').ok).toBe(true);
+    expect(vendorsFor('prod_glutglas').map((v) => v.id)).toEqual(['v-rhak']);
+    expect(vendorsFor('cooling_mantle').map((v) => v.id)).toEqual(['v-rhak']);
+    expect(s.markets.zhin.glutglas).toBeUndefined();
+    expect(s.markets['f-rhak'].glutglas).toBeDefined();
+    const fresh = newGame(8, 'mining');
+    expect(vendorsFor('prod_glutglas')).toEqual([]);
+    expect(fresh.markets.zhin.glutglas).toBeUndefined();
   });
 });

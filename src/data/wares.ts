@@ -44,7 +44,7 @@ export const GROUP_COLOR: Record<WareGroup, string> = {
 
 const SPECIAL_COLOR: Record<string, string> = {
   ore: '#e0913d', silicon: '#b8c2cf', ice: '#a8e2ff', nividium: '#f0c75a', hydrogen: '#5a9dff', helium: '#9fd0ff',
-  methane: '#46d8a6', energycells: '#ffd84d', rawscrap: '#a88f78',
+  methane: '#46d8a6', energycells: '#ffd84d', rawscrap: '#a88f78', glutglas: '#ff7a3c',
 };
 
 function build(): Record<string, WareDef> {
@@ -76,10 +76,19 @@ function build(): Record<string, WareDef> {
     price: { min: 480, avg: 560, max: 650 }, cycle: 0, batch: 0, inputs: [], mined: true, color: SPECIAL_COLOR.nividium,
     estimated: true,
   };
+  // Glutglas: im Sonnenofen von Glutsee I aus Silizium und sehr viel Energie geschmolzen (eigene Ware dieses Spiels).
+  // Gebraucht für die Tore weiter oben und von der Rhak-Werft.
+  out.glutglas = {
+    id: 'glutglas', name: 'Glutglas', nameEn: 'Ember Glass', group: 'refined', tier: 2, storage: 'Container', volume: 10,
+    price: { min: 3800, avg: 5200, max: 6800 }, cycle: 3600, batch: 20,
+    inputs: [{ ware: 'silicon', amount: 100 }, { ware: 'energycells', amount: 4000 }], mined: false, color: SPECIAL_COLOR.glutglas,
+  };
   return out;
 }
 
 export const WARES = build();
+/** Waren, die es nur im neuen Raum gibt (nicht an Split-Handelsposten, keine Split-Fabriken) */
+export const FRONTIER_WARES = new Set(['glutglas']);
 export const WARE_IDS = Object.keys(WARES);
 
 export function ware(id: string): WareDef {

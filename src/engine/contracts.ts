@@ -70,7 +70,7 @@ export function generateOffer(state: GameState): Contract | null {
   const pool = WARE_IDS.filter((id) => {
     const w = WARES[id];
     const m = MODULE_MAP['prod_' + id];
-    return w.tier >= 1 && w.tier <= maxTier && !!m && (state.blueprints.includes(m.id) || state.rep.frf + 3 >= m.repRequired);
+    return w.tier >= 1 && w.tier <= maxTier && !!m && !m.rhak && (state.blueprints.includes(m.id) || state.rep.frf + 3 >= m.repRequired);
   });
   const demanded = sec.demand.filter((id) => pool.includes(id));
   const wareId = demanded.length && rand(state) < 0.6 ? pick(state, demanded) : pick(state, pool);

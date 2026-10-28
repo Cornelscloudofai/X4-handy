@@ -1,4 +1,5 @@
 // Auswertungen für die Oberfläche: Engpässe, Reichweiten, Warnungen
+import { COOLANT_PER_STORM, hasMantle } from './phenomena';
 import { MODULE_MAP } from '../data/modules';
 import { SHIP_MAP } from '../data/ships';
 import { WARES } from '../data/wares';
@@ -22,6 +23,9 @@ export function stationAlerts(state: GameState, st: Station): Alert[] {
   }
   for (const w of missing) out.push({ station: st.id, text: `${st.name}: ${WARES[w].name} fehlt`, severity: 'warn', ware: w });
   if (full) out.push({ station: st.id, text: `${st.name}: Lager voll, Produktion pausiert`, severity: 'warn' });
+  // Glutsee I: Sturmschaden und fehlender Schutz
+  if (st.heat) out.push({ station: st.id, text: `${st.name}: überhitzt, braucht ${Math.ceil(st.heat)} Hüllenteile`, severity: 'bad' });
+  else if (st.sector === 'f-glut1' && st.modules.some((m) => MODULE_MAP[m.def]?.kind === 'production') && (!hasMantle(st) || (st.inventory.superfluidcoolant ?? 0) < COOLANT_PER_STORM)) out.push({ station: st.id, text: `${st.name}: ${hasMantle(st) ? 'zu wenig Kühlmittel für den nächsten Sturm' : 'kein Kühlmantel gegen den Sturm'}`, severity: 'warn' });
   const hasProd = st.modules.some((m) => MODULE_MAP[m.def]?.kind === 'production');
   const cap = storageCap(st);
   if (hasProd && cap.Container + cap.Solid + cap.Liquid === 0) out.push({ station: st.id, text: `${st.name}: kein Lagermodul`, severity: 'bad' });

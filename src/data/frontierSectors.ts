@@ -20,7 +20,7 @@ const DEFS: Record<string, FrontierSector> = {
     surplus: [], demand: ['foodrations', 'medicalsupplies', 'energycells', 'hullparts'],
   },
   'f-glut1': {
-    id: 'f-glut1', faction: 'rhk', sunlight: 190,
+    id: 'f-glut1', faction: 'rhk', sunlight: 1000, // im Strahlungssturm 3000 % (engine/phenomena.ts)
     fields: [
       { id: 'glut1-hydrogen', ware: 'hydrogen', x: -100, z: 40, r: 44, richness: 1.6 },
       { id: 'glut1-helium', ware: 'helium', x: 80, z: -90, r: 38, richness: 1.4 },
@@ -51,11 +51,11 @@ const DEFS: Record<string, FrontierSector> = {
     ],
     tradeStation: { name: 'Rhak-Halle', x: 0, z: 0 },
     npcStations: [
-      { id: 'rhak-werft', name: 'Rhak-Werft', kind: 'wharf', x: -60, z: 80, buys: ['hullparts', 'engineparts', 'claytronics', 'scanningarrays', 'shieldcomponents', 'energycells'] },
+      { id: 'rhak-werft', name: 'Rhak-Werft', kind: 'wharf', x: -60, z: 80, buys: ['hullparts', 'engineparts', 'claytronics', 'scanningarrays', 'shieldcomponents', 'glutglas', 'energycells'] },
       { id: 'rhak-siedlung', name: 'Rhak-Siedlung', kind: 'habitat', x: 90, z: -60, buys: ['medicalsupplies', 'foodrations', 'spacefuel', 'water', 'energycells'] },
     ],
     licenseCost: 9_000_000, repRequired: 8,
-    surplus: ['methane', 'ice'], demand: ['medicalsupplies', 'engineparts', 'claytronics', 'advancedelectronics'],
+    surplus: ['methane', 'ice'], demand: ['medicalsupplies', 'engineparts', 'claytronics', 'glutglas'],
   },
   'f-schmiede': {
     id: 'f-schmiede', faction: 'rhk', sunlight: 180, // schwankt mit dem Pulsar zwischen 60 und 300 % (engine/phenomena.ts)

@@ -1141,7 +1141,7 @@ export class SectorRenderer {
     };
     // Wohn- und Verteidigungsmodule (nur an NPC-Stationen)
     if (d.kind === 'habitat' && this.drawModuleImage(ctx, 'habitat', unit, seed)) return;
-    if (d.kind === 'defence' && this.drawModuleImage(ctx, 'defence', unit, seed, DEFENCE_IMG)) return;
+    if ((d.kind === 'defence' || d.kind === 'cooling') && this.drawModuleImage(ctx, 'defence', unit, seed, DEFENCE_IMG)) return;
     if (d.kind === 'storage') {
       const col = d.storage === 'Liquid' ? '#5fb4ff' : d.storage === 'Solid' ? '#ffae5c' : '#8fd3ff';
       const n = d.id.endsWith('_l') ? 3 : d.id.endsWith('_m') ? 2 : 1;
@@ -1559,7 +1559,7 @@ export class SectorRenderer {
     // Produktion: Bauart nach Warentyp, Details wachsen mit dem Zoom
     const col = d.ware ? WARES[d.ware].color : C.teal;
     const kind = productionKind(d.ware);
-    const stalled = o.stall === 'input' ? C.red : o.stall === 'storage' ? C.amber : '';
+    const stalled = o.stall === 'input' || o.stall === 'heat' ? C.red : o.stall === 'storage' ? C.amber : '';
     if (this.drawModuleImage(ctx, kind, unit, seed)) {
       // Stillstand: Modul abgedunkelt; rot (fehlende Eingänge) oder gelb (Lager voll) blinkender Rahmen
       if (!o.running) {

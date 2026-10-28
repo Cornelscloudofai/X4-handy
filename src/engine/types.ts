@@ -24,7 +24,8 @@ export interface WareDef {
 }
 
 /** habitat und defence gibt es nur an NPC-Stationen (Wohn- und Verteidigungsmodule, nicht baubar) */
-export type ModuleKind = 'production' | 'storage' | 'dock' | 'pier' | 'core' | 'shipyard' | 'habitat' | 'defence';
+/** cooling: Kühlmantel gegen die Strahlungsstürme in Glutsee I */
+export type ModuleKind = 'production' | 'storage' | 'dock' | 'pier' | 'core' | 'shipyard' | 'habitat' | 'defence' | 'cooling';
 
 export interface ModuleDef {
   id: string;
@@ -47,6 +48,10 @@ export interface ModuleDef {
   starter: boolean;
   /** Werftmodul: größte Schiffsklasse, die hier gebaut werden kann */
   yardSize?: 'M' | 'L' | 'XL';
+  /** nur in Sektoren mit mindestens so viel Sonnenlicht (%) baubar */
+  minSun?: number;
+  /** Bauplan nur bei der Familie Rhak (nicht bei den Split-Vertretern) */
+  rhak?: boolean;
 }
 
 export type ShipRole = 'miner' | 'trader';
@@ -130,7 +135,7 @@ export interface ModuleInst {
   t: number;
   running: boolean;
   /** Grund, warum das Modul steht */
-  stall: '' | 'input' | 'storage';
+  stall: '' | 'input' | 'storage' | 'heat';
   /** Gleitender Auslastungswert 0..1 */
   util: number;
   /** Fester Platz in der Station (wird beim ersten Zeichnen vergeben und bleibt dann) */
@@ -179,6 +184,8 @@ export interface Station {
   limits?: Record<string, number>;
   /** Einheiten, die nicht verkauft werden (für die eigene Produktion); nicht gesetzt = automatisch */
   reserve?: Record<string, number>;
+  /** Glutsee I: im Sturm überhitzt – Hüllenteile, die zum Wiederanlauf noch fehlen (0/fehlt = läuft) */
+  heat?: number;
   /** Lieferreihenfolge für Überschüsse: eigene Stationen der Reihe nach, danach Verkauf zum besten Preis */
   deliveryPrio?: string[];
   /** NPC-Händler kaufen eine Ware erst, wenn die Stationen der Lieferreihenfolge davon versorgt sind */

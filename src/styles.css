@@ -1632,6 +1632,13 @@ body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { a
 .gx-gate.site { color: #ffe2b8; background: rgba(255, 181, 71, 0.07); border-color: rgba(255, 181, 71, 0.35); }
 .gx-phen { display: flex; align-items: center; gap: 6px; margin: -2px 0 8px; font-size: 12.5px; color: #ffd2a8; }
 .crumb .phen { font-weight: 600; color: #ffc48a; white-space: nowrap; }
+.heat-box { display: grid; gap: 6px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); }
+.heat-box > b { display: flex; align-items: center; gap: 6px; font-family: var(--font-display); }
+.heat-box p { margin: 0; font-size: 13px; color: var(--text-2); }
+.heat-box .btn { justify-self: start; }
+.heat-box.bad { border-color: rgba(255, 92, 108, 0.5); background: rgba(255, 92, 108, 0.08); }
+.heat-box.warn { border-color: rgba(255, 181, 71, 0.45); background: rgba(255, 181, 71, 0.07); }
+.heat-box.ok { border-color: rgba(63, 224, 197, 0.4); }
 .gx-wares { display: grid; gap: 5px; }
 .gx-ware { position: relative; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 8px; overflow: hidden; background: rgba(0, 0, 0, 0.25); color: var(--text); }
 .gx-ware b { font-family: var(--font-display); font-size: 12px; font-weight: 600; color: var(--text-2); }

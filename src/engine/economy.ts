@@ -2,7 +2,7 @@
 import { MODULE_MAP, moduleDef } from '../data/modules';
 import { SHIP_CLASSES, SHIP_MAP } from '../data/ships';
 import { NPC_STATIONS, SECTORS, SECTOR_MAP, marketInfo, sector } from '../data/sectors';
-import { WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
+import { FRONTIER_WARES, WARES, WARE_IDS, inputsPerHour, outputPerHour, ware } from '../data/wares';
 import type { GameState, LedgerCat, LogLink, Market, NpcEco, Station, StorageType, TradeRule } from './types';
 import { clamp, emit, log, rand } from './util';
 import { book } from './ledger';
@@ -300,6 +300,8 @@ export function stepProduction(state: GameState, st: Station, dt: number): void 
   for (const m of st.modules) {
     const d = MODULE_MAP[m.def];
     if (d?.kind !== 'production' || !d.ware) continue;
+    // Glutsee I: überhitzte Station steht still
+    if (st.heat) { m.stall = 'heat'; m.running = false; m.util += (0 - m.util) * Math.min(1, dt / 400); continue; }
     const w = ware(d.ware);
     let left = dt;
     let ranFor = 0;
@@ -488,6 +490,7 @@ export function initMarkets(state: GameState): void {
     if (state.markets[s.id]) continue;
     const m: Market = {};
     for (const id of WARE_IDS) {
+      if (FRONTIER_WARES.has(id) && !s.id.startsWith('f-')) continue;
       let eq = 0.5 + (rand(state) - 0.5) * 0.16;
       if (s.surplus.includes(id)) eq = 0.75 + rand(state) * 0.08;
       if (s.demand.includes(id)) eq = 0.18 + rand(state) * 0.08;
@@ -496,7 +499,7 @@ export function initMarkets(state: GameState): void {
       const cap = baseDemand(id) * 12 * (s.demand.includes(id) ? 1.5 : 1) * rawFactor;
       // Gefertigte Waren: nur ein kleiner Startbestand im Umlauf (Grundwaren fest: zusammen 300–500 Claytronik)
       const scarce = !!state.start;
-      const start = !scarce ? cap * eq : START_STOCK[id] ? START_STOCK[id][0] + rand(state) * (START_STOCK[id][1] - START_STOCK[id][0]) : manufactured(id) ? cap * eq * 0.35 : cap * eq;
+      const start = FRONTIER_WARES.has(id) ? 0 : !scarce ? cap * eq : START_STOCK[id] ? START_STOCK[id][0] + rand(state) * (START_STOCK[id][1] - START_STOCK[id][0]) : manufactured(id) ? cap * eq * 0.35 : cap * eq;
       m[id] = { stock: Math.min(cap, start), cap, eq };
     }
     state.markets[s.id] = m;
@@ -682,7 +685,7 @@ export function stepMarkets(state: GameState, dt: number): void {
 export function marketEvent(state: GameState): { text: string; sector: string } | null {
   const s = SECTORS[Math.floor(rand(state) * SECTORS.length)];
   if (!state.sectors.includes(s.id) && !s.links.some((l) => state.sectors.includes(l))) return null;
-  const candidates = WARE_IDS.filter((id) => WARES[id].tier >= 1);
+  const candidates = WARE_IDS.filter((id) => WARES[id].tier >= 1 && !!state.markets[s.id][id]);
   const id = candidates[Math.floor(rand(state) * candidates.length)];
   const m = state.markets[s.id][id];
   // Fabrikwaren entstehen nicht aus dem Nichts: bei ihnen gibt es nur steigende Nachfrage

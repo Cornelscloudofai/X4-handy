@@ -3,7 +3,7 @@
 // müssen andere liefern, vor allem der Spieler. Ihre Produkte verkaufen sie an der Station und bringen einen Teil
 // zum Handelsposten.
 import { FACTIONS, NPC_MAP, NPC_STATIONS, SECTORS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, sector } from '../data/sectors';
-import { WARES } from '../data/wares';
+import { FRONTIER_WARES, WARES } from '../data/wares';
 import { baseDemand, factoryReserve, hasDockFor, marketPrice, marketRoom, npcStoreCaps, tradeRule } from './economy';
 import { dockPoint, sellableStock, wanted } from './logistics';
 import { endOf, recordFlow } from './flows';
@@ -339,7 +339,7 @@ function grow(state: GameState, n: Factory, eco: NpcEco): void {
 
 /** Waren, die eine neue Fabrik herstellen könnte: gefertigt (keine Rohstoffe, keine Energie), Vorprodukte erhältlich */
 function foundable(): string[] {
-  return Object.values(WARES).filter((w) => w.cycle > 0 && w.inputs.length && !w.mined && w.id !== 'energycells' && w.tier >= 1 && w.tier <= 3).map((w) => w.id);
+  return Object.values(WARES).filter((w) => w.cycle > 0 && w.inputs.length && !w.mined && w.id !== 'energycells' && !FRONTIER_WARES.has(w.id) && w.tier >= 1 && w.tier <= 3).map((w) => w.id);
 }
 
 /** Freier Platz im Sektor: Abstand zu Stationen, Handelsposten und Toren */

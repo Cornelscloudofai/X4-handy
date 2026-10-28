@@ -72,6 +72,13 @@ function buildModules(): ModuleDef[] {
     list.push({ id: 'habitat_' + h.size.toLowerCase(), x4Id: `module_spl_hab_${h.size.toLowerCase()}_01`, kind: 'habitat', name: `Wohnmodul ${h.size}`, housing: h.housing,
       buildTime: h.time, materials, cost: materialCost(materials), method: 'Split', repRequired: h.rep, blueprintCost: h.price, starter: false });
   }
+  // Module der Familie Rhak für Glutsee I (Spielwerte): Sonnenofen und Kühlmantel
+  const oven = { hullparts: 900, energycells: 1500, claytronics: 120 };
+  list.push({ id: 'prod_glutglas', x4Id: 'rhak_sonnenofen', kind: 'production', name: 'Sonnenofen', ware: 'glutglas', buildTime: 900, materials: oven,
+    cost: materialCost(oven), method: 'Split', repRequired: 4, blueprintCost: 6_000_000, starter: false, minSun: 500, rhak: true });
+  const mantle = { hullparts: 400, energycells: 600, superfluidcoolant: 200 };
+  list.push({ id: 'cooling_mantle', x4Id: 'rhak_kuehlmantel', kind: 'cooling', name: 'Kühlmantel', buildTime: 600, materials: mantle,
+    cost: materialCost(mantle), method: 'Split', repRequired: 3, blueprintCost: 2_500_000, starter: false, rhak: true });
   // Werftmodule (echte Baumaterialien und Bauzeiten, Universal-Methode)
   for (const y of YARDS) list.push({ ...y, kind: 'shipyard', cost: materialCost(y.materials), method: 'Universal', starter: false });
   return list;
