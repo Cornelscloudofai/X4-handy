@@ -9,6 +9,10 @@ import { stormNow } from '../engine/phenomena';
 
 const FILES = import.meta.glob('../assets/szenen/*/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const URLS: Record<string, Record<string, string>> = {};
+/** Gesamtbilder (src/assets/sektoren/<sektor>.jpg): Vorlage für den Himmelston unter allen Ebenen */
+const COMPOSITES = import.meta.glob('../assets/sektoren/*.jpg', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const COMPOSITE: Record<string, string> = {};
+for (const [path, url] of Object.entries(COMPOSITES)) { const m = path.match(/sektoren\/([^/]+)\.jpg$/); if (m) COMPOSITE[m[1]] = url; }
 for (const [path, url] of Object.entries(FILES)) {
   const m = path.match(/szenen\/([^/]+)\/([^/]+)\.webp$/);
   if (m) (URLS[m[1]] ??= {})[m[2]] = url;
@@ -42,6 +46,8 @@ interface Sprite {
   flicker?: [number, number]; pulse?: number; bob?: number;
   /** im Dunst versinken: Rand weich auslaufen lassen (Anteil der Bildbreite) und in Farbe rgb einfärben (Anteil a) */
   veil?: { soft: number; rgb: string; a: number };
+  /** Ober- und Unterkante weich ausblenden (Anteil der Bildhöhe) – für Bauten, die im Hochformat nicht bis zum Rand reichen */
+  fadeY?: number;
 }
 /** Gezeichnete Effekte */
 type Effect =
@@ -63,6 +69,22 @@ type Effect =
 type Item = Cover | Sprite | Effect;
 
 const SCENES: Record<string, Item[]> = {
+  // Familie Zhin: Werft nach dem Xenon-Angriff – zwei Docks ausgebrannt, eines in Betrieb; Wracks treiben, rechts der Mond
+  zhin: [
+    { cover: 'sterne', depth: 0.1, turn: true, scale: 1.1 },
+    { fx: 'twinkle', n: 120, rgb: '200,230,255', depth: 0.2 },
+    { cover: 'nebel', depth: 0.3, turn: true, scale: 1.14, breathe: 0.07 },
+    { img: 'mond', id: 'mond', depth: 0.3, p: [1.02, 0.6], l: [0.97, 0.32], w: 0.62, wl: 0.62, rot: 0.2, spin: 0.0006 },
+    { img: 'container', depth: 0.55, p: [0.62, 0.2], l: [0.66, 0.2], w: 0.11, rot: 0.6, spin: 0.012, dark: 0.15 },
+    { img: 'wrack-mitte', depth: 0.6, p: [0.86, 0.3], l: [0.78, 0.26], w: 0.34, wl: 0.3, rot: -0.35, spin: -0.003, dark: 0.1 },
+    { img: 'werft', id: 'werft', depth: 0.65, at: [0, 0.5], p: [-0.04, 0.24], l: [0, 0.5], w: 1.3, wl: 1.55, bob: 0.003, fadeY: 0.22 },
+    { img: 'lichter', depth: 0.65, at: [0, 0.5], p: [-0.04, 0.24], l: [0, 0.5], w: 1.3, wl: 1.55, bob: 0.003, fadeY: 0.22, blend: 'lighter', flicker: [0.3, 1.9] },
+    { fx: 'traffic', on: 'werft', n: 8, rx: 0.32, ry: 0.22 },
+    { img: 'wrack-heck', depth: 0.9, p: [0.88, 0.8], l: [0.84, 0.78], w: 0.3, wl: 0.26, rot: 0.5, spin: 0.004, dark: 0.1 },
+    { img: 'wrack-bruecke', depth: 1.15, p: [0.1, 0.9], l: [0.62, 0.92], w: 0.24, wl: 0.2, rot: -0.8, spin: -0.006, dark: 0.15 },
+    { fx: 'motes', n: 60, rgb: '170,200,220', depth: 1.15, vx: 0.004, vy: 0.002, size: 1.1, a: 0.3 },
+    { fx: 'vignette', rgb: '2,8,16', a: 0.45 },
+  ],
   // Horchposten der Familie Rhy: still, kalt, verlassen – das tote Tor im Hintergrund glimmt ab und zu
   'f-ausblick': [
     { cover: 'sterne', depth: 0.1, turn: true, scale: 1.1 },
@@ -143,15 +165,24 @@ const SCENES: Record<string, Item[]> = {
 export const hasScene = (sectorId: string): boolean => !!SCENES[sectorId] && !!URLS[sectorId];
 
 const images = new Map<string, HTMLImageElement>();
+/** Fertig entschlüsselte Bilder: Erst die zeichnen wir – sonst entschlüsselt drawImage im ersten Bild und das Spiel ruckt */
+const decoded = new WeakSet<HTMLImageElement>();
 function image(url: string): HTMLImageElement | null {
   let img = images.get(url);
   if (!img) {
-    img = new Image();
-    img.decoding = 'async';
-    img.src = url;
-    images.set(url, img);
+    const im = new Image();
+    im.src = url;
+    images.set(url, im);
+    im.decode().then(() => decoded.add(im), () => { if (im.naturalWidth) decoded.add(im); });
+    img = im;
   }
-  return img.complete && img.naturalWidth ? img : null;
+  return decoded.has(img) && img.naturalWidth ? img : null;
+}
+
+/** Ebenen eines Sektors schon laden, bevor er sichtbar wird (z. B. während des Intros) */
+export function preloadScene(sectorId: string): void {
+  ready(sectorId);
+  if (SCENES[sectorId]) skyOf(sectorId);
 }
 
 /** Alle Ebenen geladen? (sonst dunkler Grund, damit nichts halb erscheint) */
@@ -175,6 +206,76 @@ function randoms(key: string, n: number): number[] {
   r = Array.from({ length: n }, () => (seed = (seed * 16807) % 2147483647) / 2147483647);
   rnd.set(key, r);
   return r;
+}
+
+/** Hat das Bild keine (nennenswert) durchsichtigen Stellen? Dann ist es eine Ebene auf Schwarz */
+const opaqueCache = new Map<HTMLImageElement, boolean>();
+function opaque(img: HTMLImageElement): boolean {
+  let v = opaqueCache.get(img);
+  if (v !== undefined) return v;
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 36;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.drawImage(img, 0, 0, 64, 36);
+  const d = g.getImageData(0, 0, 64, 36).data;
+  let clear = 0;
+  for (let i = 3; i < d.length; i += 4) if (d[i] < 240) clear++;
+  v = clear < 20;
+  opaqueCache.set(img, v);
+  return v;
+}
+
+/** Himmelston: Gesamtbild verkleinert und stark weichgezeichnet (einmal je Sektor berechnet) */
+const skies = new Map<string, HTMLCanvasElement | null>();
+function skyOf(sectorId: string): HTMLCanvasElement | null {
+  if (skies.has(sectorId)) return skies.get(sectorId)!;
+  const url = COMPOSITE[sectorId];
+  if (!url) { skies.set(sectorId, null); return null; }
+  const img = image(url);
+  if (!img) return null;
+  const w = 480, h = Math.round((w * img.naturalHeight) / img.naturalWidth);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d')!;
+  // Grundfarbe des Sektors (Mittelwert des Gesamtbilds) als Untergrenze: Auch wo das Gesamtbild fast schwarz ist,
+  // bleibt ein Hauch Farbe – der Himmel wird nie ganz schwarz
+  g.drawImage(img, 0, 0, 8, 8);
+  const d = g.getImageData(0, 0, 8, 8).data;
+  let r = 0, gr = 0, b = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; gr += d[i + 1]; b += d[i + 2]; }
+  const top = Math.max(r, gr, b, 1), FLOOR = 40;
+  g.fillStyle = `rgb(${(r / top) * FLOOR},${(gr / top) * FLOOR},${(b / top) * FLOOR})`;
+  g.fillRect(0, 0, w, h);
+  // weichgezeichnet und etwas über den Rand hinaus, damit die Kanten nicht nach Schwarz auslaufen
+  g.globalCompositeOperation = 'lighten';
+  g.filter = 'blur(18px)';
+  g.drawImage(img, -40, -40, w + 80, h + 80);
+  g.filter = 'none';
+  g.globalCompositeOperation = 'source-over';
+  skies.set(sectorId, c);
+  return c;
+}
+
+/** Bild mit weich ausgeblendeter Ober- und Unterkante (einmal berechnet, in voller Auflösung) */
+const fades = new Map<HTMLImageElement, HTMLCanvasElement>();
+function fadedY(img: HTMLImageElement, f: number): HTMLCanvasElement {
+  let c = fades.get(img);
+  if (c) return c;
+  const W = img.naturalWidth, H = img.naturalHeight;
+  c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d')!;
+  g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'destination-in';
+  const gr = g.createLinearGradient(0, 0, 0, H);
+  gr.addColorStop(0, 'rgba(0,0,0,0)');
+  gr.addColorStop(f, 'rgba(0,0,0,1)');
+  gr.addColorStop(1 - f, 'rgba(0,0,0,1)');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, W, H);
+  fades.set(img, c);
+  return c;
 }
 
 /** Bild mit weich auslaufendem Rand und Dunstfarbe (einmal berechnet, in voller Auflösung) */
@@ -225,6 +326,20 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+  // Himmelston aus dem Gesamtbild: stark weichgezeichnet als unterste Ebene – so wird der Himmel nie schwarz, auch wo
+  // Sterne und Nebel (auf Schwarz geliefert) nichts zeigen
+  const sky = skyOf(sectorId);
+  if (sky) {
+    const [px, py] = pan(0.05);
+    const turn = portrait;
+    const iw = sky.width, ih = sky.height;
+    const k = Math.max(W / (turn ? ih : iw), H / (turn ? iw : ih)) * 1.15;
+    ctx.save();
+    ctx.translate(W / 2 + px, H / 2 + py);
+    if (turn) ctx.rotate(-Math.PI / 2);
+    ctx.drawImage(sky, (-iw * k) / 2, (-ih * k) / 2, iw * k, ih * k);
+    ctx.restore();
+  }
 
   items.forEach((it, idx) => {
     const key = `${sectorId}:${idx}`;
@@ -241,7 +356,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
       const shift = portrait && !turn && it.focus !== undefined ? (0.5 - it.focus) * iw * k : 0;
       ctx.save();
       ctx.globalAlpha = (it.alpha ?? 1) * (1 - (it.breathe ?? 0) + (it.breathe ?? 0) * Math.sin(t * 0.21 + idx));
-      ctx.globalCompositeOperation = it.blend ?? 'source-over';
+      // Ebenen ohne Transparenz (Sterne, Nebel auf Schwarz) hellen nur auf – ihr Schwarz verdeckt den Himmel nicht
+      ctx.globalCompositeOperation = it.blend ?? (opaque(img) ? 'screen' : 'source-over');
       ctx.translate(W / 2 + px + drift + shift, H / 2 + py);
       if (turn) ctx.rotate(-Math.PI / 2);
       ctx.drawImage(img, (-iw * k) / 2, (-ih * k) / 2, iw * k, ih * k);
@@ -271,7 +387,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
       ctx.translate(x, y);
       ctx.rotate((portrait ? it.rot ?? 0 : it.rotL ?? it.rot ?? 0) + t * (it.spin ?? 0));
       if (it.dark) ctx.filter = `brightness(${(1 - it.dark).toFixed(2)})`;
-      ctx.drawImage(it.veil ? veiled(img, it.veil) : img, -cx * w, -cy * h, w, h);
+      ctx.drawImage(it.veil ? veiled(img, it.veil) : it.fadeY && portrait ? fadedY(img, it.fadeY) : img, -cx * w, -cy * h, w, h);
       ctx.restore();
       return;
     }

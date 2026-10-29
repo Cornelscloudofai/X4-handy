@@ -26,7 +26,8 @@ if (await page.locator('#intro:not(.out)').count()) {
   await page.evaluate(() => { const v = document.querySelector('#intro video'); v.currentTime = v.duration - 0.3; });
   await page.waitForTimeout(2000);
 }
-if (await page.locator('#intro').count()) fail('Intro endet nicht');
+// Ausblenden dauert 0,9 s; im Test-Chromium ohne Grafikkarte zeichnet die Szene dahinter langsamer – daher warten statt fester Pause
+if (!(await page.waitForFunction(() => !document.querySelector('#intro'), null, { timeout: 6000 }).then(() => true, () => false))) fail('Intro endet nicht');
 // Willkommen in drei Schritten: Geschichte → Kernelemente → Schiffswahl
 if (!(await page.locator('#modal .wl-story').count())) fail('Nach dem Intro keine Geschichte');
 await page.waitForTimeout(5500);

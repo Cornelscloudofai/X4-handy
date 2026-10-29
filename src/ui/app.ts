@@ -17,6 +17,7 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
+import { preloadScene } from '../render/sceneBg';
 import { buyGateRest, buyOutpostRest, buyScout, deliverGate, deliverOutpost, discover, peilDepth, regionOf, repairGate, sectorLabel, sendScout, sendThrough } from '../engine/explore';
 import { showReveal } from './reveal';
 import { runPeilung } from './peilung';
@@ -284,7 +285,12 @@ function frame(now: number): void {
   const c = ui.view === 'galaxy' ? galaxyCam : cam;
   c.update(dt, ui.view === 'galaxy' ? GALAXY_HEX * 14 : SECTOR_RADIUS * 1.1);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (ui.view === 'galaxy') {
+  // Solange das Intro den Bildschirm ganz verdeckt, nichts zeichnen (erst beim Ausblenden wieder)
+  const covered = document.body.classList.contains('intro-on') && !document.querySelector('#intro.out');
+  if (covered) {
+    // Intro deckt alles ab: nur die Bilder des Startsektors schon laden
+    preloadScene(ui.sector);
+  } else if (ui.view === 'galaxy') {
     drawGalaxyBackdrop(ctx, galaxyCam, now);
     drawGalaxy(ctx, state, galaxyCam, ui.galaxySel, ui.sector, now);
     drawScouts(ctx, state, galaxyCam, now);

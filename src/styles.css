@@ -597,8 +597,8 @@ a.link { color: var(--teal); text-decoration: underline; text-underline-offset: 
 .wi-pair { display: flex; gap: 12px; }
 
 /* ---------- Diagramme ---------- */
-.title-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
-.title-line .title { min-width: 0; }
+.title-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; min-width: 0; }
+.title-line .title { min-width: 0; flex: 1 1 8.5em; }
 .spark { flex: none; display: inline-flex; padding: 3px; border-radius: 8px; border: 1px solid transparent; }
 .spark:active, .spark:hover { border-color: var(--line-2); background: rgba(63, 224, 197, 0.06); }
 .spark svg { display: block; overflow: visible; }
