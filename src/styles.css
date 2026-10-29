@@ -1748,9 +1748,9 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .incident-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; padding: 8px 8px 8px 10px; border-radius: 14px; pointer-events: auto;
   background: rgba(30, 14, 6, 0.92); border: 1px solid rgba(255, 150, 80, 0.55); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 14px rgba(255, 120, 50, 0.18);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: riseIn 0.35s both; }
-.incident-bar.vein { background: rgba(8, 26, 22, 0.92); border-color: rgba(63, 224, 197, 0.55); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 14px rgba(63, 224, 197, 0.18); }
+.incident-bar.good { background: rgba(8, 26, 22, 0.92); border-color: rgba(63, 224, 197, 0.55); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 14px rgba(63, 224, 197, 0.18); }
 .incident-bar .inc-ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #ffb06b; background: rgba(255, 140, 60, 0.14); }
-.incident-bar.vein .inc-ic { color: var(--teal); background: rgba(63, 224, 197, 0.12); }
+.incident-bar.good .inc-ic { color: var(--teal); background: rgba(63, 224, 197, 0.12); }
 .incident-bar .inc-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
 .incident-bar .inc-txt b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .incident-bar .inc-txt small { font-size: 11px; color: var(--text-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }

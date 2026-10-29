@@ -202,7 +202,11 @@ export function start(): void {
   // als App installierbar und offline spielbar (nur unter eigener Adresse)
   initInstall(() => refresh());
   // Minispiele im Hintergrund nachladen, sobald die Karte steht (der Start selbst bleibt schlank)
-  setTimeout(() => ((window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => f()))(preloadMinigames), 3000);
+  // (höchstens 2 s auf einen ruhigen Moment warten – bei laufender Animation kommt der sonst sehr spät)
+  setTimeout(() => {
+    const ric = (window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => void }).requestIdleCallback;
+    if (ric) ric(preloadMinigames, { timeout: 2000 }); else preloadMinigames();
+  }, 3000);
   const boot = document.getElementById('boot');
   if (boot) { boot.style.opacity = '0'; setTimeout(() => boot.remove(), 500); }
 }

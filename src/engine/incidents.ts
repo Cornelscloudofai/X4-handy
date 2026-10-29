@@ -1,7 +1,8 @@
 // Minispiele im echten Spiel.
 //
 // Vorfälle: Aus dem Spielgeschehen entsteht etwa einmal je Spielstunde ein Ereignis – ein Frachter wird überfallen,
-// ein Produktionsmodul hat eine Störung, ein Miner stößt auf eine reiche Ader. Wer will, übernimmt selbst (Minispiel);
+// ein Produktionsmodul hat eine Störung, ein Miner stößt auf eine reiche Ader oder (Cascade, Flut) eine Gasschwade,
+// ein Lieferauftrag bietet Sonderfracht, ein Abnehmer zahlt Eilzuschlag, ein Schiff muss im Sturm von Glutsee I andocken. Wer will, übernimmt selbst (Minispiel);
 // sonst löst es sich nach Ablauf der Frist mit einem mittleren Ergebnis. Selbst spielen ist nie Pflicht.
 //
 // Aufgaben an Stationen: In jedem bekannten Sektor bieten zwei Stationen je eine Aufgabe an (alle 3 h neu).
@@ -15,8 +16,11 @@ import { addWare, freeUnits } from './economy';
 import { book } from './ledger';
 import type { FactionId, GameState } from './types';
 import { log } from './util';
+import { stormActive, tideFactor } from './phenomena';
 
-export type IncidentKind = 'raid' | 'fault' | 'vein';
+/** raid Überfall · fault Störung · vein reiche Ader · tide Flut in der Cascade · freight Sonderfracht · rush Eilzuschlag
+ *  · dock Andocken im Sturm von Glutsee I */
+export type IncidentKind = 'raid' | 'fault' | 'vein' | 'tide' | 'freight' | 'rush' | 'dock';
 /** Minispiel zu einem Vorfall oder einer Aufgabe (Kennungen wie im Minispiel-Rahmen) */
 export type GameKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon' | 'khaak';
 
@@ -32,6 +36,8 @@ export interface Incident {
   ware: string;
   /** Überfall: Ladung zum Zeitpunkt des Angriffs; Ader: volle Laderaummenge */
   amount: number;
+  /** Sonderfracht: Auftrag, zu dem die Ladung gehört */
+  contract?: number;
   /** Gegner im Kampf */
   foe?: 'pirates' | 'xenon' | 'khaak';
   created: number;
@@ -68,7 +74,7 @@ export const INCIDENT_GAP: [number, number] = [50 * 60, 80 * 60];
 export const MAX_OPEN = 2;
 /** Erst ab diesem Kapitel (Index, 0 = erstes) – die Einführung bleibt ungestört */
 export const INCIDENT_CHAPTER = 4;
-export const DEADLINE: Record<IncidentKind, number> = { raid: 20 * 60, fault: 90 * 60, vein: 30 * 60 };
+export const DEADLINE: Record<IncidentKind, number> = { raid: 20 * 60, fault: 90 * 60, vein: 30 * 60, tide: 30 * 60, freight: 30 * 60, rush: 20 * 60, dock: 15 * 60 };
 /** Überfall: verlorener Anteil der Ladung ohne Eingreifen bzw. je Sterne (0–3) beim Selbstspielen */
 export const RAID_AUTO_LOSS = 0.15;
 export const RAID_LOSS: [number, number, number, number] = [0.25, 0.1, 0, 0];
@@ -79,6 +85,15 @@ export const FAULT_REPAIR = 20;
 /** Ader: Anteil eines vollen Laderaums ins Stationslager – ohne Eingreifen bzw. je Sterne */
 export const VEIN_AUTO = 0.15;
 export const VEIN_SHARE: [number, number, number, number] = [0, 0.35, 0.7, 1.05];
+/** Flut in der Cascade (Goldschwade): wie die Ader, ab 125 % Gasertrag */
+export const TIDE_MIN = 1.25;
+/** Sonderfracht: Aufschlag auf den Auftragslohn je Sterne (ohne Eingreifen kein Aufschlag) */
+export const FREIGHT_BONUS: [number, number, number, number] = [0, 0.1, 0.2, 0.3];
+/** Eilzuschlag: Anteil am Ladungswert je Sterne (ohne Eingreifen keiner) */
+export const RUSH_BONUS: [number, number, number, number] = [0, 0.05, 0.1, 0.15];
+/** Andocken im Sturm: beschädigte Ladung ohne Eingreifen bzw. je Sterne */
+export const DOCK_AUTO_LOSS = 0.1;
+export const DOCK_LOSS: [number, number, number, number] = [0.15, 0.04, 0, 0];
 /** Aufgaben an Stationen */
 export const BOARD_REFRESH = 3 * 3600;
 export const BOARD_REP_CAP = 3;
@@ -116,8 +131,16 @@ export function stepIncidents(state: GameState): void {
   const r = (k: number) => hash(s.n * 7 + k, state.seed ^ 0x51ed);
   s.next = state.time + INCIDENT_GAP[0] + (INCIDENT_GAP[1] - INCIDENT_GAP[0]) * r(1);
   if (s.open.length >= MAX_OPEN) return;
-  const order: IncidentKind[] = (['raid', 'fault', 'vein'] as IncidentKind[]).sort((a, b) => r(a.length + 2) - r(b.length + 5));
+  const kinds: IncidentKind[] = ['raid', 'fault', 'vein', 'tide', 'freight', 'rush', 'dock'];
+  const order = kinds.map((k, i) => ({ k, w: r(20 + i) })).sort((a, b) => a.w - b.w).map((x) => x.k);
   for (const kind of order) if (create(state, kind, r)) return;
+}
+
+/** Einen Vorfall dieser Art erzeugen, falls die Lage es hergibt (für Tests und Entwicklerwerkzeuge) */
+export function forceIncident(state: GameState, kind: IncidentKind): boolean {
+  const s = incidentState(state);
+  s.n++;
+  return create(state, kind, (k) => hash(s.n * 7 + k, state.seed ^ 0x51ed));
 }
 
 function create(state: GameState, kind: IncidentKind, r: (k: number) => number): boolean {
@@ -144,8 +167,41 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
     log(state, `Störung in ${c.st.name}: Ein Modul für ${WARES[ware].name} läuft nur noch mit halber Leistung.`, 'warn', true, { kind: 'incident', id: inc.id });
     return true;
   }
-  const sh = pick(state.ships.filter((x) => SHIP_MAP[x.cls].role === 'miner' && x.home && x.miningField && x.cargo && !busy.has(x.id)));
+  if (kind === 'freight') {
+    const cand = state.contracts.filter((c) => c.status === 'active' && !c.story && c.reward > 0).flatMap((c) => state.ships.filter((x) => x.cargo?.ware === c.ware && SHIP_MAP[x.cls].role === 'trader' && !busy.has(x.id)).map((sh) => ({ c, sh })));
+    const p = pick(cand);
+    if (!p) return false;
+    const inc: Incident = { ...base, kind, sector: p.sh.sector, target: p.sh.id, ware: p.c.ware, amount: p.c.reward, contract: p.c.id };
+    s.open.push(inc);
+    log(state, `Sonderfracht: Der Auftraggeber von „${p.c.title}“ zahlt mehr, wenn ${p.sh.name} zusätzliche Kisten mitnimmt – der Frachtraum muss neu gepackt werden.`, 'good', true, { kind: 'incident', id: inc.id });
+    return true;
+  }
+  if (kind === 'rush') {
+    const sh = pick(state.ships.filter((x) => SHIP_MAP[x.cls].role === 'trader' && x.cargo && x.cargo.amount > 0 && x.path.length > 1 && !busy.has(x.id)));
+    if (!sh || !sh.cargo) return false;
+    const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: sh.cargo.amount * WARES[sh.cargo.ware].price.avg };
+    s.open.push(inc);
+    log(state, `Eilzuschlag: Der Abnehmer der Ladung von ${sh.name} zahlt extra, wenn sie über den Superhighway schneller ankommt.`, 'good', true, { kind: 'incident', id: inc.id });
+    return true;
+  }
+  if (kind === 'dock') {
+    if (!stormActive(state.time)) return false;
+    const sh = pick(state.ships.filter((x) => x.sector === 'f-glut1' && x.cargo && x.cargo.amount > 0 && !busy.has(x.id)));
+    if (!sh || !sh.cargo) return false;
+    const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: sh.cargo.amount };
+    s.open.push(inc);
+    log(state, `${sh.name} will mitten im Strahlungssturm von Glutsee I andocken. Die Steuerung spinnt, der Bordrechner rechnet nur noch Bahnen.`, 'warn', true, { kind: 'incident', id: inc.id });
+    return true;
+  }
+  const sh = pick(state.ships.filter((x) => SHIP_MAP[x.cls].role === 'miner' && x.home && x.miningField && x.cargo && !busy.has(x.id)
+    && (kind === 'tide' ? x.sector === 'cascade' && WARES[x.cargo.ware].storage === 'Liquid' && tideFactor(state.time) >= TIDE_MIN : true)));
   if (!sh || !sh.cargo) return false;
+  if (kind === 'tide') {
+    const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: unitsOf(sh.cls, sh.cargo.ware) };
+    s.open.push(inc);
+    log(state, `Flut in Tharka's Cascade: Vor ${sh.name} treibt eine dichte ${WARES[inc.ware].name}schwade.`, 'good', true, { kind: 'incident', id: inc.id });
+    return true;
+  }
   const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: unitsOf(sh.cls, sh.cargo.ware) };
   s.open.push(inc);
   log(state, `${sh.name} ist auf eine reiche ${WARES[inc.ware].name}ader gestoßen.`, 'good', true, { kind: 'incident', id: inc.id });
@@ -158,6 +214,10 @@ export const incidentById = (state: GameState, id: number): Incident | undefined
 export function incidentGame(inc: Incident): { game: GameKind; level: 1 | 2 | 3 } {
   if (inc.kind === 'raid') return { game: inc.foe ?? 'pirates', level: 2 };
   if (inc.kind === 'fault') return { game: 'pipes', level: 2 };
+  if (inc.kind === 'freight') return { game: 'cargo', level: 2 };
+  if (inc.kind === 'rush') return { game: 'highway', level: 2 };
+  if (inc.kind === 'dock') return { game: 'orbit', level: 2 };
+  if (inc.kind === 'tide') return { game: 'gas', level: 2 };
   return { game: WARES[inc.ware].storage === 'Liquid' ? 'gas' : 'ore', level: 2 };
 }
 
@@ -167,6 +227,10 @@ export function incidentText(state: GameState, inc: Incident): { title: string; 
   const st = state.stations.find((x) => x.id === inc.target);
   if (inc.kind === 'raid') return { title: `Überfall auf ${ship?.name ?? 'Frachter'}`, text: `Ohne dich gehen etwa ${Math.round(RAID_AUTO_LOSS * 100)} % der Ladung verloren.` };
   if (inc.kind === 'fault') return { title: `Störung in ${st?.name ?? 'Station'}`, text: `Modul für ${WARES[inc.ware].name} läuft mit halber Leistung. Ohne dich: Reparatur bei Fristende, ${FAULT_REPAIR} Hüllenteile.` };
+  if (inc.kind === 'freight') return { title: `Sonderfracht für ${ship?.name ?? 'Frachter'}`, text: `Gut gepackt bis ${Math.round(inc.amount * FREIGHT_BONUS[3]).toLocaleString('de-DE')} Cr Aufschlag; ohne dich der normale Lohn.` };
+  if (inc.kind === 'rush') return { title: `Eilzuschlag für ${ship?.name ?? 'Frachter'}`, text: `Schnell geflogen bis ${Math.round(inc.amount * RUSH_BONUS[3]).toLocaleString('de-DE')} Cr extra; ohne dich kein Zuschlag.` };
+  if (inc.kind === 'dock') return { title: `Andocken im Sturm: ${ship?.name ?? 'Schiff'}`, text: `Ohne dich werden etwa ${Math.round(DOCK_AUTO_LOSS * 100)} % der Ladung beim Andocken beschädigt.` };
+  if (inc.kind === 'tide') return { title: `Gasschwade für ${ship?.name ?? 'Gassammler'}`, text: `Selbst sammeln bringt bis zu ${Math.round(inc.amount * VEIN_SHARE[3])} ${WARES[inc.ware].name}, sonst ${Math.round(inc.amount * VEIN_AUTO)}.` };
   return { title: `Reiche Ader für ${ship?.name ?? 'Miner'}`, text: `Selbst abbauen bringt bis zu ${Math.round(inc.amount * VEIN_SHARE[3])} ${WARES[inc.ware].name}, sonst ${Math.round(inc.amount * VEIN_AUTO)}.` };
 }
 
@@ -187,7 +251,7 @@ function loseCargo(state: GameState, inc: Incident, share: number): string {
     return `${Math.round(k)} ${WARES[inc.ware].name} verloren`;
   }
   const value = n * WARES[inc.ware].price.avg;
-  book(state, -value, 'other', `Überfall: Ladung ${WARES[inc.ware].name} verloren`, { kind: 'ship', id: inc.target });
+  book(state, -value, 'other', `${inc.kind === 'dock' ? 'Andocken im Sturm' : 'Überfall'}: Ladung ${WARES[inc.ware].name} verloren`, { kind: 'ship', id: inc.target });
   return `Ladung im Wert von ${Math.round(value).toLocaleString('de-DE')} Cr verloren`;
 }
 
@@ -208,9 +272,14 @@ function autoResolve(state: GameState, inc: Incident): void {
     if (st) addWare(st, 'hullparts', -Math.min(FAULT_REPAIR, st.inventory.hullparts ?? 0));
     repairFault(state, inc);
     log(state, `Störung in ${st?.name ?? 'der Station'} behoben – die Wartung hat ${FAULT_REPAIR} Hüllenteile verbraucht.`, 'info', false, st ? { kind: 'station', id: st.id } : undefined);
+  } else if (inc.kind === 'freight' || inc.kind === 'rush') {
+    log(state, inc.kind === 'freight' ? 'Die Sonderfracht ging ohne Aufschlag an einen anderen Frachter.' : 'Der Eilzuschlag ist verfallen – die Ladung kommt zur normalen Zeit an.', 'info', false, { kind: 'ship', id: inc.target });
+  } else if (inc.kind === 'dock') {
+    const lost = loseCargo(state, inc, DOCK_AUTO_LOSS);
+    log(state, `Angedockt – beim Aufsetzen im Sturm wurde Ladung beschädigt${lost ? `: ${lost}` : ''}.`, 'info', false, { kind: 'ship', id: inc.target });
   } else {
     const got = giveVein(state, inc, VEIN_AUTO);
-    log(state, `Die Ader ist abgebaut: ${got}.`, 'info', false, { kind: 'ship', id: inc.target });
+    log(state, `${inc.kind === 'tide' ? 'Die Schwade ist verweht' : 'Die Ader ist abgebaut'}: ${got}.`, 'info', false, { kind: 'ship', id: inc.target });
   }
 }
 
@@ -238,8 +307,15 @@ export function resolveIncident(state: GameState, id: number, stars: number): st
   } else if (inc.kind === 'fault') {
     if (k >= 1) { repairFault(state, inc); msg = 'Störung behoben, das Modul läuft wieder voll.'; }
     else { reopenFault(state, inc); msg = 'Nicht geschafft – die Wartung kümmert sich bis zum Fristende.'; }
+  } else if (inc.kind === 'freight' || inc.kind === 'rush') {
+    const bonus = Math.round(inc.amount * (inc.kind === 'freight' ? FREIGHT_BONUS[k] : RUSH_BONUS[k]));
+    if (bonus > 0) book(state, bonus, 'contract', inc.kind === 'freight' ? 'Sonderfracht: Aufschlag' : 'Eilzuschlag', { kind: 'ship', id: inc.target });
+    msg = bonus > 0 ? `${inc.kind === 'freight' ? 'Sonderfracht verladen' : 'Schnell angekommen'}: ${bonus.toLocaleString('de-DE')} Cr extra.` : 'Kein Zuschlag diesmal.';
+  } else if (inc.kind === 'dock') {
+    const lost = loseCargo(state, inc, DOCK_LOSS[k]);
+    msg = k ? `Sauber angedockt${lost ? ` – ${lost}` : ', die Ladung ist heil'}.` : `Hart aufgesetzt – ${lost || 'ohne Schaden'}.`;
   } else {
-    msg = `Abgebaut: ${giveVein(state, inc, VEIN_SHARE[k])}.`;
+    msg = `${inc.kind === 'tide' ? 'Gesammelt' : 'Abgebaut'}: ${giveVein(state, inc, VEIN_SHARE[k])}.`;
   }
   log(state, msg, k ? 'good' : 'info', false, inc.kind === 'fault' ? { kind: 'station', id: inc.target } : { kind: 'ship', id: inc.target });
   return msg;

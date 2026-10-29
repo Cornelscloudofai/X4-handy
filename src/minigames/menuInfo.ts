@@ -6,7 +6,7 @@ import type { Mission } from './missions';
 // ---------- pipes ----------
 export const PIPES_NORMAL_GOALS: GoalDef[] = [
   { id: 'moves', text: 'Mit höchstens Bestwert + 30 % Zügen lösen' },
-  { id: 'fast', text: 'In der ersten Hälfte der Zeit lösen' },
+  { id: 'fast', text: 'In der halben Richtzeit lösen' },
   { id: 'combo3', text: 'Kombo ×3 erreichen' },
   { id: 'pressure', text: 'Druck nie unter 60 %' },
   { id: 'valve', text: 'Kein Ventil öfter als dreimal drehen' },
@@ -18,7 +18,7 @@ export const PIPES_CHAIN_GOALS: GoalDef[] = [
 ];
 export const PIPES_MUTATORS: Mutator[] = [
   { id: 'dark', name: 'Notbeleuchtung', desc: 'Nur versorgte Leitungen und ihre Nachbarn sind zu sehen', mult: 1.4 },
-  { id: 'rush', name: 'Eilauftrag', desc: 'Nur die halbe Zeit', mult: 1.5 },
+  { id: 'rush', name: 'Eilauftrag', desc: 'Richtzeit halbiert – der dritte Stern wird knapp', mult: 1.5 },
   { id: 'valves', name: 'Ventilchaos', desc: 'Zwei zusätzliche Ventilgruppen', mult: 1.3 },
   { id: 'surge', name: 'Überdruck', desc: 'Offene Enden kosten doppelt so viel Druck', mult: 1.3 },
 ];

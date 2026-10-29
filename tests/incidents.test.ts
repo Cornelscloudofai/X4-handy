@@ -5,9 +5,12 @@ import { SHIP_MAP } from '../src/data/ships';
 import { freeUnits, stepProduction } from '../src/engine/economy';
 import {
   BOARD_REP_CAP, BOARD_REP_DAY, INCIDENT_CHAPTER, DEADLINE, FAULT_REPAIR, FIRST_INCIDENT, RAID_AUTO_LOSS, RAID_BOUNTY, VEIN_AUTO, VEIN_SHARE,
-  boardFor, boardRepLeft, finishTask, incidentState, pauseIncidents, resolveIncident, stepIncidents,
+  boardFor, boardRepLeft, finishTask, incidentState, pauseIncidents, forceIncident, incidentGame,
+  FREIGHT_BONUS, RUSH_BONUS, DOCK_AUTO_LOSS, resolveIncident, stepIncidents,
 } from '../src/engine/incidents';
 import type { GameState } from '../src/engine/types';
+import { STORM_CYCLE, stormActive, tideFactor } from '../src/engine/phenomena';
+import { WARES } from '../src/data/wares';
 
 /** Spielstand mit beladenem Frachter unterwegs */
 function withTrader(): GameState {
@@ -111,6 +114,63 @@ describe('Vorfälle', () => {
     resolveIncident(s, inc.id, 2);
     expect((st.inventory.ore ?? 0) - before).toBe(Math.min(Math.round(inc.amount * VEIN_SHARE[2]), Math.floor(free)));
     expect(VEIN_SHARE[2]).toBeGreaterThan(VEIN_AUTO * 3);
+  });
+});
+
+describe('Vorfälle, Schritt 2', () => {
+  it('Sonderfracht (Frachtraum): Aufschlag auf den Auftragslohn nach Sternen, ohne Eingreifen keiner', () => {
+    const s = withTrader();
+    const sh = s.ships.find((x) => x.cargo)!;
+    s.contracts.push({ id: 991, sector: 'zhin', ware: 'energycells', amount: 2000, delivered: 0, reward: 40000, rep: 0.2, deadline: s.time + 7200, duration: 7200, status: 'active', title: 'Testauftrag' });
+    expect(forceIncident(s, 'freight')).toBe(true);
+    const inc = incidentState(s).open[0];
+    expect(incidentGame(inc).game).toBe('cargo');
+    expect(inc.target).toBe(sh.id);
+    const c0 = s.credits;
+    resolveIncident(s, inc.id, 3);
+    expect(s.credits).toBe(c0 + 40000 * FREIGHT_BONUS[3]);
+  });
+
+  it('Eilzuschlag (Superhighway): Anteil am Ladungswert', () => {
+    const s = withTrader();
+    const sh = s.ships.find((x) => x.cargo)!;
+    sh.path = [{ sector: 'zhin', x: 0, z: 0 }, { sector: 'tkr', x: 0, z: 0 }];
+    expect(forceIncident(s, 'rush')).toBe(true);
+    const inc = incidentState(s).open[0];
+    expect(incidentGame(inc).game).toBe('highway');
+    const c0 = s.credits;
+    resolveIncident(s, inc.id, 2);
+    expect(s.credits - c0).toBe(Math.round(1000 * WARES.energycells.price.avg * RUSH_BONUS[2]));
+  });
+
+  it('Andocken im Sturm (Orbit): nur im Sturm von Glutsee I; ohne Eingreifen beschädigte Ladung', () => {
+    const s = withTrader();
+    const sh = s.ships.find((x) => x.cargo)!;
+    sh.sector = 'f-glut1';
+    while (stormActive(s.time)) s.time += 600;
+    expect(forceIncident(s, 'dock')).toBe(false);
+    while (!stormActive(s.time)) s.time += 60;
+    expect(forceIncident(s, 'dock')).toBe(true);
+    const inc = incidentState(s).open[0];
+    expect(incidentGame(inc).game).toBe('orbit');
+    pauseIncidents(s);
+    s.time = inc.expires + 1;
+    stepIncidents(s);
+    expect(sh.cargo!.amount).toBeCloseTo(1000 * (1 - DOCK_AUTO_LOSS), 3);
+    expect(STORM_CYCLE).toBeGreaterThan(0);
+  });
+
+  it('Gasschwade (Gassammeln): nur bei Flut in der Cascade', () => {
+    const s = newGame(26, 'mining');
+    s.story.index = INCIDENT_CHAPTER;
+    const st = s.stations[0];
+    const sh = s.ships.find((x) => SHIP_MAP[x.cls].role === 'miner')!;
+    sh.home = st.id; sh.miningField = 'cascade-helium'; sh.sector = 'cascade'; sh.cargo = { ware: 'helium', amount: 5 };
+    while (tideFactor(s.time) >= 1.25) s.time += 300;
+    expect(forceIncident(s, 'tide')).toBe(false);
+    while (tideFactor(s.time) < 1.3) s.time += 300;
+    expect(forceIncident(s, 'tide')).toBe(true);
+    expect(incidentGame(incidentState(s).open[0]).game).toBe('gas');
   });
 });
 

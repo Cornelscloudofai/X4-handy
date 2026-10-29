@@ -194,8 +194,8 @@ function incidentBar(state: GameState): string {
   const inc = open[0];
   const t = incidentText(state, inc);
   const left = Math.max(0, inc.expires - state.time);
-  const ic = inc.kind === 'raid' ? 'warn' : inc.kind === 'fault' ? 'wrench' : 'miner';
-  return `<div class="incident-bar ${inc.kind}"><span class="inc-ic">${icon(ic, 20)}</span><div class="inc-txt"><b>${esc(t.title)}</b><small>${esc(t.text)} · noch ${fmtDur(left)}${open.length > 1 ? ` · +${open.length - 1} weitere` : ''}</small></div>
+  const ic = ({ raid: 'warn', fault: 'wrench', vein: 'miner', tide: 'miner', freight: 'box', rush: 'trader', dock: 'sun' } as Record<string, string>)[inc.kind] ?? 'warn';
+  return `<div class="incident-bar ${inc.kind} ${['vein', 'tide', 'freight', 'rush'].includes(inc.kind) ? 'good' : ''}"><span class="inc-ic">${icon(ic, 20)}</span><div class="inc-txt"><b>${esc(t.title)}</b><small>${esc(t.text)} · noch ${fmtDur(left)}${open.length > 1 ? ` · +${open.length - 1} weitere` : ''}</small></div>
     <button class="btn small primary" ${act('incident-play', { id: inc.id })}>Selbst übernehmen</button></div>`;
 }
 

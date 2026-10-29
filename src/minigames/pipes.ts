@@ -1,6 +1,7 @@
 // Minispiel „Störung beheben“: Leitungen drehen, bis die Energiekerne alle Module versorgen.
 // Ab Stufe 2: Sperrfelder, Brücken, Ventilgruppen (drehen gemeinsam) und Druck – offene Enden lassen ihn sinken.
 // Ab Stufe 3 zwei Kerne mit eigener Ware; jedes Modul braucht seine Ware, Leitungen dürfen sich nicht mischen.
+// Ein einzelnes Netz hat kein Zeitlimit (die Richtzeit zählt nur für Punkte und den dritten Stern).
 // Kettenmodus: Netz um Netz gegen die Uhr, gelöste Netze bringen Zeit.
 import { WARES } from '../data/wares';
 import { drawWareGlyph } from '../render/glyphs';
@@ -48,10 +49,10 @@ export class PipesGame implements MiniGame {
       points: ['Jedes gelöste Netz: 1.000 und ' + CHAIN_BONUS + ' s mehr Zeit', 'Wenige Züge: 30 je Zug unter dem Anderthalbfachen des Bestwerts', ...tail],
     };
     return {
-      stars: ['Alle Module versorgen', `… mit höchstens ${this.moveStar} Zügen (Bestwert ${this.parMoves})`, `… in höchstens der halben Zeit (${fmtTime(this.limit / 2)})`],
+      stars: ['Alle Module versorgen', `… mit höchstens ${this.moveStar} Zügen (Bestwert ${this.parMoves})`, `… in höchstens ${fmtTime(this.limit / 2)}`],
       points: [
         'Netz steht: 1.000',
-        'Restzeit: 10 je übrige Sekunde',
+        `Tempo: 10 je Sekunde unter der Richtzeit (${fmtTime(this.limit)})`,
         'Wenige Züge: 30 je Zug unter dem Anderthalbfachen des Bestwerts',
         'Der zweite und dritte Stern sind unabhängig voneinander – beide setzen das gelöste Netz voraus',
         ...tail,
@@ -148,9 +149,10 @@ export class PipesGame implements MiniGame {
   }
 
   hud(): HudItem[] {
+    // Kettenmodus läuft gegen die Uhr; ein einzelnes Netz hat kein Zeitlimit, die Uhr zählt nur mit
     const left = this.limit - this.time;
     return [
-      { label: 'Zeit', value: fmtTime(left), warn: left < 15 },
+      this.mode === 'chain' ? { label: 'Zeit', value: fmtTime(left), warn: left < 15 } : { label: 'Zeit', value: fmtTime(this.time) },
       this.mode === 'chain' ? { label: 'Netze', value: `${this.boards}` } : { label: 'Module', value: `${this.p.okConsumers}/${this.cons.length}` },
       { label: 'Züge', value: `${this.boardMoves}` },
     ];
@@ -239,7 +241,7 @@ export class PipesGame implements MiniGame {
     const left = this.limit - this.time;
     const okMoves = this.boardMoves <= Math.ceil(this.parMoves * 1.3) + 2;
     const pts = this.score.add(1000, this.mode === 'chain' ? 'Gelöste Netze' : 'Netz steht')
-      + (this.mode === 'chain' ? 0 : this.score.add(Math.max(0, Math.round(left * 10)), 'Restzeit'))
+      + (this.mode === 'chain' ? 0 : this.score.add(Math.max(0, Math.round(left * 10)), 'Tempo'))
       + this.score.add(Math.max(0, Math.ceil(this.parMoves * 1.3) + 2 - this.boardMoves) * 30, 'Wenige Züge');
     this.floats.add(this.w / 2, this.oy - 6, `Netz steht! +${pts}`, '#ffd27a', 18);
     for (const c of this.cons) { const [px, py] = this.cellCenter(c); this.fx.burst(px, py, this.colors[this.b.owner[c]] ?? this.colors[0], 14, 160, 2.2); }
@@ -296,7 +298,7 @@ export class PipesGame implements MiniGame {
       const col = this.p.color[c] >= 0 ? this.colors[this.p.color[c]] : this.colors[0];
       this.fx.add({ x: ex, y: ey, vx: dx * sp + (Math.random() - 0.5) * 50, vy: dy * sp + (Math.random() - 0.5) * 50, color: col, size: 1.4, max: 0.5, drag: 2 });
     }
-    if (this.time >= this.limit) { this.failed = 'Zeit abgelaufen'; this.won = 0; }
+    if (this.mode === 'chain' && this.time >= this.limit) { this.failed = 'Zeit abgelaufen'; this.won = 0; }
   }
 
   private finish(ok: boolean): GameResult {
