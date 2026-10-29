@@ -169,15 +169,17 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
  */
 function flowFilter(state: GameState, ui: UIState): string {
   if (!ui.layerMenu || ui.placing) return '';
-  const layer = (key: string, label: string, on: boolean) => `<button class="layer-chip ${on ? 'on' : ''}" ${act('layer-toggle', { layer: key })} aria-pressed="${on}"><i></i>${label}</button>`;
-  let wareChips = '';
-  if (ui.flows) {
-    const wares = [...new Set(sectorFlows(state, ui.sector, () => 1).map((f) => f.ware))].sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
-    if (ui.flowWare && !wares.includes(ui.flowWare)) wares.unshift(ui.flowWare);
-    const chip = (id: string, label: string) => `<button class="flow-chip ${ui.flowWare === id ? 'on' : ''}" ${act('flow-ware', { ware: id })}>${id ? wareIcon(id, 16) : ''}${esc(label)}</button>`;
-    if (wares.length) wareChips = `<span class="flow-sep"></span>${chip('', 'Alle Waren')}${wares.map((w) => chip(w, WARES[w].name)).join('')}`;
+  const routes = `<button class="layer-chip ${ui.routes ? 'on' : ''}" ${act('layer-toggle', { layer: 'routes' })} aria-pressed="${ui.routes}"><i></i>Handelsrouten</button>`;
+  const flows = `<button class="layer-chip ${ui.flows ? 'on' : ''} ${ui.flowList ? 'open' : ''}" ${act('flow-list')} aria-pressed="${ui.flows}" aria-expanded="${ui.flowList}"><i></i>Warenflüsse${ui.flows && ui.flowWares.length ? ` <em>${ui.flowWares.length}</em>` : ''}${icon('down', 14)}</button>`;
+  let list = '';
+  if (ui.flows && ui.flowList) {
+    // nur Waren, die gerade im Sektor fließen (angehakte bleiben auch ohne Fluss in der Liste)
+    const wares = [...new Set([...sectorFlows(state, ui.sector, () => 1).map((f) => f.ware), ...ui.flowWares])].sort((a, b) => WARES[a].name.localeCompare(WARES[b].name, 'de'));
+    const row = (id: string, label: string, on: boolean) => `<button class="flow-row ${on ? 'on' : ''}" ${act('flow-ware', { ware: id })} aria-pressed="${on}"><i class="cb"></i>${id ? wareIcon(id, 18) : ''}<span>${esc(label)}</span></button>`;
+    list = `<div class="flow-list">${row('', 'Alle Waren', !ui.flowWares.length)}${wares.length ? wares.map((w) => row(w, WARES[w].name, ui.flowWares.includes(w))).join('') : '<p class="small muted">Gerade fließt hier nichts.</p>'}
+      <button class="flow-off" ${act('layer-toggle', { layer: 'flows' })}>Warenflüsse ausblenden</button></div>`;
   }
-  return `<div class="flow-filter" aria-label="Kartenebenen">${layer('routes', 'Handelsrouten', ui.routes)}${layer('flows', 'Warenflüsse', ui.flows)}${wareChips}</div>`;
+  return `<div class="flow-filter" aria-label="Kartenebenen"><div class="flow-chips">${routes}${flows}</div>${list}</div>`;
 }
 
 export function objectiveHtml(state: GameState, ui: UIState): string {

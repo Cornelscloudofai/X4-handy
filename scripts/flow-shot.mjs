@@ -31,17 +31,20 @@ if (!layers0.r || layers0.f) fail('Standard-Ebenen falsch: ' + JSON.stringify(la
 await page.click('[data-act="layer-menu"]');
 await page.waitForTimeout(200);
 if ((await page.locator('.layer-chip').count()) !== 2) fail('Ebenen-Schalter fehlen');
-await page.click('[data-act="layer-toggle"][data-layer="flows"]');
+// Warenflüsse antippen: einschalten und Liste zum Anhaken aufklappen
+await page.click('[data-act="flow-list"]');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${out}/p2-1-flows.png` });
-const chips = await page.locator('.flow-chip').count();
-if (chips < 2) fail(`Warenfilter fehlt (${chips} Chips)`);
-await page.locator('.flow-chip').nth(1).click();
+const rows = await page.locator('.flow-row').count();
+if (rows < 2) fail(`Warenliste fehlt (${rows} Zeilen)`);
+await page.locator('.flow-row').nth(1).click();
+if (rows > 2) await page.locator('.flow-row').nth(2).click();
 await page.waitForTimeout(400);
-const filtered = await page.evaluate(() => window.__game.ui.flowWare);
-if (!filtered) fail('Warenfilter greift nicht');
+const filtered = await page.evaluate(() => window.__game.ui.flowWares);
+if (!filtered.length || (rows > 2 && filtered.length !== 2)) fail('Warenfilter greift nicht: ' + JSON.stringify(filtered));
 await page.screenshot({ path: `${out}/p2-2-filter.png` });
-await page.locator('.flow-chip').first().click();
+await page.locator('.flow-row').first().click();
+if ((await page.evaluate(() => window.__game.ui.flowWares.length)) !== 0) fail('„Alle Waren“ setzt den Filter nicht zurück');
 // Alles aus: beide Ebenen abschalten
 await page.click('[data-act="layer-toggle"][data-layer="routes"]');
 await page.click('[data-act="layer-toggle"][data-layer="flows"]');

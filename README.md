@@ -48,7 +48,9 @@ einem Solarkraftwerk und einem Miner.
 - **Kopfleiste (zwei Zeilen):** Oben eine gebündelte Leiste: rundes Sektorbild, Name und Spielzeit (antippen:
   Sektorenkarte), **Sektorinfo** (Baulizenz, Details, Späher und Erkundung direkt im Sektor), Credits (Kontobuch),
   Pause/Tempo, Warnungen. Darunter Nachrichten (Sprechblase), Menü (Zahnrad), die Eigenheit des Sektors als Knopf
-  (z. B. „Sturm · 34 min“) und rechts der Knopf für die Kartenebenen (Handelsrouten, Warenflüsse) neben dem Zoom. Neue
+  (z. B. „Sturm · 34 min“) und rechts der Knopf für die Kartenebenen neben dem Zoom: „Handelsrouten“ und „Warenflüsse ▾“ nebeneinander;
+  „Warenflüsse“ antippen schaltet sie ein und klappt darunter eine Liste zum Anhaken auf (mehrere Waren möglich, ohne
+  Haken alle, unten „Warenflüsse ausblenden“). Neue
   Stationen gründest du unten unter „Stationen“.
   Ansehen: `node scripts/hud-shot.mjs <ordner>`.
 - **Sektorinfo in drei Reitern** (ⓘ in der Kopfleiste, Sektor auf der Sektorenkarte antippen oder Detailseite – überall

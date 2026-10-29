@@ -1687,7 +1687,6 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .hb-info + .chip { border-left: 1px solid var(--line); }
 @media (max-width: 420px) { .hb-info span { display: none; } .hb-info { padding: 0 6px; margin-right: 4px; } .hud-bar .chip.credits > .ic { display: none; } }
 @media (max-width: 370px) { .hb-thumb { width: 28px; height: 28px; } .hb-text b { font-size: 13.5px; } .hud-bar .chip { padding: 0 5px; } }
-  border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; animation: build-in 0.14s ease-out; }
 #hud::before { height: calc(var(--safe-top) + 130px); }
 .phen-pill { flex: none; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; border-radius: 17px; font-size: 12.5px; font-weight: 600;
   color: #ffc48a; background: rgba(40, 14, 6, 0.78); border: 1px solid rgba(255, 150, 80, 0.45); box-shadow: 0 0 12px rgba(255, 120, 50, 0.18); }
@@ -1790,3 +1789,21 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .tool-row .layer-btn.open { background: rgba(8, 40, 44, 0.9); box-shadow: 0 0 10px rgba(63, 224, 197, 0.25); }
 .tool-row .layer-btn + .zoom { margin-left: 0; }
 @media (max-width: 340px) { .phen-pill .pl { display: none; } .phen-pill { padding: 0 9px; gap: 5px; } }
+/* Kartenebenen: Handelsrouten und Warenflüsse nebeneinander, darunter die Warenliste zum Anhaken */
+.flow-filter { display: block; overflow: visible; -webkit-mask-image: none; mask-image: none; padding: 0 2px; }
+.flow-chips { display: flex; gap: 6px; justify-content: flex-end; }
+.layer-chip em { font-style: normal; font-size: 11px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: var(--teal); color: #04201b; text-align: center; }
+.layer-chip .ic:last-child { opacity: 0.75; transition: transform 0.15s; }
+.layer-chip.open .ic:last-child { transform: rotate(180deg); }
+.flow-list { margin: 6px 0 0 auto; width: min(280px, 100%); max-height: min(52vh, 420px); overflow-y: auto; overscroll-behavior: contain; padding: 4px;
+  border-radius: 14px; background: rgba(6, 14, 22, 0.94); border: 1px solid var(--line-2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); animation: riseIn 0.16s both; }
+.flow-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 10px; border-radius: 9px; color: var(--text-2); font-size: 13.5px; text-align: left; }
+.flow-row + .flow-row { border-top: 1px solid var(--line); border-radius: 0; }
+.flow-row.on { color: var(--text); }
+.flow-row .cb { flex: none; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--muted); }
+.flow-row.on .cb { background: var(--teal); border-color: var(--teal); box-shadow: 0 0 6px rgba(63, 224, 197, 0.5);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%2304201b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.flow-row span { flex: 1; min-width: 0; }
+.flow-list .small { margin: 8px 10px; }
+.flow-off { display: block; width: 100%; margin-top: 4px; padding: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; text-align: center; }

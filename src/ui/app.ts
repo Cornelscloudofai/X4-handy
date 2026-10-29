@@ -1109,15 +1109,25 @@ function onClick(e: MouseEvent): void {
       case 'news-filter': ui.newsFilter = (d.f as NewsFilter) || 'all'; state.newsSeen = state.time; refresh(); break;
       case 'ledger-filter': ui.ledgerFilter = (d.f as LedgerFilter) || 'all'; refresh(); break;
       case 'news-go': { const l = linkFrom(d); if (l) followLink(l); break; }
-      case 'layer-menu': ui.layerMenu = !ui.layerMenu; refresh(); break;
+      case 'layer-menu': ui.layerMenu = !ui.layerMenu; if (!ui.layerMenu) ui.flowList = false; refresh(); break;
       case 'layer-toggle':
         if (d.layer === 'flows') ui.flows = !ui.flows;
         else ui.routes = !ui.routes;
-        if (!ui.flows) ui.flowWare = '';
+        if (!ui.flows) { ui.flowWares = []; ui.flowList = false; }
         saveLayers(ui);
         refresh();
         break;
-      case 'flow-ware': ui.flowWare = ui.flowWare === d.ware ? '' : d.ware ?? ''; refresh(); break;
+      // Warenflüsse: erster Tipp schaltet ein und klappt die Liste auf, danach auf/zu
+      case 'flow-list':
+        if (!ui.flows) { ui.flows = true; ui.flowList = true; saveLayers(ui); } else ui.flowList = !ui.flowList;
+        refresh();
+        break;
+      case 'flow-ware': {
+        const w = d.ware ?? '';
+        ui.flowWares = !w ? [] : ui.flowWares.includes(w) ? ui.flowWares.filter((x) => x !== w) : [...ui.flowWares, w];
+        refresh();
+        break;
+      }
       case 'chart':
         ui.modal = { type: 'chart', hours: 6, spec: { key: d.key ?? '', title: d.title ?? '', color: d.color ?? '#3fe0c5', kind: d.kind === 'rate' ? 'rate' : 'level', unit: (d.unit as 'cr' | 'units' | 'pct' | 'price') ?? 'units', sub: d.sub || undefined } };
         refresh();

@@ -69,7 +69,9 @@ export interface UIState {
   /** Auswahl der Kartenebenen unter der Werkzeugleiste geöffnet */
   layerMenu: boolean;
   /** Warenfilter der Flusslinien ('' = alle Waren) */
-  flowWare: string;
+  /** Warenflüsse: angehakte Waren (leer = alle) und ob die Liste aufgeklappt ist */
+  flowWares: string[];
+  flowList: boolean;
   galaxySel: string | null;
   reducedMotion: boolean;
   /** Beschriftungsdichte der Karte 0 (wenig) bis 100 (viel), Standard 50 */
@@ -112,7 +114,8 @@ export const ui: UIState = {
   routes: initialLayers().routes,
   flows: initialLayers().flows,
   layerMenu: false,
-  flowWare: '',
+  flowWares: [],
+  flowList: false,
   galaxySel: null,
   reducedMotion: initialReducedMotion(),
   labelDensity: initialLabelDensity(),

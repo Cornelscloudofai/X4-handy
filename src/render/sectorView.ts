@@ -2089,7 +2089,7 @@ export class SectorRenderer {
     if (this.flowCache.sector !== ui.sector || this.flowCache.state !== state || now - this.flowCache.at > 300 || now < this.flowCache.at) {
       this.flowCache = { sector: ui.sector, state, at: now, flows: sectorFlows(state, ui.sector, (w) => WARES[w]?.volume ?? 1) };
     }
-    const flows = this.flowCache.flows.filter((f) => !ui.flowWare || f.ware === ui.flowWare);
+    const flows = this.flowCache.flows.filter((f) => !ui.flowWares.length || ui.flowWares.includes(f.ware));
     // Mehrere Waren zwischen denselben Orten: nebeneinander gefächert
     const lane = new Map<string, number>();
     flows.sort((a, b) => b.volume - a.volume);
