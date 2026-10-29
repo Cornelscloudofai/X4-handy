@@ -122,6 +122,8 @@ let lastLaunch: boolean | null = null;
 let lastXenon: boolean | null = null;
 /** Für die Darstellung: tobt gerade der Sturm in Glutsee I? */
 export const stormNow = (): boolean => !!lastStorm;
+/** Für die Darstellung: ist gerade eine Xenon-Streife in Tharka's Ravine? */
+export const xenonNow = (): boolean => !!lastXenon;
 
 export function resetPhenomena(): void {
   for (const k of Object.keys(speed)) delete speed[k];

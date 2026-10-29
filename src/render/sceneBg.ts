@@ -5,7 +5,7 @@
 // Ebenen aus demselben 16:9-Rahmen (z. B. Station und ihre Verkehrslichter) bekommen denselben Anker und dieselbe Breite
 // und liegen so deckungsgleich.
 
-import { stormNow } from '../engine/phenomena';
+import { stormNow, xenonNow } from '../engine/phenomena';
 
 const FILES = import.meta.glob('../assets/szenen/*/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const URLS: Record<string, Record<string, string>> = {};
@@ -65,10 +65,47 @@ type Effect =
   /** Magnetfeldlinien: leuchtende Schlangenlinien, die langsam von der Sonne weg wandern (im Sturm stärker) */
   | { fx: 'flux'; on: string; n: number; rgb: string; dirP: number; dirL: number; spread: number }
   /** Strahlungssturm (nur während er im Spiel tobt): rötlicher, unruhiger Schleier mit Blitzen */
-  | { fx: 'storm'; on: string };
+  | { fx: 'storm'; on: string }
+  /** Xenon-Streife (nur solange sie im Spiel da ist): rotes Pulsieren an der Stelle p (hoch) bzw. l (quer) */
+  | { fx: 'alarm'; p: Pt; l: Pt; rgb: string; r: number };
 type Item = Cover | Sprite | Effect;
 
 const SCENES: Record<string, Item[]> = {
+  // Rhy's Defiance: Patriarchenhafen mit Bannern, im Korridor zwei Fregatten auf dem Weg zum toten Tor
+  rhy: [
+    { cover: 'sterne', depth: 0.1, turn: true, scale: 1.1 },
+    { fx: 'twinkle', n: 100, rgb: '255,215,210', depth: 0.2 },
+    { cover: 'nebel', depth: 0.3, turn: true, scale: 1.14, breathe: 0.07, drift: 0.015 },
+    { img: 'splitter', depth: 0.4, p: [0.5, 0.08], l: [0.62, 0.12], w: 0.08, wl: 0.08, rot: 0.6, spin: 0.01, dark: 0.3 },
+    { img: 'tor', id: 'tor', depth: 0.45, p: [0.76, 0.17], l: [0.8, 0.27], w: 0.62, wl: 0.8, rot: 0.05, spin: 0.0008, dark: 0.1 },
+    { fx: 'glimmer', on: 'tor', r: 0.3, rgb: '255,90,80', every: 13 },
+    { img: 'fels-mitte', depth: 0.55, p: [0.9, 0.44], l: [0.95, 0.62], w: 0.2, wl: 0.22, rot: 0.3, spin: 0.006, dark: 0.25 },
+    { cover: 'patrouille', depth: 0.5, focus: 0.55, scale: 1.05, blend: 'lighter', breathe: 0.2 },
+    { img: 'fregatte-2', depth: 0.55, p: [0.58, 0.28], l: [0.58, 0.36], w: 0.12, wl: 0.12, bob: 0.012 },
+    { img: 'fregatte-1', depth: 0.6, p: [0.36, 0.33], l: [0.44, 0.4], w: 0.15, wl: 0.15, bob: 0.014 },
+    { img: 'hafen', id: 'hafen', depth: 0.7, p: [0.22, 0.78], l: [0.2, 0.62], w: 0.95, wl: 1.05, bob: 0.003 },
+    { fx: 'traffic', on: 'hafen', n: 10, rx: 0.4, ry: 0.18 },
+    { img: 'fels-links', depth: 1.2, p: [0.0, 0.97], l: [0.03, 0.94], w: 0.5, wl: 0.55, rot: 0.1, spin: 0.003, dark: 0.1 },
+    { img: 'fels-rechts', depth: 1.25, p: [1.02, 0.86], l: [0.98, 0.96], w: 0.45, wl: 0.5, rot: -0.2, spin: -0.003, dark: 0.1 },
+    { fx: 'motes', n: 50, rgb: '220,160,150', depth: 1.15, vx: 0.003, vy: 0.001, size: 1.1, a: 0.25 },
+    { fx: 'vignette', rgb: '6,2,3', a: 0.55 },
+  ],
+  // Tharka's Ravine XVI: Schlucht zwischen zwei Bruchwänden, im Nordosten die rote Lücke, links die Schluchtwacht
+  ravine: [
+    { cover: 'sterne', depth: 0.1, turn: true, scale: 1.1 },
+    { fx: 'twinkle', n: 60, rgb: '210,200,255', depth: 0.2 },
+    { cover: 'dunst', depth: 0.25, turn: true, scale: 1.14, breathe: 0.08, drift: 0.015 },
+    // rotes Licht in der Lücke: gleicher Bildrahmen wie die rechte Wand, damit es in ihrer Kerbe sitzt
+    { img: 'licht', depth: 0.55, at: [1, 0.5], p: [1.18, 0.6], l: [1, 0.56], w: 1.9, wl: 1.95, blend: 'lighter', flicker: [0.15, 0.6] },
+    { fx: 'alarm', p: [0.93, 0.43], l: [0.88, 0.2], rgb: '255,40,40', r: 0.22 },
+    { img: 'fels-rechts', depth: 0.55, at: [1, 0.5], p: [1.18, 0.6], l: [1, 0.56], w: 1.9, wl: 1.95, fadeY: 0.22, dark: 0.05 },
+    { img: 'fels-links', id: 'wand', depth: 0.6, at: [0, 0.5], p: [-0.22, 0.32], l: [0, 0.56], w: 1.9, wl: 1.95, fadeY: 0.22 },
+    // Bastion laut Ebenenplan: 230 px ab (385, 145) im 1664er-Bild der linken Wand – Anker auf deren linke Mitte gerechnet
+    { img: 'bastion', id: 'bastion', on: 'wand', depth: 0.6, at: [-385 / 230, (468 - 145) / 230], p: [0, 0], l: [0, 0], w: (1.9 * 230) / 1664, wl: (1.95 * 230) / 1664 },
+    { fx: 'glow', on: 'bastion', r: 0.25, rgb: '255,140,80', a: 0.12, pulse: 0.25 },
+    { fx: 'motes', n: 80, rgb: '170,160,200', depth: 1.1, vx: 0.002, vy: 0.006, size: 1.2, a: 0.28 },
+    { fx: 'vignette', rgb: '3,2,6', a: 0.6 },
+  ],
   // Familie Tkr: Werft im Erzgürtel, an der Pier ein halb beplankter Frachter; fern eine kleine orange Sonne
   tkr: [
     { cover: 'sterne', depth: 0.1, turn: true, scale: 1.1 },
@@ -750,6 +787,23 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, key: string, where
         ctx.globalAlpha = 1;
         ctx.stroke();
       }
+      break;
+    }
+    case 'alarm': {
+      if (!xenonNow()) break;
+      const [ax, ay] = portrait ? e.p : e.l;
+      const [px, py] = pan(0.3);
+      const x = ax * W + px, y = ay * H + py, r = e.r * S;
+      const beat = 0.5 + 0.5 * Math.sin(t * 2.6);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${e.rgb},${0.35 + 0.35 * beat})`);
+      g.addColorStop(0.4, `rgba(${e.rgb},${0.12 + 0.12 * beat})`);
+      g.addColorStop(1, `rgba(${e.rgb},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      // ganz leichter roter Schimmer über der Szene
+      ctx.fillStyle = `rgba(${e.rgb},${0.03 + 0.03 * beat})`;
+      ctx.fillRect(0, 0, W, H);
       break;
     }
     case 'vignette': {
