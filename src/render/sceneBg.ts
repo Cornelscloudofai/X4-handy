@@ -296,6 +296,44 @@ function opaque(img: HTMLImageElement): boolean {
   return v;
 }
 
+/** Dunstfarbe je Sektor (Grundfarbe des Gesamtbilds, aufgehellt) */
+const skyTone = new Map<string, string>();
+
+/** Luftperspektive: Wie stark ein Objekt in der Tiefe im Dunst liegt (hinten mehr, Vordergrund kaum) */
+const hazeOf = (depth: number): number => Math.max(0.04, Math.min(0.22, 0.3 - 0.22 * depth));
+
+/**
+ * Objekt in die Szene einfügen (einmal berechnet, volle Auflösung): etwas weniger Kontrast und Sättigung, Dunst in der
+ * Himmelsfarbe je nach Tiefe und weichere Kontur – damit es nicht freigestellt und eingeklebt wirkt
+ */
+const grades = new Map<string, HTMLCanvasElement>();
+function graded(src: HTMLImageElement | HTMLCanvasElement, srcKey: string, tone: string, depth: number, dark: number): HTMLCanvasElement {
+  const haze = hazeOf(depth);
+  const key = `${srcKey}|${tone}|${haze.toFixed(2)}|${dark}`;
+  let c = grades.get(key);
+  if (c) return c;
+  const W = src.width, H = src.height;
+  c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d')!;
+  g.filter = `contrast(0.94) saturate(0.85) brightness(${(0.86 * (1 - dark)).toFixed(3)})`;
+  g.drawImage(src, 0, 0);
+  g.filter = 'none';
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = `rgba(${tone},${haze})`;
+  g.fillRect(0, 0, W, H);
+  // Kontur leicht auflösen: Deckkraft mit einer geglätteten Kopie der eigenen Form multiplizieren
+  const m = document.createElement('canvas');
+  m.width = W; m.height = H;
+  const mg = m.getContext('2d')!;
+  mg.filter = `blur(${Math.max(1, Math.round(Math.max(W, H) * 0.0025))}px)`;
+  mg.drawImage(c, 0, 0);
+  g.globalCompositeOperation = 'destination-in';
+  g.drawImage(m, 0, 0);
+  grades.set(key, c);
+  return c;
+}
+
 /** Himmelston: Gesamtbild verkleinert und stark weichgezeichnet (einmal je Sektor berechnet) */
 const skies = new Map<string, HTMLCanvasElement | null>();
 function skyOf(sectorId: string): HTMLCanvasElement | null {
@@ -315,6 +353,7 @@ function skyOf(sectorId: string): HTMLCanvasElement | null {
   let r = 0, gr = 0, b = 0;
   for (let i = 0; i < d.length; i += 4) { r += d[i]; gr += d[i + 1]; b += d[i + 2]; }
   const top = Math.max(r, gr, b, 1), FLOOR = 40;
+  skyTone.set(sectorId, [(r / top) * 130, (gr / top) * 130, (b / top) * 130].map(Math.round).join(','));
   g.fillStyle = `rgb(${(r / top) * FLOOR},${(gr / top) * FLOOR},${(b / top) * FLOOR})`;
   g.fillRect(0, 0, w, h);
   // weichgezeichnet und etwas über den Rand hinaus, damit die Kanten nicht nach Schwarz auslaufen
@@ -457,10 +496,32 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
       ctx.globalAlpha = Math.max(0, Math.min(1, a));
       ctx.translate(x, y);
       ctx.rotate((portrait ? it.rot ?? 0 : it.rotL ?? it.rot ?? 0) + t * (it.spin ?? 0));
-      if (it.dark) ctx.filter = `brightness(${(1 - it.dark).toFixed(2)})`;
-      ctx.drawImage(it.veil ? veiled(img, it.veil) : it.fadeY && portrait ? fadedY(img, it.fadeY) : img, -cx * w, -cy * h, w, h);
+      const faded = !!it.fadeY && portrait;
+      const src = it.veil ? veiled(img, it.veil) : faded ? fadedY(img, it.fadeY!) : img;
+      const tone = skyTone.get(sectorId);
+      // Lichter (aufhellend) bleiben klar, alles andere bekommt Luftperspektive
+      if (tone && it.blend !== 'lighter') ctx.drawImage(graded(src, `${img.src}${it.veil ? '|v' : faded ? '|f' : ''}`, tone, it.depth, it.dark ?? 0), -cx * w, -cy * h, w, h);
+      else {
+        if (it.dark) ctx.filter = `brightness(${(1 - it.dark).toFixed(2)})`;
+        ctx.drawImage(src, -cx * w, -cy * h, w, h);
+      }
       ctx.restore();
       return;
+    }
+    // Vor der Randabdunklung: Dunstschleier über alles – das weichgezeichnete Gesamtbild noch einmal schwach darüber,
+    // dazu etwas dunkler; so liegen alle Objekte im selben Licht wie in der Vorlage
+    if (it.fx === 'vignette' && sky) {
+      const [px, py] = pan(0.05);
+      const iw = sky.width, ih = sky.height;
+      const k = Math.max(W / (portrait ? ih : iw), H / (portrait ? iw : ih)) * 1.15;
+      ctx.save();
+      ctx.globalAlpha = 0.09;
+      ctx.translate(W / 2 + px, H / 2 + py);
+      if (portrait) ctx.rotate(-Math.PI / 2);
+      ctx.drawImage(sky, (-iw * k) / 2, (-ih * k) / 2, iw * k, ih * k);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.fillRect(0, 0, W, H);
     }
     drawEffect(ctx, it, key, where, W, H, S, s, t, pan, portrait);
   });
