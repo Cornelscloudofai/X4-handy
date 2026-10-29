@@ -102,7 +102,7 @@ export const STORY: StoryMission[] = [
     about: 'Eine Station direkt am Rohstofffeld spart Flugzeit: Miner schaffen mehr Ladungen pro Stunde. Jede Station braucht eigene Transporter – sie handeln immer für ihre Heimat.',
     story: 'Fällt der Kern deiner Station aus, steht die ganze Produktion. Eine zweite Station direkt am Rohstofffeld spart deinen Minern außerdem die halbe Flugzeit.',
     goal: 'Besitze 2 Stationen',
-    hint: 'Tippe oben auf „Bauen“ → „Station errichten“ und dann auf einen freien Platz im Sektor. Zuerst steht nur das Baulager (50.000 Cr) – selbst der Stationskern wird aus angeliefertem Material gebaut.',
+    hint: 'Unten „Stationen“ → „Neue Station gründen“, dann auf einen freien Platz im Sektor tippen. Zuerst steht nur das Baulager (50.000 Cr) – selbst der Stationskern wird aus angeliefertem Material gebaut.',
     progress: (s) => ({ cur: s.stations.length, target: 2 }),
     reward: { credits: 700_000, rep: { frf: 1 } },
   },

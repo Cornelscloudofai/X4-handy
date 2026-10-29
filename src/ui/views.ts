@@ -156,21 +156,15 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
     <button class="chip alert ${alerts.length ? 'on' : ''}" ${act('alerts')} aria-label="Engpässe">${icon('warn', 16)}<b class="num">${alerts.length}</b></button>
   </div>
   ${inGalaxy ? `<div class="tool-row"><button class="btn outline-teal" ${act('galaxy')}>${icon('back', 16)}Zum Sektor</button><button class="btn menu-btn" ${act('akte')} aria-label="Forschungsakte">${icon('star', 17)}</button><button class="btn dev-reveal ${devRevealAll() ? 'on' : ''}" ${act('dev-reveal')} aria-pressed="${devRevealAll()}" title="Entwicklerwerkzeug: nur die Ansicht">${devRevealAll() ? 'Alles' : 'Spiel'}</button><span class="hud-icons">${newsBtn}${menuBtn}</span></div>` : `<div class="tool-row">
-    <div class="build-wrap">
-      <button class="btn outline-teal build-btn ${ui.buildMenu ? 'open' : ''} ${ui.routes || ui.flows ? 'layers-on' : ''}" ${act('build-menu')} aria-expanded="${ui.buildMenu}">${icon('plus', 17)}Bauen${icon('down', 15)}</button>
-      ${ui.buildMenu ? `<div class="build-menu" role="menu">
-        <button role="menuitem" ${act('place-start')}>${icon('factory', 20)}<span>Station errichten</span></button>
-        <button role="menuitem" class="${ui.layerMenu ? 'on' : ''}" ${act('layer-menu')}>${icon('routes', 20)}<span>Routen und Warenflüsse</span>${ui.routes || ui.flows ? '<i class="dot"></i>' : ''}</button>
-      </div>` : ''}
-    </div>
     <span class="hud-icons">${newsBtn}${menuBtn}</span>
     ${phen ? `<button class="phen-pill" ${act('sector-info')} aria-label="Eigenheit des Sektors – Sektorinfo öffnen">${icon(sec.id === 'f-glut1' || sec.id === 'f-schmiede' ? 'sun' : sec.id === 'ravine' ? 'warn' : 'target', 15)}${phen.includes(' · ') ? `<span class="pl">${esc(phen.split(' · ')[0])} · </span>${esc(phen.split(' · ').slice(1).join(' · '))}` : esc(phen)}</button>` : ''}
+    <button class="layer-btn ${ui.layerMenu ? 'open' : ''} ${ui.routes || ui.flows ? 'on' : ''}" ${act('layer-menu')} aria-expanded="${ui.layerMenu}" aria-label="Kartenebenen: Handelsrouten und Warenflüsse">${icon('routes', 17)}</button>
     <div class="zoom"><button data-zoom="in" aria-label="Hineinzoomen (halten für stufenlos)">${icon('plus', 16)}</button><div class="zoom-track" data-zoom="track" role="slider" aria-label="Zoom stufenlos"><i class="zoom-knob" style="top:${((1 - (ui.zoomFrac ?? 0.5)) * 100).toFixed(1)}%"></i></div><button data-zoom="out" aria-label="Herauszoomen (halten für stufenlos)">${icon('minus', 16)}</button></div>
   </div>${flowFilter(state, ui)}`}`;
 }
 
 /**
- * Kartenebenen (nach Tipp auf „Routen“): Handelsrouten und Warenflüsse einzeln schaltbar, beide aus = nichts.
+ * Kartenebenen (nach Tipp auf den Ebenen-Knopf neben dem Zoom): Handelsrouten und Warenflüsse einzeln schaltbar, beide aus = nichts.
  * Bei eingeschalteten Warenflüssen folgt der Warenfilter (nur Waren, die gerade im Sektor fließen).
  */
 function flowFilter(state: GameState, ui: UIState): string {

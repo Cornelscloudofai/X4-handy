@@ -74,7 +74,6 @@ await shot('13-galaxy');
 await act('[data-act="open-sector"]');
 await shot('14-sector');
 await act('[data-act="nav"][data-tab="map"]');
-await act('[data-act="build-menu"]');
 await act('[data-act="place-start"]');
 await page.mouse.click(200, 520);
 await page.waitForTimeout(400);

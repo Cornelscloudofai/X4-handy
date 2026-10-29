@@ -47,8 +47,9 @@ einem Solarkraftwerk und einem Miner.
   und Titelmusik warten, bis er vorbei ist. Neue Fassung = neuer Dateiname (`TRAILER_URL` in `src/ui/intro.ts`).
 - **Kopfleiste (zwei Zeilen):** Oben eine gebündelte Leiste: rundes Sektorbild, Name und Spielzeit (antippen:
   Sektorenkarte), **Sektorinfo** (Baulizenz, Details, Späher und Erkundung direkt im Sektor), Credits (Kontobuch),
-  Pause/Tempo, Warnungen. Darunter **Bauen ▾** (Station errichten, Routen und Warenflüsse), Nachrichten (Sprechblase),
-  Menü (Zahnrad), die Eigenheit des Sektors als Knopf (z. B. „Sturm · 34 min“) und rechts der Zoom.
+  Pause/Tempo, Warnungen. Darunter Nachrichten (Sprechblase), Menü (Zahnrad), die Eigenheit des Sektors als Knopf
+  (z. B. „Sturm · 34 min“) und rechts der Knopf für die Kartenebenen (Handelsrouten, Warenflüsse) neben dem Zoom. Neue
+  Stationen gründest du unten unter „Stationen“.
   Ansehen: `node scripts/hud-shot.mjs <ordner>`.
 - **Sektorinfo in drei Reitern** (ⓘ in der Kopfleiste, Sektor auf der Sektorenkarte antippen oder Detailseite – überall
   gleich gegliedert): **Allgemein** (Beschreibung, Eigenheit, Sonne, eigene Stationen und Schiffe, Ruf, Baulizenz mit

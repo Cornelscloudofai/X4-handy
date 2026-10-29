@@ -1,4 +1,4 @@
-// Kopfleiste ansehen: Sektor, Bauen-Menü offen, Sektorenkarte – in 390 und 360 px Breite. node scripts/hud-shot.mjs <outdir>
+// Kopfleiste ansehen: Sektor, Kartenebenen, Sektorinfo, Sektorenkarte – in 390 und 360 px Breite. node scripts/hud-shot.mjs <outdir>
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
 import { distUrl } from './serve.mjs';
@@ -25,13 +25,11 @@ for (const w of [390, 360]) {
   // Leiste darf nicht breiter als der Bildschirm sein
   const over = await page.evaluate(() => { const b = document.querySelector('.hud-bar'); return b ? b.scrollWidth - b.clientWidth : -1; });
   if (over > 1) errors.push(`Leiste läuft über (${w} px): ${over}`);
-  await page.click('[data-act="build-menu"]');
-  await page.waitForTimeout(300);
-  if (!(await page.locator('.build-menu [data-act="place-start"]').count())) errors.push('Bauen-Menü ohne Station');
-  await page.screenshot({ path: `${out}/hud-${w}-2-bauen.png` });
-  await page.click('.build-menu [data-act="layer-menu"]');
+  await page.screenshot({ path: `${out}/hud-${w}-2-ebenen-zu.png` });
+  await page.click('.tool-row [data-act="layer-menu"]');
   await page.waitForTimeout(300);
   if (!(await page.locator('.flow-filter').count())) errors.push('Routen-Ebenen öffnen sich nicht');
+  await page.screenshot({ path: `${out}/hud-${w}-2-ebenen.png` });
   await page.click('[data-act="sector-info"]');
   await page.waitForTimeout(400);
   if (!(await page.locator('.gx-card').count())) errors.push('Sektorinfo öffnet keine Karte');

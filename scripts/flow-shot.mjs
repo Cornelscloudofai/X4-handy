@@ -28,7 +28,6 @@ await page.screenshot({ path: `${out}/p2-0-routes.png` });
 // Standard: Handelsrouten an, Warenflüsse aus; über „Routen“ die Ebenen öffnen und Warenflüsse zuschalten
 const layers0 = await page.evaluate(() => ({ r: window.__game.ui.routes, f: window.__game.ui.flows }));
 if (!layers0.r || layers0.f) fail('Standard-Ebenen falsch: ' + JSON.stringify(layers0));
-await page.click('[data-act="build-menu"]');
 await page.click('[data-act="layer-menu"]');
 await page.waitForTimeout(200);
 if ((await page.locator('.layer-chip').count()) !== 2) fail('Ebenen-Schalter fehlen');
@@ -51,7 +50,6 @@ const layers1 = await page.evaluate(() => ({ r: window.__game.ui.routes, f: wind
 if (layers1.r || layers1.f) fail('Ebenen lassen sich nicht ausschalten: ' + JSON.stringify(layers1));
 await page.screenshot({ path: `${out}/p2-2b-alles-aus.png` });
 await page.click('[data-act="layer-toggle"][data-layer="routes"]');
-await page.click('[data-act="build-menu"]');
 await page.click('[data-act="layer-menu"]');
 
 // Paket 3: Warensymbole im Lager, Verlaufslinie antippen → große Ansicht, Zeitraum wechseln, Symbolstil umschalten
