@@ -99,7 +99,7 @@ einem Solarkraftwerk und einem Miner.
   ausgebaut sind, werden nach der Erstsichtung wie jeder Split-Sektor: hinfliegen, Handelsposten, Rohstofffelder, NPC-Verkehr,
   Aufträge, Baulizenz (ohne Lizenz im Nachbarsektor – man kommt durch das Tor). Sie stehen erst nach der Entdeckung in den
   Sektordaten; ein neues Spiel nimmt sie wieder heraus, Laden hängt sie passend zum Spielstand ein. Bisher spielbar: die
-  **Glutsee** – Rhy's Ausblick (Zyarth, Horchposten), Glutsee I (Sonne 190 %, Wasserstoff/Helium), Die Aschefelder (sehr
+  **Glutsee** – Rhy's Ausblick (Zyarth, Horchposten), Glutsee I (Sonne 1000 %, Wasserstoff/Helium), Die Aschefelder (sehr
   reiches Erz, Nividium), Familie Rhak (Werft, Siedlung) und Der Schmiedestern (Sonne 260 %). Vier davon gehören der
   **Familie Rhak**, einer eigenen Fraktion mit eigenem Ruf (Handel, Aufträge; erscheint im Ruf erst nach ihrer Entdeckung).
   Bilder: `src/assets/sektoren/<id>.jpg` (16:9) – Sektorhintergrund, Erstsichtung und Akte; bis dahin vorhandene Hintergründe.
@@ -110,6 +110,10 @@ einem Solarkraftwerk und einem Miner.
   **Horchposten in Rhy's Ausblick:** mit 150 Hüllenteilen, 600 Energiezellen und 300 Veredelten Metallen (aus den Lagern
   oder zugekauft) wieder in Betrieb – dann sind alle Märkte der Glutsee live sichtbar und Suchen dort finden 25 % leichter
   etwas. Kartenkarte und Kopfzeile der Sektoransicht zeigen die Eigenheit (Sturm mit Restzeit, Sonne in Prozent).
+- **Keine verlorenen Texte:** Listenzeilen, Feldkacheln und Meldungen brechen um statt mit „…“ abzuschneiden. Wo doch
+  gekürzt wird, klappt Antippen den Text auf; auf Knöpfen und antippbaren Zeilen zeigt langes Drücken den ganzen Text in
+  einer Blase. `node scripts/clip-audit.mjs [ordner]` öffnet 27 Ansichten und Dialoge in beiden Starts und meldet jede
+  noch gekürzte Stelle (läuft im e2e mit).
 - **Minispiele im echten Spiel** (zusätzlich zum Menü „Minispiele“, das bleibt):
   **Vorfälle** – etwa einmal je Spielstunde (erst ab Kapitel 5, also nach der geführten Einführung; frühestens nach 40 min Spielzeit, höchstens zwei offen) entsteht aus dem Geschehen ein
   Ereignis, angekündigt als Meldung und als Leiste über dem Kapitelziel mit **„Selbst übernehmen“**:

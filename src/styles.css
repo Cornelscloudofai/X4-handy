@@ -1785,3 +1785,15 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .incident-bar .inc-txt b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; }
 .incident-bar .btn { font-size: 12.5px; padding: 0 10px; min-height: 36px; }
 @media (max-width: 380px) { .incident-bar .inc-ic { display: none; } }
+
+/* ---------- Gekürzte Texte: lieber umbrechen; sonst antippen = aufklappen, lange drücken = ganzer Text ---------- */
+.row .title, .row .sub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.sec-field b, .sec-field small { white-space: normal; overflow: visible; text-overflow: clip; }
+.toast span { -webkit-line-clamp: 4; }
+.is-clipped { cursor: pointer; }
+.unclamp, .unclamp * { -webkit-line-clamp: unset !important; line-clamp: unset !important; white-space: normal !important; text-overflow: clip !important; overflow: visible !important; max-height: none !important; }
+.unclamp { overflow-wrap: anywhere; }
+.full-text { position: fixed; z-index: 400; left: 12px; right: 12px; max-width: 520px; margin: 0 auto; padding: 12px 14px; border-radius: 14px;
+  background: var(--panel-solid, #0a1520); border: 1px solid var(--line-2); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6); color: var(--text);
+  font-size: 14px; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; animation: riseIn 0.18s both; pointer-events: none; }
+.card-head h2 { line-height: 1.2; }

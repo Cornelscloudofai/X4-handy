@@ -27,7 +27,8 @@ export const HELP: HelpTopic[] = [
         '<b>Handeln:</b> Transporter verkaufen Überschüsse und kaufen fehlende Waren ein. NPC-Händler besuchen deine Stationen zusätzlich.',
         '<b>Wachsen:</b> Die Kampagne (unten auf der Karte) führt dich Kapitel für Kapitel. Aufträge bringen Ruf, Ruf öffnet Baupläne und Sektoren.',
       ]),
-      p('Oben rechts steuerst du die Zeit: Pause oder bis ×60. Dein Imperium läuft auch weiter, wenn die App geschlossen ist (bis zu 8 Stunden).'),
+      p('<b>Gekürzte Texte</b> (mit „…“) klappst du durch Antippen auf; auf Knöpfen und antippbaren Zeilen zeigt langes Drücken den ganzen Text.'),
+      p('In der Leiste oben steuerst du die Zeit: Pause oder bis ×60. Dein Imperium läuft auch weiter, wenn die App geschlossen ist (bis zu 8 Stunden).'),
     ].join(''),
   },
   {
@@ -79,7 +80,7 @@ export const HELP: HelpTopic[] = [
     body: [
       ul([
         '<b>Nur vor Ort:</b> Baupläne kaufst du bei Vertretern – Split-Baupläne bei den Handelsvertretern der Handelsposten, waffennahe Teile und Schiffsfertigung bei den Werftvertretern, fremde Bauweisen bei Gesandtschaften.',
-        '<b>Ruf:</b> Je Bauplan ist ein Mindestruf bei der Gastgeberfraktion nötig. Ruf gibt es für Kapitel, Lieferaufträge und Schiffsbestellungen.',
+        '<b>Ruf:</b> Je Bauplan ist ein Mindestruf bei der Gastgeberfraktion nötig. Ruf gibt es für Kapitel, Lieferaufträge, Schiffsbestellungen und – als kleine Starthilfe bis Stufe 3 – für Aufgaben an Stationen.',
         '<b>Lizenzen:</b> Bauen darfst du nur in Sektoren mit Baulizenz. Neue Sektoren bringen neue Märkte, Felder und Vertreter.',
         '<b>Planer:</b> Im Stationsplaner kannst du mit allen Bauplänen planen; übernommen wird ein Plan erst, wenn du die Baupläne besitzt.',
       ]),
@@ -135,11 +136,11 @@ export const HELP: HelpTopic[] = [
   {
     id: 'rights', title: 'Schürfrechte', icon: 'lock', short: 'Wo deine Miner abbauen dürfen',
     body: [
-      p('In Sektoren mit deiner Baulizenz (auch im Heimatsektor) sind Grundrohstoffe frei. Anderswo braucht es das Schürfrecht der Fraktion – im Sektorpanel unter „Schürfrechte“.'),
+      p('In Sektoren mit deiner Baulizenz (auch im Heimatsektor) sind Grundrohstoffe frei. Anderswo braucht es das Schürfrecht der Fraktion – in der Sektorinfo (ⓘ oben) unter „Wirtschaft“ → „Schürfrechte“.'),
       ul([
         '<b>Grundrohstoffe</b> (Erz, Silizium, Eis, Gas): Ruf 2 + 50.000 Cr je Sektor.',
-        '<b>Nividium:</b> Tkr Ruf 5 + 500.000 Cr, Tharka\'s Ravine Ruf 10 + 1,5 Mio Cr – setzt das Grundrecht voraus. Im Startsektor gibt es kein Nividium.',
-        '<b>Ruf</b> gibt es für Kapitel, Lieferaufträge und Handel mit der Fraktion – wer ihre Wirtschaft versorgt, darf auch ihr Nividium abbauen.',
+        '<b>Nividium:</b> Tkr Ruf 5 + 500.000 Cr, Tharka\'s Ravine Ruf 10 + 1,5 Mio Cr, in neuen Sektoren (Aschefelder) Ruf 8 + 1 Mio Cr – setzt das Grundrecht voraus. Im Startsektor gibt es kein Nividium.',
+        '<b>Ruf</b> gibt es für Kapitel, Lieferaufträge, Handel mit der Fraktion und (bis Stufe 3) für Aufgaben an ihren Stationen – wer ihre Wirtschaft versorgt, darf auch ihr Nividium abbauen.',
         'Ohne Recht nehmen Miner dort keinen Befehl an.',
       ]),
     ].join(''),
@@ -161,9 +162,39 @@ export const HELP: HelpTopic[] = [
     body: [
       ul([
         '<b>Kontobuch:</b> Tippe oben auf dein Guthaben. Du siehst jede Buchung mit Grund (Handel, Orders an der Station, Aufträge, Bau, Schiffe, Belohnungen), Summen der letzten Stunde und 24 Stunden und eine Aufteilung nach Art. Jede Buchung springt zum Schiff, zur Station oder zum Auftrag.',
-        '<b>Nachrichtenblatt:</b> Der Knopf mit dem „i“ neben dem Menü sammelt alle Meldungen – auch die, die unten zu schnell verschwunden sind. Die Zahl zeigt neue wichtige Meldungen.',
+        '<b>Nachrichtenblatt:</b> Der Knopf mit der Sprechblase neben „Bauen“ sammelt alle Meldungen – auch die, die unten zu schnell verschwunden sind. Die Zahl zeigt neue wichtige Meldungen.',
         '<b>Direkt handeln:</b> Aus einer Meldung springst du hin – ein Sonderangebot öffnet gleich den Kaufdialog, ein Auftragsangebot den Annehmen-Dialog.',
       ]),
+    ].join(''),
+  },
+  {
+    id: 'sectors', title: 'Sektorinfo und Eigenheiten', icon: 'sector', short: 'Was jeden Sektor besonders macht',
+    body: [
+      p('Das ⓘ oben in der Leiste öffnet die <b>Sektorinfo</b> mit drei Reitern: <b>Allgemein</b> (Beschreibung, Eigenheit, Baulizenz, Aufgaben), <b>Wirtschaft</b> (Felder, Schürfrechte, Markt, Marktdaten) und <b>Erkundung</b> (Späher, Tore, Forschungsakte).'),
+      ul([
+        '<b>Familie Zhin:</b> Wiederaufbau – die Zhin-Werft zahlt 12 % mehr für Hüllenteile und Claytronik.',
+        '<b>Familie Tkr:</b> Stapellauf alle 4 h – eine Stunde lang zahlt die Werft 30 % mehr für ihre Bauteile.',
+        '<b>Tharka\'s Cascade:</b> Gasgezeiten – die Gasfelder geben im Drei-Stunden-Takt 70 bis 150 % her.',
+        '<b>Tharka\'s Ravine:</b> Xenon-Streife alle 5 h für 25 min – Miner ruhen, Schiffe fliegen mit 60 %.',
+        '<b>Rhy\'s Defiance:</b> Patrouillenkorridor – Schiffe fliegen mit 120 %.',
+        '<b>Heart of Acrimony:</b> Kometenschweif – Eis und Methan wachsen doppelt so schnell nach.',
+        '<b>Zyarth\'s Dominion:</b> Thronmarkt – Schiffstechnik bringt 10 % mehr.',
+        '<b>Glutsee I:</b> 1000 % Sonne, im Strahlungssturm alle 3 h 3000 %. Ohne Kühlmantel und Kühlmittel überhitzen Stationen. Nur hier laufen Sonnenöfen.',
+        '<b>Die Aschefelder:</b> Staub – Miner fördern 30 % mehr, Schiffe fliegen mit 80 %.',
+        '<b>Der Schmiedestern:</b> Pulsar – das Licht schwankt im Zwei-Stunden-Takt zwischen 60 und 300 %.',
+      ]),
+    ].join(''),
+  },
+  {
+    id: 'incidents', title: 'Vorfälle und Aufgaben', icon: 'game', short: 'Minispiele, die im Spiel etwas bewirken',
+    body: [
+      p('<b>Vorfälle</b> entstehen etwa einmal je Spielstunde, ab Kapitel 5. Eine Leiste über dem Kapitelziel zeigt sie mit „Selbst übernehmen“. Wer nicht spielt, bekommt nach Ablauf der Frist ein mittleres Ergebnis – selbst spielen ist nie Pflicht.'),
+      ul([
+        '<b>Überfall</b> auf einen beladenen Frachter (Kampf): ohne dich 15 % der Ladung weg, selbst verteidigt nichts, mit drei Sternen dazu 3.000 Cr Kopfgeld.',
+        '<b>Störung</b> in einem Produktionsmodul (Rohr-Puzzle): halbe Leistung, bis sie behoben ist; ohne dich nach 90 min mit 20 Hüllenteilen.',
+        '<b>Reiche Ader</b> bei einem Miner (Erz- oder Gasabbau): Bonusware ins Lager, selbst abgebaut bis zu einem vollen Laderaum.',
+      ]),
+      p('<b>Aufgaben an Stationen</b> stehen in der Sektorinfo unter „Allgemein“ und in der Karte der Station, je Sektor zwei, alle 3 h neu. Lohn ab einem Stern: Credits, Modteile und Ruf – Ruf nur bis Stufe 3 und höchstens 0,5 je Fraktion und Spieltag.'),
     ].join(''),
   },
 ];

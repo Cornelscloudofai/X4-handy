@@ -1809,3 +1809,53 @@ function onChange(e: Event): void {
   if (field === 'route-from' || field === 'route-to' || field === 'route-ware') { delete route.streak; if (field === 'route-to') delete route.alt; }
   result(A.setTraderMode(state, s.id, 'route', route));
 }
+
+// ---------- Gekürzte Texte ----------
+/** Ist der Text dieses Elements sichtbar gekürzt (Auslassungspunkte oder Zeilenbegrenzung)? */
+function isClipped(el: HTMLElement): boolean {
+  if (!el.textContent?.trim() || el.closest('canvas, svg, .unclamp')) return false;
+  const cs = getComputedStyle(el);
+  if (cs.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1) return true;
+  const clamp = cs.getPropertyValue('-webkit-line-clamp');
+  return !!clamp && clamp !== 'none' && el.scrollHeight > el.clientHeight + 2;
+}
+/** Nächstes gekürztes Element vom angetippten Punkt aufwärts (wenige Ebenen) */
+function clippedFrom(t: EventTarget | null): HTMLElement | null {
+  let el = t instanceof HTMLElement ? t : null;
+  for (let i = 0; el && i < 4; i++, el = el.parentElement) if (isClipped(el)) return el;
+  return null;
+}
+function initFullText(): void {
+  let timer = 0;
+  let bubble: HTMLElement | null = null;
+  let suppress = false;
+  const hide = () => { clearTimeout(timer); bubble?.remove(); bubble = null; };
+  // Antippen: gekürzten Text aufklappen – nur wo das Antippen sonst nichts auslöst
+  document.addEventListener('click', (e) => {
+    if (suppress) { suppress = false; e.preventDefault(); e.stopPropagation(); return; }
+    const el = clippedFrom(e.target);
+    if (!el || el.closest('[data-act], button, a, select, input, label')) return;
+    el.classList.add('unclamp');
+    e.stopPropagation();
+  }, true);
+  // Lange drücken: ganzen Text in einer Blase zeigen (auch auf Knöpfen und antippbaren Zeilen)
+  document.addEventListener('pointerdown', (e) => {
+    hide();
+    suppress = false;
+    const el = clippedFrom(e.target);
+    if (!el) return;
+    const y = e.clientY;
+    timer = window.setTimeout(() => {
+      bubble = document.createElement('div');
+      bubble.className = 'full-text';
+      bubble.textContent = (el.innerText || el.textContent || '').trim();
+      document.body.appendChild(bubble);
+      const h = bubble.getBoundingClientRect().height;
+      bubble.style.top = `${Math.max(12, y - h - 24 > 12 ? y - h - 24 : y + 24)}px`;
+      suppress = true;
+    }, 450);
+  }, true);
+  for (const ev of ['pointerup', 'pointercancel', 'scroll']) document.addEventListener(ev, () => { clearTimeout(timer); if (bubble) setTimeout(hide, ev === 'pointerup' ? 1600 : 0); }, true);
+  document.addEventListener('pointermove', (e) => { if (!bubble && Math.abs(e.movementY) + Math.abs(e.movementX) > 6) clearTimeout(timer); }, true);
+}
+initFullText();

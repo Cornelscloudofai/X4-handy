@@ -28,13 +28,13 @@ export const FRONTIER: FrontierDef[] = [
   // Gebiet 1: Die Glutsee
   { id: 'f-ausblick', name: "Rhy's Ausblick", region: 'glut', q: -1, r: -1, links: ['rhy', 'f-glut1'], description: 'Horchposten der Familie Rhy: zwei Wohnmodule und eine 600 m lange Antenne. Seit 31 Jahren unbesetzt – die Heizung läuft noch.',
     log: 'Letzter Eintrag, Wache Orrik: „Tor flackert seit heute früh. Versorger aus Rhy überfällig. Wir halten Kanal 9 offen.“' },
-  { id: 'f-glut1', name: 'Glutsee I', region: 'glut', q: -2, r: -1, links: ['f-ausblick', 'f-asche', 'f-schmiede'], description: 'Roter Wasserstoffnebel um einen jungen Stern. Solarmodule liefern hier fast das Doppelte, die Strahlungsstürme kosten Schiffe aber Tempo.',
+  { id: 'f-glut1', name: 'Glutsee I', region: 'glut', q: -2, r: -1, links: ['f-ausblick', 'f-asche', 'f-schmiede'], description: 'Roter Wasserstoffnebel um einen jungen Stern, 1000 % Sonnenlicht: Solarkraftwerke liefern hier das Zehnfache. Alle drei Stunden zieht ein Strahlungssturm durch – dann das Dreißigfache, aber Schiffe fliegen langsamer und ungeschützte Stationen überhitzen.',
     log: 'Eine Bake der Vesh\'ara, noch aktiv: „Treck 4 von 9 durch. Kurs Polarlicht. Wer folgt: Kühlmittel bunkern.“' },
-  { id: 'f-asche', name: 'Die Aschefelder', region: 'glut', q: -1, r: -2, links: ['f-glut1', 'f-rhak'], description: 'Staub eines zerbrochenen Mondes, so dicht, dass Scanner nach 20 km nichts mehr sehen. Darin treiben Erzbrocken von der Größe einer Station.',
+  { id: 'f-asche', name: 'Die Aschefelder', region: 'glut', q: -1, r: -2, links: ['f-glut1', 'f-rhak'], description: 'Staub eines zerbrochenen Mondes, so dicht, dass Scanner nach 20 km nichts mehr sehen. Darin treiben Erzbrocken von der Größe einer Station. Miner holen hier ein Drittel mehr heraus, Schiffe kommen im Staub nur langsam voran.',
     log: 'Schürfmarke der Familie Rhak, Nummer 0041, vor 30 Jahren gesetzt. Weit und breit kein Schiff.' },
   { id: 'f-rhak', name: 'Familie Rhak', region: 'glut', q: 0, r: -2, links: ['f-asche', 'ravine', 'f-bandtor'], description: 'Die Familie Rhak wurde vor 40 Jahren aus dem Rat der Familien verstoßen. Als die Tore erloschen, war sie auf sich gestellt – und ist es gern geblieben.',
     log: 'Funkspruch der Rhak-Zentrale: „Zhin? Ihr habt euch Zeit gelassen. Unsere Preise gelten trotzdem.“' },
-  { id: 'f-schmiede', name: 'Der Schmiedestern', region: 'glut', q: -3, r: -1, links: ['f-glut1'], description: 'Ein Pulsar, dessen Strahl alle 1,3 Sekunden über den Sektor streicht. Wer seine Kollektoren im Takt ausrichtet, bekommt Energie fast umsonst.',
+  { id: 'f-schmiede', name: 'Der Schmiedestern', region: 'glut', q: -3, r: -1, links: ['f-glut1'], description: 'Ein Pulsar, dessen Strahl alle 1,3 Sekunden über den Sektor streicht. Das Licht schwankt im Zwei-Stunden-Takt zwischen 60 und 300 % – Solarkraftwerke liefern mal kaum etwas, mal das Dreifache.',
     log: 'Ein ausgebrannter Kollektorring der Vesh\'ara. In den Halterungen stecken leere Kernhülsen – hier haben sie Sonnenlicht verdichtet, bevor sie weiterzogen.' },
   // Gebiet 2: Das Schweigende Band
   { id: 'f-bandtor', name: 'Bandtor', region: 'band', q: 0, r: -3, links: ['f-rhak', 'f-polar'], description: 'Das Tor fängt sich alle paar Stunden für einige Minuten, dann fällt es wieder aus. Die Rhak nennen es den Atem.',
