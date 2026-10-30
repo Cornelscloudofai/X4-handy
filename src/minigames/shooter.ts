@@ -17,6 +17,7 @@ import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBa
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
+  type Place,
 } from './common';
 import { MISSION_GOALS, SHOOTER_ENDLESS_GOALS as ENDLESS_GOALS, SHOOTER_GOALS, SHOOTER_MUTATORS, SHOOTER_NORMAL_GOALS as NORMAL_GOALS } from './menuInfo';
 import { SPEC, enemyStats, drawFighterVector, type EKind } from './shooterData';
@@ -513,6 +514,8 @@ export class ShooterGame implements MiniGame {
   private get fluchtT(): number { return FLUCHT_T * (1 + (this.level - 1) * 0.08); }
   private level: Level;
   private mode: Mode;
+  /** Kampf aus der Spielwelt: Ort, Szene und Umstand (im Kampfmenü leer) */
+  private place: Place | null;
   private r: () => number;
   private gear: Gear;
   private score: Score;
@@ -707,6 +710,7 @@ export class ShooterGame implements MiniGame {
     this.r = rng(cfg.seed);
     this.gear = cfg.gear ?? { weapon: 1, shield: 1, engine: 1 };
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
+    this.place = cfg.place ?? null;
     const lo: Loadout = cfg.loadout ?? loadout();
     this.ctrl = cfg.controls ?? (cfg.loadout ? 'eins' : controlMode());
     if (this.ctrl === 'zwei') this.controls = [
@@ -793,6 +797,7 @@ export class ShooterGame implements MiniGame {
         : side === 'xenon'
           ? 'Dein Frachter fliegt zum Sprungtor, Xenon fallen von allen Seiten ein. Fang sie weit draußen ab. Zum Schluss greift ein K-Segment an: erst Laser- und Plasmatürme, dann der Kern.'
           : 'Kha’ak fallen über die Route her: Späher kommen als geschlossene Cluster und schwärmen erst kurz vor dem Ziel aus – oder sobald du einen triffst. Jäger feuern Kyon-Strahlen, die Schilde schnell durchbrennen; Abfangjäger springen aus dem Visier. Zum Schluss ein Brutschiff: erst Kyon-Türme und Brutkammern, dann der Kern.';
+    if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
     for (let i = 0; i < 40; i++) this.sectionPlan.push(this.mutator?.id === 'mines' ? 'mines' : i === 0 ? 'none' : this.r() < 0.45 ? (this.r() < 0.5 ? 'rocks' : 'mines') : 'none');
   }
@@ -1487,6 +1492,7 @@ export class ShooterGame implements MiniGame {
       const swarms = this.swarms(this.wave), sw = swarms.reduce((a, b) => a + b, 0), swT = 3 + this.r() * 2;
       for (const [k, size] of swarms.entries()) this.reinforce.push({ t: swT + k * 0.6, kinds: new Array<EKind>(size).fill(this.smallKind), from: (first + 1 + k * 2) % 5, swarm: true });
       this.bannerText = this.mode === 'endless' || !this.counted ? `WELLE ${this.wave + 1}` : `WELLE ${this.wave + 1} VON ${this.nWaves}`;
+      if (this.wave === 0 && this.place) this.bannerSub = `${this.place.name} · ${this.bannerSub}`;
       if (this.wave === 0 && this.mission === 'ueberfall') this.bannerText = 'PIRATENKONVOI';
       if (this.wave === 0 && this.mission === 'nest') this.bannerText = this.side === 'khaak' ? 'KHA’AK-NEST' : 'XENON-NEST';
       this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
@@ -2336,7 +2342,7 @@ export class ShooterGame implements MiniGame {
     this.missileCd = Math.max(0, this.missileCd - dt);
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.shieldWait = Math.max(0, this.shieldWait - dt);
-    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.regen * this.sh.regen * (1 + 0.5 * this.c('regen')) * (1 + this.m('regen')) * dt);
+    if (!this.shieldWait && this.mutator?.id !== 'ion') this.shield = Math.min(this.shieldMax, this.shield + 12 * this.ship.regen * this.sh.regen * (1 + 0.5 * this.c('regen')) * (1 + this.m('regen')) * (this.place?.shieldRegen ?? 1) * dt);
     this.odT = Math.max(0, this.odT - dt);
     this.sprintT = Math.max(0, this.sprintT - dt);
     this.escortT = Math.max(0, this.escortT - dt);
@@ -3449,7 +3455,16 @@ export class ShooterGame implements MiniGame {
 
   draw(ctx: CanvasRenderingContext2D, now: number): void {
     const t = now / 1000;
+    // Kampf aus der Spielwelt: die Szene des Sektors dahinter, abgedunkelt; die Kamera verschiebt sie leicht
+    const cx = (this.camX + this.w / 2 / this.zoom) / Math.max(1, this.WW), cy = (this.camY + this.h / 2 / this.zoom) / Math.max(1, this.WH);
+    const scene = !!this.place?.draw?.(ctx, this.w, this.h, clamp(cx * 2 - 1, -1, 1) * 0.7, clamp(cy * 2 - 1, -1, 1) * 0.7, t);
+    if (scene) {
+      ctx.fillStyle = 'rgba(2,4,8,0.42)';
+      ctx.fillRect(0, 0, this.w, this.h);
+      ctx.globalAlpha = 0.55;
+    }
     this.stars.draw(ctx, -this.camY * 0.3, this.side === 'xenon' ? '#ffd0d0' : this.side === 'khaak' ? '#e6d4ff' : '#cfe4ff', -this.camX * 0.3);
+    ctx.globalAlpha = 1;
     ctx.save();
     if (this.shake > 0 && !document.documentElement.classList.contains('calm')) ctx.translate((Math.random() - 0.5) * 12 * this.shake, (Math.random() - 0.5) * 12 * this.shake);
     ctx.scale(this.zoom, this.zoom);

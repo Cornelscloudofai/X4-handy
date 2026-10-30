@@ -37,6 +37,20 @@ export interface GameCfg {
   mods?: ModStats;
   /** Kampf: Einsatz (sonst Geleitschutz) */
   mission?: Mission;
+  /** Kampf aus der Spielwelt: wo er stattfindet (sonst Sternenfeld wie im Kampfmenü) */
+  place?: Place;
+}
+
+/** Schauplatz eines Kampfs aus der Spielwelt */
+export interface Place {
+  /** Sektorname für Einleitung und erste Welle */
+  name: string;
+  /** Umstand vor Ort in einem Satz (z. B. Strahlungssturm), wenn es einen gibt */
+  note?: string;
+  /** Schildaufladung vor Ort (1 = normal) */
+  shieldRegen?: number;
+  /** Zeichnet die Szene des Sektors bildschirmfüllend; fx/fz −1…1 verschieben sie leicht. false = noch nicht geladen */
+  draw?: (ctx: CanvasRenderingContext2D, w: number, h: number, fx: number, fz: number, t: number) => boolean;
 }
 
 export interface GameResult {

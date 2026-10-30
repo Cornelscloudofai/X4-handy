@@ -3,7 +3,7 @@
 // Rekorden und Abzeichen. Das Hauptspiel ruht, solange ein Minispiel offen ist.
 import { sfx } from '../ui/sound';
 import { esc } from '../ui/dom';
-import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, type Level, type MiniGame, type Mode, type Mutator, type Rules } from './common';
+import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, type Level, type MiniGame, type Mode, type Mutator, type Place, type Rules } from './common';
 import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
 import { earnParts, partsFor } from './mods';
 import { recordKey, type Mission } from './missions';
@@ -26,6 +26,8 @@ export interface MiniOpts {
   mode?: Mode;
   /** Kampf: Einsatz (sonst Geleitschutz) */
   mission?: Mission;
+  /** Kampf aus der Spielwelt: Schauplatz */
+  place?: Place;
 }
 
 export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: string; chain?: string; endless?: string }> = {
@@ -64,7 +66,7 @@ function resolve(kind: MiniKind, o: MiniOpts): GameCfg {
     const list = mutatorsOf(kind);
     mutator = Math.random() < 0.5 ? list[Math.floor(Math.random() * list.length)].id : null;
   }
-  return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission };
+  return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission, place: o.place };
 }
 
 /** Feedback aus dem Pausenmenü (setzt die App; Ort im Spiel und Leinwand fürs Bildschirmfoto) */

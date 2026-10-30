@@ -17,7 +17,7 @@ import { claimMission } from '../engine/story';
 import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
-import { preloadScene } from '../render/sceneBg';
+import { drawScene, hasScene, preloadScene } from '../render/sceneBg';
 import { buyGateRest, buyOutpostRest, buyScout, deliverGate, deliverOutpost, discover, peilDepth, regionOf, repairGate, sectorLabel, sendScout, sendThrough } from '../engine/explore';
 import { showReveal } from './reveal';
 import { runPeilung } from './peilung';
@@ -41,7 +41,8 @@ import { tuneFromSlider } from '../minigames/tunePanel';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
 import { SHIPS, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
-import type { Level, Mode } from '../minigames/common';
+import type { Level, Mode, Place } from '../minigames/common';
+import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
 import { $, morph } from './dom';
 import { fmtClock, fmtCr } from './format';
@@ -580,13 +581,28 @@ function playIncident(id: number): void {
   if (!inc) { toast('Das ist schon erledigt.', 'info'); return; }
   const g = incidentGame(inc);
   const combat = g.game === 'pirates' || g.game === 'xenon' || g.game === 'khaak';
-  const opts: MiniOpts = { level: g.level, mutator: null, ...(combat ? { gear: { weapon: 2, shield: 2, engine: 2 } } : { ware: inc.ware }) };
+  const opts: MiniOpts = { level: g.level, mutator: null, ...(combat ? { gear: { weapon: 2, shield: 2, engine: 2 }, place: combatPlace(inc.sector) } : { ware: inc.ware }) };
   ui.panel = null;
   ui.modal = null;
   openMinigame(g.game, opts, (r) => {
     if (r) { const msg = resolveIncident(state, id, r.stars); if (msg) toast(msg, r.stars ? 'good' : 'info'); }
     refresh();
   });
+}
+
+/**
+ * Schauplatz eines Kampfs aus der Spielwelt: Name, Szene des Sektors als Hintergrund und Umstände vor Ort
+ * (siehe docs/design/kampf.md, Stufe 1)
+ */
+function combatPlace(sectorId: string): Place {
+  const sec = SECTOR_MAP[sectorId];
+  const storm = sectorId === 'f-glut1' && stormNow();
+  preloadScene(sectorId);
+  return {
+    name: sec?.name ?? sectorId,
+    ...(storm ? { note: 'Strahlungssturm: Schilde laden nur halb so schnell', shieldRegen: 0.5 } : {}),
+    ...(hasScene(sectorId) ? { draw: (ctx: CanvasRenderingContext2D, w: number, h: number, fx: number, fz: number, t: number) => drawScene(ctx, sectorId, w, h, fx, fz, t) } : {}),
+  };
 }
 
 /** Aufgabe an einer Station annehmen: Minispiel, danach Lohn (Credits, Ruf mit Deckel, Modteile) */
@@ -596,7 +612,7 @@ function playTask(sector: string, id: number): void {
   const sec = SECTOR_MAP[sector];
   const combat = t.game === 'pirates' || t.game === 'xenon' || t.game === 'khaak';
   const field = sec.fields.find((f) => !f.legacy && (t.game === 'gas' ? WARES[f.ware].storage === 'Liquid' : WARES[f.ware].storage === 'Solid'));
-  const opts: MiniOpts = { level: t.level, ...(combat ? { gear: { weapon: 2, shield: 2, engine: 2 } } : {}), ...(field && (t.game === 'ore' || t.game === 'gas') ? { ware: field.ware } : {}) };
+  const opts: MiniOpts = { level: t.level, ...(combat ? { gear: { weapon: 2, shield: 2, engine: 2 }, place: combatPlace(sector) } : {}), ...(field && (t.game === 'ore' || t.game === 'gas') ? { ware: field.ware } : {}) };
   ui.panel = null;
   ui.modal = null;
   openMinigame(t.game, opts, (r) => {
