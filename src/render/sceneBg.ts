@@ -145,9 +145,10 @@ const SCENES: Record<string, Item[]> = {
     { cover: 'sterne', depth: 0.1, turn: true, scale: 1.1 },
     { fx: 'twinkle', n: 120, rgb: '200,225,255', depth: 0.2 },
     { cover: 'methan', depth: 0.3, turn: true, scale: 1.14, breathe: 0.08, drift: 0.015 },
+    // Kometenkopf: nur die kleine helle Spitze des Schweifs, liegt hinter ihm
+    { img: 'kopf', id: 'kopf', depth: 0.35, p: [0.705, 0.14], l: [0.605, 0.2], w: 0.036, wl: 0.046, pulse: 0.015 },
     { img: 'schweif', depth: 0.35, at: [0.64, 0.21], p: [0.7, 0.14], l: [0.6, 0.2], w: 1.35, wl: 1.85, blend: 'lighter', flicker: [0.12, 0.7] },
-    { img: 'kopf', id: 'kopf', depth: 0.35, p: [0.722, 0.14], l: [0.617, 0.2], w: 0.075, wl: 0.095, pulse: 0.015 },
-    { fx: 'glow', on: 'kopf', r: 0.8, rgb: '150,200,255', a: 0.35, pulse: 0.08 },
+    { fx: 'glow', on: 'kopf', r: 1.2, rgb: '150,200,255', a: 0.22, pulse: 0.08 },
     { img: 'eis-mittel', depth: 0.6, p: [0.16, 0.4], l: [0.2, 0.5], w: 0.17, wl: 0.2, rot: 0.3, spin: 0.008, dark: 0.2 },
     { img: 'splitter', depth: 0.7, p: [0.08, 0.56], l: [0.34, 0.66], w: 0.12, wl: 0.12, rot: -0.4, spin: -0.015, dark: 0.15 },
     { img: 'zylinder', id: 'zylinder', depth: 0.7, at: [1, 1], p: [1.08, 1.0], l: [1.02, 1.06], w: 1.5, wl: 1.6, bob: 0.003 },
@@ -443,40 +444,50 @@ function veiled(img: HTMLImageElement, v: { soft: number; rgb: string; a: number
 }
 
 /**
- * Staubband quer über den Bildschirm an der Schnittkante eines Baus: dunkler Staub in der Himmelsfarbe, oben und unten
- * weich auslaufend, dazu ein paar treibende Staubwolken – davor, nicht durch den Bau hindurch
+ * Dunstband an der Schnittkante eines Baus (Hochformat): ein Streifen aus dem weichgezeichneten Gesamtbild, also in der
+ * Farbe des Himmels an dieser Stelle – über dem Bau am dichtesten, zur Seite hin auslaufend. So verschwindet die Kante im
+ * Dunst, ohne dass der Nebel durch den Bau scheint und ohne dunklen Balken
  */
-function dustBand(ctx: CanvasRenderingContext2D, key: string, y: number, half: number, W: number, t: number, tone?: string): void {
-  const [r, g, b] = (tone ?? '60,60,70').split(',').map((v) => Math.round(Number(v) * 0.16));
-  const col = (a: number) => `rgba(${r},${g},${b},${a})`;
-  ctx.save();
-  const gr = ctx.createLinearGradient(0, y - half, 0, y + half);
-  gr.addColorStop(0, col(0));
-  gr.addColorStop(0.35, col(0.75));
-  gr.addColorStop(0.5, col(0.94));
-  gr.addColorStop(0.65, col(0.75));
-  gr.addColorStop(1, col(0));
-  ctx.fillStyle = gr;
-  ctx.fillRect(0, y - half, W, half * 2);
-  const rnd = randoms(key, 40);
-  for (let i = 0; i < 8; i++) {
-    const cx = ((rnd[i * 4] + t * 0.004 * (0.5 + rnd[i * 4 + 1])) % 1.2 - 0.1) * W;
-    const cy = y + (rnd[i * 4 + 2] - 0.5) * half * 0.9;
-    const rr = half * (0.5 + rnd[i * 4 + 3] * 0.6);
-    const pg = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
-    pg.addColorStop(0, col(0.45));
-    pg.addColorStop(1, col(0));
-    ctx.fillStyle = pg;
-    ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
-  }
-  // etwas hellerer Staub in der Himmelsfarbe, damit das Band nicht wie ein schwarzer Balken wirkt
-  const lg = ctx.createLinearGradient(0, y - half * 0.6, 0, y + half * 0.6);
-  lg.addColorStop(0, `rgba(${tone ?? '60,60,70'},0)`);
-  lg.addColorStop(0.5, `rgba(${tone ?? '60,60,70'},0.07)`);
-  lg.addColorStop(1, `rgba(${tone ?? '60,60,70'},0)`);
-  ctx.fillStyle = lg;
-  ctx.fillRect(0, y - half * 0.6, W, half * 1.2);
-  ctx.restore();
+const bandCanvas = document.createElement('canvas');
+function dustBand(ctx: CanvasRenderingContext2D, sky: HTMLCanvasElement | null, portrait: boolean, [px, py]: Pt, y: number, half: number,
+  x0: number, x1: number, W: number, H: number): void {
+  if (!sky) return;
+  const bw = Math.ceil(W), bh = Math.ceil(half * 2);
+  if (bandCanvas.width !== bw || bandCanvas.height !== bh) { bandCanvas.width = bw; bandCanvas.height = bh; }
+  const g = bandCanvas.getContext('2d')!;
+  g.globalCompositeOperation = 'copy';
+  // Himmel wie in der untersten Ebene, verschoben auf den Ausschnitt des Bands
+  const iw = sky.width, ih = sky.height;
+  const k = Math.max(W / (portrait ? ih : iw), H / (portrait ? iw : ih)) * 1.15;
+  g.save();
+  g.translate(W / 2 + px, H / 2 + py - (y - half));
+  if (portrait) g.rotate(-Math.PI / 2);
+  g.drawImage(sky, (-iw * k) / 2, (-ih * k) / 2, iw * k, ih * k);
+  g.restore();
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = 'rgba(0,0,0,0.15)';
+  g.fillRect(0, 0, bw, bh);
+  // senkrecht: zur Kante hin dicht, nach oben und unten auslaufend
+  g.globalCompositeOperation = 'destination-in';
+  const vg = g.createLinearGradient(0, 0, 0, bh);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(0.38, 'rgba(0,0,0,0.85)');
+  vg.addColorStop(0.5, 'rgba(0,0,0,0.97)');
+  vg.addColorStop(0.62, 'rgba(0,0,0,0.85)');
+  vg.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = vg;
+  g.fillRect(0, 0, bw, bh);
+  // waagrecht: über dem Bau voll, daneben rasch dünner
+  const a = Math.max(0, Math.min(1, x0 / W)), b = Math.max(0, Math.min(1, x1 / W)), soft = 0.18;
+  const hg = g.createLinearGradient(0, 0, bw, 0);
+  hg.addColorStop(Math.max(0, a - soft), 'rgba(0,0,0,0)');
+  hg.addColorStop(a, 'rgba(0,0,0,1)');
+  hg.addColorStop(Math.max(a, b - 0.001), 'rgba(0,0,0,1)');
+  hg.addColorStop(Math.min(1, b + soft), 'rgba(0,0,0,0)');
+  if (b + soft < 1) hg.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = hg;
+  g.fillRect(0, 0, bw, bh);
+  ctx.drawImage(bandCanvas, 0, y - half);
 }
 
 const isCover = (i: Item): i is Cover => 'cover' in i;
@@ -569,7 +580,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
       }
       ctx.restore();
       if (it.fadeY && portrait && it.blend !== 'lighter') {
-        for (const edge of [y - cy * h, y + (1 - cy) * h]) if (edge > 0 && edge < H) dustBand(ctx, `${key}:${Math.round(edge)}`, edge, it.fadeY * h, W, t, tone);
+        const x0 = x - cx * w, x1 = x + (1 - cx) * w;
+        for (const edge of [y - cy * h, y + (1 - cy) * h]) if (edge > 0 && edge < H) dustBand(ctx, sky, portrait, pan(0.05), edge, it.fadeY * h, x0, x1, W, H);
       }
       return;
     }
