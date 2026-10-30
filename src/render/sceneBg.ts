@@ -46,7 +46,8 @@ interface Sprite {
   flicker?: [number, number]; pulse?: number; bob?: number;
   /** im Dunst versinken: Rand weich auslaufen lassen (Anteil der Bildbreite) und in Farbe rgb einfärben (Anteil a) */
   veil?: { soft: number; rgb: string; a: number };
-  /** Ober- und Unterkante weich ausblenden (Anteil der Bildhöhe) – für Bauten, die im Hochformat nicht bis zum Rand reichen */
+  /** Hochformat: Ober- und Unterkante (wo der Bau abgeschnitten ist) hinter einem Staubband verbergen – Breite als Anteil
+   *  der Bildhöhe. Der Bau bleibt deckend, der Nebel dahinter bleibt Hintergrund */
   fadeY?: number;
 }
 /** Gezeichnete Effekte */
@@ -96,12 +97,12 @@ const SCENES: Record<string, Item[]> = {
     { fx: 'twinkle', n: 60, rgb: '210,200,255', depth: 0.2 },
     { cover: 'dunst', depth: 0.25, turn: true, scale: 1.14, breathe: 0.08, drift: 0.015 },
     // rotes Licht in der Lücke: gleicher Bildrahmen wie die rechte Wand, damit es in ihrer Kerbe sitzt
-    { img: 'licht', depth: 0.55, at: [1, 0.5], p: [1.18, 0.6], l: [1, 0.56], w: 1.9, wl: 1.95, blend: 'lighter', flicker: [0.15, 0.6] },
-    { fx: 'alarm', p: [0.93, 0.43], l: [0.88, 0.2], rgb: '255,40,40', r: 0.22 },
-    { img: 'fels-rechts', depth: 0.55, at: [1, 0.5], p: [1.18, 0.6], l: [1, 0.56], w: 1.9, wl: 1.95, fadeY: 0.22, dark: 0.05 },
-    { img: 'fels-links', id: 'wand', depth: 0.6, at: [0, 0.5], p: [-0.22, 0.32], l: [0, 0.56], w: 1.9, wl: 1.95, fadeY: 0.22 },
+    { img: 'licht', depth: 0.55, at: [1, 0.5], p: [1.25, 0.69], l: [1, 0.56], w: 2.4, wl: 1.95, blend: 'lighter', flicker: [0.15, 0.6] },
+    { fx: 'alarm', p: [0.94, 0.47], l: [0.88, 0.2], rgb: '255,40,40', r: 0.22 },
+    { img: 'fels-rechts', depth: 0.55, at: [1, 0.5], p: [1.25, 0.69], l: [1, 0.56], w: 2.4, wl: 1.95, fadeY: 0.12, dark: 0.05 },
+    { img: 'fels-links', id: 'wand', depth: 0.6, at: [0, 0.5], p: [-0.22, 0.36], l: [0, 0.56], w: 2.4, wl: 1.95, fadeY: 0.12 },
     // Bastion laut Ebenenplan: 230 px ab (385, 145) im 1664er-Bild der linken Wand – Anker auf deren linke Mitte gerechnet
-    { img: 'bastion', id: 'bastion', on: 'wand', depth: 0.6, at: [-385 / 230, (468 - 145) / 230], p: [0, 0], l: [0, 0], w: (1.9 * 230) / 1664, wl: (1.95 * 230) / 1664 },
+    { img: 'bastion', id: 'bastion', on: 'wand', depth: 0.6, at: [-385 / 230, (468 - 145) / 230], p: [0, 0], l: [0, 0], w: (2.4 * 230) / 1664, wl: (1.95 * 230) / 1664 },
     { fx: 'glow', on: 'bastion', r: 0.25, rgb: '255,140,80', a: 0.12, pulse: 0.25 },
     { fx: 'motes', n: 80, rgb: '170,160,200', depth: 1.1, vx: 0.002, vy: 0.006, size: 1.2, a: 0.28 },
     { fx: 'vignette', rgb: '3,2,6', a: 0.6 },
@@ -115,8 +116,8 @@ const SCENES: Record<string, Item[]> = {
     { fx: 'glow', on: 'sonne', r: 0.9, rgb: '255,140,70', a: 0.3, pulse: 0.05 },
     { img: 'erz-rechts', depth: 0.55, p: [0.84, 0.5], l: [0.78, 0.4], w: 0.16, wl: 0.14, rot: 0.4, spin: 0.01, dark: 0.3 },
     { img: 'erz-links', depth: 0.5, p: [0.3, 0.58], l: [0.72, 0.66], w: 0.1, wl: 0.1, rot: 2.2, spin: -0.012, dark: 0.4 },
-    { img: 'werft', id: 'werft', depth: 0.65, at: [0, 0.5], p: [-0.06, 0.25], l: [0, 0.5], w: 1.35, wl: 1.5, bob: 0.003, fadeY: 0.2 },
-    { img: 'lichter', depth: 0.65, at: [0, 0.5], p: [-0.06, 0.25], l: [0, 0.5], w: 1.35, wl: 1.5, bob: 0.003, fadeY: 0.2, blend: 'lighter', flicker: [0.35, 2.4] },
+    { img: 'werft', id: 'werft', depth: 0.65, at: [0, 0.5], p: [-0.06, 0.25], l: [0, 0.5], w: 1.35, wl: 1.5, bob: 0.003, fadeY: 0.14 },
+    { img: 'lichter', depth: 0.65, at: [0, 0.5], p: [-0.06, 0.25], l: [0, 0.5], w: 1.35, wl: 1.5, bob: 0.003, fadeY: 0.14, blend: 'lighter', flicker: [0.35, 2.4] },
     { fx: 'traffic', on: 'werft', n: 9, rx: 0.26, ry: 0.18 },
     { img: 'erz-links', depth: 1.25, p: [0.02, 0.88], l: [0.02, 0.8], w: 0.62, wl: 0.62, rot: 0.15, spin: 0.003, dark: 0.08 },
     { img: 'erz-rechts', depth: 1.2, p: [1.04, 0.64], l: [0.99, 0.46], w: 0.55, wl: 0.7, rot: -0.3, spin: -0.003, dark: 0.08 },
@@ -145,12 +146,12 @@ const SCENES: Record<string, Item[]> = {
     { fx: 'twinkle', n: 120, rgb: '200,225,255', depth: 0.2 },
     { cover: 'methan', depth: 0.3, turn: true, scale: 1.14, breathe: 0.08, drift: 0.015 },
     { img: 'schweif', depth: 0.35, at: [0.64, 0.21], p: [0.7, 0.14], l: [0.6, 0.2], w: 1.35, wl: 1.85, blend: 'lighter', flicker: [0.12, 0.7] },
-    { img: 'kopf', id: 'kopf', depth: 0.35, p: [0.72, 0.14], l: [0.615, 0.2], w: 0.15, wl: 0.13, pulse: 0.015 },
+    { img: 'kopf', id: 'kopf', depth: 0.35, p: [0.722, 0.14], l: [0.617, 0.2], w: 0.075, wl: 0.095, pulse: 0.015 },
     { fx: 'glow', on: 'kopf', r: 0.8, rgb: '150,200,255', a: 0.35, pulse: 0.08 },
     { img: 'eis-mittel', depth: 0.6, p: [0.16, 0.4], l: [0.2, 0.5], w: 0.17, wl: 0.2, rot: 0.3, spin: 0.008, dark: 0.2 },
     { img: 'splitter', depth: 0.7, p: [0.08, 0.56], l: [0.34, 0.66], w: 0.12, wl: 0.12, rot: -0.4, spin: -0.015, dark: 0.15 },
-    { img: 'zylinder', id: 'zylinder', depth: 0.7, at: [1, 0.62], p: [1.08, 0.76], l: [1.02, 0.72], w: 1.5, wl: 1.6, bob: 0.003, fadeY: 0.15 },
-    { img: 'fenster', depth: 0.7, at: [1, 0.62], p: [1.08, 0.76], l: [1.02, 0.72], w: 1.5, wl: 1.6, bob: 0.003, fadeY: 0.15, blend: 'lighter', flicker: [0.25, 1.6] },
+    { img: 'zylinder', id: 'zylinder', depth: 0.7, at: [1, 1], p: [1.08, 1.0], l: [1.02, 1.06], w: 1.5, wl: 1.6, bob: 0.003 },
+    { img: 'fenster', depth: 0.7, at: [1, 1], p: [1.08, 1.0], l: [1.02, 1.06], w: 1.5, wl: 1.6, bob: 0.003, blend: 'lighter', flicker: [0.25, 1.6] },
     { fx: 'traffic', on: 'zylinder', n: 6, rx: 0.3, ry: 0.15 },
     { img: 'scholle', depth: 1.0, p: [0.5, 0.95], l: [0.52, 0.93], w: 0.36, wl: 0.32, rot: 0.2, spin: 0.004, dark: 0.12 },
     { img: 'eis-gross', depth: 1.25, p: [-0.02, 0.86], l: [0.05, 0.82], w: 0.62, wl: 0.72, rot: 0.1, spin: -0.003, dark: 0.06 },
@@ -185,8 +186,8 @@ const SCENES: Record<string, Item[]> = {
     { img: 'mond', id: 'mond', depth: 0.3, p: [1.02, 0.6], l: [0.97, 0.32], w: 0.62, wl: 0.62, rot: 0.2, spin: 0.0006 },
     { img: 'container', depth: 0.55, p: [0.62, 0.2], l: [0.66, 0.2], w: 0.11, rot: 0.6, spin: 0.012, dark: 0.15 },
     { img: 'wrack-mitte', depth: 0.6, p: [0.86, 0.3], l: [0.78, 0.26], w: 0.34, wl: 0.3, rot: -0.35, spin: -0.003, dark: 0.1 },
-    { img: 'werft', id: 'werft', depth: 0.65, at: [0, 0.5], p: [-0.04, 0.24], l: [0, 0.5], w: 1.3, wl: 1.55, bob: 0.003, fadeY: 0.22 },
-    { img: 'lichter', depth: 0.65, at: [0, 0.5], p: [-0.04, 0.24], l: [0, 0.5], w: 1.3, wl: 1.55, bob: 0.003, fadeY: 0.22, blend: 'lighter', flicker: [0.3, 1.9] },
+    { img: 'werft', id: 'werft', depth: 0.65, at: [0, 0.5], p: [-0.04, 0.24], l: [0, 0.5], w: 1.3, wl: 1.55, bob: 0.003, fadeY: 0.14 },
+    { img: 'lichter', depth: 0.65, at: [0, 0.5], p: [-0.04, 0.24], l: [0, 0.5], w: 1.3, wl: 1.55, bob: 0.003, fadeY: 0.14, blend: 'lighter', flicker: [0.3, 1.9] },
     { fx: 'traffic', on: 'werft', n: 8, rx: 0.32, ry: 0.22 },
     { img: 'wrack-heck', depth: 0.9, p: [0.88, 0.8], l: [0.84, 0.78], w: 0.3, wl: 0.26, rot: 0.5, spin: 0.004, dark: 0.1 },
     { img: 'wrack-bruecke', depth: 1.15, p: [0.1, 0.9], l: [0.62, 0.92], w: 0.24, wl: 0.2, rot: -0.8, spin: -0.006, dark: 0.15 },
@@ -260,8 +261,8 @@ const SCENES: Record<string, Item[]> = {
     { cover: 'sterne', depth: 0.1, turn: true, scale: 1.1 },
     { fx: 'twinkle', n: 120, rgb: '200,220,255', depth: 0.2 },
     { cover: 'nebel', depth: 0.3, turn: true, scale: 1.14, breathe: 0.07 },
-    { img: 'staub', depth: 0.4, at: [0.5, 0.5], p: [0.5, 0.28], l: [0.5, 0.45], w: 2.4, wl: 1.9, rot: 0, spin: 0.05, blend: 'lighter', alpha: 0.8 },
-    { img: 'strahlen', depth: 0.4, at: [0.495, 0.48], p: [0.5, 0.28], l: [0.5, 0.45], w: 2.6, wl: 2.0, spin: 0.05, blend: 'lighter', flicker: [0.3, 4.8] },
+    { img: 'staub', depth: 0.4, at: [0.5, 0.524], p: [0.5, 0.28], l: [0.5, 0.45], w: 2.4, wl: 1.9, rot: 0, spin: 0.05, blend: 'lighter', alpha: 0.8 },
+    { img: 'strahlen', depth: 0.4, at: [0.5, 0.5], p: [0.5, 0.28], l: [0.5, 0.45], w: 2.6, wl: 2.0, spin: 0.05, blend: 'lighter', flicker: [0.3, 4.8] },
     { img: 'ring', id: 'ring', depth: 0.45, at: [0.5, 0.5], p: [0.5, 0.28], l: [0.5, 0.45], w: 1.15, wl: 0.95, spin: 0.002 },
     { img: 'kern', id: 'kern', depth: 0.4, p: [0.5, 0.28], l: [0.5, 0.45], w: 0.55, wl: 0.45, blend: 'lighter', pulse: 0.08 },
     { fx: 'beat', on: 'kern', rgb: '150,200,255', period: 1.3, r: 0.4 },
@@ -359,12 +360,22 @@ function graded(src: HTMLImageElement | HTMLCanvasElement, srcKey: string, tone:
   g.globalCompositeOperation = 'source-atop';
   g.fillStyle = `rgba(${tone},${haze})`;
   g.fillRect(0, 0, W, H);
-  // Kontur leicht auflösen: Deckkraft mit einer geglätteten Kopie der eigenen Form multiplizieren
+  // Kontur leicht auflösen: Deckkraft mit einer geglätteten Kopie der eigenen Form multiplizieren. Die Randpixel werden
+  // vorher nach außen verlängert – sonst würde ein Bau, der über den Bildrand hinausgeht, dort durchsichtig
+  const blur = Math.max(1, Math.round(Math.max(W, H) * 0.0025)), pad = blur * 3;
+  const e = document.createElement('canvas');
+  e.width = W + pad * 2; e.height = H + pad * 2;
+  const eg = e.getContext('2d')!;
+  eg.drawImage(c, pad, pad);
+  eg.drawImage(c, 0, 0, 1, H, 0, pad, pad, H);
+  eg.drawImage(c, W - 1, 0, 1, H, W + pad, pad, pad, H);
+  eg.drawImage(c, 0, 0, W, 1, pad, 0, W, pad);
+  eg.drawImage(c, 0, H - 1, W, 1, pad, H + pad, W, pad);
   const m = document.createElement('canvas');
   m.width = W; m.height = H;
   const mg = m.getContext('2d')!;
-  mg.filter = `blur(${Math.max(1, Math.round(Math.max(W, H) * 0.0025))}px)`;
-  mg.drawImage(c, 0, 0);
+  mg.filter = `blur(${blur}px)`;
+  mg.drawImage(e, -pad, -pad);
   g.globalCompositeOperation = 'destination-in';
   g.drawImage(m, 0, 0);
   grades.set(key, c);
@@ -403,28 +414,6 @@ function skyOf(sectorId: string): HTMLCanvasElement | null {
   return c;
 }
 
-/** Bild mit weich ausgeblendeter Ober- und Unterkante (einmal berechnet, in voller Auflösung) */
-const fades = new Map<HTMLImageElement, HTMLCanvasElement>();
-function fadedY(img: HTMLImageElement, f: number): HTMLCanvasElement {
-  let c = fades.get(img);
-  if (c) return c;
-  const W = img.naturalWidth, H = img.naturalHeight;
-  c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const g = c.getContext('2d')!;
-  g.drawImage(img, 0, 0);
-  g.globalCompositeOperation = 'destination-in';
-  const gr = g.createLinearGradient(0, 0, 0, H);
-  gr.addColorStop(0, 'rgba(0,0,0,0)');
-  gr.addColorStop(f, 'rgba(0,0,0,1)');
-  gr.addColorStop(1 - f, 'rgba(0,0,0,1)');
-  gr.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = gr;
-  g.fillRect(0, 0, W, H);
-  fades.set(img, c);
-  return c;
-}
-
 /** Bild mit weich auslaufendem Rand und Dunstfarbe (einmal berechnet, in voller Auflösung) */
 const veils = new Map<HTMLImageElement, HTMLCanvasElement>();
 function veiled(img: HTMLImageElement, v: { soft: number; rgb: string; a: number }): HTMLCanvasElement {
@@ -451,6 +440,43 @@ function veiled(img: HTMLImageElement, v: { soft: number; rgb: string; a: number
   g.drawImage(m, 0, 0);
   veils.set(img, c);
   return c;
+}
+
+/**
+ * Staubband quer über den Bildschirm an der Schnittkante eines Baus: dunkler Staub in der Himmelsfarbe, oben und unten
+ * weich auslaufend, dazu ein paar treibende Staubwolken – davor, nicht durch den Bau hindurch
+ */
+function dustBand(ctx: CanvasRenderingContext2D, key: string, y: number, half: number, W: number, t: number, tone?: string): void {
+  const [r, g, b] = (tone ?? '60,60,70').split(',').map((v) => Math.round(Number(v) * 0.16));
+  const col = (a: number) => `rgba(${r},${g},${b},${a})`;
+  ctx.save();
+  const gr = ctx.createLinearGradient(0, y - half, 0, y + half);
+  gr.addColorStop(0, col(0));
+  gr.addColorStop(0.35, col(0.75));
+  gr.addColorStop(0.5, col(0.94));
+  gr.addColorStop(0.65, col(0.75));
+  gr.addColorStop(1, col(0));
+  ctx.fillStyle = gr;
+  ctx.fillRect(0, y - half, W, half * 2);
+  const rnd = randoms(key, 40);
+  for (let i = 0; i < 8; i++) {
+    const cx = ((rnd[i * 4] + t * 0.004 * (0.5 + rnd[i * 4 + 1])) % 1.2 - 0.1) * W;
+    const cy = y + (rnd[i * 4 + 2] - 0.5) * half * 0.9;
+    const rr = half * (0.5 + rnd[i * 4 + 3] * 0.6);
+    const pg = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
+    pg.addColorStop(0, col(0.45));
+    pg.addColorStop(1, col(0));
+    ctx.fillStyle = pg;
+    ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+  }
+  // etwas hellerer Staub in der Himmelsfarbe, damit das Band nicht wie ein schwarzer Balken wirkt
+  const lg = ctx.createLinearGradient(0, y - half * 0.6, 0, y + half * 0.6);
+  lg.addColorStop(0, `rgba(${tone ?? '60,60,70'},0)`);
+  lg.addColorStop(0.5, `rgba(${tone ?? '60,60,70'},0.07)`);
+  lg.addColorStop(1, `rgba(${tone ?? '60,60,70'},0)`);
+  ctx.fillStyle = lg;
+  ctx.fillRect(0, y - half * 0.6, W, half * 1.2);
+  ctx.restore();
 }
 
 const isCover = (i: Item): i is Cover => 'cover' in i;
@@ -533,16 +559,18 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
       ctx.globalAlpha = Math.max(0, Math.min(1, a));
       ctx.translate(x, y);
       ctx.rotate((portrait ? it.rot ?? 0 : it.rotL ?? it.rot ?? 0) + t * (it.spin ?? 0));
-      const faded = !!it.fadeY && portrait;
-      const src = it.veil ? veiled(img, it.veil) : faded ? fadedY(img, it.fadeY!) : img;
+      const src = it.veil ? veiled(img, it.veil) : img;
       const tone = skyTone.get(sectorId);
       // Lichter (aufhellend) bleiben klar, alles andere bekommt Luftperspektive
-      if (tone && it.blend !== 'lighter') ctx.drawImage(graded(src, `${img.src}${it.veil ? '|v' : faded ? '|f' : ''}`, tone, it.depth, it.dark ?? 0), -cx * w, -cy * h, w, h);
+      if (tone && it.blend !== 'lighter') ctx.drawImage(graded(src, `${img.src}${it.veil ? '|v' : ''}`, tone, it.depth, it.dark ?? 0), -cx * w, -cy * h, w, h);
       else {
         if (it.dark) ctx.filter = `brightness(${(1 - it.dark).toFixed(2)})`;
         ctx.drawImage(src, -cx * w, -cy * h, w, h);
       }
       ctx.restore();
+      if (it.fadeY && portrait && it.blend !== 'lighter') {
+        for (const edge of [y - cy * h, y + (1 - cy) * h]) if (edge > 0 && edge < H) dustBand(ctx, `${key}:${Math.round(edge)}`, edge, it.fadeY * h, W, t, tone);
+      }
       return;
     }
     // Vor der Randabdunklung: Dunstschleier über alles – das weichgezeichnete Gesamtbild noch einmal schwach darüber,
