@@ -51,6 +51,8 @@ import { allAlerts, productionUtil, shortestRunway, stationAlerts, stationOutput
 import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consumesWare, hasDockFor, marketSupply, marketPrice, storageShare, stationRates, stationWares, storageCap, tradeRule, wareLimit } from '../engine/economy';
 import { npcSource } from '../engine/npc';
 import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin, shipEta } from '../engine/fleet';
+import { PATROL_R, combatOrderText } from '../engine/combat';
+import { shipColor, shipIcon } from './shipyardView';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
 import { currentMission, missionComplete, storyOf } from '../engine/story';
@@ -237,6 +239,7 @@ export function navHtml(state: GameState, ui: UIState): string {
 
 export function cardHtml(state: GameState, ui: UIState): string {
   if (ui.placing) return placeCard(state, ui);
+  if (ui.pickPoint) return pickCard(state, ui);
   if (ui.view === 'galaxy') return ui.galaxySel ? galaxyCard(state, ui.galaxySel) : '';
   const sel = ui.selection;
   if (!sel) return '';
@@ -286,6 +289,17 @@ function stationCard(state: GameState, st: Station): string {
 
 function shipCard(state: GameState, s: Ship, following: boolean): string {
   const c = SHIP_MAP[s.cls];
+  if (c.combat) {
+    return cardShell(icon('fighter', 24), s.name, `${esc(c.name)} · ${esc(c.combat.type)} · ${esc(s.status)}`, `
+    <div class="stats3">
+      <div>${icon('info', 22)}<span><b>Befehl</b>${esc(combatOrderText(state, s.combat))}</span></div>
+      <div>${icon('fighter', 22)}<span><b>Kampfwert</b>${fmtInt(c.combat.power)}</span></div>
+    </div>
+    <div class="card-actions">
+      <button class="btn primary" ${act('open-ship', { id: s.id })}>${icon('fighter', 20)}Befehle</button>
+      <button class="btn ${following ? 'on' : ''}" ${act(following ? 'follow-stop' : 'follow', { id: s.id })} aria-pressed="${following}">${icon('target', 20)}${following ? 'Folgt' : 'Folgen'}</button>
+    </div>`, false);
+  }
   const eta = shipEta(state, s);
   const cargo = s.cargo ? `${fmtAmount(s.cargo.amount)} ${WARES[s.cargo.ware].name}` : 'leer';
   return cardShell(icon(c.role === 'miner' ? 'miner' : 'trader', 24), s.name, `${esc(c.name)} · ${esc(stationName(state, s.home))}${c.role === 'trader' ? ` · <span class="teal-text">${rankStars(pilotRank(s))}</span>` : ''}`, `
@@ -602,6 +616,70 @@ function placeCard(state: GameState, ui: UIState): string {
   </div>`;
 }
 
+/** Zielpunkt eines Kampfschiffs wählen: Tippen auf die Karte, bei Patrouille dazu der Radius */
+function pickCard(state: GameState, ui: UIState): string {
+  const p = ui.pickPoint!;
+  const s = state.ships.find((x) => x.id === p.ship);
+  if (!s) return '';
+  const patrol = p.kind === 'patrol';
+  const known = state.sectors.includes(ui.sector);
+  const msg = !known ? 'Dieser Sektor ist noch nicht erkundet.' : !p.set ? `Tippe auf die Karte${patrol ? ', um die Mitte des Patrouillengebiets zu wählen' : ', um das Ziel zu wählen'}. Andere Sektoren über die Sektorkarte.` : `${esc(SECTOR_MAP[ui.sector].name)} · ${patrol ? `Gebiet mit ${p.r} km Radius` : 'Zielpunkt gewählt'}`;
+  const radii = patrol ? `<div class="pills" style="margin:0 0 10px">${[25, PATROL_R, 80, 140].map((r) => `<button class="pill ${p.r === r ? 'teal' : ''}" ${act('pick-r', { r })}>${r === 140 ? 'Ganzer Sektor' : `${r} km`}</button>`).join('')}</div>` : '';
+  return `<div class="card placebar">
+    <div class="card-head"><div class="emblem">${icon('fighter', 22)}</div><div style="flex:1;min-width:0"><h2>${patrol ? 'Patrouille' : 'Flieg zu'}</h2><p>${esc(s.name)} · ${esc(SHIP_MAP[s.cls].name)}</p></div>
+    <button class="x" ${act('pick-cancel')} aria-label="Abbrechen">${icon('close', 22)}</button></div>
+    ${radii}
+    <p class="small ${known ? 'muted' : 'warn-text'}" style="margin:0 0 10px">${msg}</p>
+    <div class="card-actions"><button class="btn primary ${p.set && known ? '' : 'disabled'}" ${act('pick-confirm')}>${icon('check', 20)}${patrol ? 'Hier patrouillieren' : 'Hierhin fliegen'}</button><button class="btn" ${act('pick-cancel')}>Abbrechen</button></div>
+  </div>`;
+}
+
+/** Fenster eines Kampfschiffs: Werte, Befehl (Wache, Patrouille, Geleit, Flieg zu), Heimatstation */
+function fighterPanel(state: GameState, s: Ship, p: Panel): string {
+  const c = SHIP_MAP[s.cls], cb = c.combat!;
+  const o = s.combat;
+  const url = classSpriteUrl(s.cls);
+  const home = stationById(state, s.home);
+  const hero = `<div class="ship-hero" style="--c:${shipColor(c)}">${url ? `<img src="${url}" alt="">` : `<span class="ship-hero-ic">${icon('fighter', 96)}</span>`}
+    <div class="ship-hero-txt"><span class="state ${shipState(s)}"><i></i>${esc(s.status)}</span></div></div>`;
+  // Reiter: zuerst der aktive Befehl, ein angetippter Reiter zeigt seine Auswahl (der Befehl gilt erst nach der Wahl)
+  const tabs = ['guard', 'patrol', 'escort', 'move'] as const;
+  const kind = tabs.find((k) => k === p.tab) ?? o?.kind ?? 'guard';
+  const seg = (['guard', 'patrol', 'escort', 'move'] as const).map((k) => `<button class="${kind === k ? 'on' : ''}" ${act('combat-mode', { id: s.id, mode: k })}>${{ guard: 'Wache', patrol: 'Patrouille', escort: 'Geleit', move: 'Flieg zu' }[k]}</button>`).join('');
+  const escortable = state.ships.filter((x) => SHIP_MAP[x.cls].role !== 'fighter');
+  let detail = '';
+  if (kind === 'guard') {
+    detail = `<p class="small muted" style="margin:0 0 8px">Kreist um die Station und hält ihre Umgebung im Blick.</p><div class="pills">${state.stations.map((st) => `<button class="pill ${o?.kind === 'guard' && o.station === st.id ? 'teal' : ''}" ${act('combat-guard', { id: s.id, st: st.id })}>${icon('station', 14)}${esc(st.name)}</button>`).join('')}</div>`;
+  } else if (kind === 'patrol') {
+    detail = `<p class="small muted" style="margin:0 0 8px">${o?.kind === 'patrol' ? `Fliegt Punkte in ${esc(SECTOR_MAP[o.sector].name)} im Umkreis von ${Math.round(o.r)} km ab und hält an jedem kurz.` : 'Fliegt zufällige Punkte in einem Gebiet ab und hält an jedem kurz.'}</p>
+      <div class="card-actions"><button class="btn primary" ${act('combat-pick', { id: s.id, kind: 'patrol' })}>${icon('target', 20)}Gebiet auf der Karte wählen</button><button class="btn" ${act('combat-patrol-here', { id: s.id })}>Um die aktuelle Position</button></div>`;
+  } else if (kind === 'escort') {
+    detail = `<p class="small muted" style="margin:0 0 8px">Folgt dem Schiff über alle Sektoren, knapp hinter ihm.</p>${escortable.length
+      ? `<div class="field"><select data-change="combat-escort" data-id="${s.id}"><option value="">Schiff wählen …</option>${escortable.map((x) => `<option value="${x.id}" ${o?.kind === 'escort' && o.ship === x.id ? 'selected' : ''}>${esc(x.name)} · ${esc(SHIP_MAP[x.cls].name)}</option>`).join('')}</select></div>`
+      : '<p class="small muted">Keine Frachter oder Miner, die er begleiten könnte.</p>'}`;
+  } else {
+    detail = `<p class="small muted" style="margin:0 0 8px">Fliegt zum Punkt und hält dort Position.</p><button class="btn primary block" ${act('combat-pick', { id: s.id, kind: 'move' })}>${icon('target', 20)}Ziel auf der Karte wählen</button>`;
+  }
+  return sheet(s.name, `${c.name} · ${cb.type}`, `
+    ${hero}
+    <div class="section"><div class="kv">
+      <div><small>Kampfwert</small><b>${fmtInt(cb.power)}</b></div>
+      <div><small>Hülle</small><b>${fmtInt(cb.hull)}</b></div>
+      <div><small>Schild</small><b>${fmtInt(cb.shield)}</b></div>
+      <div><small>Schaden/s</small><b>${fmtInt(cb.dps)}</b></div>
+      <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}</b></div>
+    </div></div>
+    <div class="section"><h3>Befehl ${helpBtn('fighters')}</h3>
+      <p class="small" style="margin:0 0 10px">Aktiv: <b>${esc(combatOrderText(state, o))}</b></p>
+      <div class="segment" style="margin-bottom:12px">${seg}</div>
+      ${detail}
+      <p class="small muted" style="margin:10px 0 0">Gekämpft wird noch nicht: Gegner auf der Karte kommen in der nächsten Ausbaustufe.</p>
+    </div>
+    <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon(home ? 'station' : 'fleet', 20)}<div class="grow"><div class="title">${esc(home?.name ?? 'Frei – keiner Station zugeordnet')}</div><div class="sub">${esc(home ? `${sector(home.sector).name} · Rückkehr, wenn ein Geleit endet` : 'Hält nach einem Geleit die Position')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
+    <div class="card-actions"><button class="btn" ${act('focus', { kind: 'ship', id: s.id })}>${icon('target', 20)}Auf Karte folgen</button><button class="btn danger" ${act('ask-sell-ship', { id: s.id })}>Verkaufen</button></div>`,
+  { back: !!p.back });
+}
+
 // ---------- Blätter ----------
 
 export function panelHtml(state: GameState, ui: UIState): string {
@@ -839,8 +917,8 @@ function stationYard(state: GameState, st: Station): string {
       const have = st.inventory[id] ?? 0;
       return `<span class="io ${have >= n ? '' : 'lack'}">${wareMark(id, 7)}<b>${fmtAmount(n)}</b>${esc(WARES[id].name)}</span>`;
     }).join('');
-    return `<div class="module-card box" data-key="yc${c.id}"><span class="ware-tile" style="--c:#8fb7c4">${icon(c.role === 'miner' ? 'miner' : 'trader', 18)}</span>
-      <div style="min-width:0"><div class="title" style="font-weight:600">${esc(c.name)}</div><div class="small muted">${c.size} · ${fmtInt(c.capacity)} m³ · ${fmtNum(c.speed, 1)} km/s</div></div>
+    return `<div class="module-card box" data-key="yc${c.id}"><span class="ware-tile" style="--c:${c.combat ? shipColor(c) : '#8fb7c4'}">${icon(shipIcon(c), 18)}</span>
+      <div style="min-width:0"><div class="title" style="font-weight:600">${esc(c.name)}</div><div class="small muted">${c.combat ? `${c.size} · ${esc(c.combat.type)} · Kampfwert ${fmtInt(c.combat.power)}` : `${c.size} · ${fmtInt(c.capacity)} m³`} · ${fmtNum(c.speed, 1)} km/s</div></div>
       <div class="flow" style="grid-column:1/-1">${mats}</div>
       <div class="meta" style="grid-column:1/-1"><span>Vorrat für <b>${Math.floor(Math.min(...Object.entries(c.materials).map(([id, n]) => (st.inventory[id] ?? 0) / n)))}×</b></span><span>Material <b>${fmtCr(mv)}</b></span><span>Kaufpreis <b>${fmtCr(c.price)}</b></span><span>Bauzeit <b>${fmtDur(SHIP_BUILD_TIME[c.size])}</b></span></div>
       <div class="actions"><button class="btn small primary" ${act('yard-build', { st: st.id, cls: c.id })}>${icon('plus', 16)}Bauen</button></div></div>`;
@@ -1024,6 +1102,8 @@ function stationStorage(state: GameState, st: Station): string {
 
 /** Zustand eines Schiffs als Farbe: arbeitet (grün), unterwegs (türkis), wartet/untätig (gelb) */
 function shipState(s: Ship): 'work' | 'move' | 'wait' {
+  // Kampfschiffe: im Einsatz (Wache, Patrouille, Geleit), solange sie nicht zu einem neuen Ort fliegen
+  if (s.combat) return s.combat.kind === 'move' && !s.path.length ? 'wait' : s.combat.kind === 'move' ? 'move' : 'work';
   if (s.phase === 'idle' || s.phase === 'waiting') return 'wait';
   if (s.phase === 'mining' || s.phase === 'unloading' || s.phase === 'selling' || s.phase === 'docking' || s.phase === 'surveying') return 'work';
   return 'move';
@@ -1038,7 +1118,7 @@ function cargoFill(s: Ship): number {
 /** Bild des Schiffs (oder Symbol, falls es keins gibt) mit Rollenfarbe */
 function shipThumb(s: Ship, size = 'm'): string {
   const c = SHIP_MAP[s.cls], url = classSpriteUrl(s.cls);
-  return `<span class="ship-thumb ${size}" style="--c:${c.role === 'miner' ? '#ffc45e' : '#5ff0d8'}">${url ? `<img src="${url}" alt="" loading="lazy" decoding="async">` : icon(c.role === 'miner' ? 'miner' : 'trader', 18)}<i class="dot ${shipState(s)}"></i></span>`;
+  return `<span class="ship-thumb ${size}" style="--c:${shipColor(c)}">${url ? `<img src="${url}" alt="" loading="lazy" decoding="async">` : icon(shipIcon(c), 18)}<i class="dot ${shipState(s)}"></i></span>`;
 }
 
 function shipRow(_state: GameState, s: Ship): string {
@@ -1093,7 +1173,7 @@ function restSection(state: GameState, s: Ship): string {
 function stationShips(state: GameState, st: Station): string {
   const ships = state.ships.filter((s) => s.home === st.id);
   return `<div class="section">${ships.length ? `<div class="box rows">${ships.map((s) => shipRow(state, s)).join('')}</div>` : '<div class="box empty">Dieser Station sind keine Schiffe zugeteilt.</div>'}</div>
-    <div class="card-actions"><button class="btn primary" ${act('buyship-modal', { st: st.id, role: 'miner' })}>${icon('miner', 20)}Miner kaufen</button><button class="btn" ${act('buyship-modal', { st: st.id, role: 'trader' })}>${icon('trader', 20)}Transporter</button></div>`;
+    <div class="card-actions"><button class="btn primary" ${act('buyship-modal', { st: st.id, role: 'miner' })}>${icon('miner', 20)}Miner kaufen</button><button class="btn" ${act('buyship-modal', { st: st.id, role: 'trader' })}>${icon('trader', 20)}Transporter</button><button class="btn" ${act('buyship-modal', { st: st.id, role: 'fighter' })}>${icon('fighter', 20)}Kampf</button></div>`;
 }
 
 // ---- Flotte ----
@@ -1101,11 +1181,13 @@ function stationShips(state: GameState, st: Station): string {
 function fleetPanel(state: GameState): string {
   const miners = state.ships.filter((s) => SHIP_MAP[s.cls].role === 'miner');
   const traders = state.ships.filter((s) => SHIP_MAP[s.cls].role === 'trader');
+  const fighters = state.ships.filter((s) => SHIP_MAP[s.cls].role === 'fighter');
   const home = state.stations[0]?.id ?? '';
   return sheet('Flotte', `${state.ships.length} Schiffe`, `
-    ${panelHero('fleet', [`<b>${miners.length}</b> Miner`, `<b>${traders.length}</b> Transporter`, `<b>${state.ships.filter((x) => shipState(x) === 'move').length}</b> unterwegs`])}
+    ${panelHero('fleet', [`<b>${miners.length}</b> Miner`, `<b>${traders.length}</b> Transporter`, ...(fighters.length ? [`<b>${fighters.length}</b> Kampfschiffe`] : []), `<b>${state.ships.filter((x) => shipState(x) === 'move').length}</b> unterwegs`])}
     <div class="section"><h3>Miner</h3>${miners.length ? `<div class="box rows">${miners.map((s) => shipRow(state, s)).join('')}</div>` : '<div class="box empty">Keine Miner.</div>'}</div>
     <div class="section"><h3>Transporter</h3>${traders.length ? `<div class="box rows">${traders.map((s) => shipRow(state, s)).join('')}</div>` : '<div class="box empty">Noch keine Transporter. Sie verkaufen Überschüsse und versorgen Stationen untereinander.</div>'}</div>
+    <div class="section"><h3>Kampfschiffe</h3>${fighters.length ? `<div class="box rows">${fighters.map((s) => shipRow(state, s)).join('')}</div>` : '<div class="box empty">Noch keine Kampfschiffe. Sie bewachen Stationen, patrouillieren und begleiten Frachter – Werft oder Schiff kaufen → „Kampf“.</div>'}</div>
     <button class="btn primary block" ${act('buyship-modal', { st: home, role: 'all' })}>${icon('plus', 20)}Schiff kaufen</button>`);
 }
 
@@ -1220,6 +1302,7 @@ function freeOrders(state: GameState, s: Ship): string {
 
 function shipPanel(state: GameState, s: Ship, p: Panel): string {
   const c = SHIP_MAP[s.cls];
+  if (c.combat) return fighterPanel(state, s, p);
   const rank = pilotRank(s);
   const home = stationById(state, s.home);
   let orders = '';

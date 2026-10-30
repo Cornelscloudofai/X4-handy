@@ -41,6 +41,8 @@ export function newShip(state: GameState, cls: string, home: Station, at?: { sec
     id: 'sh-' + n, name: shipName(c.name, n), cls, home: home.id, sector: p.sector, x: p.x, z: p.z, heading: 0, path: [],
     phase: 'idle', timer: 0, cargo: null, mineWare: '', miningField: '', mode: 'auto', route: null, job: null, status: 'Bereit',
     trips: 0, earned: 0,
+    // Kampfschiffe bewachen zuerst ihre Heimatstation
+    ...(c.role === 'fighter' ? { combat: { kind: 'guard' as const, station: home.id }, status: `Wache bei ${home.name}` } : {}),
   };
 }
 

@@ -273,6 +273,14 @@ const MAP_SHIPS: Record<string, string> = {
   buffalo: 'split-buffalo-ki',
   tuatara: 'split-tuatara-ki',
   tuatara_min: 'split-tuatara-min-ki',
+  // Kampfschiffe: dieselben Bilder wie im Kampf-Minispiel (Mamba = Split-Jäger)
+  jaguar: 'split-jaguar-ki',
+  mamba: 'split-jaeger-s-ki',
+  asp: 'split-asp-ki',
+  balaur: 'split-balaur-ki',
+  chimera: 'split-chimera-ki',
+  dragon: 'split-dragon-ki',
+  cobra: 'split-cobra-ki',
 };
 
 /** Bild-URL einer Schiffsklasse (für Listen und Kopfbilder), sonst undefined */

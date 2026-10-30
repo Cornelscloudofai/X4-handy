@@ -158,6 +158,20 @@ export const HELP: HelpTopic[] = [
     ].join(''),
   },
   {
+    id: 'fighters', title: 'Kampfschiffe', icon: 'fighter', short: 'Wache, Patrouille, Geleit, Flieg zu',
+    body: [
+      p('Split-Jäger, Korvetten und Fregatten aus X4 (Jaguar, Mamba, Asp, Balaur, Chimera, Dragon, Cobra). Kaufen unter „Schiff kaufen“ → „Kampf“ oder selbst bauen in einer S/M-Werft – Preise und Material wie im Original, mit Hüllenteilen, Waffen-, Turm- und Schildkomponenten.'),
+      ul([
+        '<b>Wache:</b> kreist um eine eigene Station. So startet jedes neue Kampfschiff – an seiner Heimatstation.',
+        '<b>Patrouille:</b> fliegt zufällige Punkte in einem Gebiet ab (25 km bis ganzer Sektor) und hält an jedem kurz. Gebiet auf der Karte antippen.',
+        '<b>Geleit:</b> folgt einem eigenen Frachter oder Miner über alle Sektoren.',
+        '<b>Flieg zu:</b> Punkt auf der Karte antippen – das Schiff hält dort Position.',
+        '<b>Kampfwert</b> = Hülle/100 + Schild/50 + Schaden je Sekunde/10 – zum Vergleich der Schiffe.',
+        'Gegner auf der Karte und echte Gefechte kommen in den nächsten Ausbaustufen. Das Kampf-Minispiel im Menü bleibt davon unabhängig zum Üben.',
+      ]),
+    ].join(''),
+  },
+  {
     id: 'news', title: 'Konto und Nachrichten', icon: 'info', short: 'Wohin das Geld geht – und was passiert ist',
     body: [
       ul([

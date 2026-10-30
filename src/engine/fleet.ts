@@ -19,6 +19,7 @@ import { intelAge, knows, noteMarket, seenPrice, seenRoom, seenStock } from './i
 import { FIELD_STEPS, fieldCapFactor, fieldFloor, fieldRegenFactor, finishSurvey, stepFieldUp } from './fieldUp';
 import { RANK_RANGE, applyOpportunity, effectivePrice, noteDelivery, noteTrip, pilotRank, relationBonus } from './trading';
 import { book } from './ledger';
+import { stepFighter } from './combat';
 
 /**
  * Rohstofffelder (neue Spiele): Der Vorrat eines Felds erschöpft sich beim Abbau und wächst langsam nach.
@@ -61,7 +62,8 @@ function goTo(s: Ship, to: Place, dockFor?: string): void {
 
 export function stepShip(state: GameState, s: Ship, dt: number): void {
   const cls = SHIP_MAP[s.cls];
-  if (cls.role === 'miner') { if (s.home) stepMiner(state, s, dt); else stepFreeMiner(state, s, dt); }
+  if (cls.role === 'fighter') stepFighter(state, s, dt);
+  else if (cls.role === 'miner') { if (s.home) stepMiner(state, s, dt); else stepFreeMiner(state, s, dt); }
   else stepTrader(state, s, dt);
 }
 

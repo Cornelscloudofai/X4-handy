@@ -1,0 +1,872 @@
+{
+ "source": "github.com/crissian/x4 (Spieldaten-Auszug), ausgelesen mit scripts/extract-military-build.mjs",
+ "ships": {
+  "jaguar": {
+   "x4Id": "ship_spl_s_scout_01_a",
+   "name": "Jaguar",
+   "size": "S",
+   "hull": 2000,
+   "travel": 7279,
+   "crew": 1,
+   "missiles": 0,
+   "hullPrice": 146365,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 40
+    },
+    {
+     "ware": "hullparts",
+     "amount": 137
+    }
+   ],
+   "slots": {
+    "engines": 1,
+    "shields": 1,
+    "weapons": 1,
+    "launchers": 0,
+    "turrets": 0
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_s_combat_01_mk1",
+     "name": "Kampftriebwerk Mk1",
+     "count": 1,
+     "price": 7193,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 22
+      },
+      {
+       "ware": "engineparts",
+       "amount": 5
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_s_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 1528,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 8
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_s_allround_01_mk1",
+     "name": "Steuerdüsen S Mk1",
+     "count": 1,
+     "price": 5948,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 3
+      },
+      {
+       "ware": "engineparts",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_s_laser_01_mk1",
+     "name": "Pulslaser S Mk1",
+     "count": 1,
+     "price": 13564,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 3
+      },
+      {
+       "ware": "energycells",
+       "amount": 27
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
+  "mamba": {
+   "x4Id": "ship_spl_s_fighter_01_a",
+   "name": "Mamba",
+   "size": "S",
+   "hull": 3600,
+   "travel": 6163,
+   "crew": 1,
+   "missiles": 8,
+   "hullPrice": 194430,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 53
+    },
+    {
+     "ware": "hullparts",
+     "amount": 182
+    }
+   ],
+   "slots": {
+    "engines": 2,
+    "shields": 2,
+    "weapons": 2,
+    "launchers": 1,
+    "turrets": 0
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_s_combat_01_mk1",
+     "name": "Kampftriebwerk Mk1",
+     "count": 2,
+     "price": 7193,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 22
+      },
+      {
+       "ware": "engineparts",
+       "amount": 5
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_s_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 2,
+     "price": 1528,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 8
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_s_allround_01_mk1",
+     "name": "Steuerdüsen S Mk1",
+     "count": 1,
+     "price": 5948,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 3
+      },
+      {
+       "ware": "engineparts",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_s_laser_01_mk1",
+     "name": "Pulslaser S Mk1",
+     "count": 2,
+     "price": 13564,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 3
+      },
+      {
+       "ware": "energycells",
+       "amount": 27
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
+  "asp": {
+   "x4Id": "ship_spl_s_fighter_02_a",
+   "name": "Asp",
+   "size": "S",
+   "hull": 4600,
+   "travel": 6475,
+   "crew": 2,
+   "missiles": 3,
+   "hullPrice": 255275,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 69
+    },
+    {
+     "ware": "hullparts",
+     "amount": 239
+    }
+   ],
+   "slots": {
+    "engines": 2,
+    "shields": 1,
+    "weapons": 3,
+    "launchers": 1,
+    "turrets": 0
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_s_combat_01_mk1",
+     "name": "Kampftriebwerk Mk1",
+     "count": 2,
+     "price": 7193,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 22
+      },
+      {
+       "ware": "engineparts",
+       "amount": 5
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_s_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 1528,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 8
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_s_allround_01_mk1",
+     "name": "Steuerdüsen S Mk1",
+     "count": 1,
+     "price": 5948,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 3
+      },
+      {
+       "ware": "engineparts",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_s_laser_01_mk1",
+     "name": "Pulslaser S Mk1",
+     "count": 3,
+     "price": 13564,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 3
+      },
+      {
+       "ware": "energycells",
+       "amount": 27
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
+  "chimera": {
+   "x4Id": "ship_spl_s_heavyfighter_01_a",
+   "name": "Chimera",
+   "size": "S",
+   "hull": 6100,
+   "travel": 7354,
+   "crew": 2,
+   "missiles": 0,
+   "hullPrice": 350477,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 273
+    },
+    {
+     "ware": "hullparts",
+     "amount": 398
+    }
+   ],
+   "slots": {
+    "engines": 4,
+    "shields": 1,
+    "weapons": 5,
+    "launchers": 0,
+    "turrets": 0
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_s_combat_01_mk1",
+     "name": "Kampftriebwerk Mk1",
+     "count": 4,
+     "price": 7193,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 22
+      },
+      {
+       "ware": "engineparts",
+       "amount": 5
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_s_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 1528,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 8
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_s_allround_01_mk1",
+     "name": "Steuerdüsen S Mk1",
+     "count": 1,
+     "price": 5948,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 3
+      },
+      {
+       "ware": "engineparts",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_s_laser_01_mk1",
+     "name": "Pulslaser S Mk1",
+     "count": 5,
+     "price": 13564,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 3
+      },
+      {
+       "ware": "energycells",
+       "amount": 27
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
+  "balaur": {
+   "x4Id": "ship_spl_s_heavyfighter_02_a",
+   "name": "Balaur",
+   "size": "S",
+   "hull": 5500,
+   "travel": 6779,
+   "crew": 1,
+   "missiles": 0,
+   "hullPrice": 352755,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 275
+    },
+    {
+     "ware": "hullparts",
+     "amount": 400
+    }
+   ],
+   "slots": {
+    "engines": 3,
+    "shields": 1,
+    "weapons": 4,
+    "launchers": 0,
+    "turrets": 0
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_s_combat_01_mk1",
+     "name": "Kampftriebwerk Mk1",
+     "count": 3,
+     "price": 7193,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 22
+      },
+      {
+       "ware": "engineparts",
+       "amount": 5
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_s_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 1528,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 8
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_s_allround_01_mk1",
+     "name": "Steuerdüsen S Mk1",
+     "count": 1,
+     "price": 5948,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 3
+      },
+      {
+       "ware": "engineparts",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_s_laser_01_mk1",
+     "name": "Pulslaser S Mk1",
+     "count": 4,
+     "price": 13564,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 3
+      },
+      {
+       "ware": "energycells",
+       "amount": 27
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
+  "dragon": {
+   "x4Id": "ship_spl_m_corvette_01_a",
+   "name": "Dragon",
+   "size": "M",
+   "hull": 21000,
+   "travel": 6211,
+   "crew": 6,
+   "missiles": 2,
+   "hullPrice": 1243415,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 142
+    },
+    {
+     "ware": "hullparts",
+     "amount": 1179
+    }
+   ],
+   "slots": {
+    "engines": 1,
+    "shields": 1,
+    "weapons": 6,
+    "launchers": 1,
+    "turrets": 2
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_m_combat_01_mk1",
+     "name": "Kampftriebwerk Mk1",
+     "count": 1,
+     "price": 14695,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 36
+      },
+      {
+       "ware": "engineparts",
+       "amount": 11
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 1,
+     "price": 17072,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 21
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 5
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_m_allround_01_mk1",
+     "name": "Steuerdüsen M Mk1",
+     "count": 1,
+     "price": 13019,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 7
+      },
+      {
+       "ware": "engineparts",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_m_laser_01_mk1",
+     "name": "Pulslaser M Mk1",
+     "count": 6,
+     "price": 20346,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 41
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 2,
+     "price": 16503,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 34
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
+  "cobra": {
+   "x4Id": "ship_spl_m_frigate_01_a",
+   "name": "Cobra",
+   "size": "M",
+   "hull": 33000,
+   "travel": 6726,
+   "crew": 25,
+   "missiles": 0,
+   "hullPrice": 2172540,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 248
+    },
+    {
+     "ware": "hullparts",
+     "amount": 2060
+    }
+   ],
+   "slots": {
+    "engines": 3,
+    "shields": 2,
+    "weapons": 3,
+    "launchers": 0,
+    "turrets": 4
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_m_combat_01_mk1",
+     "name": "Kampftriebwerk Mk1",
+     "count": 3,
+     "price": 14695,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 36
+      },
+      {
+       "ware": "engineparts",
+       "amount": 11
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator Mk1",
+     "count": 2,
+     "price": 17072,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 21
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 5
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_m_allround_01_mk1",
+     "name": "Steuerdüsen M Mk1",
+     "count": 1,
+     "price": 13019,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 7
+      },
+      {
+       "ware": "engineparts",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "weapon_gen_m_laser_01_mk1",
+     "name": "Pulslaser M Mk1",
+     "count": 3,
+     "price": 20346,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 41
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 4,
+     "price": 16503,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 34
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

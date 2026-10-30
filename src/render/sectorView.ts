@@ -31,6 +31,7 @@ const C = {
   muted: '#8aa5ab',
   miner: '#ffc45e',
   trader: '#5ff0d8',
+  fighter: '#ff7a66',
   npc: '#9fb4c8',
 };
 
@@ -391,7 +392,7 @@ export class SectorRenderer {
       const [sx, sy] = cam.toScreen(sh.x, sh.z);
       const sm = Math.max(30, shipLength(cls.size, cam.zoom));
       if (sx < -sm || sx > W + sm || sy < -sm || sy > H + sm) continue;
-      const color = cls.role === 'miner' ? C.miner : C.trader;
+      const color = cls.role === 'fighter' ? C.fighter : cls.role === 'miner' ? C.miner : C.trader;
       const moving = !docked && sh.phase !== 'mining' && sh.path.length > 0;
       // Angedockte Schiffe liegen im Dock – nicht über dem Stationssymbol zeichnen (ausgewählte bleiben sichtbar)
       if (docked && sh.id !== selShip && state.stations.some((x) => x.sector === sec.id && Math.hypot(x.x - sh.x, x.z - sh.z) < 8)) continue;
@@ -409,6 +410,26 @@ export class SectorRenderer {
         ctx.arc(sx + drawn * 1.2, sy - drawn * 1.2, 1.6 + shipS, 0, Math.PI * 2);
         ctx.fill();
       }
+    }
+
+    // Ausgewähltes Kampfschiff: Patrouillengebiet bzw. Zielpunkt – beim Wählen der gewählte Punkt
+    const selF = selShip ? state.ships.find((x) => x.id === selShip) : undefined;
+    const pk = ui.pickPoint;
+    const fo = pk ? (pk.set ? (pk.kind === 'patrol' ? { kind: 'patrol' as const, sector: sec.id, x: pk.x, z: pk.z, r: pk.r } : { kind: 'move' as const, sector: sec.id, x: pk.x, z: pk.z }) : undefined) : selF?.combat;
+    if (fo && (fo.kind === 'patrol' || fo.kind === 'move') && fo.sector === sec.id) {
+      const [cx, cy] = cam.toScreen(fo.x, fo.z);
+      const r = fo.kind === 'patrol' ? fo.r * cam.zoom : 6;
+      ctx.save();
+      ctx.setLineDash([5, 7]);
+      ctx.lineDashOffset = -now / 80;
+      ctx.strokeStyle = rgba(C.fighter, 0.55);
+      ctx.fillStyle = rgba(C.fighter, 0.05);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      if (fo.kind === 'patrol') ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
 
     this.gateJumps(state);
@@ -2156,7 +2177,7 @@ export class SectorRenderer {
       if (sh.sector !== ui.sector || !sh.path.length) continue;
       const cls = SHIP_MAP[sh.cls];
       const hl = sh.id === selShip || sh.home === selStation;
-      const color = cls.role === 'miner' ? C.miner : C.trader;
+      const color = cls.role === 'fighter' ? C.fighter : cls.role === 'miner' ? C.miner : C.trader;
       ctx.setLineDash(hl ? [6, 7] : [3, 7]);
       ctx.lineDashOffset = -now / 50;
       ctx.strokeStyle = rgba(color, hl ? 0.8 : anySel ? 0.12 : 0.3);

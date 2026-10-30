@@ -54,7 +54,22 @@ export interface ModuleDef {
   rhak?: boolean;
 }
 
-export type ShipRole = 'miner' | 'trader';
+export type ShipRole = 'miner' | 'trader' | 'fighter';
+
+/** Kampfwerte eines Kampfschiffs (X4-Daten, Standardausrüstung Mk1) */
+export interface CombatStats {
+  /** Schiffstyp laut X4 (Aufklärer, Jäger, Schwerer Jäger, Korvette, Fregatte) */
+  type: string;
+  hull: number;
+  /** Schildkapazität aller Generatoren */
+  shield: number;
+  /** Schaden je Sekunde aller Bordkanonen und Türme (mit Salvenpausen) */
+  dps: number;
+  /** Kampfwert: Hülle/100 + Schild/50 + Schaden je Sekunde/10 */
+  power: number;
+  /** Plätze */
+  guns: number; turrets: number; missiles: number;
+}
 
 export interface ShipClassDef {
   id: string;
@@ -77,6 +92,8 @@ export interface ShipClassDef {
   /** Baumaterial für Rumpf und Ausrüstung (Eigenbau in einer Werft) */
   materials: Record<string, number>;
   crew: number;
+  /** nur Kampfschiffe */
+  combat?: CombatStats;
 }
 
 export interface FieldDef {
@@ -301,6 +318,16 @@ export interface RestCase {
   topupSaves: number;
 }
 
+/**
+ * Befehl eines Kampfschiffs (nur Befehle, keine Einzelsteuerung – siehe docs/design/kampf.md):
+ * Wache an einer Station, Patrouille in einem Gebiet, Geleit für ein eigenes Schiff, Flug zu einem Punkt
+ */
+export type CombatOrder =
+  | { kind: 'guard'; station: string }
+  | { kind: 'patrol'; sector: string; x: number; z: number; r: number }
+  | { kind: 'escort'; ship: string }
+  | { kind: 'move'; sector: string; x: number; z: number };
+
 export interface Ship {
   id: string;
   name: string;
@@ -352,6 +379,8 @@ export interface Ship {
   /** Zuletzt gemeldeter Pilotenrang */
   rank?: number;
   status: string;
+  /** Kampfschiff: aktueller Befehl */
+  combat?: CombatOrder;
   trips: number;
   earned: number;
 }

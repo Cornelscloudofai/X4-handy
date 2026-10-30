@@ -86,8 +86,6 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
 
 ## Offene Fragen
 
-- Welche Schiffe genau in Stufe 2 baubar sind und zu welchen Warenmengen (an `docs/design/split-militaerschiffe.md`
-  ausrichten).
 - Ob Kampfschiffe Sektorgrenzen frei überschreiten oder an den Heimatsektor gebunden sind.
 - Wie stark Sicherheit die Wirtschaft beeinflusst (nur Überfälle oder auch Preise).
 
@@ -95,7 +93,9 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
 
 - [x] Stufe 1 – Kampf am echten Ort (Szene als Hintergrund bei Überfällen und Kampfaufgaben, Schauplatz in der
   Einleitung und bei der ersten Welle, Glutsee-I-Sturm halbiert die Schildaufladung)
-- [ ] Stufe 2 – Eigene Kampfschiffe und Befehle
+- [x] Stufe 2 – Eigene Kampfschiffe und Befehle: sieben Split-Schiffe (Jaguar, Mamba, Asp, Balaur, Chimera, Dragon,
+  Cobra) mit X4-Preisen und -Material (`src/data/militarydata.json`, `scripts/extract-military-build.mjs`), kaufen oder in
+  der S/M-Werft bauen; Befehle Wache, Patrouille, Geleit, Flieg zu (`src/engine/combat.ts`); Zielwahl auf der Karte
 - [ ] Stufe 3 – Gegner in der Welt
 - [ ] Stufe 4 – Kampf auf der Karte
 - [ ] Stufe 5 – Ausbau

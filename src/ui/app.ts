@@ -8,6 +8,7 @@ import { acceptShipOrder, cancelShipBuild, queueShipBuild } from '../engine/yard
 import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
+import { PATROL_R, setCombatOrder } from '../engine/combat';
 import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
 import { fieldById, stationById } from '../engine/logistics';
@@ -645,6 +646,12 @@ function onTap(sx: number, sy: number): void {
     refresh();
     return;
   }
+  if (ui.pickPoint) {
+    const [x, z] = cam.toWorld(sx, sy);
+    ui.pickPoint = { ...ui.pickPoint, x, z, set: true };
+    refresh();
+    return;
+  }
   if (ui.placing) {
     const [x, z] = cam.toWorld(sx, sy);
     const check = A.canPlaceStation(state, ui.sector, x, z);
@@ -739,6 +746,7 @@ function goBack(): boolean {
     else if ((ui.modal.type === 'loadout' || ui.modal.type === 'shipArt') && lastMg) ui.modal = lastMg;
     else ui.modal = null;
   } else if (ui.placing) ui.placing = null;
+  else if (ui.pickPoint) { const id = ui.pickPoint.ship; ui.pickPoint = null; ui.panel = { type: 'ship', id, back: null } as Panel; }
   else if (ui.panel) ui.panel = ui.panel.back ?? null;
   else if (ui.selection) ui.selection = null;
   else if (ui.view === 'galaxy') { gotoSector(ui.sector); return true; }
@@ -1090,6 +1098,43 @@ function onClick(e: MouseEvent): void {
       case 'back': ui.panel = ui.panel?.back ?? null; refresh(); break;
       case 'open-station': ui.modal = null; openPanel('station', d.id, d.tab ?? 'overview', ui.panel?.type !== 'station'); ui.selection = { kind: 'station', id: d.id! }; break;
       case 'open-ship': openPanel('ship', d.id, undefined, !!ui.panel); break;
+      // ---- Kampfschiffe: Befehle (docs/design/kampf.md, Stufe 2) ----
+      case 'combat-mode': if (ui.panel?.type === 'ship') { ui.panel = { ...ui.panel, tab: d.mode }; refresh(); } break;
+      case 'combat-guard': result(setCombatOrder(state, d.id!, { kind: 'guard', station: d.st! })); break;
+      case 'combat-patrol-here': {
+        const s = state.ships.find((x) => x.id === d.id);
+        if (s) result(setCombatOrder(state, s.id, { kind: 'patrol', sector: s.sector, x: s.x, z: s.z, r: PATROL_R }));
+        break;
+      }
+      case 'combat-pick': {
+        const s = state.ships.find((x) => x.id === d.id);
+        if (!s) break;
+        const o = s.combat;
+        const kind = d.kind === 'patrol' ? 'patrol' : 'move';
+        ui.pickPoint = { ship: s.id, kind, r: o?.kind === 'patrol' ? o.r : PATROL_R, x: 0, z: 0, set: false };
+        ui.panel = null;
+        ui.selection = { kind: 'ship', id: s.id };
+        ui.follow = undefined;
+        focusOn(s.x, s.z, s.sector);
+        refresh();
+        break;
+      }
+      case 'pick-r': if (ui.pickPoint) { ui.pickPoint = { ...ui.pickPoint, r: Number(d.r) }; refresh(); } break;
+      case 'pick-cancel': {
+        const id = ui.pickPoint?.ship;
+        ui.pickPoint = null;
+        if (id) openPanel('ship', id);
+        else refresh();
+        break;
+      }
+      case 'pick-confirm': {
+        const p = ui.pickPoint;
+        if (!p || !p.set) break;
+        const r = setCombatOrder(state, p.ship, p.kind === 'patrol' ? { kind: 'patrol', sector: ui.sector, x: p.x, z: p.z, r: p.r } : { kind: 'move', sector: ui.sector, x: p.x, z: p.z });
+        if (r.ok) ui.pickPoint = null;
+        result(r);
+        break;
+      }
       case 'open-ware': ui.modal = null; openPanel('ware', d.id, undefined, !!ui.panel); break;
       case 'open-sector': openPanel('sector', d.id, undefined, !!ui.panel); break;
       case 'open-market': ui.marketSector = d.id!; openPanel('market'); break;
@@ -1355,7 +1400,7 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'buyship-sel': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, sel: d.cls }; refresh(); } break;
-      case 'buyship-role': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, role: d.role as 'miner' | 'trader' | 'all', sel: undefined }; refresh(); } break;
+      case 'buyship-role': if (ui.modal?.type === 'buyShip') { ui.modal = { ...ui.modal, role: d.role as 'miner' | 'trader' | 'fighter' | 'all', sel: undefined }; refresh(); } break;
       case 'buyship': { const r = A.buyShip(state, d.cls!, d.st!); if (r.ok) sfx.launch(); result(r); break; }
       case 'buy-price-off': {
         const st = stationById(state, d.st!);
@@ -1821,6 +1866,10 @@ function onChange(e: Event): void {
   }
   const s = state.ships.find((x) => x.id === el.dataset.id);
   if (!s) return;
+  if (field === 'combat-escort') {
+    if (el.value) result(setCombatOrder(state, s.id, { kind: 'escort', ship: el.value }));
+    return;
+  }
   if (field === 'so-sector' || field === 'so-ware' || field === 'so-to') {
     const o = s.sectorOrder;
     const sec = field === 'so-sector' ? el.value : o?.sector ?? s.sector;

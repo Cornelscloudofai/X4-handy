@@ -16,7 +16,7 @@ export interface Panel { type: PanelType; id?: string; tab?: string; back?: Pane
 
 export type Modal =
   | { type: 'modules'; station: string; cat: string; at?: number }
-  | { type: 'buyShip'; station: string; role: 'miner' | 'trader' | 'all'; /** gewählte Schiffsklasse im Schauraum */ sel?: string }
+  | { type: 'buyShip'; station: string; role: 'miner' | 'trader' | 'fighter' | 'all'; /** gewählte Schiffsklasse im Schauraum */ sel?: string }
   | { type: 'confirm'; title: string; text: string; action: string; args: Record<string, string>; danger?: boolean; label: string }
   | { type: 'rename'; station: string }
   | { type: 'offline'; seconds: number; credits: number; produced: Record<string, number>; modules: number }
@@ -62,6 +62,8 @@ export interface UIState {
   /** Schiff, dem die Kamera folgt */
   follow?: string;
   placing: { x: number; z: number; valid: boolean; msg: string; set: boolean } | null;
+  /** Kampfschiff: Zielpunkt auf der Karte wählen (Flieg zu, Patrouille) */
+  pickPoint: { ship: string; kind: 'move' | 'patrol'; r: number; x: number; z: number; set: boolean } | null;
   /** Kartenebene Handelsrouten: Flugwege und feste Versorgungsrouten der eigenen Schiffe (Standard an) */
   routes: boolean;
   /** Kartenebene Warenflüsse: gemessene Mengen zwischen Stationen, Märkten und Feldern (Standard aus) */
@@ -111,6 +113,7 @@ export const ui: UIState = {
   sector: 'zhin',
   selection: null,
   placing: null,
+  pickPoint: null,
   routes: initialLayers().routes,
   flows: initialLayers().flows,
   layerMenu: false,

@@ -28,6 +28,8 @@ const P: Record<string, string> = {
   dock: '<path d="M4 12h8M12 6v12M12 12l8-5M12 12l8 5"/>',
   miner: '<path d="M3.5 15.5 14 10l-2 7z"/><path d="m14 10 6.5-5M16.5 15l3 3"/>',
   trader: '<rect x="3.5" y="8" width="11" height="8" rx="1"/><path d="M14.5 10.5h3l3 3v2.5h-6"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/>',
+  // Kampfschiff: Pfeilrumpf mit zwei Flügeln, nach oben
+  fighter: '<path d="M12 3.5 15 12l4.5 4.5-1 2L15 17l-3 3-3-3-3.5 1.5-1-2L9 12z"/><path d="M12 9v5"/>',
   star: '<path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9-4.3-4.1 5.9-.8z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',

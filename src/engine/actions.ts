@@ -493,6 +493,7 @@ export function setSectorOrder(state: GameState, shipId: string, order: { sector
   if (s.home) return fail('Sektorbefehle gibt es nur für freie Schiffe – erst die Zuordnung zur Station lösen.');
   if (!order) { s.sectorOrder = undefined; return ok('Sektorbefehl aufgehoben.'); }
   const cls = SHIP_MAP[s.cls];
+  if (cls.role === 'fighter') return fail('Kampfschiffe bekommen Kampfbefehle (Wache, Patrouille, Geleit, Flieg zu).');
   if (!SECTOR_MAP[order.sector] || !WARES[order.ware]) return fail('Ungültiger Befehl.');
   if (WARES[order.ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
   if (cls.role === 'miner' && !SECTOR_MAP[order.sector].fields.some((f) => f.ware === order.ware)) return fail('In diesem Sektor gibt es kein solches Feld.');
