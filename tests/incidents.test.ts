@@ -19,8 +19,9 @@ function withTrader(): GameState {
   incidentState(s);
   const sh = s.ships.find((x) => SHIP_MAP[x.cls].role === 'trader')!;
   sh.cargo = { ware: 'energycells', amount: 1000 };
-  sh.path = [{ sector: sh.sector, x: sh.x + 50, z: sh.z }];
-  // keine Störungen und Adern als Alternative: nur der Überfall ist möglich
+  // zwei Wegpunkte: ein Eilzuschlag ist möglich (Überfälle kommen von Gegnerrotten, siehe hostiles.test.ts)
+  sh.path = [{ sector: sh.sector, x: sh.x + 50, z: sh.z }, { sector: sh.sector, x: sh.x + 90, z: sh.z }];
+  // keine Störungen und Adern als Alternative
   for (const st of s.stations) for (const m of st.modules) m.util = 0;
   return s;
 }
@@ -50,7 +51,7 @@ describe('Vorfälle', () => {
   it('Überfall ohne Eingreifen: Teil der Ladung weg; selbst verteidigt mit drei Sternen: nichts weg, Kopfgeld', () => {
     const s = withTrader();
     s.time = FIRST_INCIDENT + 1;
-    stepIncidents(s);
+    expect(forceIncident(s, 'raid')).toBe(true);
     const inc = incidentState(s).open[0];
     expect(inc.kind).toBe('raid');
     const sh = s.ships.find((x) => x.id === inc.target)!;
@@ -60,7 +61,7 @@ describe('Vorfälle', () => {
 
     const t = withTrader();
     t.time = FIRST_INCIDENT + 1;
-    stepIncidents(t);
+    forceIncident(t, 'raid');
     const i2 = incidentState(t).open[0];
     const c0 = t.credits;
     expect(resolveIncident(t, i2.id, 3)).toContain('abgewehrt');

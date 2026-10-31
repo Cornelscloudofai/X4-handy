@@ -9,6 +9,7 @@ import { fieldById } from '../engine/logistics';
 import { buildProgress, storageCap, usedVolume } from '../engine/economy';
 import type { GameState, ModuleDef, NpcStationDef, Ship, Station } from '../engine/types';
 import { hashStr } from '../engine/util';
+import { FOE_NAME, hostilesIn, type Foe } from '../engine/hostiles';
 import type { Selection, UIState } from '../ui/uistate';
 import type { Camera } from './camera';
 import { fmtCr } from '../ui/format';
@@ -57,6 +58,9 @@ interface Float { sector: string; x: number; z: number; value: number; life: num
  * Beschriftung: minRel = Zoomstufe (relativ zur Gesamtansicht), ab der sie erscheint – verschoben durch den
  * Regler „Beschriftung“. force = immer zeigen (ausgewählt).
  */
+/** Farben der Gegner: Piraten rot, Xenon karminrot, Kha’ak violett */
+const FOE_COLOR: Record<Foe, string> = { pirates: '#ff5a46', xenon: '#ff3d6e', khaak: '#c58cff' };
+
 interface QLabel { text: string; x: number; ys: number[]; size: number; color: string; weight: number; prio: number; minRel: number; force?: boolean; sub?: { text: string; color: string } }
 
 /** Ab welcher Zoomstufe (relativ zur Gesamtansicht) Beschriftungen bei mittlerer Einstellung erscheinen */
@@ -410,6 +414,45 @@ export class SectorRenderer {
         ctx.arc(sx + drawn * 1.2, sy - drawn * 1.2, 1.6 + shipS, 0, Math.PI * 2);
         ctx.fill();
       }
+    }
+
+    // Gegnerrotten: kleine Formation in der Farbe der Gegner, Warnring, gestrichelte Linie zum Ziel
+    for (const h of hostilesIn(state, sec.id)) {
+      const [hx, hy] = cam.toScreen(h.x, h.z);
+      if (hx < -80 || hx > W + 80 || hy < -80 || hy > H + 80) continue;
+      const col = FOE_COLOR[h.foe];
+      const sel = ui.selection?.kind === 'hostile' && ui.selection.id === String(h.id);
+      const tgt = h.target ? state.ships.find((x) => x.id === h.target) : undefined;
+      if (tgt && tgt.sector === sec.id && h.phase !== 'leave') {
+        const [tx, ty] = cam.toScreen(tgt.x, tgt.z);
+        ctx.save();
+        ctx.setLineDash([4, 6]);
+        ctx.lineDashOffset = -now / 40;
+        ctx.strokeStyle = rgba(col, sel ? 0.85 : 0.5);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.restore();
+      }
+      const pulse = motion ? 0.5 + 0.5 * Math.sin(now / 320 + h.id) : 0.7;
+      ctx.save();
+      ctx.strokeStyle = rgba(col, (h.phase === 'attack' ? 0.6 : 0.35) + 0.25 * pulse);
+      ctx.lineWidth = sel ? 2 : 1.3;
+      ctx.beginPath(); ctx.arc(hx, hy, (13 + 4 * pulse) * shipS, 0, Math.PI * 2); ctx.stroke();
+      // Formation: Pfeile in Flugrichtung
+      const sz = 4.2 * shipS;
+      for (let i = 0; i < h.n; i++) {
+        const off = i === 0 ? [0, 0] : [-(Math.ceil(i / 2)) * 1.6 * sz, (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 1.5 * sz];
+        const cs = Math.cos(h.heading), sn = Math.sin(h.heading);
+        const px = hx + off[0] * cs - off[1] * sn, py = hy + off[0] * sn + off[1] * cs;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(h.heading);
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.moveTo(sz * 1.3, 0); ctx.lineTo(-sz, sz * 0.8); ctx.lineTo(-sz * 0.45, 0); ctx.lineTo(-sz, -sz * 0.8); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+      this.labels.push({ text: `${FOE_NAME[h.foe]} · ${h.n}`, x: hx, ys: [hy + 24 * shipS, hy - 24 * shipS], size: 11, color: rgba(col, 0.95), weight: 700, prio: 4, minRel: 0, force: true });
     }
 
     // Ausgewähltes Kampfschiff: Patrouillengebiet bzw. Zielpunkt – beim Wählen der gewählte Punkt
@@ -2289,6 +2332,8 @@ export class SectorRenderer {
     };
     // Fliegende Schiffe zuerst, angedockte Schiffe treten hinter die Station zurück
     const docked = (s: GameState['ships'][number]) => !s.path.length && s.phase !== 'mining';
+    for (const h of hostilesIn(state, ui.sector)) consider({ kind: 'hostile', id: String(h.id) }, h.x, h.z, 24);
+    if (best) return (best as { sel: Selection }).sel;
     for (const s of state.ships) if (s.sector === ui.sector && !docked(s)) consider({ kind: 'ship', id: s.id }, s.x, s.z, 16);
     if (best) return (best as { sel: Selection }).sel;
     for (const st of state.stations) if (st.sector === ui.sector) consider({ kind: 'station', id: st.id }, st.x, st.z, Math.max(28, Math.min(90, stationScale(cam.zoom) * 4.5)));

@@ -14,6 +14,7 @@ import { stepShipOrders, stepYard } from './yard';
 import { stepScouts } from './explore';
 import { resetPhenomena, stepPhenomena } from './phenomena';
 import { stepIncidents } from './incidents';
+import { stepHostiles } from './hostiles';
 import type { GameState } from './types';
 import { log, muteEvents, rand } from './util';
 
@@ -48,6 +49,7 @@ function substep(state: GameState, dt: number): void {
   stepShipOrders(state, dt);
   stepScouts(state, dt);
   stepIncidents(state);
+  stepHostiles(state, dt);
   stepHistory(state, dt);
   slowTimer -= dt;
   if (slowTimer <= 0) {

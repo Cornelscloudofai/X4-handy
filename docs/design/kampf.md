@@ -96,6 +96,9 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
 - [x] Stufe 2 – Eigene Kampfschiffe und Befehle: sieben Split-Schiffe (Jaguar, Mamba, Asp, Balaur, Chimera, Dragon,
   Cobra) mit X4-Preisen und -Material (`src/data/militarydata.json`, `scripts/extract-military-build.mjs`), kaufen oder in
   der S/M-Werft bauen; Befehle Wache, Patrouille, Geleit, Flieg zu (`src/engine/combat.ts`); Zielwahl auf der Karte
-- [ ] Stufe 3 – Gegner in der Welt
+- [x] Stufe 3 – Gegner in der Welt (`src/engine/hostiles.ts`): Piratenrotten, Xenon-Streife in Ravine (mit dem
+  Ereignis, aus der Lücke im Nordosten), Kha'ak in der Glutsee; Überfälle nur noch durch Rotten, die ihr Ziel erreichen;
+  Abschrecken durch eigene Kampfschiffe (≥ ¾ des Kampfwerts im Umkreis von 25 km), „Kampfschiffe schicken“; Sicherheit je
+  Sektor in der Sektorinfo. Offen: Fraktionspatrouillen als eigene Schiffe (bisher nur im Grundwert der Sicherheit)
 - [ ] Stufe 4 – Kampf auf der Karte
 - [ ] Stufe 5 – Ausbau

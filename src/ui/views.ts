@@ -52,6 +52,7 @@ import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consum
 import { npcSource } from '../engine/npc';
 import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin, shipEta } from '../engine/fleet';
 import { PATROL_R, combatOrderText } from '../engine/combat';
+import { DEFEND_R, DETER, hostileState, hostileText, hostilesIn, sectorSecurity } from '../engine/hostiles';
 import { shipColor, shipIcon } from './shipyardView';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
@@ -246,6 +247,7 @@ export function cardHtml(state: GameState, ui: UIState): string {
   switch (sel.kind) {
     case 'station': { const st = stationById(state, sel.id); return st ? stationCard(state, st) : ''; }
     case 'ship': { const s = state.ships.find((x) => x.id === sel.id); return s ? shipCard(state, s, ui.follow === s.id) : ''; }
+    case 'hostile': return hostileCard(state, Number(sel.id));
     case 'field': return fieldCard(state, sel.id);
     case 'trade': return tradeCard(state, sel.id);
     case 'npcst': return npcCard(state, sel.id);
@@ -560,8 +562,35 @@ function sectorGeneral(state: GameState, id: string): string {
     ${s.note ? `<q class="sec-log">${esc(s.note)}</q>` : ''}
     ${phen ? `<div class="gx-phen">${icon('target', 14)}${esc(phen)}</div>` : ''}
     <div class="kv sec-kv"><div><small>Sonne</small><b>${s.sunlight} %</b></div><div><small>Eigene Stationen</small><b>${stations}</b></div><div><small>Eigene Schiffe</small><b>${ships}</b></div><div><small>Ruf ${esc(FACTIONS[s.faction].short)}</small><b>${fmtNum(rep, 1)}</b></div></div>
+    ${securityBox(state, id)}
     ${license}
     ${taskList(state, id)}`;
+}
+
+/** Sicherheit des Sektors mit Aufschlüsselung und den Gegnern, die gerade dort sind */
+function securityBox(state: GameState, id: string): string {
+  const sec = sectorSecurity(state, id);
+  const foes = hostilesIn(state, id);
+  const tone = sec.value >= 65 ? 'pos' : sec.value >= 40 ? '' : 'neg';
+  const parts = [`Grundwert ${sec.base}`, sec.guard ? `Kampfschiffe +${sec.guard}` : '', sec.traffic ? `eigener Verkehr −${sec.traffic}` : ''].filter(Boolean).join(' · ');
+  return `<div class="box sec-security"><div class="row"><span class="ware-tile" style="--c:${sec.value >= 65 ? '#5ff0d8' : sec.value >= 40 ? '#ffc45e' : '#ff7a66'}">${icon('fighter', 18)}</span>
+    <div class="grow"><div class="title">Sicherheit <b class="${tone}">${sec.value}</b> / 100 ${helpBtn('fighters')}</div><div class="sub wrap">${esc(parts)}. Je niedriger, desto öfter tauchen Gegner auf.</div>
+    ${foes.length ? `<div class="sub wrap warn-text">${foes.map((h) => esc(hostileText(state, h).title + ': ' + hostileText(state, h).sub)).join('<br>')}</div>` : ''}</div></div></div>`;
+}
+
+/** Karte einer Gegnerrotte: Stärke, Ziel, was zur Abschreckung nötig ist */
+function hostileCard(state: GameState, id: number): string {
+  const h = hostileState(state).list.find((x) => x.id === id);
+  if (!h) return '';
+  const t = hostileText(state, h);
+  const need = Math.ceil(DETER * h.power);
+  const near = state.ships.filter((s) => SHIP_MAP[s.cls].combat && s.sector === h.sector && Math.hypot(s.x - h.x, s.z - h.z) <= DEFEND_R).reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power, 0);
+  return cardShell(icon('warn', 24), t.title, esc(t.sub), `
+    <p class="small muted" style="margin:0 0 10px">Eigene Kampfschiffe mit zusammen mindestens <b>Kampfwert ${need}</b> im Umkreis von ${DEFEND_R} km schrecken sie ab${near ? ` – gerade in der Nähe: ${Math.round(near)}` : ''}. Gekämpft wird noch nicht.</p>
+    <div class="card-actions">
+      ${h.phase !== 'leave' ? `<button class="btn primary" ${act('hostile-send', { id: h.id })}>${icon('fighter', 20)}Kampfschiffe schicken</button>` : ''}
+      ${h.target ? `<button class="btn" ${act('focus', { kind: 'ship', id: h.target })}>${icon('target', 20)}Ziel zeigen</button>` : ''}
+    </div>`, false);
 }
 
 function sectorEconomy(state: GameState, id: string): string {

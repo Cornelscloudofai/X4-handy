@@ -525,6 +525,8 @@ export interface GameState {
   satellites?: { id: number; sector: string; q: 0 | 1 | 2 | 3 }[];
   /** Vorfälle (Minispiele im Spiel) und Aufgaben an Stationen */
   incidents?: import('./incidents').IncidentState;
+  /** Gegnerrotten auf der Karte (Kampf, Stufe 3) */
+  hostiles?: import('./hostiles').HostileState;
   /** Erkundung des unbekannten Raums: gefundene Torsignaturen („von>nach“) und entdeckte neue Sektoren */
   frontier?: import('./explore').FrontierState;
   scanTimer?: number;

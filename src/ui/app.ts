@@ -9,6 +9,7 @@ import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors'
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { PATROL_R, setCombatOrder } from '../engine/combat';
+import { sendDefense } from '../engine/hostiles';
 import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
 import { fieldById, stationById } from '../engine/logistics';
@@ -1119,6 +1120,7 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
+      case 'hostile-send': result(sendDefense(state, Number(d.id))); break;
       case 'pick-r': if (ui.pickPoint) { ui.pickPoint = { ...ui.pickPoint, r: Number(d.r) }; refresh(); } break;
       case 'pick-cancel': {
         const id = ui.pickPoint?.ship;

@@ -6,7 +6,7 @@ import type { HoldSellModal, TradeModal } from './tradeView';
 import type { ChartSpec } from './charts';
 import type { LedgerFilter, NewsFilter } from './newsView';
 
-export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc' | 'npcst' | 'sector';
+export type SelKind = 'station' | 'ship' | 'field' | 'trade' | 'gate' | 'npc' | 'npcst' | 'sector' | 'hostile';
 export interface Selection { kind: SelKind; id: string }
 
 const PLAN_KEY = 'x4-sektorbau-planer-v1';

@@ -14,7 +14,7 @@ import { MODULE_MAP } from '../data/modules';
 import { WARES } from '../data/wares';
 import { addWare, freeUnits } from './economy';
 import { book } from './ledger';
-import type { FactionId, GameState } from './types';
+import type { FactionId, GameState, Ship } from './types';
 import { log } from './util';
 import { stormActive, tideFactor } from './phenomena';
 
@@ -131,7 +131,8 @@ export function stepIncidents(state: GameState): void {
   const r = (k: number) => hash(s.n * 7 + k, state.seed ^ 0x51ed);
   s.next = state.time + INCIDENT_GAP[0] + (INCIDENT_GAP[1] - INCIDENT_GAP[0]) * r(1);
   if (s.open.length >= MAX_OPEN) return;
-  const kinds: IncidentKind[] = ['raid', 'fault', 'vein', 'tide', 'freight', 'rush', 'dock'];
+  // Überfälle kommen nicht mehr aus dem Zufall, sondern von Gegnerrotten auf der Karte (hostiles.ts)
+  const kinds: IncidentKind[] = ['fault', 'vein', 'tide', 'freight', 'rush', 'dock'];
   const order = kinds.map((k, i) => ({ k, w: r(20 + i) })).sort((a, b) => a.w - b.w).map((x) => x.k);
   for (const kind of order) if (create(state, kind, r)) return;
 }
@@ -206,6 +207,28 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
   s.open.push(inc);
   log(state, `${sh.name} ist auf eine reiche ${WARES[inc.ware].name}ader gestoßen.`, 'good', true, { kind: 'incident', id: inc.id });
   return true;
+}
+
+/**
+ * Überfall durch eine Rotte, die ihr Ziel erreicht hat (hostiles.ts). Liefert den Vorfall oder null, wenn das Schiff
+ * nichts geladen hat oder schon angegriffen wird.
+ */
+export function startRaid(state: GameState, sh: Ship, foe: 'pirates' | 'xenon' | 'khaak'): Incident | null {
+  const s = incidentState(state);
+  if (!sh.cargo || sh.cargo.amount <= 0 || s.open.some((i) => i.target === sh.id)) return null;
+  const inc: Incident = { id: state.nextId++, created: state.time, expires: state.time + DEADLINE.raid, kind: 'raid', sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: sh.cargo.amount, foe };
+  s.open.push(inc);
+  log(state, `Überfall auf ${sh.name}: ${foe === 'xenon' ? 'Xenon-Jäger' : foe === 'khaak' ? 'Kha’ak-Späher' : 'Piraten'} greifen an – an Bord ${Math.round(inc.amount)} ${WARES[inc.ware].name}.`, 'warn', true, { kind: 'incident', id: inc.id });
+  return inc;
+}
+
+/** Eigene Kampfschiffe haben die Angreifer vertrieben: keine Verluste, Kopfgeld */
+export function repelRaid(state: GameState, id: number): void {
+  const inc = incidentById(state, id);
+  if (!inc) return;
+  remove(state, inc);
+  book(state, RAID_BOUNTY, 'other', 'Kopfgeld: Angreifer von Kampfschiffen vertrieben', { kind: 'ship', id: inc.target });
+  log(state, `Überfall abgewehrt – Kampfschiffe haben die Angreifer vertrieben, die Ladung ist vollständig. ${RAID_BOUNTY.toLocaleString('de-DE')} Cr Kopfgeld.`, 'good', true, { kind: 'ship', id: inc.target });
 }
 
 export const incidentById = (state: GameState, id: number): Incident | undefined => state.incidents?.open.find((i) => i.id === id);

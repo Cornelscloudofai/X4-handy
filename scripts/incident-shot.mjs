@@ -1,4 +1,4 @@
-// Minispiele im Spiel: Vorfall (Hinweisleiste, „Selbst übernehmen“ startet das Minispiel) und Aufgaben an Stationen.
+// Minispiele im Spiel: Überfall durch eine Gegnerrotte (Hinweisleiste, „Selbst übernehmen“ startet das Minispiel) und Aufgaben an Stationen.
 // node scripts/incident-shot.mjs <outdir>
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
@@ -11,16 +11,15 @@ page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(await distUrl());
 await page.click('text=Loslegen mit Handel');
 await page.waitForTimeout(1500);
-// Frachter beladen und unterwegs, dann ist der nächste Vorfall fällig
+// Frachter beladen; eine Piratenrotte direkt daneben hat ihn als Ziel – erreicht sie ihn, beginnt der Überfall
 await page.evaluate(() => {
   const g = window.__game; g.state.help = { coachOff: true };
   const sh = g.state.ships[0];
   sh.cargo = { ware: 'energycells', amount: 800 };
   sh.path = [{ sector: sh.sector, x: sh.x + 60, z: sh.z }];
   for (const st of g.state.stations) for (const m of st.modules) m.util = 0;
-  g.step(1);
-  g.state.incidents.next = g.state.time;
   g.state.story.index = Math.max(g.state.story.index, 4);
+  g.state.hostiles = { list: [{ id: 999, foe: 'pirates', sector: sh.sector, x: sh.x + 2, z: sh.z, heading: 0, path: [], n: 3, power: 270, target: sh.id, phase: 'hunt', until: g.state.time + 2400, replan: 99 }], next: 1e12, n: 1 };
   g.step(1);
   g.refresh();
 });
