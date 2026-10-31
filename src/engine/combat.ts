@@ -4,6 +4,8 @@
 import { SECTOR_MAP, SECTOR_RADIUS, insideHex } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { moveAlong, planPath, stationById } from './logistics';
+import { FIGHT_R, RETREAT_AT, hullOf, repairAtHome } from './battle';
+import { FOE_NAME, hostilesIn, type Hostile } from './hostiles';
 import type { CombatOrder, GameState, Ship } from './types';
 import { rand } from './util';
 
@@ -37,11 +39,63 @@ function flyTo(s: Ship, sector: string, x: number, z: number): void {
   s.phase = 'toTarget';
 }
 
+/** Wie weit ein Kampfschiff je nach Befehl auf Gegner reagiert (Mittelpunkt und Radius) */
+function watchArea(state: GameState, s: Ship, o: CombatOrder): { sector: string; x: number; z: number; r: number } | null {
+  if (o.kind === 'guard') { const st = stationById(state, o.station); return st ? { sector: st.sector, x: st.x, z: st.z, r: 30 } : null; }
+  if (o.kind === 'patrol') return { sector: o.sector, x: o.x, z: o.z, r: o.r + 15 };
+  if (o.kind === 'escort') { const t = state.ships.find((x) => x.id === o.ship); return t ? { sector: t.sector, x: t.x, z: t.z, r: 30 } : null; }
+  return { sector: s.sector, x: s.x, z: s.z, r: 20 };
+}
+
+/** Gegner, den das Schiff angreift: im eigenen Sektor, im Wachbereich des Befehls, nicht auf der Flucht */
+function engageTarget(state: GameState, s: Ship, o: CombatOrder): Hostile | undefined {
+  const a = watchArea(state, s, o);
+  if (!a || a.sector !== s.sector) return undefined;
+  let best: Hostile | undefined, bd = Infinity;
+  for (const h of hostilesIn(state, s.sector)) {
+    if (h.phase === 'leave' || Math.hypot(h.x - a.x, h.z - a.z) > a.r) continue;
+    const d = Math.hypot(h.x - s.x, h.z - s.z);
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
 /** Ein Kampfschiff einen Takt weiterführen */
 export function stepFighter(state: GameState, s: Ship, dt: number): void {
   const cls = SHIP_MAP[s.cls];
+  if (s.disabled) { s.path = []; s.engage = undefined; s.status = 'Kampfunfähig – muss abgeschleppt werden'; return; }
   const o = s.combat ?? (s.combat = s.home ? { kind: 'guard', station: s.home } : { kind: 'move', sector: s.sector, x: s.x, z: s.z });
   s.timer = Math.max(0, s.timer - dt);
+  // Schwer beschädigt: zurück zur Heimatstation und dort reparieren, bis die Hülle wieder fast voll ist
+  const home = stationById(state, s.home);
+  if (hullOf(s) < RETREAT_AT && home) s.repair = true;
+  if (s.repair && home) {
+    s.engage = undefined;
+    if (hullOf(s) >= 0.95) { s.repair = false; s.path = []; }
+    else {
+      if (repairAtHome(state, s, dt)) { s.path = []; return; }
+      const last = s.path[s.path.length - 1];
+      if (!last || last.sector !== home.sector || Math.hypot(last.x - home.x, last.z - home.z) > 12) flyTo(s, home.sector, home.x + 6, home.z + 4);
+      moveAlong(s, cls.speed, dt);
+      s.status = `Beschädigt (${Math.round(hullOf(s) * 100)} %) – fliegt zur Reparatur nach ${home.name}`;
+      return;
+    }
+  }
+  // Gegner im Wachbereich: angreifen
+  const foe = engageTarget(state, s, o);
+  if (foe) {
+    s.engage = foe.id;
+    const d = Math.hypot(foe.x - s.x, foe.z - s.z);
+    if (d > FIGHT_R * 0.6) {
+      if (s.timer <= 0 || !s.path.length) { flyTo(s, foe.sector, foe.x, foe.z); s.timer = 1.5; }
+      moveAlong(s, cls.speed * 1.15, dt);
+    } else s.path = [];
+    s.status = `Gefecht mit ${FOE_NAME[foe.foe]}${hullOf(s) < 1 ? ` · Hülle ${Math.round(hullOf(s) * 100)} %` : ''}`;
+    return;
+  }
+  if (s.engage != null) { s.engage = undefined; s.path = []; s.timer = 0; }
+  // leicht beschädigt und an der Heimat: nebenbei reparieren
+  if (hullOf(s) < 1 && o.kind === 'guard') repairAtHome(state, s, dt);
   if (o.kind === 'escort') {
     const t = state.ships.find((x) => x.id === o.ship);
     if (!t) {

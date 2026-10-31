@@ -9,7 +9,8 @@ import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors'
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { PATROL_R, setCombatOrder } from '../engine/combat';
-import { sendDefense } from '../engine/hostiles';
+import { hostileState, sendDefense } from '../engine/hostiles';
+import { battleLevel, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
 import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
 import { fieldById, stationById } from '../engine/logistics';
@@ -188,6 +189,7 @@ export function start(): void {
       if (st) renderer.burstAt(st.sector, st.x, st.z, '#ffb547', 1.4);
     }
     if (e.type === 'contractDone') sfx.success();
+    if (e.type === 'boom') renderer.burstAt(e.sector, e.x, e.z, '#ff9a4a', e.big ? 2.2 : 1.4);
     dirtyUI = true;
   });
   renderUI();
@@ -1121,6 +1123,27 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'hostile-send': result(sendDefense(state, Number(d.id))); break;
+      case 'battle-play': {
+        const h = hostileState(state).list.find((x) => x.id === Number(d.id));
+        if (!h) { toast('Das Gefecht ist schon vorbei.', 'info'); break; }
+        ui.panel = null;
+        openMinigame(h.foe, { level: battleLevel(h), mutator: null, gear: { weapon: 2, shield: 2, engine: 2 }, place: combatPlace(h.sector) }, (r) => {
+          if (r) { const msg = resolveBattle(state, h.id, r.stars); if (msg) toast(msg, r.stars ? 'good' : 'info'); }
+          refresh();
+        });
+        break;
+      }
+      case 'wreck-salvage': {
+        const w = wrecksOf(state).find((x) => x.id === Number(d.id));
+        if (!w) break;
+        ui.panel = null;
+        openMinigame(w.sector === 'ravine' ? 'xenon' : w.sector.startsWith('f-') ? 'khaak' : 'pirates', { level: 1, mutator: null, mission: 'bergung', gear: { weapon: 2, shield: 2, engine: 2 }, place: combatPlace(w.sector) }, (r) => {
+          if (r) { const msg = salvageWreck(state, w.id, r.stars); if (msg) toast(msg, r.stars ? 'good' : 'info'); }
+          ui.selection = null;
+          refresh();
+        });
+        break;
+      }
       case 'pick-r': if (ui.pickPoint) { ui.pickPoint = { ...ui.pickPoint, r: Number(d.r) }; refresh(); } break;
       case 'pick-cancel': {
         const id = ui.pickPoint?.ship;

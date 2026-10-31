@@ -31,6 +31,10 @@ export interface Hostile {
   until: number;
   /** nächste Neuplanung des Wegs */
   replan: number;
+  /** verbleibende Stärke im Gefecht (fehlt = volle Stärke) */
+  hp?: number;
+  /** steht gerade im Gefecht mit eigenen Kampfschiffen */
+  fighting?: boolean;
 }
 
 export interface HostileState {
@@ -48,7 +52,9 @@ export const MAX_HOSTILES = 3;
 export const HUNT_TIME = 40 * 60;
 export const ATTACK_R = 3;
 export const DEFEND_R = 25;
-export const DETER = 0.75;
+export const DETER = 1.5;
+/** In dieser Entfernung stellt sich eine Rotte eigenen Kampfschiffen (statt weiter zu jagen) */
+export const ENGAGE_SIGHT = 15;
 /** Tempo (km/s): schneller als Frachter, sonst holen sie keinen ein */
 const SPEED: Record<Foe, number> = { pirates: 3.0, xenon: 3.4, khaak: 3.6 };
 export const FOE_NAME: Record<Foe, string> = { pirates: 'Piratenrotte', xenon: 'Xenon-Streife', khaak: 'Kha’ak-Schwarm' };
@@ -159,7 +165,9 @@ function leave(state: GameState, h: Hostile, why: string, kind: 'good' | 'info' 
   if (why) log(state, why, kind, false, { kind: 'sector', id: h.sector });
 }
 
-const crew = (h: Hostile): string => `${words[h.n] ?? h.n} ${FOE_SHIPS[h.foe][h.n === 1 ? 0 : 1]}`;
+/** Schiffe der Rotte, die noch fliegen (nach Verlusten im Gefecht) */
+const alive = (h: Hostile): number => Math.max(1, Math.ceil((h.n * (h.hp ?? h.power)) / h.power - 1e-9));
+const crew = (h: Hostile): string => { const n = alive(h); return `${words[n] ?? n} ${FOE_SHIPS[h.foe][n === 1 ? 0 : 1]}`; };
 
 /** Je Simulationsschritt: Rotten erscheinen lassen, bewegen, angreifen oder abdrehen */
 export function stepHostiles(state: GameState, dt: number): void {
@@ -188,9 +196,10 @@ function stepOne(state: GameState, h: Hostile, dt: number): void {
   const hs = hostileState(state);
   h.replan -= dt;
   if (h.phase !== 'leave') {
-    // Abschrecken: genug eigene Kampfkraft in der Nähe – sie drehen ab (ein laufender Überfall ist damit abgewehrt)
-    const def = defenseNear(state, h.sector, h.x, h.z);
-    if (def >= DETER * h.power) {
+    // Abschrecken: Piraten meiden klar überlegene Gegner (anderthalbfacher Kampfwert in der Nähe) und drehen ab, ein
+    // laufender Überfall ist damit abgewehrt. Xenon und Kha'ak weichen nicht aus – sie kämpfen (battle.ts).
+    const def = h.foe === 'pirates' && !h.fighting ? defenseNear(state, h.sector, h.x, h.z) : 0;
+    if (h.foe === 'pirates' && !h.fighting && def >= DETER * h.power) {
       const inc = h.incident != null ? incidentById(state, h.incident) : undefined;
       if (inc) repelRaid(state, inc.id);
       leave(state, h, `${FOE_NAME[h.foe]} in ${SECTOR_MAP[h.sector].name} dreht ab – eigene Kampfschiffe (Kampfwert ${Math.round(def)}) sind zu stark für ${crew(h)}.`, 'good');
@@ -202,12 +211,25 @@ function stepOne(state: GameState, h: Hostile, dt: number): void {
     if (moveAlong(h, SPEED[h.foe], dt)) hs.list.splice(hs.list.indexOf(h), 1);
     return;
   }
+  // im Gefecht: stehen bleiben und kämpfen (Abrechnung in battle.ts)
+  if (h.fighting) return;
   if (h.phase === 'attack') {
     const inc = h.incident != null ? incidentById(state, h.incident) : undefined;
     if (!inc) { leave(state, h, ''); return; }
     // beim Opfer bleiben
     const t = state.ships.find((x) => x.id === h.target);
     if (t && t.sector === h.sector) { h.x += (t.x + 1.5 - h.x) * Math.min(1, dt); h.z += (t.z + 1.5 - h.z) * Math.min(1, dt); }
+    return;
+  }
+  // Eigene Kampfschiffe in Sichtweite: der Rotte entkommt man nicht – sie stellt sich ihnen (Gefecht in battle.ts)
+  let foe: Ship | undefined, fd = ENGAGE_SIGHT;
+  for (const s of state.ships) {
+    if (!SHIP_MAP[s.cls].combat || s.disabled || s.sector !== h.sector) continue;
+    const d = Math.hypot(s.x - h.x, s.z - h.z);
+    if (d < fd) { fd = d; foe = s; }
+  }
+  if (foe) {
+    if (fd > 2) { h.path = [{ sector: h.sector, x: foe.x, z: foe.z }]; moveAlong(h, SPEED[h.foe], dt); }
     return;
   }
   // Jagd: Ziel halten, solange es im Sektor bleibt und Ladung hat
@@ -239,17 +261,17 @@ function stepOne(state: GameState, h: Hostile, dt: number): void {
 /** Rotte in Worten (Karte und Karten-Hinweis) */
 export function hostileText(state: GameState, h: Hostile): { title: string; sub: string } {
   const t = h.target ? state.ships.find((x) => x.id === h.target) : undefined;
-  const what = h.phase === 'leave' ? 'zieht ab' : h.phase === 'attack' ? `greift ${t?.name ?? 'ein Schiff'} an` : t ? `hält auf ${t.name} zu` : 'streift durch den Sektor';
-  return { title: FOE_NAME[h.foe], sub: `${crew(h)} · Kampfwert ${h.power} · ${what}` };
+  const what = h.phase === 'leave' ? 'zieht ab' : h.fighting ? 'im Gefecht' : h.phase === 'attack' ? `greift ${t?.name ?? 'ein Schiff'} an` : t ? `hält auf ${t.name} zu` : 'streift durch den Sektor';
+  return { title: FOE_NAME[h.foe], sub: `${crew(h)} · Kampfwert ${Math.round(h.hp ?? h.power)}${h.hp != null && h.hp < h.power ? ` von ${h.power}` : ''} · ${what}` };
 }
 
-/** Kampfschiffe zur Abwehr schicken: die nächsten eigenen Kampfschiffe begleiten das Ziel, bis die Abschreckung reicht */
+/** Kampfschiffe zur Abwehr schicken: die nächsten eigenen Kampfschiffe begleiten das Ziel, bis ihr Kampfwert dem der Rotte gleicht */
 export function sendDefense(state: GameState, hostileId: number): { ok: boolean; msg: string } {
   const h = hostileState(state).list.find((x) => x.id === hostileId);
   if (!h) return { ok: false, msg: 'Die Rotte ist schon weg.' };
   const target = h.target ? state.ships.find((x) => x.id === h.target) : undefined;
   if (!target) return { ok: false, msg: 'Die Rotte hat noch kein Ziel – schick Kampfschiffe auf Patrouille in den Sektor.' };
-  const need = DETER * h.power;
+  const need = h.power;
   const fighters = state.ships.filter((s) => SHIP_MAP[s.cls].combat && !(s.combat?.kind === 'escort' && s.combat.ship === target.id))
     .map((s) => ({ s, d: (s.sector === target.sector ? 0 : 1000) + Math.hypot(s.x - target.x, s.z - target.z) }))
     .sort((a, b) => a.d - b.d);
@@ -263,7 +285,7 @@ export function sendDefense(state: GameState, hostileId: number): { ok: boolean;
     sent.push(s.name);
   }
   if (!sent.length) return { ok: false, msg: have >= need ? 'Es sind schon genug Kampfschiffe unterwegs.' : 'Keine Kampfschiffe verfügbar.' };
-  return { ok: true, msg: `${sent.join(', ')} ${sent.length === 1 ? 'fliegt' : 'fliegen'} zu ${target.name}${have < need ? ` – Kampfwert ${Math.round(have)} reicht noch nicht (${Math.round(need)} nötig)` : ''}.` };
+  return { ok: true, msg: `${sent.join(', ')} ${sent.length === 1 ? 'fliegt' : 'fliegen'} zu ${target.name}${have < need ? ` – Kampfwert ${Math.round(have)} ist schwächer als die Rotte (${Math.round(need)})` : ''}.` };
 }
 
 /** Rotte im Sektor (für Karte und Tests) */

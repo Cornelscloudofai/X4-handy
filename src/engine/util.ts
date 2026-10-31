@@ -57,7 +57,9 @@ export type GameEvent =
   | { type: 'shipBuilt'; station: string; cls: string }
   | { type: 'sale'; station: string; sector: string; x: number; z: number; value: number }
   /** Erstsichtung eines neuen Sektors */
-  | { type: 'discovery'; id: string };
+  | { type: 'discovery'; id: string }
+  /** Schiff im Gefecht zerstört (Explosion auf der Karte) */
+  | { type: 'boom'; sector: string; x: number; z: number; big?: boolean };
 
 const listeners: ((e: GameEvent) => void)[] = [];
 let muted = 0;

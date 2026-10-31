@@ -100,5 +100,11 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
   Ereignis, aus der Lücke im Nordosten), Kha'ak in der Glutsee; Überfälle nur noch durch Rotten, die ihr Ziel erreichen;
   Abschrecken durch eigene Kampfschiffe (≥ ¾ des Kampfwerts im Umkreis von 25 km), „Kampfschiffe schicken“; Sicherheit je
   Sektor in der Sektorinfo. Offen: Fraktionspatrouillen als eigene Schiffe (bisher nur im Grundwert der Sicherheit)
-- [ ] Stufe 4 – Kampf auf der Karte
+- [x] Stufe 4 – Kampf auf der Karte (`src/engine/battle.ts`): Kampfschiffe greifen Gegner im Wachbereich an, Rotten
+  stellen sich ihnen (15 km); Abrechnung je Sekunde (Verlust = Kampfwert der Gegenseite / 40, gestreut); Piraten fliehen
+  unter 40 %, Xenon/Kha'ak unter 15 %; Abschrecken nur noch bei Piraten (anderthalbfacher Kampfwert); S/M zerstört →
+  Wrack (40 % der Hüllenteile als Schrott), L/XL kampfunfähig; Rückzug unter 25 % Hülle, Reparatur an der Heimat aus
+  Hüllenteilen (fünf Minuten, 30 % der Bau-Hüllenteile); Kopfgeld 1.000 Cr je Gegnerschiff; „Selbst übernehmen“ (ab
+  einem Stern vernichtet, eigener Schaden 40/20/0 %); Wracks bergen im Bergungs-Einsatz. Noch offen: eigene Kampfschiffe
+  als Flügelleute im Minispiel, Abschleppen von L/XL (Stufe 5)
 - [ ] Stufe 5 – Ausbau

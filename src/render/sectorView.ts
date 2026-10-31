@@ -10,6 +10,7 @@ import { buildProgress, storageCap, usedVolume } from '../engine/economy';
 import type { GameState, ModuleDef, NpcStationDef, Ship, Station } from '../engine/types';
 import { hashStr } from '../engine/util';
 import { FOE_NAME, hostilesIn, type Foe } from '../engine/hostiles';
+import { FIGHT_R, aliveOf, hostileHp, wrecksOf } from '../engine/battle';
 import type { Selection, UIState } from '../ui/uistate';
 import type { Camera } from './camera';
 import { fmtCr } from '../ui/format';
@@ -408,11 +409,63 @@ export class SectorRenderer {
       const size = (cls.size === 'L' ? 6.5 : cls.size === 'M' ? 5 : 4) * shipS;
       const drawn = this.drawShip(ctx, sh.cls, sx, sy, sh.heading, size, color, docked ? 0.55 : 1, moving, motion ? now : 0, hashStr(sh.id));
       if (sh.id === selShip) this.selectionRing(ctx, sx, sy, 10 + drawn, now, color);
+      // Kampfschiff beschädigt: kleiner Hüllenbalken
+      if (sh.hp != null && sh.hp < 1) {
+        const bw = 18 * shipS, by = sy + drawn + 5 * shipS;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(sx - bw / 2, by, bw, 3 * shipS);
+        ctx.fillStyle = sh.hp > 0.5 ? '#7fe08a' : sh.hp > 0.25 ? '#ffc45e' : '#ff5a46';
+        ctx.fillRect(sx - bw / 2, by, bw * Math.max(0, sh.hp), 3 * shipS);
+      }
       if (sh.cargo && !docked && rel > 1.3) {
         ctx.fillStyle = WARES[sh.cargo.ware].color;
         ctx.beginPath();
         ctx.arc(sx + drawn * 1.2, sy - drawn * 1.2, 1.6 + shipS, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+
+    // Wracks: graue Trümmer, die langsam treiben
+    for (const w of wrecksOf(state)) {
+      if (w.sector !== sec.id) continue;
+      const [wx, wy] = cam.toScreen(w.x, w.z);
+      if (wx < -40 || wx > W + 40 || wy < -40 || wy > H + 40) continue;
+      const sel = ui.selection?.kind === 'wreck' && ui.selection.id === String(w.id);
+      ctx.save();
+      ctx.translate(wx, wy);
+      const rot = motion ? now / 9000 + w.id : w.id;
+      for (let i = 0; i < 5; i++) {
+        const a = rot + i * 1.26, d = (3 + (i % 3) * 2.2) * shipS;
+        ctx.save();
+        ctx.translate(Math.cos(a) * d, Math.sin(a) * d);
+        ctx.rotate(a * 2.3);
+        ctx.fillStyle = i % 2 ? '#8a8f96' : '#5d6168';
+        ctx.fillRect(-2 * shipS, -1.2 * shipS, (3 + i % 2) * shipS, 2.2 * shipS);
+        ctx.restore();
+      }
+      ctx.strokeStyle = sel ? 'rgba(255,214,140,0.9)' : 'rgba(200,205,215,0.35)';
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.arc(0, 0, 12 * shipS, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      if (sel || rel > 1.6) this.labels.push({ text: `Wrack · ${w.scrap} Hüllenteile`, x: wx, ys: [wy + 18 * shipS, wy - 18 * shipS], size: 10, color: 'rgba(210,214,222,0.9)', weight: 600, prio: 1, minRel: 0, force: sel });
+    }
+
+    // Gefechte: Feuer zwischen eigenen Kampfschiffen und der Rotte
+    for (const h of hostilesIn(state, sec.id)) {
+      if (!h.fighting) continue;
+      const [hx, hy] = cam.toScreen(h.x, h.z);
+      for (const f of state.ships) {
+        if (!SHIP_MAP[f.cls].combat || f.sector !== sec.id || Math.hypot(f.x - h.x, f.z - h.z) > FIGHT_R) continue;
+        const [fx, fy] = cam.toScreen(f.x, f.z);
+        const k = hashStr(f.id) % 997;
+        const on = motion ? (Math.sin(now / 90 + k) > 0.2) : true;
+        const back = motion ? (Math.sin(now / 110 + k * 1.7) > 0.4) : false;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineWidth = 1.4;
+        if (on) { ctx.strokeStyle = 'rgba(255,190,110,0.85)'; ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(hx + Math.sin(k + now / 200) * 6, hy + Math.cos(k + now / 170) * 6); ctx.stroke(); }
+        if (back) { ctx.strokeStyle = rgba(FOE_COLOR[h.foe], 0.8); ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(fx, fy); ctx.stroke(); }
+        ctx.restore();
       }
     }
 
@@ -440,7 +493,8 @@ export class SectorRenderer {
       ctx.beginPath(); ctx.arc(hx, hy, (13 + 4 * pulse) * shipS, 0, Math.PI * 2); ctx.stroke();
       // Formation: Pfeile in Flugrichtung
       const sz = 4.2 * shipS;
-      for (let i = 0; i < h.n; i++) {
+      const alive = aliveOf(h);
+      for (let i = 0; i < alive; i++) {
         const off = i === 0 ? [0, 0] : [-(Math.ceil(i / 2)) * 1.6 * sz, (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 1.5 * sz];
         const cs = Math.cos(h.heading), sn = Math.sin(h.heading);
         const px = hx + off[0] * cs - off[1] * sn, py = hy + off[0] * sn + off[1] * cs;
@@ -452,7 +506,7 @@ export class SectorRenderer {
         ctx.restore();
       }
       ctx.restore();
-      this.labels.push({ text: `${FOE_NAME[h.foe]} · ${h.n}`, x: hx, ys: [hy + 24 * shipS, hy - 24 * shipS], size: 11, color: rgba(col, 0.95), weight: 700, prio: 4, minRel: 0, force: true });
+      this.labels.push({ text: `${FOE_NAME[h.foe]} · ${alive}${hostileHp(h) < h.power ? ` (${Math.round((hostileHp(h) / h.power) * 100)} %)` : ''}`, x: hx, ys: [hy + 24 * shipS, hy - 24 * shipS], size: 11, color: rgba(col, 0.95), weight: 700, prio: 4, minRel: 0, force: true });
     }
 
     // Ausgewähltes Kampfschiff: Patrouillengebiet bzw. Zielpunkt – beim Wählen der gewählte Punkt
@@ -2333,6 +2387,7 @@ export class SectorRenderer {
     // Fliegende Schiffe zuerst, angedockte Schiffe treten hinter die Station zurück
     const docked = (s: GameState['ships'][number]) => !s.path.length && s.phase !== 'mining';
     for (const h of hostilesIn(state, ui.sector)) consider({ kind: 'hostile', id: String(h.id) }, h.x, h.z, 24);
+    for (const w of wrecksOf(state)) if (w.sector === ui.sector) consider({ kind: 'wreck', id: String(w.id) }, w.x, w.z, 18);
     if (best) return (best as { sel: Selection }).sel;
     for (const s of state.ships) if (s.sector === ui.sector && !docked(s)) consider({ kind: 'ship', id: s.id }, s.x, s.z, 16);
     if (best) return (best as { sel: Selection }).sel;

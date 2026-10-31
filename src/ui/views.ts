@@ -53,6 +53,7 @@ import { npcSource } from '../engine/npc';
 import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin, shipEta } from '../engine/fleet';
 import { PATROL_R, combatOrderText } from '../engine/combat';
 import { DEFEND_R, DETER, hostileState, hostileText, hostilesIn, sectorSecurity } from '../engine/hostiles';
+import { FIGHT_R, fightersAt, hostileHp, hullOf, wrecksOf } from '../engine/battle';
 import { shipColor, shipIcon } from './shipyardView';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
@@ -248,6 +249,7 @@ export function cardHtml(state: GameState, ui: UIState): string {
     case 'station': { const st = stationById(state, sel.id); return st ? stationCard(state, st) : ''; }
     case 'ship': { const s = state.ships.find((x) => x.id === sel.id); return s ? shipCard(state, s, ui.follow === s.id) : ''; }
     case 'hostile': return hostileCard(state, Number(sel.id));
+    case 'wreck': return wreckCard(state, Number(sel.id));
     case 'field': return fieldCard(state, sel.id);
     case 'trade': return tradeCard(state, sel.id);
     case 'npcst': return npcCard(state, sel.id);
@@ -583,14 +585,30 @@ function hostileCard(state: GameState, id: number): string {
   const h = hostileState(state).list.find((x) => x.id === id);
   if (!h) return '';
   const t = hostileText(state, h);
-  const need = Math.ceil(DETER * h.power);
+  const own = h.fighting ? fightersAt(state, h) : [];
+  const ownPower = own.reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power * hullOf(s), 0);
   const near = state.ships.filter((s) => SHIP_MAP[s.cls].combat && s.sector === h.sector && Math.hypot(s.x - h.x, s.z - h.z) <= DEFEND_R).reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power, 0);
+  const info = h.fighting
+    ? `<b>Gefecht:</b> ${own.map((s) => esc(s.name)).join(', ')} (Kampfwert ${Math.round(ownPower)}) gegen die Rotte (noch ${Math.round(hostileHp(h))} von ${h.power}). Selbst übernommen: ab einem Stern ist die Rotte vernichtet.`
+    : h.foe === 'pirates'
+      ? `Kampfschiffe mit mindestens <b>Kampfwert ${Math.ceil(DETER * h.power)}</b> im Umkreis von ${DEFEND_R} km schrecken Piraten ab; schwächere kämpfen (${FIGHT_R} km Gefechtsabstand)${near ? ` – gerade in der Nähe: ${Math.round(near)}` : ''}.`
+      : `${h.foe === 'xenon' ? 'Xenon' : 'Kha’ak'} weichen nicht aus – eigene Kampfschiffe mit etwa <b>Kampfwert ${h.power}</b> gewinnen das Gefecht${near ? `; gerade in der Nähe: ${Math.round(near)}` : ''}.`;
   return cardShell(icon('warn', 24), t.title, esc(t.sub), `
-    <p class="small muted" style="margin:0 0 10px">Eigene Kampfschiffe mit zusammen mindestens <b>Kampfwert ${need}</b> im Umkreis von ${DEFEND_R} km schrecken sie ab${near ? ` – gerade in der Nähe: ${Math.round(near)}` : ''}. Gekämpft wird noch nicht.</p>
+    <p class="small muted" style="margin:0 0 10px">${info}</p>
     <div class="card-actions">
-      ${h.phase !== 'leave' ? `<button class="btn primary" ${act('hostile-send', { id: h.id })}>${icon('fighter', 20)}Kampfschiffe schicken</button>` : ''}
+      ${h.fighting ? `<button class="btn primary" ${act('battle-play', { id: h.id })}>${icon('game', 20)}Selbst übernehmen</button>` : h.phase !== 'leave' ? `<button class="btn primary" ${act('hostile-send', { id: h.id })}>${icon('fighter', 20)}Kampfschiffe schicken</button>` : ''}
       ${h.target ? `<button class="btn" ${act('focus', { kind: 'ship', id: h.target })}>${icon('target', 20)}Ziel zeigen</button>` : ''}
     </div>`, false);
+}
+
+/** Karte eines Wracks: Schrott und Bergen (Bergungs-Einsatz im Minispiel) */
+function wreckCard(state: GameState, id: number): string {
+  const w = wrecksOf(state).find((x) => x.id === id);
+  if (!w) return '';
+  const left = Math.max(0, w.until - state.time);
+  return cardShell(icon('wrench', 24), `Wrack: ${w.name}`, `${fmtInt(w.scrap)} Hüllenteile Schrott · zerfällt in ${fmtDur(left)}`, `
+    <p class="small muted" style="margin:0 0 10px">Bergen im Einsatz „Bergung unter Beschuss“: 1 Stern bringt die Hälfte, 2 Sterne 80 %, 3 Sterne alles – in die eigene Station mit dem meisten Platz im Sektor.</p>
+    <div class="card-actions"><button class="btn primary" ${act('wreck-salvage', { id: w.id })}>${icon('game', 20)}Bergen</button></div>`, true);
 }
 
 function sectorEconomy(state: GameState, id: string): string {
@@ -692,8 +710,8 @@ function fighterPanel(state: GameState, s: Ship, p: Panel): string {
   return sheet(s.name, `${c.name} · ${cb.type}`, `
     ${hero}
     <div class="section"><div class="kv">
-      <div><small>Kampfwert</small><b>${fmtInt(cb.power)}</b></div>
-      <div><small>Hülle</small><b>${fmtInt(cb.hull)}</b></div>
+      <div><small>Kampfwert</small><b>${fmtInt(cb.power)}${hullOf(s) < 1 ? ` <span class="small muted">· ${fmtInt(cb.power * hullOf(s))} jetzt</span>` : ''}</b></div>
+      <div><small>Hülle</small><b class="${hullOf(s) < 0.5 ? 'neg' : ''}">${Math.round(hullOf(s) * 100)} % <span class="small muted">von ${fmtInt(cb.hull)}</span></b></div>
       <div><small>Schild</small><b>${fmtInt(cb.shield)}</b></div>
       <div><small>Schaden/s</small><b>${fmtInt(cb.dps)}</b></div>
       <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}</b></div>
@@ -702,7 +720,7 @@ function fighterPanel(state: GameState, s: Ship, p: Panel): string {
       <p class="small" style="margin:0 0 10px">Aktiv: <b>${esc(combatOrderText(state, o))}</b></p>
       <div class="segment" style="margin-bottom:12px">${seg}</div>
       ${detail}
-      <p class="small muted" style="margin:10px 0 0">Gekämpft wird noch nicht: Gegner auf der Karte kommen in der nächsten Ausbaustufe.</p>
+      <p class="small muted" style="margin:10px 0 0">Greift Gegner im Wachbereich selbst an. Unter 25 % Hülle fliegt es zur Reparatur heim (Hüllenteile der Heimatstation). S- und M-Schiffe können im Gefecht verloren gehen.</p>
     </div>
     <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon(home ? 'station' : 'fleet', 20)}<div class="grow"><div class="title">${esc(home?.name ?? 'Frei – keiner Station zugeordnet')}</div><div class="sub">${esc(home ? `${sector(home.sector).name} · Rückkehr, wenn ein Geleit endet` : 'Hält nach einem Geleit die Position')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
     <div class="card-actions"><button class="btn" ${act('focus', { kind: 'ship', id: s.id })}>${icon('target', 20)}Auf Karte folgen</button><button class="btn danger" ${act('ask-sell-ship', { id: s.id })}>Verkaufen</button></div>`,

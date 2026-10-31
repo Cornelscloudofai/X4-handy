@@ -381,6 +381,14 @@ export interface Ship {
   status: string;
   /** Kampfschiff: aktueller Befehl */
   combat?: CombatOrder;
+  /** Kampfschiff: Zustand der Hülle 0 … 1 (fehlt = unbeschädigt) */
+  hp?: number;
+  /** L/XL nach einem verlorenen Gefecht: kann weder fliegen noch eingesetzt werden, bis es abgeschleppt ist */
+  disabled?: boolean;
+  /** Kampfschiff: greift gerade diese Gegnerrotte an */
+  engage?: number;
+  /** Kampfschiff: auf dem Rückweg zur Reparatur (bis die Hülle wieder fast voll ist) */
+  repair?: boolean;
   trips: number;
   earned: number;
 }
@@ -527,6 +535,8 @@ export interface GameState {
   incidents?: import('./incidents').IncidentState;
   /** Gegnerrotten auf der Karte (Kampf, Stufe 3) */
   hostiles?: import('./hostiles').HostileState;
+  /** Wracks auf der Karte (Schrott zum Bergen) */
+  wrecks?: import('./battle').Wreck[];
   /** Erkundung des unbekannten Raums: gefundene Torsignaturen („von>nach“) und entdeckte neue Sektoren */
   frontier?: import('./explore').FrontierState;
   scanTimer?: number;

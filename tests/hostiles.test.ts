@@ -81,7 +81,7 @@ describe('Gegner in der Welt', () => {
     expect(r.ok).toBe(true);
     const escorts = s.ships.filter((x) => x.combat?.kind === 'escort');
     expect(escorts.length).toBeGreaterThan(0);
-    expect(escorts.reduce((a, x) => a + SHIP_MAP[x.cls].combat!.power, 0)).toBeGreaterThanOrEqual(Math.min(DETER * h.power, 4 * SHIP_MAP.mamba.combat!.power));
+    expect(escorts.reduce((a, x) => a + SHIP_MAP[x.cls].combat!.power, 0)).toBeGreaterThanOrEqual(Math.min(h.power, 4 * SHIP_MAP.mamba.combat!.power));
   });
 
   it('Sicherheit: Grundwert der Fraktion, mehr mit Wachen, weniger mit viel Verkehr', () => {
