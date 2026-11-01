@@ -2,7 +2,10 @@
 // Die Schritte ergeben sich aus dem Spielstand – wer anders vorgeht, bekommt trotzdem den passenden Hinweis.
 import { WARES } from '../data/wares';
 import { buildDemand, buildMoveLimits } from '../engine/economy';
-import { currentMission, missionComplete } from '../engine/story';
+import { currentMission, missionComplete, storyOf } from '../engine/story';
+import { SHIP_MAP } from '../data/ships';
+import { hostilesIn } from '../engine/hostiles';
+import { scouts } from '../engine/explore';
 import { isDelivery } from '../engine/contracts';
 import { inTransitForContract } from '../engine/fleet';
 import type { GameState } from '../engine/types';
@@ -75,9 +78,71 @@ function deliveryStep(state: GameState, ui: UIState, chapter: boolean): CoachSte
   return { id: 'dl-nav', sel: '#nav [data-tab="missions"]', text: waiting ? 'Dein Lieferauftrag wartet auf ein Schiff. Tippe auf „Aufträge“.' : 'Willkommen, Kommandant! Unter „Aufträge“ warten Lieferaufträge – Stationen, die dringend Ware brauchen und gut zahlen. Tippe hier.' };
 }
 
+/**
+ * Alle Hinweise aus: nur wenn der Spieler sie ausgeblendet hat. Nach den Grundlagen („finish“) schaltet das Spiel nur die
+ * Kapitelführung ab – die einmaligen Tipps zu neuen Systemen (Sektorenkarte, Erkundung, Kampfschiffe) kommen weiter.
+ */
+function allOff(state: GameState): boolean {
+  const h = state.help;
+  return !!h?.coachOff && (!!h.userOff || !h.seen?.includes('finish'));
+}
+
 export function coachStep(state: GameState, ui: UIState): CoachStep | null {
-  if (state.help?.coachOff || !state.stations[0] || ui.view === 'galaxy' || ui.placing || ui.modal?.type === 'help') return null;
-  return chapterStep(state, ui) ?? tipStep(state, ui);
+  if (allOff(state) || !state.stations[0] || ui.placing || ui.modal?.type === 'help') return null;
+  if (ui.view === 'galaxy') return galaxyTip(state, ui);
+  return (state.help?.coachOff ? null : chapterStep(state, ui)) ?? tipStep(state, ui);
+}
+
+const once = (state: GameState, id: string, sel: string | null, text: string): CoachStep | null => (coachSeen(state, id) ? null : { id, sel, text, next: true });
+
+/** Erstes sichtbares Element zu einer Aktion – in der Karte unten oder auf der Detailseite */
+const find = (a: string): string | null => [`#card [data-act="${a}"]`, `#panel [data-act="${a}"]`].find((q) => document.querySelector(q)) ?? null;
+
+/** Ab dem Kapitel mit dem ersten Späher (oder sobald einer da ist) gehört die Sektorenkarte zum Spiel */
+function exploring(state: GameState): boolean {
+  const i = storyOf(state).findIndex((m) => m.id === 'x-signal');
+  return scouts(state).length > 0 || (state.frontier?.signatures.length ?? 0) > 0 || (i >= 0 && state.story.index >= i);
+}
+
+/** Erkundung: Späher, Peilung, Tore – dort, wo die Knöpfe stehen (Sektorenkarte, Sektorinfo, Detailseite) */
+function exploreTip(state: GameState): CoachStep | null {
+  let q: string | null;
+  if ((q = find('gate-through'))) return once(state, 'tip-gate-open', q, 'Das Tor läuft. Ein Späher fliegt hindurch und meldet, was dahinter liegt. Der neue Sektor kommt in die Forschungsakte – und kann selbst wieder tote Tore haben.');
+  if ((q = find('gate-deliver'))) return once(state, 'tip-gate-site', q, 'Geliefert wird direkt aus deinen Stationslagern, ganz ohne Schiff. Was fehlt, verkaufen Händler mit 40 % Aufschlag („Rest zukaufen“). Sind alle Waren da, dauert die Montage eine halbe Stunde.');
+  if ((q = find('gate-repair'))) return once(state, 'tip-gate-sig', q, 'Der Späher hat ein erloschenes Tor gefunden. „Baustelle einrichten“ zeigt, was es braucht: Hüllenteile für die Ringsegmente, Energiezellen für die Kopplung, weiter draußen auch Elektronik.');
+  if ((q = find('scout-peil'))) return once(state, 'tip-peil', q, 'Peilen: links wischen dreht die Antenne, rechts wischen stimmt die Frequenz ab. Wer das Signal hält, findet ein vorhandenes Tor sicher – „Nur schicken“ nur in drei von zehn Fällen. Ob es überhaupt eins gibt, verrät die Suche nicht.');
+  if ((q = find('scout-buy'))) return once(state, 'tip-scout', q, 'Späher sind kleine Schiffe mit Richtantenne. Sie handeln nicht und bauen nichts ab: Sie fliegen in einen Sektor und suchen dort nach erloschenen Toren in den unbekannten Raum.');
+  return null;
+}
+
+/** Sektorenkarte: einmal erklären, dann die Erkundung (Reiter „Erkundung“ in der Karte eines Sektors) */
+function galaxyTip(state: GameState, ui: UIState): CoachStep | null {
+  if (ui.modal || ui.panel) return null;
+  const t = once(state, 'tip-galaxy-map', null, 'Die Sektorenkarte: Linien sind Sprungtore, deine Sektoren leuchten. Einen Sektor antippen zeigt Fraktion, Lizenz, Wirtschaft und Erkundung; „Hinfliegen“ wechselt dorthin. Der Stern oben öffnet die Forschungsakte mit allem, was im unbekannten Raum gefunden wurde.');
+  if (t) return t;
+  if (!ui.galaxySel) return null;
+  const e = exploreTip(state);
+  if (e) return e;
+  if (exploring(state) && document.querySelector('#card .sec-tabs [data-tab="explore"]:not(.active)')) {
+    return once(state, 'tip-explore-tab', '#card .sec-tabs [data-tab="explore"]', 'Unter „Erkundung“ schickst du Späher los, peilst Torsignale an und setzt gefundene Tore instand.');
+  }
+  return null;
+}
+
+/** Kampfschiffe auf der Karte: Auswahl, Befehlskugel, Gegner */
+function combatTip(state: GameState, ui: UIState): CoachStep | null {
+  if (ui.order || ui.gesture) return null;
+  if (ui.group.length && !ui.orbOpen && document.querySelector('#cmd .orb')) {
+    return once(state, 'tip-orb', '#cmd .orb', 'Die Kugel gehört zu deiner Auswahl. Antippen zeigt die Befehle: Flieg zu, Patrouille, Wache, Geleit, Angreifen. Danach tippst du das Ziel auf der Karte an.');
+  }
+  if (hostilesIn(state, ui.sector).some((h) => h.phase !== 'leave')) {
+    const t = once(state, 'tip-hostile', null, 'Gegner im Sektor: Die rote Rotte antippen zeigt Stärke, Ziel und „Kampfschiffe schicken“. Neue Rotten sammeln sich erst zehn Minuten am Rand – Zeit genug, Kampfschiffe hinzuschicken oder Frachter umzuleiten.');
+    if (t) return t;
+  }
+  if (!ui.group.length && state.ships.some((x) => x.sector === ui.sector && SHIP_MAP[x.cls].combat)) {
+    return once(state, 'tip-lasso', null, 'Kampfschiffe steuerst du direkt auf der Karte: eines antippen – oder auf die Karte drücken und halten, bis es kurz vibriert und sich der Ring füllt. Dann mit dem Finger einen Kreis um mehrere Kampfschiffe ziehen.');
+  }
+  return null;
 }
 
 /**
@@ -98,7 +163,14 @@ function tipStep(state: GameState, ui: UIState): CoachStep | null {
   }
   if (p?.type === 'ledger') return tip('tip-ledger-panel', null, 'Das Kontobuch: oben die Summen der letzten Stunde und des Tages, darunter jede Buchung mit Grund. Antippen springt zum Schiff, zur Station oder zum Auftrag.');
   if (p?.type === 'news') return tip('tip-news-panel', null, 'Hier landen alle Meldungen. „Jetzt kaufen …“ öffnet ein Sonderangebot direkt, „Annehmen …“ einen Lieferauftrag; „NEU“ markiert, was seit dem letzten Blick dazukam.');
+  if (p?.type === 'sector') return exploreTip(state);
   if (p) return null;
+  const c = combatTip(state, ui);
+  if (c) return c;
+  if (ui.selection?.kind === 'sector') {
+    const e = exploreTip(state);
+    if (e) return e;
+  }
   const mission = currentMission(state)?.id;
   if (mission === 'm-buyers') {
     const t = tip('tip-economy', null, 'Erz geht an die Metallhütte (daraus werden Hüllenteile), Silizium an das Siliziumwerk (Grundstoff für Claytronik). Welchen Zweig du versorgst, entscheidest du: Flotte → dein Miner → Rohstoff fest einstellen.');
@@ -114,6 +186,10 @@ function tipStep(state: GameState, ui: UIState): CoachStep | null {
   }
   if (state.story.index >= 1 && unreadNews(state) >= 3) {
     const t = tip('tip-news', '#hud [data-act="open-news"]', 'Meldungen verschwinden unten schnell – hier im Nachrichtenblatt kannst du alles nachlesen und direkt hinspringen, z. B. zu einem Sonderangebot.');
+    if (t) return t;
+  }
+  if (exploring(state)) {
+    const t = tip('tip-galaxy', '#hud .hb-sector', 'Tippe auf den Sektornamen: Die Sektorenkarte zeigt alle bekannten Sektoren, die Sprungtore dazwischen und den unbekannten Raum. Dort schickst du auch Späher los.');
     if (t) return t;
   }
   return null;
@@ -229,7 +305,10 @@ export function renderCoach(state: GameState, ui: UIState): void {
   if (r) {
     const left = Math.max(16, Math.min(vw - w - 16, r.left + r.width / 2 - w / 2));
     const ax = Math.max(18, Math.min(w - 18, r.left + r.width / 2 - left));
-    const below = r.bottom + 170 < vh || r.top < 190;
+    // Höhe der Blase grob nach Textlänge (etwa 40 Zeichen je Zeile): unten nur, wenn sie dort ganz hinpasst,
+    // sonst auf die Seite mit mehr Platz
+    const estH = 70 + Math.ceil(step.text.length / 40) * 21;
+    const below = r.bottom + pad + 12 + estH < vh || (r.top - pad - 12 - estH < 0 && vh - r.bottom > r.top);
     style = below ? `left:${left}px;top:${r.bottom + pad + 12}px;width:${w}px` : `left:${left}px;bottom:${vh - r.top + pad + 12}px;width:${w}px`;
     arrow = `<i class="coach-arrow ${below ? 'up' : 'down'}" style="left:${ax}px"></i>`;
   } else {

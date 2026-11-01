@@ -111,6 +111,9 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
   nur Kampfschiffe; schwebende Befehlskugel neben der Gruppe, Befehle mit Strahlen untereinander (Flieg zu, Patrouille
   mit aufgezogenem Radius, Wache, Geleit, Angreifen); Einzelschiff als kompakte Infozeile, Infoblatt nur auf Wunsch;
   neue Station nur noch über „Stationen → Neue Station gründen“ (`scripts/command-shot.mjs`)
+- [x] Einmalige Hinweise (`src/ui/coach.ts`, `scripts/guide-shot.mjs`): Lasso, Befehlskugel, Gegner im Sektor – dazu
+  Sektorenkarte, Späher, Peilen, Tor-Baustelle und offenes Tor; kommen auch nach den Grundlagen (nur „Hilfe ausblenden“
+  schaltet sie ab). Hilfeseite „Sektorenkarte und Erkundung“
 - [ ] Stufe 5 – Ausbau
 
 ## Vorerst ausgeschaltet (zum Testen der Gefechte)

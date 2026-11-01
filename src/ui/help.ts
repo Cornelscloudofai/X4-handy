@@ -209,6 +209,19 @@ export const HELP: HelpTopic[] = [
     ].join(''),
   },
   {
+    id: 'explore', title: 'Sektorenkarte und Erkundung', icon: 'galaxy', short: 'Späher, Peilung und erloschene Tore',
+    body: [
+      p('Oben links auf den Sektornamen tippen öffnet die <b>Sektorenkarte</b>: alle bekannten Sektoren, die Sprungtore dazwischen und der unbekannte Raum. Einen Sektor antippen zeigt seine Karte mit den Reitern Allgemein, Wirtschaft und Erkundung; „Hinfliegen“ wechselt dorthin. Der Stern oben öffnet die <b>Forschungsakte</b>.'),
+      ul([
+        '<b>Späher</b> (140.000 Cr, Reiter „Erkundung“): fliegt über die bekannten Tore in einen Sektor – 20 Minuten je Tor – und sucht dort eine Viertelstunde nach erloschenen Toren.',
+        '<b>Peilen:</b> „Peilen und … schicken“ startet die Richtantenne. Links wischen dreht die Antenne, rechts wischen stimmt die Frequenz ab, bis die Welle ruhig schwingt. Wer das Signal hält, findet ein vorhandenes Tor sicher; „Nur schicken“ findet es nur in drei von zehn Fällen. Jedes Gebiet stört anders: Sonnenstürme, Echos, Brechung, Taktsignale.',
+        '<b>Keine Spur</b> heißt entweder Pech oder wirklich nichts – die Suche verrät es nicht.',
+        '<b>Tor instand setzen:</b> „Baustelle einrichten“ → Waren direkt aus deinen Stationslagern liefern (ohne Schiff). Was fehlt, verkaufen Händler mit 40 % Aufschlag. Sind alle Waren da, dauert die Montage eine halbe Stunde. Je weiter draußen, desto mehr Material.',
+        '<b>Hindurchschicken:</b> Ist das Tor offen, fliegt ein Späher hindurch. Der neue Sektor kommt in die Forschungsakte und kann selbst wieder tote Tore haben.',
+      ]),
+    ].join(''),
+  },
+  {
     id: 'incidents', title: 'Vorfälle und Aufgaben', icon: 'game', short: 'Minispiele, die im Spiel etwas bewirken',
     body: [
       p('<b>Vorfälle</b> entstehen etwa einmal je Spielstunde, ab Kapitel 5. Eine Leiste über dem Kapitelziel zeigt sie mit „Selbst übernehmen“. Wer nicht spielt, bekommt nach Ablauf der Frist ein mittleres Ergebnis – selbst spielen ist nie Pflicht.'),

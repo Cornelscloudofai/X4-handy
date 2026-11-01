@@ -558,7 +558,8 @@ export interface GameState {
   opportunities?: Opportunity[];
   oppTimer?: number;
   /** Einstieg: geführte erste Schritte (gesehene Hinweise, ausgeblendet) */
-  help?: { coachOff?: boolean; seen?: string[] };
+  /** coachOff: Kapitelführung aus; userOff: vom Spieler ausgeblendet (dann auch keine Tipps) */
+  help?: { coachOff?: boolean; userOff?: boolean; seen?: string[] };
   totals: { produced: Record<string, number>; sold: number; bought: number; mined: Record<string, number>; delivered: number; shipsBuilt?: number; shipsSold?: number; shipsBuiltL?: number; buildOwn?: Record<string, number>; couriers?: number };
   log: LogEntry[];
   /** Verlaufsdaten der letzten 24 Spielstunden */

@@ -704,6 +704,7 @@ function onHoldStart(sx: number, sy: number): boolean {
 function onHoldReady(sx: number, sy: number): void {
   ui.gesture = { kind: 'lasso', pts: [[sx, sy]] };
   navigator.vibrate?.(8);
+  markCoachSeen(state, 'tip-lasso');
 }
 
 function onHoldCancel(): void {
@@ -988,7 +989,7 @@ function onClick(e: MouseEvent): void {
       case 'welcome-step': if (ui.modal?.type === 'welcome') { ui.modal = { type: 'welcome', step: Math.max(0, Math.min(2, Number(d.step) || 0)) }; refresh(); } break;
       case 'start-game': runConfirmed('start-game', { kind: d.kind ?? 'mining' }); break;
       case 'coach-next': markCoachSeen(state, d.id!); if (d.id === 'finish') { state.help = { ...state.help, coachOff: true }; } refresh(); break;
-      case 'coach-off': state.help = { ...state.help, coachOff: true }; toast('Hinweise ausgeblendet – im Menü unter „Erste Schritte zeigen“ wieder einschalten.', 'info'); refresh(); break;
+      case 'coach-off': state.help = { ...state.help, coachOff: true, userOff: true }; toast('Hinweise ausgeblendet – im Menü unter „Erste Schritte zeigen“ wieder einschalten.', 'info'); refresh(); break;
       case 'coach-restart': state.help = { seen: [] }; ui.panel = null; ui.modal = null; toast('Hinweise sind wieder an.', 'good'); refresh(); break;
       case 'plan-pick': ui.modal = { type: 'planPick', group: 'all', back: ui.modal?.type === 'planDiagram' }; refresh(); break;
       case 'plan-pick-group': if (ui.modal?.type === 'planPick') { ui.modal = { ...ui.modal, group: d.g! }; refresh(); } break;
@@ -1238,6 +1239,7 @@ function onClick(e: MouseEvent): void {
       // ---- Befehlsebene (Kampfschiffe) ----
       case 'orb-toggle': {
         ui.orbOpen = !ui.orbOpen;
+        markCoachSeen(state, 'tip-orb');
         ui.orbAt = ui.orbOpen ? orbPosition() : null;
         // Befehle strahlen zur Seite mit mehr Platz
         ui.orbSide = ui.orbAt && ui.orbAt[0] > cam.w / 2 ? -1 : 1;

@@ -629,7 +629,7 @@ function sectorEconomy(state: GameState, id: string): string {
 function sectorExplore(state: GameState, id: string): string {
   const f = FRONTIER_MAP[id];
   const sigs = (state.frontier?.signatures ?? []).filter((g) => g.startsWith(id + '>')).length;
-  const intro = f ? `<q class="sec-log">${esc(f.log)}</q>` : `<p class="sec-desc">${sigs ? `${sigs} Torsignatur${sigs === 1 ? '' : 'en'} gefunden.` : 'Späher suchen hier nach erloschenen Toren in den unbekannten Raum. Mit Peilung finden sie schneller etwas.'}</p>`;
+  const intro = f ? `<q class="sec-log">${esc(f.log)}</q>` : `<p class="sec-desc">${sigs ? `${sigs} Torsignatur${sigs === 1 ? '' : 'en'} gefunden.` : 'Späher suchen hier nach erloschenen Toren in den unbekannten Raum. Mit Peilung finden sie schneller etwas.'} ${helpBtn('explore')}</p>`;
   return `${intro}${id === 'f-ausblick' ? outpostBlock(state) : ''}${exploreBlock(state, id)}
     <div class="card-actions" style="margin-top:10px"><button class="btn small" ${act('akte')}>${icon('star', 16)}Forschungsakte</button></div>`;
 }
