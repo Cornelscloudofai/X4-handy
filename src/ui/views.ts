@@ -188,19 +188,26 @@ function flowFilter(state: GameState, ui: UIState): string {
 
 export function objectiveHtml(state: GameState, ui: UIState): string {
   if (ui.panel || ui.placing) return '';
-  return incidentBar(state) + (ui.view === 'galaxy' ? '' : objectiveInner(state, ui));
+  return incidentBar(state, ui) + (ui.view === 'galaxy' ? '' : objectiveInner(state, ui));
 }
 
 /** Offene Vorfälle: der dringendste mit „Selbst übernehmen“ (weitere als Zahl) */
-function incidentBar(state: GameState): string {
+function incidentBar(state: GameState, ui: UIState): string {
   const open = [...(state.incidents?.open ?? [])].sort((a, b) => a.expires - b.expires);
   if (!open.length) return '';
   const inc = open[0];
+  const newest = Math.max(...open.map((i) => i.id));
+  // eingeklappt: Viertelkreis in der Ecke über der Steuerleiste – pulsiert, wenn seitdem ein neues Ereignis kam
+  if (ui.incMin) {
+    const bad = open.some((i) => !['vein', 'tide', 'freight', 'rush'].includes(i.kind));
+    return `<button class="inc-corner ${bad ? '' : 'good'} ${newest > (ui.incSeen ?? 0) ? 'new' : ''}" ${act('inc-toggle')} aria-label="${open.length} ${open.length === 1 ? 'Ereignis' : 'Ereignisse'} – einblenden"><b>!</b><small>${open.length}</small></button>`;
+  }
   const t = incidentText(state, inc);
   const left = Math.max(0, inc.expires - state.time);
   const ic = ({ raid: 'warn', fault: 'wrench', vein: 'miner', tide: 'miner', freight: 'box', rush: 'trader', dock: 'sun' } as Record<string, string>)[inc.kind] ?? 'warn';
   return `<div class="incident-bar ${inc.kind} ${['vein', 'tide', 'freight', 'rush'].includes(inc.kind) ? 'good' : ''}"><span class="inc-ic">${icon(ic, 20)}</span><div class="inc-txt"><b>${esc(t.title)}</b><small>${esc(t.text)} · noch ${fmtDur(left)}${open.length > 1 ? ` · +${open.length - 1} weitere` : ''}</small></div>
-    <button class="btn small primary" ${act('incident-play', { id: inc.id })}>Selbst übernehmen</button></div>`;
+    <button class="btn small primary" ${act('incident-play', { id: inc.id })}>Selbst übernehmen</button>
+    <button class="inc-min" ${act('inc-toggle')} aria-label="Ereignisleiste einklappen">${icon('down', 16)}</button></div>`;
 }
 
 function objectiveInner(state: GameState, ui: UIState): string {

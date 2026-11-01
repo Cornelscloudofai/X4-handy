@@ -80,6 +80,9 @@ export interface UIState {
   labelDensity: number;
   /** Kapitelziel auf der Karte eingeklappt */
   objMin?: boolean;
+  /** Ereignisleiste eingeklappt (nur der Viertelkreis rechts unten); incSeen: höchste gesehene Ereignis-Nummer */
+  incMin?: boolean;
+  incSeen?: number;
   /** Zoomstufe 0 (weit) … 1 (nah) für den Schieber der Zoom-Leiste */
   zoomFrac?: number;
   /** Sektor-Hintergrund: Bilder (Standard) oder erzeugte Himmel */
@@ -122,6 +125,8 @@ export const ui: UIState = {
   galaxySel: null,
   reducedMotion: initialReducedMotion(),
   labelDensity: initialLabelDensity(),
+  incMin: (() => { try { return globalThis.localStorage?.getItem('x4-sektorbau-incmin') === '1'; } catch { return false; } })(),
+  incSeen: 0,
   objMin: (() => { try { return globalThis.localStorage?.getItem('x4-sektorbau-objmin') === '1'; } catch { return false; } })(),
   bgMode: initialBgMode(),
   iconStyle: initialIconStyle(),

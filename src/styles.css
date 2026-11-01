@@ -144,7 +144,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 #nav .badge { position: absolute; top: 5px; right: calc(50% - 20px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--amber); color: #1b1206; font-size: 10px; font-weight: 700; display: grid; place-items: center; font-family: var(--font-display); }
 
 #card { margin: 0 10px 8px; }
-#objective { margin: 0 10px 8px; }
+#objective { margin: 0 10px 8px; position: relative; }
 .objective .chev { color: var(--muted); }
 .card {
   background: var(--panel); border: 1px solid var(--line-2); border-radius: 18px; padding: 12px 12px 12px;
@@ -1043,8 +1043,11 @@ details.explain p { margin: 0; padding: 0 12px 12px; font-size: 13.5px; line-hei
 .zoom-knob { margin-top: -7px; }
 .zoom button, .zoom-track { touch-action: none; user-select: none; -webkit-user-select: none; }
 .objective { padding: 6px 10px 6px 8px; }
-.objective-wrap .objective { padding-right: 40px; }
-.obj-hide { right: 6px; top: 50%; margin-top: -14px; }
+/* Einklapp-Taste: Quadrat in voller Balkenhöhe am rechten Rand (große Fläche zum Antippen) */
+.objective-wrap .objective { padding-right: 62px; }
+.obj-hide { right: 0; top: 0; bottom: 0; width: auto; height: auto; aspect-ratio: 1; margin: 0; border-radius: 0 12px 12px 0; border-left: 1px solid var(--line);
+  background: rgba(3, 9, 15, 0.55); color: var(--text-2); }
+.obj-hide:active { background: rgba(63, 224, 197, 0.12); }
 #hud::before { height: calc(var(--safe-top) + 120px); }
 
 /* Nachrichtenblatt: Art der Meldung auf einen Blick (Farbe, Symbol, Kennzeichnung), Überschrift + Zusatz */
@@ -1772,6 +1775,17 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .incident-bar .inc-txt b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; }
 .incident-bar .btn { font-size: 12.5px; padding: 0 10px; min-height: 36px; }
 @media (max-width: 380px) { .incident-bar .inc-ic { display: none; } }
+.incident-bar .inc-min { flex: none; width: 30px; height: 36px; margin-left: -4px; border-radius: 10px; display: grid; place-items: center; color: var(--text-2); background: none; border: 0; }
+/* eingeklappt: Viertelkreis in der rechten unteren Ecke, direkt über der Steuerleiste */
+.inc-corner { position: absolute; right: -10px; bottom: -8px; z-index: 2; width: 58px; height: 58px; padding: 0; border: 1px solid rgba(255, 150, 80, 0.6); border-right: 0; border-bottom: 0;
+  border-radius: 58px 0 0 0; background: radial-gradient(circle at 100% 100%, rgba(255, 140, 50, 0.95), rgba(150, 60, 10, 0.92) 70%); color: #fff;
+  box-shadow: 0 0 18px rgba(255, 120, 40, 0.35); display: block; animation: riseIn 0.3s both; }
+.inc-corner b { position: absolute; right: 13px; bottom: 15px; font-size: 22px; font-weight: 800; line-height: 1; }
+.inc-corner small { position: absolute; right: 30px; bottom: 30px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #1a0a02; color: #ffc48a; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.inc-corner.good { border-color: rgba(63, 224, 197, 0.6); background: radial-gradient(circle at 100% 100%, rgba(63, 224, 197, 0.95), rgba(10, 90, 76, 0.92) 70%); box-shadow: 0 0 18px rgba(63, 224, 197, 0.3); }
+.inc-corner.good small { color: #8ff5e2; background: #031a16; }
+.inc-corner.new { animation: riseIn 0.3s both, incPulse 1.4s ease-in-out infinite; }
+@keyframes incPulse { 0%, 100% { box-shadow: 0 0 10px rgba(255, 120, 40, 0.3); } 50% { box-shadow: 0 0 26px 6px rgba(255, 140, 50, 0.65); } }
 
 /* ---------- Gekürzte Texte: lieber umbrechen; sonst antippen = aufklappen, lange drücken = ganzer Text ---------- */
 .row .title, .row .sub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
@@ -1809,3 +1823,5 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .flow-row span { flex: 1; min-width: 0; }
 .flow-list .small { margin: 8px 10px; }
 .flow-off { display: block; width: 100%; margin-top: 4px; padding: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; text-align: center; }
+/* Viertelkreis sichtbar: das Kapitelziel rückt nach links, damit nichts verdeckt wird */
+.inc-corner ~ .objective-wrap:not(.min) { margin-right: 50px; }

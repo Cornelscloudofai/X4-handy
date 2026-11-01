@@ -1323,6 +1323,14 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'ship-art-try': openMinigame('pirates', { level: 1, mutator: null }, () => refresh(), true); break;
+      case 'inc-toggle': {
+        ui.incMin = !ui.incMin;
+        // beim Einklappen gilt alles Offene als gesehen; neue Ereignisse lassen den Viertelkreis pulsieren
+        ui.incSeen = Math.max(0, ...(state.incidents?.open ?? []).map((i) => i.id));
+        try { localStorage.setItem('x4-sektorbau-incmin', ui.incMin ? '1' : ''); } catch { /* egal */ }
+        refresh();
+        break;
+      }
       case 'obj-toggle': ui.objMin = !ui.objMin; try { localStorage.setItem('x4-sektorbau-objmin', ui.objMin ? '1' : ''); } catch { /* egal */ } refresh(); break;
       case 'more-sub': openPanel('more', undefined, d.tab, true); break;
       case 'mg-tab': if (ui.modal?.type === 'minigames') { ui.modal.tab = d.tab as 'games' | 'daily' | 'combat'; refresh(); } break;
