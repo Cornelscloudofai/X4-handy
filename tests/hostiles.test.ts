@@ -5,8 +5,9 @@ import { buyShip } from '../src/engine/actions';
 import { setCombatOrder } from '../src/engine/combat';
 import { stepShip } from '../src/engine/fleet';
 import { INCIDENT_CHAPTER, RAID_BOUNTY, incidentState, pauseIncidents, stepIncidents } from '../src/engine/incidents';
-import { DETER, GATHER_TIME, HOSTILE_CHECK, defenseNear, hostileState, hostilesIn, sectorSecurity, sendDefense, spawnHostile, stepHostiles } from '../src/engine/hostiles';
+import { GATHER_TIME, HOSTILE_CHECK, defenseNear, hostileState, hostilesIn, sectorSecurity, sendDefense, spawnHostile, stepHostiles } from '../src/engine/hostiles';
 import { XENON_CYCLE, xenonClock } from '../src/engine/phenomena';
+import { stepBattles } from '../src/engine/battle';
 import type { GameState, Ship } from '../src/engine/types';
 
 /** Spiel mit beladenem Frachter, der still steht (leichtes Ziel) */
@@ -28,6 +29,7 @@ function run(s: GameState, seconds: number, ships: Ship[] = []): void {
     for (const f of ships) stepShip(s, f, 0.5);
     stepIncidents(s);
     stepHostiles(s, 0.5);
+    stepBattles(s, 0.5);
   }
 }
 
@@ -51,7 +53,8 @@ describe('Gegner in der Welt', () => {
     expect(hostilesIn(s, trader.sector).length).toBe(0);
   });
 
-  it('genug eigene Kampfkraft in der Nähe: die Rotte dreht ab, ein laufender Überfall ist abgewehrt', () => {
+  // Abdrehen vor Überlegenen ist vorerst aus (DETER_ON): die Rotte stellt sich dem Kampf
+  it('überlegenes Geleit: die Rotte stellt sich dem Kampf und wird vernichtet, der Überfall ist abgewehrt', () => {
     const { s, trader } = setup();
     s.credits = 1e8;
     const h = spawnHostile(s, trader.sector, 'pirates', 0, 0);
@@ -61,14 +64,15 @@ describe('Gegner in der Welt', () => {
     // Cobra (Kampfwert über 500) als Geleit dazu
     expect(buyShip(s, 'cobra', s.stations[0].id).ok).toBe(true);
     const cobra = s.ships[s.ships.length - 1];
-    expect(SHIP_MAP.cobra.combat!.power).toBeGreaterThanOrEqual(DETER * h.power);
+    expect(SHIP_MAP.cobra.combat!.power).toBeGreaterThan(h.power);
     setCombatOrder(s, cobra.id, { kind: 'escort', ship: trader.id });
     run(s, 300, [cobra]);
-    expect(h.phase === 'leave' || !hostilesIn(s, trader.sector).includes(h)).toBe(true);
+    expect(hostilesIn(s, trader.sector).includes(h)).toBe(false);
     expect(incidentState(s).open.length).toBe(0);
     expect(trader.cargo!.amount).toBe(1000);
     expect(s.credits - c0).toBeGreaterThanOrEqual(RAID_BOUNTY - SHIP_MAP.cobra.price);
-    expect(s.log.some((l) => /dreht ab/.test(l.text))).toBe(true);
+    expect(s.log.some((l) => /vernichtet/.test(l.text))).toBe(true);
+    expect(s.log.some((l) => /dreht ab/.test(l.text))).toBe(false);
   });
 
   it('„Kampfschiffe schicken“ setzt die nächsten Kampfschiffe als Geleit, bis der Kampfwert reicht', () => {

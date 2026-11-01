@@ -108,3 +108,9 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
   einem Stern vernichtet, eigener Schaden 40/20/0 %); Wracks bergen im Bergungs-Einsatz. Noch offen: eigene Kampfschiffe
   als Flügelleute im Minispiel, Abschleppen von L/XL (Stufe 5)
 - [ ] Stufe 5 – Ausbau
+
+## Vorerst ausgeschaltet (zum Testen der Gefechte)
+
+- Abdrehen vor überlegenen eigenen Kampfschiffen (`DETER_ON` in `src/engine/hostiles.ts`)
+- Flucht bei hohen Verlusten (`FLEE_ON` in `src/engine/battle.ts`)
+- Später neu überlegen, wie Abdrehen und Flucht sich anfühlen sollen. Bis dahin kämpfen alle Rotten bis zum Ende.

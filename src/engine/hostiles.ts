@@ -58,6 +58,8 @@ export const GATHER_TIME = 10 * 60;
 export const ATTACK_R = 3;
 export const DEFEND_R = 25;
 export const DETER = 1.5;
+/** Vorerst aus (zum Ausprobieren der Gefechte): Rotten stellen sich jedem Kampf, statt vor Überlegenen abzudrehen */
+export const DETER_ON = false;
 /** In dieser Entfernung stellt sich eine Rotte eigenen Kampfschiffen (statt weiter zu jagen) */
 export const ENGAGE_SIGHT = 15;
 /** Tempo (km/s): schneller als Frachter, sonst holen sie keinen ein */
@@ -208,8 +210,9 @@ function stepOne(state: GameState, h: Hostile, dt: number): void {
   if (h.phase !== 'leave') {
     // Abschrecken: Piraten meiden klar überlegene Gegner (anderthalbfacher Kampfwert in der Nähe) und drehen ab, ein
     // laufender Überfall ist damit abgewehrt. Xenon und Kha'ak weichen nicht aus – sie kämpfen (battle.ts).
-    const def = h.foe === 'pirates' && !h.fighting ? defenseNear(state, h.sector, h.x, h.z) : 0;
-    if (h.foe === 'pirates' && !h.fighting && def >= DETER * h.power) {
+    const deter = DETER_ON && h.foe === 'pirates' && !h.fighting;
+    const def = deter ? defenseNear(state, h.sector, h.x, h.z) : 0;
+    if (deter && def >= DETER * h.power) {
       const inc = h.incident != null ? incidentById(state, h.incident) : undefined;
       if (inc) repelRaid(state, inc.id);
       leave(state, h, `${FOE_NAME[h.foe]} in ${SECTOR_MAP[h.sector].name} dreht ab – eigene Kampfschiffe (Kampfwert ${Math.round(def)}) sind zu stark für ${crew(h)}.`, 'good');

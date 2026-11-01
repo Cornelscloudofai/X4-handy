@@ -77,14 +77,15 @@ describe('Kampf auf der Karte', () => {
     expect(s.log.some((l) => l.kind === 'bad' && l.text.includes(m.name))).toBe(true);
   });
 
-  it('Piraten fliehen bei hohen Verlusten, statt bis zum Ende zu kämpfen', () => {
+  // Flucht und Abdrehen sind vorerst aus (FLEE_ON, DETER_ON): auch klar unterlegene Piraten kämpfen bis zum Ende
+  it('unterlegene Piraten kämpfen bis zum letzten Schiff', () => {
     const s = setup();
-    fighter(s, 'dragon');
-    // stärker als 386/1,5: sie drehen nicht schon vorher ab, sondern kämpfen
-    const h = foeAtStation(s, 'pirates', 300);
-    run(s, 60);
-    expect(h.phase).toBe('leave');
-    expect(s.log.some((l) => /flieht/.test(l.text))).toBe(true);
+    fighter(s, 'cobra');
+    const h = foeAtStation(s, 'pirates', 200);
+    run(s, 120);
+    expect(hostileState(s).list.includes(h)).toBe(false);
+    expect(s.log.some((l) => /vernichtet/.test(l.text))).toBe(true);
+    expect(s.log.some((l) => /flieht|dreht ab/.test(l.text))).toBe(false);
   });
 
   it('schwer beschädigt: zurück zur Heimat, dort Reparatur aus Hüllenteilen', () => {

@@ -52,7 +52,7 @@ import { BUILD_STORAGE_COST, buildDemand, buildMoveLimits, buildProgress, consum
 import { npcSource } from '../engine/npc';
 import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin, shipEta } from '../engine/fleet';
 import { PATROL_R, combatOrderText } from '../engine/combat';
-import { DEFEND_R, DETER, hostileState, hostileText, hostilesIn, sectorSecurity } from '../engine/hostiles';
+import { DEFEND_R, DETER, DETER_ON, hostileState, hostileText, hostilesIn, sectorSecurity } from '../engine/hostiles';
 import { FIGHT_R, fightersAt, hostileHp, hullOf, wrecksOf } from '../engine/battle';
 import { shipColor, shipIcon } from './shipyardView';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
@@ -598,9 +598,9 @@ function hostileCard(state: GameState, id: number): string {
   const near = state.ships.filter((s) => SHIP_MAP[s.cls].combat && s.sector === h.sector && Math.hypot(s.x - h.x, s.z - h.z) <= DEFEND_R).reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power, 0);
   const info = h.fighting
     ? `<b>Gefecht:</b> ${own.map((s) => esc(s.name)).join(', ')} (Kampfwert ${Math.round(ownPower)}) gegen die Rotte (noch ${Math.round(hostileHp(h))} von ${h.power}). Selbst übernommen: ab einem Stern ist die Rotte vernichtet.`
-    : h.foe === 'pirates'
+    : h.foe === 'pirates' && DETER_ON
       ? `Kampfschiffe mit mindestens <b>Kampfwert ${Math.ceil(DETER * h.power)}</b> im Umkreis von ${DEFEND_R} km schrecken Piraten ab; schwächere kämpfen (${FIGHT_R} km Gefechtsabstand)${near ? ` – gerade in der Nähe: ${Math.round(near)}` : ''}.`
-      : `${h.foe === 'xenon' ? 'Xenon' : 'Kha’ak'} weichen nicht aus – eigene Kampfschiffe mit etwa <b>Kampfwert ${h.power}</b> gewinnen das Gefecht${near ? `; gerade in der Nähe: ${Math.round(near)}` : ''}.`;
+      : `${h.foe === 'xenon' ? 'Xenon' : h.foe === 'khaak' ? 'Kha’ak' : 'Piraten'} stellen sich jedem Kampf – eigene Kampfschiffe mit etwa <b>Kampfwert ${h.power}</b> gewinnen das Gefecht${near ? `; gerade in der Nähe: ${Math.round(near)}` : ''}.`;
   return cardShell(icon('warn', 24), t.title, esc(t.sub), `
     <p class="small muted" style="margin:0 0 10px">${info}</p>
     <div class="card-actions">

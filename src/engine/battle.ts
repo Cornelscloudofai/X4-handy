@@ -17,6 +17,8 @@ export const FIGHT_R = 6;
 export const K = 1 / 40;
 /** Rückzug: Piraten fliehen unter 40 % ihrer Stärke, Xenon und Kha'ak erst unter 15 % */
 export const FLEE_AT = { pirates: 0.4, xenon: 0.15, khaak: 0.15 } as const;
+/** Vorerst aus (zum Ausprobieren der Gefechte): Rotten kämpfen bis zum letzten Schiff, statt zu fliehen */
+export const FLEE_ON = false;
 /** Eigene Kampfschiffe kehren unter 25 % Hülle zur Reparatur heim */
 export const RETREAT_AT = 0.25;
 /** Reparatur an der Heimatstation: volle Instandsetzung in fünf Minuten, kostet 30 % der Hüllenteile des Baus */
@@ -117,7 +119,7 @@ export function stepBattles(state: GameState, dt: number): void {
     if (pick.hp <= 0) shipDown(state, pick, h);
     if (hostileHp(h) <= 0) { hostileDown(state, h, own.map((s) => s.name).join(', ')); continue; }
     // Rückzug bei hohen Verlusten
-    if (hostileHp(h) < FLEE_AT[h.foe] * h.power) {
+    if (FLEE_ON && hostileHp(h) < FLEE_AT[h.foe] * h.power) {
       const inc = h.incident != null ? incidentById(state, h.incident) : undefined;
       if (inc) repelRaid(state, inc.id);
       h.phase = 'leave';
