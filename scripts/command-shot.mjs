@@ -62,6 +62,20 @@ await page.mouse.up();
 await page.waitForTimeout(300);
 const orders = await page.evaluate((ids) => ids.map((id) => window.__game.state.ships.find((x) => x.id === id).combat), ids);
 if (!orders.every((o) => o?.kind === 'patrol' && o.r > 15)) fail('Patrouille nicht gesetzt: ' + JSON.stringify(orders));
+// Angreifen ohne Gegner: kein Zielwählen, nur Hinweis; Abbrechen beendet das Zielwählen
+await page.click('#cmd .orb', { force: true });
+await page.waitForTimeout(300);
+await page.click('#cmd .orb-item:has-text("Angreifen")', { force: true });
+await page.waitForTimeout(200);
+if (await page.evaluate(() => window.__game.ui.order)) fail('Angreifen ohne Gegner wählt trotzdem ein Ziel');
+await page.click('#cmd .orb', { force: true });
+await page.waitForTimeout(300);
+await page.click('#cmd .orb-item:has-text("Wache")', { force: true });
+await page.waitForTimeout(200);
+await page.click('#cmd .cmd-hint button');
+await page.waitForTimeout(200);
+if (await page.evaluate(() => window.__game.ui.order)) fail('Abbrechen beendet das Zielwählen nicht');
+if (!(await page.locator('#cmd .grp-chip').count())) fail('Nach Abbrechen fehlt die Gruppe');
 // Flieg zu per Antippen
 await page.click('#cmd .orb', { force: true });
 await page.waitForTimeout(300);

@@ -689,7 +689,7 @@ export function commandHtml(state: GameState, ui: UIState): string {
   const power = Math.round(ships.reduce((a, x) => a + (SHIP_MAP[x.cls].combat?.power ?? 0) * hullOf(x), 0));
   const label = ships.length === 1 ? ships[0].name : `${ships.length} Kampfschiffe`;
   const top = ui.order
-    ? `<div class="cmd-hint">${icon('fighter', 16)}<span>${esc(ORDER_HINT[ui.order.kind])}${ships.length > 1 ? ` · ${ships.length} Schiffe` : ''}</span><button class="btn small" ${act('order-cancel')}>Abbrechen</button></div>`
+    ? `<div class="cmd-hint">${icon('fighter', 16)}<span>${esc(ORDER_HINT[ui.order.kind])}${ships.length > 1 ? ` · ${ships.length} Schiffe` : ''}</span><button class="btn small" ${act('cmd-cancel')}>Abbrechen</button></div>`
     : `<div class="grp-chip">${icon('fighter', 15)}<span>${esc(label)} · Kampfwert ${fmtInt(power)}</span><button ${act('group-clear')} aria-label="Auswahl aufheben">${icon('close', 15)}</button></div>`;
   const n = ORB_ORDERS.length, side = ui.orbSide;
   // Strahlen: von der Kugelmitte zum inneren Rand jedes Befehls (64 px zur Seite, untereinander im Abstand von 48 px)

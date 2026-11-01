@@ -9,7 +9,7 @@ import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors'
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { PATROL_R, PATROL_R_MIN, orderGroup } from '../engine/combat';
-import { hostileState, sendDefense, spawnHostile } from '../engine/hostiles';
+import { hostileState, hostilesIn, sendDefense, spawnHostile } from '../engine/hostiles';
 import { battleLevel, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
 import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
@@ -1244,8 +1244,11 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
-      case 'orb-order': ui.order = { kind: d.kind as NonNullable<typeof ui.order>['kind'] }; ui.orbOpen = false; ui.selection = null; refresh(); break;
-      case 'order-cancel': ui.order = null; refresh(); break;
+      case 'orb-order':
+        ui.orbOpen = false;
+        if (d.kind === 'attack' && !hostilesIn(state, ui.sector).some((h) => h.phase !== 'leave')) { toast('Keine Gegnerrotte in diesem Sektor.', 'info'); refresh(); break; }
+        ui.order = { kind: d.kind as NonNullable<typeof ui.order>['kind'] }; ui.selection = null; refresh(); break;
+      case 'cmd-cancel': ui.order = null; refresh(); break;
       case 'group-clear': setGroup([]); ui.selection = null; refresh(); break;
       case 'hostile-send': result(sendDefense(state, Number(d.id))); break;
       // Zum Ausprobieren: sofort eine Rotte im Sektor, die nach einer Minute angreift (später wieder entfernen)
