@@ -107,6 +107,10 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
   Hüllenteilen (fünf Minuten, 30 % der Bau-Hüllenteile); Kopfgeld 1.000 Cr je Gegnerschiff; „Selbst übernehmen“ (ab
   einem Stern vernichtet, eigener Schaden 40/20/0 %); Wracks bergen im Bergungs-Einsatz. Noch offen: eigene Kampfschiffe
   als Flügelleute im Minispiel, Abschleppen von L/XL (Stufe 5)
+- [x] Befehlsebene (getrennt vom Infoblatt): Gedrückt halten (⅓ s → Vibration und Ring, nach ⅔ s Lasso), Lasso fängt
+  nur Kampfschiffe; schwebende Befehlskugel neben der Gruppe, Befehle mit Strahlen untereinander (Flieg zu, Patrouille
+  mit aufgezogenem Radius, Wache, Geleit, Angreifen); Einzelschiff als kompakte Infozeile, Infoblatt nur auf Wunsch;
+  neue Station nur noch über „Stationen → Neue Station gründen“ (`scripts/command-shot.mjs`)
 - [ ] Stufe 5 – Ausbau
 
 ## Vorerst ausgeschaltet (zum Testen der Gefechte)

@@ -11,6 +11,7 @@ import type { GameState, ModuleDef, NpcStationDef, Ship, Station } from '../engi
 import { hashStr } from '../engine/util';
 import { FOE_NAME, hostilesIn, type Foe } from '../engine/hostiles';
 import { FIGHT_R, aliveOf, hostileHp, wrecksOf } from '../engine/battle';
+import { HOLD_FILL } from './camera';
 import type { Selection, UIState } from '../ui/uistate';
 import type { Camera } from './camera';
 import { fmtCr } from '../ui/format';
@@ -510,22 +511,67 @@ export class SectorRenderer {
       this.labels.push({ text: `${FOE_NAME[h.foe]} · ${alive}${hostileHp(h) < h.power ? ` (${Math.round((hostileHp(h) / h.power) * 100)} %)` : ''}${wait}`, x: hx, ys: [hy + 24 * shipS, hy - 24 * shipS], size: 11, color: rgba(col, 0.95), weight: 700, prio: 4, minRel: 0, force: true });
     }
 
-    // Ausgewähltes Kampfschiff: Patrouillengebiet bzw. Zielpunkt – beim Wählen der gewählte Punkt
+    // Befehlsgruppe: Ringe um die Schiffe; Patrouillengebiet bzw. Zielpunkt eines einzelnen ausgewählten Kampfschiffs;
+    // beim Aufziehen einer Patrouille der Kreis unter dem Finger
+    const group = new Set(ui.group);
+    for (const sh of state.ships) {
+      if (!group.has(sh.id) || sh.sector !== sec.id) continue;
+      const [gx, gy] = cam.toScreen(sh.x, sh.z);
+      ctx.save();
+      ctx.strokeStyle = rgba(C.fighter, 0.85);
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([3, 3]);
+      ctx.lineDashOffset = -now / 60;
+      ctx.beginPath(); ctx.arc(gx, gy, 13 * shipS + 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
     const selF = selShip ? state.ships.find((x) => x.id === selShip) : undefined;
-    const pk = ui.pickPoint;
-    const fo = pk ? (pk.set ? (pk.kind === 'patrol' ? { kind: 'patrol' as const, sector: sec.id, x: pk.x, z: pk.z, r: pk.r } : { kind: 'move' as const, sector: sec.id, x: pk.x, z: pk.z }) : undefined) : selF?.combat;
+    const po = ui.order?.kind === 'patrol' && ui.order.x != null ? ui.order : null;
+    const fo = po ? { kind: 'patrol' as const, sector: sec.id, x: po.x!, z: po.z ?? 0, r: Math.max(2, po.r ?? 0) } : selF?.combat;
     if (fo && (fo.kind === 'patrol' || fo.kind === 'move') && fo.sector === sec.id) {
       const [cx, cy] = cam.toScreen(fo.x, fo.z);
       const r = fo.kind === 'patrol' ? fo.r * cam.zoom : 6;
       ctx.save();
       ctx.setLineDash([5, 7]);
       ctx.lineDashOffset = -now / 80;
-      ctx.strokeStyle = rgba(C.fighter, 0.55);
-      ctx.fillStyle = rgba(C.fighter, 0.05);
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = rgba(C.fighter, po ? 0.9 : 0.55);
+      ctx.fillStyle = rgba(C.fighter, po ? 0.1 : 0.05);
+      ctx.lineWidth = po ? 1.8 : 1.2;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       if (fo.kind === 'patrol') ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      if (po) this.labels.push({ text: `${Math.round(fo.kind === 'patrol' ? fo.r : 0)} km`, x: cx, ys: [cy - r - 12, cy + r + 14], size: 12, color: rgba(C.fighter, 0.95), weight: 700, prio: 5, minRel: 0, force: true });
+    }
+
+    // Geste: Ring füllt sich beim Halten, danach die Lasso-Linie (der letzte Abschnitt schließt sich gestrichelt)
+    const g = ui.gesture;
+    if (g?.kind === 'hold') {
+      const f = Math.min(1, (performance.now() - g.t0) / HOLD_FILL);
+      ctx.save();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.beginPath(); ctx.arc(g.x, g.y, 34, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = rgba(C.fighter, 0.95);
+      ctx.beginPath(); ctx.arc(g.x, g.y, 34, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    } else if (g?.kind === 'lasso' && g.pts.length > 1) {
+      ctx.save();
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = rgba(C.fighter, 0.95);
+      ctx.fillStyle = rgba(C.fighter, 0.08);
+      ctx.beginPath();
+      ctx.moveTo(g.pts[0][0], g.pts[0][1]);
+      for (const p of g.pts.slice(1)) ctx.lineTo(p[0], p[1]);
+      ctx.stroke();
+      ctx.closePath();
+      ctx.fill();
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      const last = g.pts[g.pts.length - 1];
+      ctx.moveTo(last[0], last[1]); ctx.lineTo(g.pts[0][0], g.pts[0][1]);
       ctx.stroke();
       ctx.restore();
     }

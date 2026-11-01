@@ -5,7 +5,7 @@ import { SECTOR_MAP, SECTOR_RADIUS, insideHex } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { moveAlong, planPath, stationById } from './logistics';
 import { FIGHT_R, RETREAT_AT, hullOf, repairAtHome } from './battle';
-import { FOE_NAME, hostilesIn, type Hostile } from './hostiles';
+import { FOE_NAME, hostileState, hostilesIn, type Hostile } from './hostiles';
 import type { CombatOrder, GameState, Ship } from './types';
 import { rand } from './util';
 
@@ -44,6 +44,7 @@ function watchArea(state: GameState, s: Ship, o: CombatOrder): { sector: string;
   if (o.kind === 'guard') { const st = stationById(state, o.station); return st ? { sector: st.sector, x: st.x, z: st.z, r: 30 } : null; }
   if (o.kind === 'patrol') return { sector: o.sector, x: o.x, z: o.z, r: o.r + 15 };
   if (o.kind === 'escort') { const t = state.ships.find((x) => x.id === o.ship); return t ? { sector: t.sector, x: t.x, z: t.z, r: 30 } : null; }
+  if (o.kind === 'attack') return null;
   return { sector: s.sector, x: s.x, z: s.z, r: 20 };
 }
 
@@ -80,6 +81,19 @@ export function stepFighter(state: GameState, s: Ship, dt: number): void {
       s.status = `Beschädigt (${Math.round(hullOf(s) * 100)} %) – fliegt zur Reparatur nach ${home.name}`;
       return;
     }
+  }
+  // Gezielter Angriff: hinfliegen, wo immer die Rotte ist; ist sie weg, Position halten
+  if (o.kind === 'attack') {
+    const h = hostileState(state).list.find((x) => x.id === o.hostile);
+    if (!h || h.phase === 'leave') { s.combat = { kind: 'move', sector: s.sector, x: s.x, z: s.z }; s.engage = undefined; s.path = []; return; }
+    s.engage = h.id;
+    const far = h.sector !== s.sector || Math.hypot(h.x - s.x, h.z - s.z) > FIGHT_R * 0.6;
+    if (far) {
+      if (s.timer <= 0 || !s.path.length) { flyTo(s, h.sector, h.x, h.z); s.timer = 1.5; }
+      moveAlong(s, cls.speed * 1.15, dt);
+    } else s.path = [];
+    s.status = `${far ? 'Fliegt zum Angriff auf' : 'Gefecht mit'} ${FOE_NAME[h.foe]}${hullOf(s) < 1 ? ` · Hülle ${Math.round(hullOf(s) * 100)} %` : ''}`;
+    return;
   }
   // Gegner im Wachbereich: angreifen
   const foe = engageTarget(state, s, o);
@@ -139,12 +153,20 @@ export function setCombatOrder(state: GameState, shipId: string, order: CombatOr
   const s = state.ships.find((x) => x.id === shipId);
   if (!s) return fail('Schiff nicht gefunden.');
   if (SHIP_MAP[s.cls].role !== 'fighter') return fail('Nur Kampfschiffe nehmen Kampfbefehle an.');
+  if (s.disabled) return fail(`${s.name} ist kampfunfähig und muss erst abgeschleppt werden.`);
   if (order.kind === 'guard') {
     const st = stationById(state, order.station);
     if (!st) return fail('Station nicht gefunden.');
     s.combat = order;
     s.path = []; s.timer = 0;
     return ok(`${s.name} bewacht ${st.name}.`);
+  }
+  if (order.kind === 'attack') {
+    const h = hostileState(state).list.find((x) => x.id === order.hostile);
+    if (!h || h.phase === 'leave') return fail('Die Rotte ist schon weg.');
+    s.combat = order;
+    s.path = []; s.timer = 0;
+    return ok(`${s.name} greift ${FOE_NAME[h.foe]} an.`);
   }
   if (order.kind === 'escort') {
     const t = state.ships.find((x) => x.id === order.ship);
@@ -169,11 +191,39 @@ export function setCombatOrder(state: GameState, shipId: string, order: CombatOr
   return ok(`${s.name} fliegt zum Zielpunkt.`);
 }
 
+/** Abstand der Schiffe einer Gruppe um den Zielpunkt (km) */
+const SPREAD = 4;
+
+/**
+ * Befehl für eine ganze Gruppe (Lasso): alle bekommen denselben Befehl; beim Fliegen verteilen sie sich im Kreis um
+ * den Zielpunkt, damit sie nicht aufeinander stehen
+ */
+export function orderGroup(state: GameState, ids: string[], order: CombatOrder): Result {
+  const ships = ids.map((id) => state.ships.find((x) => x.id === id)).filter((x): x is Ship => !!x && SHIP_MAP[x.cls].role === 'fighter');
+  if (!ships.length) return fail('Keine Kampfschiffe ausgewählt.');
+  let done = 0, last = '';
+  ships.forEach((s, i) => {
+    let o = order;
+    if (order.kind === 'move' && ships.length > 1) {
+      const a = (i / ships.length) * Math.PI * 2;
+      o = { ...order, x: order.x + Math.cos(a) * SPREAD, z: order.z + Math.sin(a) * SPREAD };
+      if (!insideHex(o.x, o.z, SECTOR_RADIUS * 0.95)) o = order;
+    }
+    const r = setCombatOrder(state, s.id, o);
+    if (r.ok) done++;
+    else last = r.msg;
+  });
+  if (!done) return fail(last || 'Befehl nicht möglich.');
+  if (ships.length === 1) return ok(`${ships[0].name}: ${combatOrderText(state, ships[0].combat)}.`);
+  return ok(`${done} Kampfschiffe: ${combatOrderText(state, ships.find((x) => x.combat)?.combat)}${done < ships.length ? ` (${ships.length - done} nicht: ${last})` : ''}.`);
+}
+
 /** Befehl in Worten (für Listen und Karten) */
 export function combatOrderText(state: GameState, o: CombatOrder | undefined): string {
   if (!o) return 'Kein Befehl';
   if (o.kind === 'guard') return `Wache bei ${stationById(state, o.station)?.name ?? 'Station'}`;
   if (o.kind === 'escort') return `Geleit für ${state.ships.find((x) => x.id === o.ship)?.name ?? 'Schiff'}`;
+  if (o.kind === 'attack') { const h = hostileState(state).list.find((x) => x.id === o.hostile); return h ? `Angriff auf ${FOE_NAME[h.foe]}` : 'Angriff'; }
   if (o.kind === 'patrol') return `Patrouille in ${SECTOR_MAP[o.sector]?.name ?? o.sector} (${Math.round(o.r)} km)`;
   return `Flug nach ${SECTOR_MAP[o.sector]?.name ?? o.sector}`;
 }

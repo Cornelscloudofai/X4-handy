@@ -8,7 +8,7 @@ import { acceptShipOrder, cancelShipBuild, queueShipBuild } from '../engine/yard
 import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
-import { PATROL_R, setCombatOrder } from '../engine/combat';
+import { PATROL_R, PATROL_R_MIN, orderGroup } from '../engine/combat';
 import { hostileState, sendDefense, spawnHostile } from '../engine/hostiles';
 import { battleLevel, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
 import { acceptContract } from '../engine/contracts';
@@ -17,7 +17,7 @@ import { fieldById, stationById } from '../engine/logistics';
 import { catchUp, step } from '../engine/sim';
 import { deserialize, loadLocal, newGame, saveLocal, clearLocal, SAVE_KEY } from '../engine/state';
 import { claimMission } from '../engine/story';
-import type { RestAction, GameState, LogLink, TradeEndpoint } from '../engine/types';
+import type { CombatOrder, RestAction, GameState, LogLink, Ship, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
 import { Camera, attachInput } from '../render/camera';
 import { drawScene, hasScene, preloadScene } from '../render/sceneBg';
@@ -72,7 +72,7 @@ import { activePlan, buildOrder, planMissing, diagramBounds, diagramEditor, node
 import { editorBusy, fitView, initDiagramEditor } from './diagramEditor';
 import { MODULE_MAP } from '../data/modules';
 import { WARES } from '../data/wares';
-import { cardHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml, setSectorTab } from './views';
+import { cardHtml, commandHtml, hudHtml, modalHtml, navHtml, objectiveHtml, panelHtml, setSectorTab } from './views';
 import { linkFrom, type LedgerFilter, type NewsFilter } from './newsView';
 
 let state: GameState;
@@ -124,7 +124,10 @@ export function start(): void {
   resize();
   window.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(canvas);
-  attachInput(canvas, () => (ui.view === 'galaxy' ? galaxyCam : cam), { onTap, onLongPress });
+  attachInput(canvas, () => (ui.view === 'galaxy' ? galaxyCam : cam), { onTap, onHoldStart, onHoldReady, onHoldCancel, onPress, onDrag, onDragEnd });
+  const cmdLayer = document.createElement('div');
+  cmdLayer.id = 'cmd';
+  $('app').appendChild(cmdLayer);
   document.addEventListener('click', onClick);
   initZoomControl();
   // Hinweis-Rahmen folgt dem Ziel beim Scrollen
@@ -302,6 +305,7 @@ function frame(now: number): void {
   } else {
     renderer.draw(ctx, state, ui, cam, now, dt);
   }
+  placeOrb();
   screenFx.enabled = !ui.reducedMotion;
   screenFx.draw(ctx, dt);
   tickCredits(dt);
@@ -433,6 +437,11 @@ function save(): void {
 function renderUI(): void {
   morph($('hud'), hudHtml(state, ui, creditFlash, shownCredits));
   morph($('nav'), navHtml(state, ui));
+  // Befehlsebene: Gruppe nur aus vorhandenen, einsatzfähigen Kampfschiffen
+  ui.group = ui.group.filter((id) => state.ships.some((s) => s.id === id && !s.disabled));
+  if (!ui.group.length) { ui.orbOpen = false; ui.order = null; }
+  morph($('cmd'), commandHtml(state, ui));
+  placeOrb();
   const card = $('card');
   const cardContent = ui.panel ? '' : cardHtml(state, ui);
   morph(card, cardContent);
@@ -649,12 +658,7 @@ function onTap(sx: number, sy: number): void {
     refresh();
     return;
   }
-  if (ui.pickPoint) {
-    const [x, z] = cam.toWorld(sx, sy);
-    ui.pickPoint = { ...ui.pickPoint, x, z, set: true };
-    refresh();
-    return;
-  }
+  if (ui.order) { orderTap(sx, sy); return; }
   if (ui.placing) {
     const [x, z] = cam.toWorld(sx, sy);
     const check = A.canPlaceStation(state, ui.sector, x, z);
@@ -671,18 +675,146 @@ function onTap(sx: number, sy: number): void {
   }
   const sel = renderer.hitTest(state, ui, cam, sx, sy);
   ui.selection = sel;
+  // Kampfschiff angetippt: es ist die Befehlsgruppe (Kugel daneben); leerer Raum hebt die Auswahl auf
+  const ship = sel?.kind === 'ship' ? state.ships.find((x) => x.id === sel.id) : undefined;
+  if (ship && SHIP_MAP[ship.cls].combat) setGroup([ship.id]);
+  else if (!sel) setGroup([]);
   if (ui.panel) ui.panel = null;
   refresh();
 }
 
-function onLongPress(sx: number, sy: number): void {
-  if (ui.view !== 'sector' || ui.placing) return;
+// ---------- Befehlsebene: Lasso, Befehlskugel, Ziel antippen ----------
+
+function setGroup(ids: string[]): void {
+  ui.group = ids;
+  ui.orbOpen = false;
+  ui.orbAt = null;
+  ui.order = null;
+}
+
+/** Halten beginnt (nach ⅓ s): kurz vibrieren, Ring füllt sich um den Finger */
+function onHoldStart(sx: number, sy: number): boolean {
+  if (ui.view !== 'sector' || ui.placing || ui.order || ui.panel || ui.modal) return false;
+  ui.gesture = { kind: 'hold', x: sx, y: sy, t0: performance.now() };
+  navigator.vibrate?.(15);
+  return true;
+}
+
+/** Ring voll: Lasso – die Linie folgt dem Finger */
+function onHoldReady(sx: number, sy: number): void {
+  ui.gesture = { kind: 'lasso', pts: [[sx, sy]] };
+  navigator.vibrate?.(8);
+}
+
+function onHoldCancel(): void {
+  ui.gesture = null;
+}
+
+/** Patrouille: Mitte antippen und gleich den Radius aufziehen */
+function onPress(sx: number, sy: number): boolean {
+  if (ui.view !== 'sector' || ui.order?.kind !== 'patrol') return false;
   const [x, z] = cam.toWorld(sx, sy);
-  if (!state.sectors.includes(ui.sector)) return;
-  const check = A.canPlaceStation(state, ui.sector, x, z);
-  ui.placing = { x, z, valid: check.ok, msg: check.msg, set: true };
-  ui.selection = null;
+  ui.order = { ...ui.order, x, z, r: 0 };
+  return true;
+}
+
+function onDrag(sx: number, sy: number): void {
+  const g = ui.gesture;
+  if (g?.kind === 'lasso') {
+    const last = g.pts[g.pts.length - 1];
+    if (Math.hypot(sx - last[0], sy - last[1]) > 4) g.pts.push([sx, sy]);
+    return;
+  }
+  if (ui.order?.kind === 'patrol' && ui.order.x != null) {
+    const [x, z] = cam.toWorld(sx, sy);
+    ui.order = { ...ui.order, r: Math.hypot(x - ui.order.x, z - (ui.order.z ?? 0)) };
+  }
+}
+
+function onDragEnd(sx: number, sy: number): void {
+  const g = ui.gesture;
+  if (g?.kind === 'lasso') {
+    ui.gesture = null;
+    if (sx >= 0) g.pts.push([sx, sy]);
+    lassoSelect(g.pts);
+    return;
+  }
+  const o = ui.order;
+  if (o?.kind === 'patrol' && o.x != null && sx >= 0) {
+    // kaum gezogen: Standardradius; sonst der aufgezogene, in den Grenzen der Patrouille
+    const r = (o.r ?? 0) < PATROL_R_MIN * 0.6 ? PATROL_R : Math.max(PATROL_R_MIN, o.r ?? 0);
+    giveOrder({ kind: 'patrol', sector: ui.sector, x: o.x, z: o.z ?? 0, r });
+  }
+}
+
+/** Punkt im Vieleck (Lasso, Bildschirmkoordinaten) */
+function inPolygon(x: number, y: number, pts: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Lasso geschlossen: eigene Kampfschiffe darin bilden die Gruppe */
+function lassoSelect(pts: [number, number][]): void {
+  if (pts.length < 3) { refresh(); return; }
+  const ids = state.ships.filter((s) => SHIP_MAP[s.cls].combat && !s.disabled && s.sector === ui.sector).filter((s) => { const [x, y] = cam.toScreen(s.x, s.z); return inPolygon(x, y, pts); }).map((s) => s.id);
+  if (!ids.length) { toast('Keine Kampfschiffe im Lasso.', 'info'); setGroup([]); refresh(); return; }
+  setGroup(ids);
+  ui.selection = ids.length === 1 ? { kind: 'ship', id: ids[0] } : null;
+  ui.panel = null;
+  navigator.vibrate?.(12);
   refresh();
+}
+
+/** Befehl an die Gruppe; danach bleibt sie ausgewählt */
+function giveOrder(o: CombatOrder): void {
+  const r = orderGroup(state, ui.group, o);
+  if (r.ok) ui.order = null;
+  result(r);
+}
+
+/** Ziel antippen für den gewählten Befehl */
+function orderTap(sx: number, sy: number): void {
+  const o = ui.order!;
+  const [x, z] = cam.toWorld(sx, sy);
+  if (o.kind === 'move') { giveOrder({ kind: 'move', sector: ui.sector, x, z }); return; }
+  const sel = renderer.hitTest(state, ui, cam, sx, sy);
+  if (o.kind === 'guard') {
+    if (sel?.kind === 'station' && stationById(state, sel.id)) giveOrder({ kind: 'guard', station: sel.id });
+    else toast('Eine eigene Station antippen.', 'info');
+    return;
+  }
+  if (o.kind === 'escort') {
+    const t = sel?.kind === 'ship' ? state.ships.find((s) => s.id === sel.id) : undefined;
+    if (t && !SHIP_MAP[t.cls].combat) giveOrder({ kind: 'escort', ship: t.id });
+    else toast('Einen eigenen Frachter oder Miner antippen.', 'info');
+    return;
+  }
+  if (o.kind === 'attack') {
+    if (sel?.kind === 'hostile') giveOrder({ kind: 'attack', hostile: Number(sel.id) });
+    else toast('Eine Gegnerrotte antippen.', 'info');
+  }
+}
+
+/** Kugel neben der Gruppe: rechts der Schiffe, am Bildschirmrand nach innen gerückt (null = keins im Sektor) */
+function orbPosition(): [number, number] | null {
+  const pts = ui.group.map((id) => state.ships.find((x) => x.id === id)).filter((s): s is Ship => !!s && s.sector === ui.sector).map((s) => cam.toScreen(s.x, s.z));
+  if (!pts.length) return null;
+  const maxX = Math.max(...pts.map((p) => p[0])), y = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+  const W = cam.w, H = cam.h;
+  return [Math.max(40, Math.min(W - 40, maxX + 42)), Math.max(150, Math.min(H - 200, y))];
+}
+
+/** Lage der Kugel in jedem Bild nachführen (offene Kugel bleibt stehen, damit die Befehle nicht wegwandern) */
+function placeOrb(): void {
+  const el = document.querySelector<HTMLElement>('#cmd .orb-wrap');
+  if (!el) return;
+  const p = ui.orbOpen && ui.orbAt ? ui.orbAt : orbPosition();
+  el.style.display = p ? '' : 'none';
+  if (p) el.style.transform = `translate(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px)`;
 }
 
 // ---------- Zoom-Leiste: Tippen = ein Schritt, Halten = stufenlos, Schieber = direkt ----------
@@ -749,7 +881,9 @@ function goBack(): boolean {
     else if ((ui.modal.type === 'loadout' || ui.modal.type === 'shipArt') && lastMg) ui.modal = lastMg;
     else ui.modal = null;
   } else if (ui.placing) ui.placing = null;
-  else if (ui.pickPoint) { const id = ui.pickPoint.ship; ui.pickPoint = null; ui.panel = { type: 'ship', id, back: null } as Panel; }
+  else if (ui.order) ui.order = null;
+  else if (ui.orbOpen) ui.orbOpen = false;
+  else if (ui.group.length && !ui.panel) setGroup([]);
   else if (ui.panel) ui.panel = ui.panel.back ?? null;
   else if (ui.selection) ui.selection = null;
   else if (ui.view === 'galaxy') { gotoSector(ui.sector); return true; }
@@ -1101,27 +1235,18 @@ function onClick(e: MouseEvent): void {
       case 'back': ui.panel = ui.panel?.back ?? null; refresh(); break;
       case 'open-station': ui.modal = null; openPanel('station', d.id, d.tab ?? 'overview', ui.panel?.type !== 'station'); ui.selection = { kind: 'station', id: d.id! }; break;
       case 'open-ship': openPanel('ship', d.id, undefined, !!ui.panel); break;
-      // ---- Kampfschiffe: Befehle (docs/design/kampf.md, Stufe 2) ----
-      case 'combat-mode': if (ui.panel?.type === 'ship') { ui.panel = { ...ui.panel, tab: d.mode }; refresh(); } break;
-      case 'combat-guard': result(setCombatOrder(state, d.id!, { kind: 'guard', station: d.st! })); break;
-      case 'combat-patrol-here': {
-        const s = state.ships.find((x) => x.id === d.id);
-        if (s) result(setCombatOrder(state, s.id, { kind: 'patrol', sector: s.sector, x: s.x, z: s.z, r: PATROL_R }));
-        break;
-      }
-      case 'combat-pick': {
-        const s = state.ships.find((x) => x.id === d.id);
-        if (!s) break;
-        const o = s.combat;
-        const kind = d.kind === 'patrol' ? 'patrol' : 'move';
-        ui.pickPoint = { ship: s.id, kind, r: o?.kind === 'patrol' ? o.r : PATROL_R, x: 0, z: 0, set: false };
-        ui.panel = null;
-        ui.selection = { kind: 'ship', id: s.id };
-        ui.follow = undefined;
-        focusOn(s.x, s.z, s.sector);
+      // ---- Befehlsebene (Kampfschiffe) ----
+      case 'orb-toggle': {
+        ui.orbOpen = !ui.orbOpen;
+        ui.orbAt = ui.orbOpen ? orbPosition() : null;
+        // Befehle strahlen zur Seite mit mehr Platz
+        ui.orbSide = ui.orbAt && ui.orbAt[0] > cam.w / 2 ? -1 : 1;
         refresh();
         break;
       }
+      case 'orb-order': ui.order = { kind: d.kind as NonNullable<typeof ui.order>['kind'] }; ui.orbOpen = false; ui.selection = null; refresh(); break;
+      case 'order-cancel': ui.order = null; refresh(); break;
+      case 'group-clear': setGroup([]); ui.selection = null; refresh(); break;
       case 'hostile-send': result(sendDefense(state, Number(d.id))); break;
       // Zum Ausprobieren: sofort eine Rotte im Sektor, die nach einer Minute angreift (später wieder entfernen)
       case 'test-attack': {
@@ -1150,22 +1275,6 @@ function onClick(e: MouseEvent): void {
           ui.selection = null;
           refresh();
         });
-        break;
-      }
-      case 'pick-r': if (ui.pickPoint) { ui.pickPoint = { ...ui.pickPoint, r: Number(d.r) }; refresh(); } break;
-      case 'pick-cancel': {
-        const id = ui.pickPoint?.ship;
-        ui.pickPoint = null;
-        if (id) openPanel('ship', id);
-        else refresh();
-        break;
-      }
-      case 'pick-confirm': {
-        const p = ui.pickPoint;
-        if (!p || !p.set) break;
-        const r = setCombatOrder(state, p.ship, p.kind === 'patrol' ? { kind: 'patrol', sector: ui.sector, x: p.x, z: p.z, r: p.r } : { kind: 'move', sector: ui.sector, x: p.x, z: p.z });
-        if (r.ok) ui.pickPoint = null;
-        result(r);
         break;
       }
       case 'open-ware': ui.modal = null; openPanel('ware', d.id, undefined, !!ui.panel); break;
@@ -1907,10 +2016,6 @@ function onChange(e: Event): void {
   }
   const s = state.ships.find((x) => x.id === el.dataset.id);
   if (!s) return;
-  if (field === 'combat-escort') {
-    if (el.value) result(setCombatOrder(state, s.id, { kind: 'escort', ship: el.value }));
-    return;
-  }
   if (field === 'so-sector' || field === 'so-ware' || field === 'so-to') {
     const o = s.sectorOrder;
     const sec = field === 'so-sector' ? el.value : o?.sector ?? s.sector;

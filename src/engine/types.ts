@@ -326,7 +326,9 @@ export type CombatOrder =
   | { kind: 'guard'; station: string }
   | { kind: 'patrol'; sector: string; x: number; z: number; r: number }
   | { kind: 'escort'; ship: string }
-  | { kind: 'move'; sector: string; x: number; z: number };
+  | { kind: 'move'; sector: string; x: number; z: number }
+  /** gezielter Angriff auf eine Gegnerrotte, auch außerhalb des eigenen Wachbereichs */
+  | { kind: 'attack'; hostile: number };
 
 export interface Ship {
   id: string;

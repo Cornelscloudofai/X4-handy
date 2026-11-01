@@ -97,8 +97,23 @@ export class Camera {
 
 export interface InputHandlers {
   onTap: (sx: number, sy: number) => void;
-  onLongPress?: (sx: number, sy: number) => void;
+  /**
+   * Gedrückt halten: nach HOLD_START ms ruhigem Halten beginnt das Halten (Rückmeldung, Ring füllt sich), nach
+   * weiteren HOLD_FILL ms ist es fertig (z. B. Lasso). Wird vorher bewegt oder losgelassen: abgebrochen.
+   */
+  onHoldStart?: (sx: number, sy: number) => boolean;
+  onHoldReady?: (sx: number, sy: number) => void;
+  onHoldCancel?: () => void;
+  /** Sofort ziehen statt die Karte zu verschieben (z. B. Radius aufziehen): true = Ziehen übernehmen */
+  onPress?: (sx: number, sy: number) => boolean;
+  /** Ziehen nach fertigem Halten oder übernommenem Druck; Ende beim Loslassen */
+  onDrag?: (sx: number, sy: number) => void;
+  onDragEnd?: (sx: number, sy: number) => void;
 }
+
+/** Halten: bis zum Beginn und bis der Ring voll ist (ms) */
+export const HOLD_START = 330;
+export const HOLD_FILL = 330;
 
 /** Touch- und Maussteuerung für eine Kamera */
 export function attachInput(el: HTMLElement, cam: () => Camera, handlers: InputHandlers): void {
@@ -106,7 +121,11 @@ export function attachInput(el: HTMLElement, cam: () => Camera, handlers: InputH
   let pinchDist = 0;
   let moved = false;
   let lastMove = { t: 0, x: 0, y: 0 };
-  let longTimer = 0;
+  let holdTimer = 0;
+  /** none: normal (Tippen, Verschieben, Zoomen) · hold: Ring füllt sich · drag: Ziehen gehört dem Handler */
+  let mode: 'none' | 'hold' | 'drag' = 'none';
+  const local = (e: PointerEvent): [number, number] => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const cancelHold = () => { clearTimeout(holdTimer); if (mode === 'hold') { mode = 'none'; handlers.onHoldCancel?.(); } };
 
   el.addEventListener('pointerdown', (e) => {
     el.setPointerCapture(e.pointerId);
@@ -116,15 +135,27 @@ export function attachInput(el: HTMLElement, cam: () => Camera, handlers: InputH
     c.cancelFlight();
     if (pointers.size === 1) {
       moved = false;
+      mode = 'none';
       lastMove = { t: performance.now(), x: e.clientX, y: e.clientY };
-      clearTimeout(longTimer);
-      if (handlers.onLongPress) {
-        const r = el.getBoundingClientRect();
-        const lx = e.clientX - r.left, ly = e.clientY - r.top;
-        longTimer = window.setTimeout(() => { if (!moved && pointers.size === 1) { moved = true; handlers.onLongPress!(lx, ly); } }, 550);
+      clearTimeout(holdTimer);
+      const [lx, ly] = local(e);
+      if (handlers.onPress?.(lx, ly)) { mode = 'drag'; moved = true; return; }
+      if (handlers.onHoldStart) {
+        holdTimer = window.setTimeout(() => {
+          if (moved || pointers.size !== 1 || !handlers.onHoldStart!(lx, ly)) return;
+          mode = 'hold';
+          holdTimer = window.setTimeout(() => {
+            if (mode !== 'hold' || pointers.size !== 1) return;
+            mode = 'drag';
+            moved = true;
+            handlers.onHoldReady?.(lx, ly);
+          }, HOLD_FILL);
+        }, HOLD_START);
       }
     }
     if (pointers.size === 2) {
+      cancelHold();
+      if (mode === 'drag') { mode = 'none'; handlers.onDragEnd?.(-1, -1); }
       const [a, b] = [...pointers.values()];
       pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
       moved = true;
@@ -136,9 +167,17 @@ export function attachInput(el: HTMLElement, cam: () => Camera, handlers: InputH
     if (!p) return;
     const c = cam();
     const r = el.getBoundingClientRect();
+    if (pointers.size === 1 && mode === 'drag') {
+      const [lx, ly] = local(e);
+      handlers.onDrag?.(lx, ly);
+      p.x = e.clientX;
+      p.y = e.clientY;
+      return;
+    }
     if (pointers.size === 1) {
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
-      if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 8) moved = true;
+      // beim Halten etwas Zittern erlauben, erst deutliches Bewegen bricht ab und verschiebt die Karte
+      if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > (mode === 'hold' ? 14 : 8)) { moved = true; cancelHold(); }
       if (moved) {
         if (c.followPos) { c.followPos = null; c.panned++; }
         c.x -= dx / c.zoom;
@@ -164,8 +203,15 @@ export function attachInput(el: HTMLElement, cam: () => Camera, handlers: InputH
   const end = (e: PointerEvent) => {
     const p = pointers.get(e.pointerId);
     pointers.delete(e.pointerId);
-    clearTimeout(longTimer);
+    clearTimeout(holdTimer);
     if (!p) return;
+    if (mode === 'drag') {
+      mode = 'none';
+      const [lx, ly] = local(e);
+      handlers.onDragEnd?.(lx, ly);
+      return;
+    }
+    if (mode === 'hold') { cancelHold(); return; }
     const c = cam();
     if (performance.now() - lastMove.t > 80) c.vx = c.vz = 0;
     if (!moved && pointers.size === 0 && e.type === 'pointerup') {

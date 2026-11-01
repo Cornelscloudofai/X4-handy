@@ -63,7 +63,15 @@ export interface UIState {
   follow?: string;
   placing: { x: number; z: number; valid: boolean; msg: string; set: boolean } | null;
   /** Kampfschiff: Zielpunkt auf der Karte wählen (Flieg zu, Patrouille) */
-  pickPoint: { ship: string; kind: 'move' | 'patrol'; r: number; x: number; z: number; set: boolean } | null;
+  /** Befehlsebene für Kampfschiffe: ausgewählte Gruppe (Lasso oder Antippen), offene Befehlskugel, Befehl, der auf sein
+   *  Ziel wartet (bei Patrouille mit aufgezogenem Kreis), laufende Geste (Halten mit Ring, Lasso) */
+  group: string[];
+  orbOpen: boolean;
+  /** Seite, zu der die Befehle aus der Kugel strahlen (1 rechts, −1 links), und eingefrorene Lage der offenen Kugel */
+  orbSide: 1 | -1;
+  orbAt: [number, number] | null;
+  order: { kind: 'move' | 'patrol' | 'guard' | 'escort' | 'attack'; x?: number; z?: number; r?: number } | null;
+  gesture: { kind: 'hold'; x: number; y: number; t0: number } | { kind: 'lasso'; pts: [number, number][] } | null;
   /** Kartenebene Handelsrouten: Flugwege und feste Versorgungsrouten der eigenen Schiffe (Standard an) */
   routes: boolean;
   /** Kartenebene Warenflüsse: gemessene Mengen zwischen Stationen, Märkten und Feldern (Standard aus) */
@@ -116,7 +124,12 @@ export const ui: UIState = {
   sector: 'zhin',
   selection: null,
   placing: null,
-  pickPoint: null,
+  group: [],
+  orbOpen: false,
+  orbSide: 1,
+  orbAt: null,
+  order: null,
+  gesture: null,
   routes: initialLayers().routes,
   flows: initialLayers().flows,
   layerMenu: false,

@@ -158,14 +158,17 @@ export const HELP: HelpTopic[] = [
     ].join(''),
   },
   {
-    id: 'fighters', title: 'Kampfschiffe', icon: 'fighter', short: 'Wache, Patrouille, Geleit, Flieg zu',
+    id: 'fighters', title: 'Kampfschiffe', icon: 'fighter', short: 'Lasso, Befehlskugel, Wache, Patrouille, Geleit',
     body: [
       p('Split-Jäger, Korvetten und Fregatten aus X4 (Jaguar, Mamba, Asp, Balaur, Chimera, Dragon, Cobra). Kaufen unter „Schiff kaufen“ → „Kampf“ oder selbst bauen in einer S/M-Werft – Preise und Material wie im Original, mit Hüllenteilen, Waffen-, Turm- und Schildkomponenten.'),
       ul([
+        '<b>Auswählen:</b> Kampfschiff antippen – oder auf der Karte gedrückt halten, bis es kurz vibriert und sich der Ring füllt, dann mit dem Finger einen Kreis um mehrere Kampfschiffe ziehen (Lasso). Andere Schiffe fängt das Lasso nicht.',
+        '<b>Befehlskugel:</b> Neben der Gruppe schwebt eine Kugel. Antippen → die Befehle stehen untereinander daneben. Antippen eines Befehls, dann das Ziel auf der Karte. Das Schiffsfenster zeigt nur Werte, keine Befehle.',
         '<b>Wache:</b> kreist um eine eigene Station. So startet jedes neue Kampfschiff – an seiner Heimatstation.',
-        '<b>Patrouille:</b> fliegt zufällige Punkte in einem Gebiet ab (25 km bis ganzer Sektor) und hält an jedem kurz. Gebiet auf der Karte antippen.',
+        '<b>Patrouille:</b> fliegt zufällige Punkte in einem Gebiet ab (25 km bis ganzer Sektor) und hält an jedem kurz. Mitte antippen und den Radius mit dem Finger aufziehen.',
         '<b>Geleit:</b> folgt einem eigenen Frachter oder Miner über alle Sektoren.',
-        '<b>Flieg zu:</b> Punkt auf der Karte antippen – das Schiff hält dort Position.',
+        '<b>Flieg zu:</b> Punkt auf der Karte antippen – das Schiff hält dort Position. Mehrere Schiffe verteilen sich um den Punkt.',
+        '<b>Angreifen:</b> Rotte antippen – die Gruppe fliegt hin und greift sie an.',
         '<b>Kampfwert</b> = Hülle/100 + Schild/50 + Schaden je Sekunde/10 – zum Vergleich der Schiffe.',
         '<b>Gegner:</b> Piratenrotten, die Xenon-Streife in Tharka\'s Ravine und Kha\'ak-Schwärme in der Glutsee fliegen sichtbar ein, suchen sich einen beladenen Frachter oder Miner und greifen ihn an – erst dann gibt es den Überfall mit „Selbst übernehmen“. Rotte antippen: Stärke, Ziel und „Kampfschiffe schicken“.',
         '<b>Vorwarnung:</b> Eine neue Rotte sammelt sich zuerst zehn Minuten am Sektorrand – Meldung „gesichtet“, auf der Karte mit Restzeit. Zeit genug, Kampfschiffe zum Abfangen zu schicken oder Frachter umzuleiten. Bei jedem Ereignis (Sichtung, Angriff, Gefecht, Vorfall) läuft die Zeit wieder normal.',

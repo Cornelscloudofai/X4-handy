@@ -1825,3 +1825,46 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .flow-off { display: block; width: 100%; margin-top: 4px; padding: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; text-align: center; }
 /* Viertelkreis sichtbar: das Kapitelziel rückt nach links, damit nichts verdeckt wird */
 .inc-corner ~ .objective-wrap:not(.min) { margin-right: 50px; }
+
+/* ---------- Befehlsebene: Gruppenabzeichen, Hinweis beim Zielwählen, Befehlskugel ---------- */
+#cmd { position: absolute; inset: 0; z-index: 45; pointer-events: none; }
+#cmd > * { pointer-events: auto; }
+.grp-chip, .cmd-hint { position: absolute; left: 50%; top: calc(var(--safe-top, 0px) + 120px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 150px);
+  padding: 5px 6px 5px 12px; border-radius: 999px; background: rgba(36, 12, 8, 0.88); border: 1px solid rgba(255, 122, 102, 0.55); color: #ffd8cf; font-size: 12.5px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: riseIn 0.25s both; }
+.grp-chip span, .cmd-hint span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp-chip button { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.35); border: 0; color: inherit; }
+.cmd-hint { max-width: calc(100vw - 24px); padding: 5px 5px 5px 12px; }
+.cmd-hint span { white-space: normal; line-height: 1.25; }
+.cmd-hint .btn { flex: none; }
+.orb-wrap { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }
+.orb { position: absolute; left: -23px; top: -23px; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: #fff; border: 1px solid rgba(255, 190, 170, 0.7);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 170, 140, 0.95), rgba(190, 60, 40, 0.92) 55%, rgba(80, 18, 12, 0.95));
+  box-shadow: 0 0 18px rgba(255, 110, 80, 0.55), inset 0 0 10px rgba(255, 255, 255, 0.25); animation: orbFloat 2.6s ease-in-out infinite; }
+.orb-wrap.open .orb { animation: none; box-shadow: 0 0 26px rgba(255, 120, 90, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.3); }
+@keyframes orbFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.orb-menu { position: absolute; left: 0; top: 0; }
+.orb-ray { position: absolute; left: 0; top: 0; height: 2px; margin-top: -1px; transform-origin: 0 50%; pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 150, 120, 0.9), rgba(255, 150, 120, 0.25)); animation: rayIn 0.22s calc(var(--i) * 0.03s) both; }
+@keyframes rayIn { from { opacity: 0; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
+.orb-item { position: absolute; top: var(--y); display: flex; align-items: center; gap: 8px; height: 40px; min-width: 132px; padding: 0 14px; margin-top: -20px; border-radius: 12px; white-space: nowrap;
+  background: rgba(14, 10, 12, 0.94); border: 1px solid rgba(255, 122, 102, 0.55); color: #ffe2da; font-size: 14px; font-weight: 600; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  animation: itemIn 0.22s calc(0.05s + var(--i) * 0.035s) both; }
+.orb-item:active { background: rgba(80, 26, 18, 0.95); }
+.orb-menu.right .orb-item { left: 64px; }
+.orb-menu.left .orb-item { right: 64px; }
+@keyframes itemIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+
+/* Schiff ausgewählt: schmale Infozeile statt großer Karte */
+.infoline { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 8px; border-radius: 14px; background: rgba(8, 20, 30, 0.9); border: 1px solid var(--line-2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: riseIn 0.25s both; }
+.infoline .il-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.infoline .il-txt b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.infoline .il-txt small { font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.infoline .il-meter { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; width: 64px; }
+.infoline .il-meter small { font-size: 10.5px; color: var(--muted); max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.il-bar { display: block; width: 64px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.il-bar i { display: block; height: 100%; background: var(--c); }
+.il-btn { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: rgba(3, 9, 15, 0.55); border: 1px solid var(--line); color: var(--text-2); }
+.il-btn.on { color: var(--teal); border-color: rgba(63, 224, 197, 0.5); }
+@media (max-width: 380px) { .infoline .il-meter { display: none; } }
