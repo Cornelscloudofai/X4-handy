@@ -8,7 +8,7 @@ import { INCIDENT_CHAPTER, incidentById, repelRaid, startRaid } from './incident
 import { moveAlong } from './logistics';
 import { xenonClock } from './phenomena';
 import type { GameState, Ship } from './types';
-import { log } from './util';
+import { log, normalSpeed } from './util';
 
 export type Foe = 'pirates' | 'xenon' | 'khaak';
 
@@ -26,7 +26,10 @@ export interface Hostile {
   /** Ziel (eigenes Schiff) und der daraus entstandene Überfall */
   target?: string;
   incident?: number;
-  phase: 'hunt' | 'attack' | 'leave';
+  /** gather: sammelt sich am Sektorrand (Vorwarnung), hunt: sucht ein Ziel, attack: Überfall läuft, leave: zieht ab */
+  phase: 'gather' | 'hunt' | 'attack' | 'leave';
+  /** Ende der Sammelzeit (danach greifen sie an) */
+  ready?: number;
   /** Ende der Jagd (danach ziehen sie ab) */
   until: number;
   /** nächste Neuplanung des Wegs */
@@ -50,6 +53,8 @@ export const SPAWN_CHANCE = 0.08;
 export const MAX_HOSTILES = 3;
 /** Jagdzeit, Angriffsabstand, Abschreckungsradius und -anteil (Kampfwert eigener Schiffe ≥ Anteil × Rotte) */
 export const HUNT_TIME = 40 * 60;
+/** Vorwarnung: so lange sammelt sich eine neue Rotte am Sektorrand, bevor sie angreift */
+export const GATHER_TIME = 10 * 60;
 export const ATTACK_R = 3;
 export const DEFEND_R = 25;
 export const DETER = 1.5;
@@ -122,7 +127,7 @@ function edgePoint(a: number, f = 0.92): { x: number; z: number } {
 }
 
 /** Rotte erscheinen lassen (für Tests und Entwicklerwerkzeuge mit festen Werten) */
-export function spawnHostile(state: GameState, sector: string, foe: Foe = foeIn(sector), angle?: number): Hostile {
+export function spawnHostile(state: GameState, sector: string, foe: Foe = foeIn(sector), angle?: number, gather = GATHER_TIME): Hostile {
   const hs = hostileState(state);
   hs.n++;
   const r = (k: number) => hash(hs.n * 13 + k, state.seed ^ 0x7a11);
@@ -132,9 +137,14 @@ export function spawnHostile(state: GameState, sector: string, foe: Foe = foeIn(
   const p = edgePoint(angle ?? r(2) * Math.PI * 2);
   const h: Hostile = {
     id: state.nextId++, foe, sector, x: p.x, z: p.z, heading: Math.atan2(-p.z, -p.x), path: [], n, power: Math.round(n * per),
-    phase: 'hunt', until: state.time + HUNT_TIME, replan: 0,
+    phase: gather > 0 ? 'gather' : 'hunt', ready: state.time + gather, until: state.time + gather + HUNT_TIME, replan: 0,
   };
   hs.list.push(h);
+  if (gather > 0) {
+    // Vorwarnung: Zeit, Kampfschiffe zu schicken oder Frachter umzuleiten
+    log(state, `${FOE_NAME[foe]} am Rand von ${SECTOR_MAP[sector]?.name ?? sector} gesichtet: ${crew(h)} (Kampfwert ${h.power}) sammeln sich für einen Angriff – ${Math.round(gather / 60) <= 1 ? 'etwa eine Minute' : `etwa ${Math.round(gather / 60)} Minuten`} bis dahin.`, 'warn', true, { kind: 'sector', id: sector });
+    normalSpeed(state);
+  }
   return h;
 }
 
@@ -222,6 +232,7 @@ function stepOne(state: GameState, h: Hostile, dt: number): void {
     return;
   }
   // Eigene Kampfschiffe in Sichtweite: der Rotte entkommt man nicht – sie stellt sich ihnen (Gefecht in battle.ts)
+  // (auch schon, während sie sich am Rand sammelt – so lässt sie sich abfangen)
   let foe: Ship | undefined, fd = ENGAGE_SIGHT;
   for (const s of state.ships) {
     if (!SHIP_MAP[s.cls].combat || s.disabled || s.sector !== h.sector) continue;
@@ -231,6 +242,14 @@ function stepOne(state: GameState, h: Hostile, dt: number): void {
   if (foe) {
     if (fd > 2) { h.path = [{ sector: h.sector, x: foe.x, z: foe.z }]; moveAlong(h, SPEED[h.foe], dt); }
     return;
+  }
+  // Sammeln am Rand: warten, dann losschlagen
+  if (h.phase === 'gather') {
+    if (state.time < (h.ready ?? 0)) return;
+    h.phase = 'hunt';
+    h.replan = 0;
+    log(state, `${FOE_NAME[h.foe]} in ${SECTOR_MAP[h.sector].name} greift an.`, 'warn', true, { kind: 'sector', id: h.sector });
+    normalSpeed(state);
   }
   // Jagd: Ziel halten, solange es im Sektor bleibt und Ladung hat
   let t = h.target ? state.ships.find((x) => x.id === h.target) : undefined;
@@ -261,7 +280,7 @@ function stepOne(state: GameState, h: Hostile, dt: number): void {
 /** Rotte in Worten (Karte und Karten-Hinweis) */
 export function hostileText(state: GameState, h: Hostile): { title: string; sub: string } {
   const t = h.target ? state.ships.find((x) => x.id === h.target) : undefined;
-  const what = h.phase === 'leave' ? 'zieht ab' : h.fighting ? 'im Gefecht' : h.phase === 'attack' ? `greift ${t?.name ?? 'ein Schiff'} an` : t ? `hält auf ${t.name} zu` : 'streift durch den Sektor';
+  const what = h.phase === 'leave' ? 'zieht ab' : h.fighting ? 'im Gefecht' : h.phase === 'gather' ? `sammelt sich am Rand – Angriff in ${Math.max(1, Math.ceil(((h.ready ?? 0) - state.time) / 60))} min` : h.phase === 'attack' ? `greift ${t?.name ?? 'ein Schiff'} an` : t ? `hält auf ${t.name} zu` : 'streift durch den Sektor';
   return { title: FOE_NAME[h.foe], sub: `${crew(h)} · Kampfwert ${Math.round(h.hp ?? h.power)}${h.hp != null && h.hp < h.power ? ` von ${h.power}` : ''} · ${what}` };
 }
 

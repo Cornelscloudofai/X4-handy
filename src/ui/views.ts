@@ -584,7 +584,8 @@ function securityBox(state: GameState, id: string): string {
   const parts = [`Grundwert ${sec.base}`, sec.guard ? `Kampfschiffe +${sec.guard}` : '', sec.traffic ? `eigener Verkehr −${sec.traffic}` : ''].filter(Boolean).join(' · ');
   return `<div class="box sec-security"><div class="row"><span class="ware-tile" style="--c:${sec.value >= 65 ? '#5ff0d8' : sec.value >= 40 ? '#ffc45e' : '#ff7a66'}">${icon('fighter', 18)}</span>
     <div class="grow"><div class="title">Sicherheit <b class="${tone}">${sec.value}</b> / 100 ${helpBtn('fighters')}</div><div class="sub wrap">${esc(parts)}. Je niedriger, desto öfter tauchen Gegner auf.</div>
-    ${foes.length ? `<div class="sub wrap warn-text">${foes.map((h) => esc(hostileText(state, h).title + ': ' + hostileText(state, h).sub)).join('<br>')}</div>` : ''}</div></div></div>`;
+    ${foes.length ? `<div class="sub wrap warn-text">${foes.map((h) => esc(hostileText(state, h).title + ': ' + hostileText(state, h).sub)).join('<br>')}</div>` : ''}
+    <button class="linkish" style="margin-top:6px" ${act('test-attack', { id })}>Test: Angriff auslösen (1 min Vorwarnung)</button></div></div></div>`;
 }
 
 /** Karte einer Gegnerrotte: Stärke, Ziel, was zur Abschreckung nötig ist */

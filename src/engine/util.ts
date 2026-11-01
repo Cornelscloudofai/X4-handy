@@ -68,6 +68,11 @@ export function onGameEvent(fn: (e: GameEvent) => void): void {
   listeners.push(fn);
 }
 
+/** Ereignis eingetreten: Spielzeit zurück auf normale Geschwindigkeit, damit nichts im Zeitraffer vorbeirauscht */
+export function normalSpeed(state: GameState): void {
+  if (state.speed > 1) state.speed = 1;
+}
+
 export function emit(e: GameEvent): void {
   if (muted) return;
   for (const l of listeners) l(e);

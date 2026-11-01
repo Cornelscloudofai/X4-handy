@@ -5,7 +5,7 @@ import { buyShip } from '../src/engine/actions';
 import { setCombatOrder } from '../src/engine/combat';
 import { stepShip } from '../src/engine/fleet';
 import { INCIDENT_CHAPTER, RAID_BOUNTY, incidentState, pauseIncidents, stepIncidents } from '../src/engine/incidents';
-import { DETER, HOSTILE_CHECK, defenseNear, hostileState, hostilesIn, sectorSecurity, sendDefense, spawnHostile, stepHostiles } from '../src/engine/hostiles';
+import { DETER, GATHER_TIME, HOSTILE_CHECK, defenseNear, hostileState, hostilesIn, sectorSecurity, sendDefense, spawnHostile, stepHostiles } from '../src/engine/hostiles';
 import { XENON_CYCLE, xenonClock } from '../src/engine/phenomena';
 import type { GameState, Ship } from '../src/engine/types';
 
@@ -34,7 +34,7 @@ function run(s: GameState, seconds: number, ships: Ship[] = []): void {
 describe('Gegner in der Welt', () => {
   it('Piratenrotte fliegt ein, sucht den beladenen Frachter und löst den Überfall aus', () => {
     const { s, trader } = setup();
-    const h = spawnHostile(s, trader.sector, 'pirates', 0);
+    const h = spawnHostile(s, trader.sector, 'pirates', 0, 0);
     expect(h.n).toBeGreaterThanOrEqual(2);
     expect(Math.hypot(h.x, h.z)).toBeGreaterThan(150); // vom Rand
     run(s, 2);
@@ -54,7 +54,7 @@ describe('Gegner in der Welt', () => {
   it('genug eigene Kampfkraft in der Nähe: die Rotte dreht ab, ein laufender Überfall ist abgewehrt', () => {
     const { s, trader } = setup();
     s.credits = 1e8;
-    const h = spawnHostile(s, trader.sector, 'pirates', 0);
+    const h = spawnHostile(s, trader.sector, 'pirates', 0, 0);
     run(s, 200);
     expect(h.phase).toBe('attack');
     const c0 = s.credits;
@@ -75,13 +75,32 @@ describe('Gegner in der Welt', () => {
     const { s, trader } = setup();
     s.credits = 1e8;
     for (let i = 0; i < 4; i++) buyShip(s, 'mamba', s.stations[0].id);
-    const h = spawnHostile(s, trader.sector, 'pirates', 0);
+    const h = spawnHostile(s, trader.sector, 'pirates', 0, 0);
     run(s, 2);
     const r = sendDefense(s, h.id);
     expect(r.ok).toBe(true);
     const escorts = s.ships.filter((x) => x.combat?.kind === 'escort');
     expect(escorts.length).toBeGreaterThan(0);
     expect(escorts.reduce((a, x) => a + SHIP_MAP[x.cls].combat!.power, 0)).toBeGreaterThanOrEqual(Math.min(h.power, 4 * SHIP_MAP.mamba.combat!.power));
+  });
+
+  it('Vorwarnung: neue Rotte sammelt sich zehn Minuten am Rand, meldet sich und bremst die Zeit auf normal', () => {
+    const { s, trader } = setup();
+    s.speed = 5;
+    const h = spawnHostile(s, trader.sector, 'pirates', 0);
+    expect(h.phase).toBe('gather');
+    expect(s.speed).toBe(1);
+    expect(s.log.some((l) => /gesichtet/.test(l.text) && /sammeln sich/.test(l.text))).toBe(true);
+    const x0 = h.x, z0 = h.z;
+    run(s, GATHER_TIME - 10);
+    expect(h.phase).toBe('gather');
+    expect(Math.hypot(h.x - x0, h.z - z0)).toBeLessThan(0.01); // wartet am Rand
+    expect(incidentState(s).open.length).toBe(0);
+    s.speed = 5;
+    run(s, 20);
+    expect(h.phase).toBe('hunt');
+    expect(s.speed).toBe(1);
+    expect(s.log.some((l) => /greift an/.test(l.text))).toBe(true);
   });
 
   it('Sicherheit: Grundwert der Fraktion, mehr mit Wachen, weniger mit viel Verkehr', () => {

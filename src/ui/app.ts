@@ -9,7 +9,7 @@ import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors'
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { PATROL_R, setCombatOrder } from '../engine/combat';
-import { hostileState, sendDefense } from '../engine/hostiles';
+import { hostileState, sendDefense, spawnHostile } from '../engine/hostiles';
 import { battleLevel, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
 import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
@@ -1123,6 +1123,14 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'hostile-send': result(sendDefense(state, Number(d.id))); break;
+      // Zum Ausprobieren: sofort eine Rotte im Sektor, die nach einer Minute angreift (später wieder entfernen)
+      case 'test-attack': {
+        const h = spawnHostile(state, d.id!, undefined, undefined, 60);
+        gotoSector(d.id!);
+        ui.selection = { kind: 'hostile', id: String(h.id) };
+        refresh();
+        break;
+      }
       case 'battle-play': {
         const h = hostileState(state).list.find((x) => x.id === Number(d.id));
         if (!h) { toast('Das Gefecht ist schon vorbei.', 'info'); break; }

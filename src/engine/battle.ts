@@ -9,7 +9,7 @@ import { FOE_NAME, hostileState, type Hostile } from './hostiles';
 import { RAID_BOUNTY, incidentById, repelRaid } from './incidents';
 import { book } from './ledger';
 import type { GameState, Ship } from './types';
-import { emit, log } from './util';
+import { emit, log, normalSpeed } from './util';
 
 /** Gefechtsabstand (km): so nah müssen eigene Kampfschiffe an der Rotte sein */
 export const FIGHT_R = 6;
@@ -101,6 +101,8 @@ export function stepBattles(state: GameState, dt: number): void {
   for (const h of [...hs.list]) {
     if (h.phase === 'leave') { h.fighting = false; continue; }
     const own = fightersAt(state, h);
+    // Gefecht beginnt: Zeit auf normal, damit man zusehen oder eingreifen kann
+    if (own.length && !h.fighting) { normalSpeed(state); log(state, `Gefecht in ${SECTOR_MAP[h.sector].name}: ${own.map((x) => x.name).join(', ')} gegen ${FOE_NAME[h.foe]}.`, 'warn', true, { kind: 'sector', id: h.sector }); }
     h.fighting = own.length > 0;
     if (!own.length) continue;
     const ownPower = own.reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power * hullOf(s), 0);

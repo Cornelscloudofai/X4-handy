@@ -506,7 +506,8 @@ export class SectorRenderer {
         ctx.restore();
       }
       ctx.restore();
-      this.labels.push({ text: `${FOE_NAME[h.foe]} · ${alive}${hostileHp(h) < h.power ? ` (${Math.round((hostileHp(h) / h.power) * 100)} %)` : ''}`, x: hx, ys: [hy + 24 * shipS, hy - 24 * shipS], size: 11, color: rgba(col, 0.95), weight: 700, prio: 4, minRel: 0, force: true });
+      const wait = h.phase === 'gather' ? ` · Angriff in ${Math.max(1, Math.ceil(((h.ready ?? 0) - state.time) / 60))} min` : '';
+      this.labels.push({ text: `${FOE_NAME[h.foe]} · ${alive}${hostileHp(h) < h.power ? ` (${Math.round((hostileHp(h) / h.power) * 100)} %)` : ''}${wait}`, x: hx, ys: [hy + 24 * shipS, hy - 24 * shipS], size: 11, color: rgba(col, 0.95), weight: 700, prio: 4, minRel: 0, force: true });
     }
 
     // Ausgewähltes Kampfschiff: Patrouillengebiet bzw. Zielpunkt – beim Wählen der gewählte Punkt

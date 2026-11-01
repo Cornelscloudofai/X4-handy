@@ -15,7 +15,7 @@ import { WARES } from '../data/wares';
 import { addWare, freeUnits } from './economy';
 import { book } from './ledger';
 import type { FactionId, GameState, Ship } from './types';
-import { log } from './util';
+import { log, normalSpeed } from './util';
 import { stormActive, tideFactor } from './phenomena';
 
 /** raid Überfall · fault Störung · vein reiche Ader · tide Flut in der Cascade · freight Sonderfracht · rush Eilzuschlag
@@ -154,6 +154,7 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
     if (!sh || !sh.cargo) return false;
     const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: sh.cargo.amount, foe: foeIn(sh.sector) };
     s.open.push(inc);
+    normalSpeed(state);
     log(state, `Überfall auf ${sh.name}: ${inc.foe === 'xenon' ? 'Xenon-Jäger' : inc.foe === 'khaak' ? 'Kha’ak-Späher' : 'Piraten'} greifen den Frachter mit ${Math.round(inc.amount)} ${WARES[inc.ware].name} an.`, 'warn', true, { kind: 'incident', id: inc.id });
     return true;
   }
@@ -165,6 +166,7 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
     const ware = MODULE_MAP[c.m.def].ware!;
     const inc: Incident = { ...base, kind, sector: c.st.sector, target: c.st.id, module: c.m.uid, ware, amount: 0 };
     s.open.push(inc);
+    normalSpeed(state);
     log(state, `Störung in ${c.st.name}: Ein Modul für ${WARES[ware].name} läuft nur noch mit halber Leistung.`, 'warn', true, { kind: 'incident', id: inc.id });
     return true;
   }
@@ -174,6 +176,7 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
     if (!p) return false;
     const inc: Incident = { ...base, kind, sector: p.sh.sector, target: p.sh.id, ware: p.c.ware, amount: p.c.reward, contract: p.c.id };
     s.open.push(inc);
+    normalSpeed(state);
     log(state, `Sonderfracht: Der Auftraggeber von „${p.c.title}“ zahlt mehr, wenn ${p.sh.name} zusätzliche Kisten mitnimmt – der Frachtraum muss neu gepackt werden.`, 'good', true, { kind: 'incident', id: inc.id });
     return true;
   }
@@ -182,6 +185,7 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
     if (!sh || !sh.cargo) return false;
     const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: sh.cargo.amount * WARES[sh.cargo.ware].price.avg };
     s.open.push(inc);
+    normalSpeed(state);
     log(state, `Eilzuschlag: Der Abnehmer der Ladung von ${sh.name} zahlt extra, wenn sie über den Superhighway schneller ankommt.`, 'good', true, { kind: 'incident', id: inc.id });
     return true;
   }
@@ -191,6 +195,7 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
     if (!sh || !sh.cargo) return false;
     const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: sh.cargo.amount };
     s.open.push(inc);
+    normalSpeed(state);
     log(state, `${sh.name} will mitten im Strahlungssturm von Glutsee I andocken. Die Steuerung spinnt, der Bordrechner rechnet nur noch Bahnen.`, 'warn', true, { kind: 'incident', id: inc.id });
     return true;
   }
@@ -200,11 +205,13 @@ function create(state: GameState, kind: IncidentKind, r: (k: number) => number):
   if (kind === 'tide') {
     const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: unitsOf(sh.cls, sh.cargo.ware) };
     s.open.push(inc);
+    normalSpeed(state);
     log(state, `Flut in Tharka's Cascade: Vor ${sh.name} treibt eine dichte ${WARES[inc.ware].name}schwade.`, 'good', true, { kind: 'incident', id: inc.id });
     return true;
   }
   const inc: Incident = { ...base, kind, sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: unitsOf(sh.cls, sh.cargo.ware) };
   s.open.push(inc);
+  normalSpeed(state);
   log(state, `${sh.name} ist auf eine reiche ${WARES[inc.ware].name}ader gestoßen.`, 'good', true, { kind: 'incident', id: inc.id });
   return true;
 }
@@ -218,6 +225,7 @@ export function startRaid(state: GameState, sh: Ship, foe: 'pirates' | 'xenon' |
   if (!sh.cargo || sh.cargo.amount <= 0 || s.open.some((i) => i.target === sh.id)) return null;
   const inc: Incident = { id: state.nextId++, created: state.time, expires: state.time + DEADLINE.raid, kind: 'raid', sector: sh.sector, target: sh.id, ware: sh.cargo.ware, amount: sh.cargo.amount, foe };
   s.open.push(inc);
+  normalSpeed(state);
   log(state, `Überfall auf ${sh.name}: ${foe === 'xenon' ? 'Xenon-Jäger' : foe === 'khaak' ? 'Kha’ak-Späher' : 'Piraten'} greifen an – an Bord ${Math.round(inc.amount)} ${WARES[inc.ware].name}.`, 'warn', true, { kind: 'incident', id: inc.id });
   return inc;
 }
