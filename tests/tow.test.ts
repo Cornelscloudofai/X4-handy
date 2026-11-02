@@ -7,6 +7,7 @@ import { INCIDENT_CHAPTER, pauseIncidents, resolveIncident, startRaid, stepIncid
 import { hostileState, spawnHostile, stepHostiles } from '../src/engine/hostiles';
 import { hullOf, stepBattles } from '../src/engine/battle';
 import { TOW_HOOK, tugFor } from '../src/engine/tow';
+import { yardSizes } from '../src/engine/yard';
 import type { GameState, Ship } from '../src/engine/types';
 
 function setup(): GameState {
@@ -52,6 +53,29 @@ describe('Abschleppen', () => {
     expect(m.size).toBe('M');
     expect(m.price).toBeGreaterThan(400_000);
     expect(m.parts.some((p) => /Traktor/.test(p.name))).toBe(true);
+    // Träger Raptor (XL): 590 000 Hülle, 101 Türme, stärker als der Zerstörer, gebaut in der XL-Werft
+    const x = SHIP_MAP.raptor;
+    expect(x.size).toBe('XL');
+    expect(x.combat!.hull).toBe(590000);
+    expect(x.combat!.turrets).toBe(101);
+    expect(x.combat!.power).toBeGreaterThan(r.combat!.power);
+    expect(x.price).toBeGreaterThan(30e6);
+    expect(x.materials.hullparts).toBeGreaterThanOrEqual(30775);
+  });
+
+  it('XL-Werft baut den Raptor, nach einer Niederlage bleibt er liegen und wird abgeschleppt', () => {
+    const s = setup();
+    const st = s.stations[0];
+    expect(yardSizes({ ...st, modules: [...st.modules, { uid: 'yx', def: 'yard_xl' } as never] }).has('XL')).toBe(true);
+    expect(buyShip(s, 'raptor', st.id).ok).toBe(true);
+    const r = s.ships[s.ships.length - 1];
+    r.x = st.x + 10; r.z = st.z; r.path = [];
+    const h = spawnHostile(s, st.sector, 'xenon', 0);
+    const p = SHIP_MAP.raptor.combat!.power * 4;
+    h.x = st.x + 20; h.z = st.z + 5; h.n = 20; h.power = p; h.hp = p; h.path = []; h.phase = 'hunt';
+    run(s, 600);
+    expect(s.ships.includes(r)).toBe(true);
+    expect(r.disabled).toBe(true);
   });
 
   it('unbeantworteter Überfall: der Großfrachter bleibt liegen, wird nicht noch einmal überfallen', () => {

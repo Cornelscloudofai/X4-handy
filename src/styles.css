@@ -1487,6 +1487,7 @@ body.intro-on .wl-story p, body.intro-on .wl-card, body.intro-on .wl-eyebrow { a
 .sy-ship { position: absolute; left: 50%; top: 46%; z-index: 1; width: 58%; translate: -50% -50%; rotate: 90deg; filter: drop-shadow(0 0 18px color-mix(in srgb, var(--c) 45%, transparent)) drop-shadow(0 18px 24px rgba(0, 0, 0, 0.7)); animation: syFloat 6s ease-in-out infinite, syShipIn 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .sy-ship.size-S { width: 44%; }
 .sy-ship.size-L { width: 70%; }
+.sy-ship.size-XL { width: 82%; }
 @keyframes syFloat { 50% { transform: translateX(-10px) translateY(3%); } }
 @keyframes syShipIn { from { opacity: 0; translate: -80% -50%; filter: blur(6px); } }
 .sy-stage.studio { background: radial-gradient(60% 50% at 50% 50%, color-mix(in srgb, var(--c) 18%, transparent), transparent 70%), #02060c; }

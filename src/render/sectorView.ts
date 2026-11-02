@@ -408,7 +408,7 @@ export class SectorRenderer {
         this.drawTrail(ctx, cam, sh.id, color, 0.55, shipS);
       }
       if (sh.phase === 'mining') this.drawMining(ctx, sh, sx, sy, cam, motion ? now : 0, shipS, dt);
-      const size = (cls.size === 'L' ? 6.5 : cls.size === 'M' ? 5 : 4) * shipS;
+      const size = (cls.size === 'XL' ? 8 : cls.size === 'L' ? 6.5 : cls.size === 'M' ? 5 : 4) * shipS;
       const drawn = this.drawShip(ctx, sh.cls, sx, sy, sh.heading, size, color, docked ? 0.55 : 1, moving, motion ? now : 0, hashStr(sh.id));
       if (sh.id === selShip) this.selectionRing(ctx, sx, sy, 10 + drawn, now, color);
       // Kampfschiff beschädigt: kleiner Hüllenbalken
@@ -2055,7 +2055,7 @@ export class SectorRenderer {
     const t = sprite ? Math.max(0, Math.min(1, (L - SPRITE_MIN) / SPRITE_FADE)) : 0;
     if (sprite && t < 1) {
       // noch zu klein fürs Bild: kleiner Marker (je Klasse etwas größer), damit nichts größer wirkt als es ist
-      const g = { S: 3, M: 3.6, L: 4.4 }[SHIP_MAP[cls]?.size ?? 'M'];
+      const g = { S: 3, M: 3.6, L: 4.4, XL: 5.2 }[SHIP_MAP[cls]?.size ?? 'M'];
       this.drawShipGlyph(ctx, x, y, heading, g, color, true, alpha * (1 - t));
       if (t <= 0) return g;
     } else if (size < 3.2) { this.drawShipGlyph(ctx, x, y, heading, size, color, true, alpha); return size; }
@@ -2585,12 +2585,12 @@ const PIER_PORT = 469 / 1254;
  * von rund 0,19 und S-Plätze von rund 0,13 Einheiten: ein M-Schiff füllt seinen Platz, ein S-Schiff steht mit Rand auf
  * seinem. Verhältnisse wie in X4: L rund 3,5-mal so lang wie M, S 0,4-mal.
  */
-const SHIP_UNIT: Record<'S' | 'M' | 'L', number> = { S: 0.08, M: 0.2, L: 0.7 };
+const SHIP_UNIT: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 0.08, M: 0.2, L: 0.7, XL: 1.2 };
 /** Bildlänge eines Schiffs in Bildpunkten bei diesem Zoom – passend zu den Stationsmodulen */
 /** Schiffe, die ganz nah zur Zierde auf den Landefeldern der Andockmodule stehen */
 const DOCK_M = ['boa', 'alligator_min', 'alligator_gas'];
 const DOCK_S = ['tuatara', 'tuatara_min'];
-export function shipLength(size: 'S' | 'M' | 'L', zoom: number): number {
+export function shipLength(size: 'S' | 'M' | 'L' | 'XL', zoom: number): number {
   return SHIP_UNIT[size] * stationScale(zoom);
 }
 /** Ab dieser Bildlänge (Bildpunkte) wird statt des Symbols das Bild gezeigt, mit weichem Übergang */

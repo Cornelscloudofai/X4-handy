@@ -221,7 +221,7 @@ export function buyShip(state: GameState, clsId: string, homeId: string): Result
   state.ships.push(ship);
   book(state, -c.price, 'ships', `Schiffskauf: ${ship.name} (${c.name})`, { kind: 'ship', id: ship.id });
   log(state, `${ship.name} (${c.name}) gekauft – fliegt nach ${home.name}.`, 'good', false, { kind: 'ship', id: ship.id });
-  const warn = hasDockFor(home, c.size) ? '' : c.size === 'L' ? ' Achtung: Die Station braucht einen Pier.' : ' Achtung: Die Station braucht ein Dock.';
+  const warn = hasDockFor(home, c.size) ? '' : (c.size === 'L' || c.size === 'XL') ? ' Achtung: Die Station braucht einen Pier.' : ' Achtung: Die Station braucht ein Dock.';
   return ok(`${c.name} gekauft.${warn}`);
 }
 
@@ -339,7 +339,7 @@ export function sellOrder(state: GameState, shipId: string, stationId: string, w
   const cls = SHIP_MAP[s.cls];
   if (cls.role !== 'trader') return fail('Nur Transporter können verkaufen.');
   if (WARES[ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
-  if (!hasDockFor(st, cls.size)) return fail(cls.size === 'L' ? 'Die Station braucht einen Pier.' : 'Die Station braucht ein Dock.');
+  if (!hasDockFor(st, cls.size)) return fail((cls.size === 'L' || cls.size === 'XL') ? 'Die Station braucht einen Pier.' : 'Die Station braucht ein Dock.');
   const n = Math.min(amount, cls.capacity / WARES[ware].volume, sellableStock(st, ware));
   if (n < 1) return fail('Nichts über der Reserve zu verladen.');
   const job = { ware, amount: n, from: { kind: 'station' as const, id: st.id }, to, stage: 'pickup' as const, contract, manual: true };
@@ -369,7 +369,7 @@ export function buyOrder(state: GameState, shipId: string, stationId: string, wa
   const cls = SHIP_MAP[s.cls];
   if (cls.role !== 'trader') return fail('Nur Transporter können einkaufen.');
   if (WARES[ware].storage !== cls.storage) return fail('Diese Ware passt nicht in den Frachtraum.');
-  if (!hasDockFor(st, cls.size)) return fail(cls.size === 'L' ? 'Die Station braucht einen Pier.' : 'Die Station braucht ein Dock.');
+  if (!hasDockFor(st, cls.size)) return fail((cls.size === 'L' || cls.size === 'XL') ? 'Die Station braucht einen Pier.' : 'Die Station braucht ein Dock.');
   const n = Math.min(amount, cls.capacity / WARES[ware].volume);
   if (n < 1) return fail('Keine Menge gewählt.');
   const to = { kind: 'station' as const, id: st.id };

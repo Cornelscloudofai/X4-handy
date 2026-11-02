@@ -121,7 +121,9 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
     Bergungsschlepper Manticore (X4 `ship_gen_m_tugboat_01_a`, drei Schrott-Traktorstrahlen) holt sie von selbst ab:
     hinfliegen, drei Minuten ankoppeln, mit halbem Tempo zur Heimatstation schleppen; dort Reparatur aus Hüllenteilen
     (L: 30 Minuten von 0 auf 100 %), danach arbeitet das Schiff weiter, Ladung bleibt an Bord. Liegende Schiffe werden
-    nicht noch einmal überfallen. Bilder für Rattlesnake und Manticore fehlen noch
+    nicht noch einmal überfallen. Dazu der Träger Raptor (XL, X4-Werte: 590 000 Hülle, 1 XL- und 49 M-Schilde, 8 L- und
+    93 M-Türme, 36,6 Mio Cr; XL-Werft, Pier, Reparatur eine Stunde); Schiffsgröße XL im ganzen Spiel. Hangar noch ohne
+    Aufgabe. Bilder für Rattlesnake, Raptor und Manticore fehlen noch
   - [ ] Verteidigungstürme als Stationsmodul
   - [ ] Tor-Ereignis in Rhy
   - [ ] Eigene Kampfschiffe als Flügelleute im Minispiel

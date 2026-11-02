@@ -75,7 +75,7 @@ export interface ShipClassDef {
   id: string;
   name: string;
   role: ShipRole;
-  size: 'S' | 'M' | 'L';
+  size: 'S' | 'M' | 'L' | 'XL';
   storage: StorageType;
   capacity: number;
   /** Reisegeschwindigkeit in km/s (Spielwert) */
@@ -465,7 +465,7 @@ export interface Contract {
   /** An diesen Markt liefern (Handelsposten oder NPC-Station; ohne Angabe der Handelsposten des Sektors) */
   market?: string;
   /** Bedarfsauftrag: ausgelegt für Schiffe dieser Klasse */
-  size?: 'S' | 'M' | 'L';
+  size?: 'S' | 'M' | 'L' | 'XL';
 }
 
 export interface LogEntry {

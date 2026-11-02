@@ -36,7 +36,7 @@ function studioBg(c: ShipClassDef): string {
   return BG_IMAGES.find((b) => b.id === id)?.url ?? '';
 }
 
-const SIZE_LABEL: Record<string, string> = { S: 'Klein', M: 'Mittel', L: 'Groß' };
+const SIZE_LABEL: Record<string, string> = { S: 'Klein', M: 'Mittel', L: 'Groß', XL: 'Sehr groß' };
 const roleLabel = (c: ShipClassDef) => (c.combat ? c.combat.type : c.role === 'tug' ? 'Bergungsschlepper' : c.role === 'trader' ? 'Transporter' : c.storage === 'Liquid' ? 'Gassammler' : 'Erz-Miner');
 
 /** Farbe einer Schiffsklasse (Kampf rot, Schlepper orange, Fracht türkis, Gas violett, Erz gelb) – wie auf der Karte */
@@ -113,7 +113,7 @@ export function shipyardModal(state: GameState, m: Extract<Modal, { type: 'buySh
         ? 'Preis = Rumpf + Grundausstattung (Kampftriebwerke, Schilde, Pulslaser, bei Korvette und Fregatte Puls-Lasertürme) zu X4-Durchschnittspreisen; Raketen kommen später. Kampfwert = Hülle/100 + Schild/50 + Schaden je Sekunde/10.'
         : `Preis = Rumpf + Grundausstattung (Triebwerke, Schilde, bei Mineral-Minern Abbautürme) zu X4-Durchschnittspreisen; ohne Waffen. Tempo aus Schub und Luftwiderstand.${c.miningRate ? ' *Abbaurate ist ein Spielwert.' : ''}`}</p>
     </div>`;
-  const warn = !dock ? `<span class="small warn-text sy-warn">${c.size === 'L' ? 'Pier fehlt' : 'Dock fehlt'} an ${esc(st.name)}</span>` : !afford ? `<span class="small warn-text sy-warn">Es fehlen ${fmtCr(c.price - state.credits)}</span>` : '';
+  const warn = !dock ? `<span class="small warn-text sy-warn">${(c.size === 'L' || c.size === 'XL') ? 'Pier fehlt' : 'Dock fehlt'} an ${esc(st.name)}</span>` : !afford ? `<span class="small warn-text sy-warn">Es fehlen ${fmtCr(c.price - state.credits)}</span>` : '';
   const foot = `${warn}<button class="btn" ${act('modal-close')}>Fertig</button><button class="btn ${afford ? 'primary' : 'disabled'} sy-buy" ${act('buyship', { st: st.id, cls: c.id })}>Kaufen · ${fmtCr(c.price)}</button>`;
   return `<div class="modal shipyard" role="dialog" aria-modal="true" aria-label="Schiff kaufen"><div class="sheet-head"><h1><span class="eyebrow">Split-Werft · ${esc(fmtCr(state.credits))} verfügbar</span>Schiff kaufen</h1><button class="icon-btn" ${act('modal-close')} aria-label="Schließen">${icon('close', 22)}</button></div><div class="sheet-body">${body}</div><div class="modal-foot sy-foot">${foot}</div></div>`;
 }

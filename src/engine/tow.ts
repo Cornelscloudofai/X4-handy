@@ -19,7 +19,7 @@ const TRAIL = 2.2;
 
 export const isTug = (s: Ship): boolean => SHIP_MAP[s.cls].role === 'tug';
 /** Bleibt nach einer Niederlage liegen statt verloren zu gehen */
-export const tows = (s: Ship): boolean => SHIP_MAP[s.cls].size === 'L';
+export const tows = (s: Ship): boolean => SHIP_MAP[s.cls].size === 'L' || SHIP_MAP[s.cls].size === 'XL';
 
 /** Wer gerade dieses Schiff abholt oder schleppt */
 export function tugFor(state: GameState, id: string): Ship | undefined {

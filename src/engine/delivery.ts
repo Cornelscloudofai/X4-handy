@@ -69,7 +69,7 @@ export function deliveryOptions(state: GameState, contractId: number, stationId:
     const flight = leg / cls.speed;
     const eta = approach + trips * (2 * dock + flight) + (trips - 1) * flight;
     const reason = w.storage !== cls.storage ? 'Frachtraum passt nicht'
-      : !hasDockFor(st, cls.size) ? (cls.size === 'L' ? 'Station hat keinen Pier' : 'Station hat kein Dock')
+      : !hasDockFor(st, cls.size) ? ((cls.size === 'L' || cls.size === 'XL') ? 'Station hat keinen Pier' : 'Station hat kein Dock')
       : amount < 1 ? (need < 1 ? 'Auftrag ist schon gedeckt' : 'Nichts über der Reserve') : '';
     ships.push({ ship: s, perTrip, trips, amount, eta, busy, reason });
   }

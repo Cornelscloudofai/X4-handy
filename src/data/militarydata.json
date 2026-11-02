@@ -1057,6 +1057,177 @@
     }
    ]
   },
+  "raptor": {
+   "x4Id": "ship_spl_xl_carrier_01_a",
+   "name": "Raptor",
+   "size": "XL",
+   "hull": 590000,
+   "travel": 3099,
+   "crew": 309,
+   "missiles": 320,
+   "hullPrice": 32605075,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 5565
+    },
+    {
+     "ware": "hullparts",
+     "amount": 30775
+    }
+   ],
+   "slots": {
+    "engines": 1,
+    "shields": 50,
+    "weapons": 0,
+    "launchers": 0,
+    "turrets": 101,
+    "shieldsXL": 1,
+    "shieldsM": 49,
+    "turretsL": 8,
+    "turretsM": 93,
+    "hangarS": 100,
+    "hangarM": 4
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_xl_allround_01_mk1",
+     "name": "Allzwecktriebwerk XL Mk1",
+     "count": 1,
+     "price": 486335,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 92
+      },
+      {
+       "ware": "energycells",
+       "amount": 78
+      },
+      {
+       "ware": "engineparts",
+       "amount": 283
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_xl_standard_01_mk1",
+     "name": "Schildgenerator XL Mk1",
+     "count": 1,
+     "price": 238442,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 298
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 75
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 63
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator M Mk1",
+     "count": 49,
+     "price": 17072,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 21
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 5
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_xl_allround_01_mk1",
+     "name": "Steuerdüsen XL Mk1",
+     "count": 1,
+     "price": 598162,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 212
+      },
+      {
+       "ware": "energycells",
+       "amount": 336
+      },
+      {
+       "ware": "engineparts",
+       "amount": 147
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_l_laser_01_mk1",
+     "name": "Puls-Laserturm L Mk1",
+     "count": 8,
+     "price": 33007,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 5
+      },
+      {
+       "ware": "energycells",
+       "amount": 68
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 15
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 93,
+     "price": 16503,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 34
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 20,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
   "manticore": {
    "x4Id": "ship_gen_m_tugboat_01_a",
    "name": "Manticore",

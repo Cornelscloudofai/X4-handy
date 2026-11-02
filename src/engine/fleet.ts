@@ -499,7 +499,7 @@ function stepMiner(state: GameState, s: Ship, dt: number): void {
       if (moveAlong(s, cls.speed, dt)) {
         if (!s.cargo) { s.phase = 'waiting'; s.timer = 20; return; }
         if (!hasDockFor(home, cls.size)) {
-          s.status = cls.size === 'L' ? 'Station hat keinen Pier' : 'Station hat kein Dock';
+          s.status = (cls.size === 'L' || cls.size === 'XL') ? 'Station hat keinen Pier' : 'Station hat kein Dock';
           s.phase = 'waiting';
           s.timer = 20;
           return;
@@ -843,7 +843,7 @@ export function sectorTradeJob(state: GameState, s: Ship, sectorId: string, ware
 }
 
 /** Mindestgewinn je automatischer Fahrt nach Schiffsgröße – kleine Schiffe fahren auch für kleinere, echte Spannen */
-export const MIN_TRIP_PROFIT: Record<'S' | 'M' | 'L', number> = { S: 500, M: 2_000, L: 5_000 };
+export const MIN_TRIP_PROFIT: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 500, M: 2_000, L: 5_000, XL: 10_000 };
 
 /** Ab diesem Alter (s) schaut ein wartender Sektorhändler selbst nach, was sich an einem Markt getan hat */
 export const SCOUT_AGE = 15 * 60;

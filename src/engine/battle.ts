@@ -136,8 +136,8 @@ export function repairAtHome(state: GameState, s: Ship, dt: number): boolean {
   const home = state.stations.find((x) => x.id === s.home);
   if (!home || home.sector !== s.sector || Math.hypot(home.x - s.x, home.z - s.z) > 20) return false;
   const per = (SHIP_MAP[s.cls].materials.hullparts ?? 0) * REPAIR_SHARE; // Hüllenteile für 0 → 100 %
-  // große Schiffe brauchen länger (L: eine halbe Stunde von 0 auf 100 %)
-  const step = Math.min(1 - hullOf(s), dt / (REPAIR_TIME * (SHIP_MAP[s.cls].size === 'L' ? 6 : 1)));
+  // große Schiffe brauchen länger (L: eine halbe Stunde, XL: eine Stunde von 0 auf 100 %)
+  const step = Math.min(1 - hullOf(s), dt / (REPAIR_TIME * ({ S: 1, M: 1, L: 6, XL: 12 } as const)[SHIP_MAP[s.cls].size]));
   const need = per * step;
   if ((home.inventory.hullparts ?? 0) < need) { s.status = `Wartet auf Hüllenteile zur Reparatur (${Math.round(hullOf(s) * 100)} %)`; return true; }
   addWare(home, 'hullparts', -need);

@@ -183,7 +183,7 @@ export function sellModalHtml(state: GameState, m: SellModal): { title: string; 
     <div class="section"><h3>Schiff</h3><div class="pills">${shipChips}</div>
       ${!ships.length ? `<p class="small muted" style="margin:6px 0 0">Kein passender Transporter – Werte zum Vergleich. <button class="linkish" ${act('buyship-modal', { st: st.id, role: 'trader' })}>Transporter kaufen</button></p>` : ''}
       ${realShip && (realShip.job || realShip.cargo) ? `<p class="small muted" style="margin:6px 0 0">${esc(realShip.name)} ist unterwegs (${esc(realShip.status)}) und startet danach.</p>` : ''}
-      ${!dockOk ? `<p class="small warn-text" style="margin:6px 0 0">${esc(st.name)} braucht ${cls.size === 'L' ? 'einen Pier' : 'ein Dock'} für dieses Schiff.</p>` : ''}
+      ${!dockOk ? `<p class="small warn-text" style="margin:6px 0 0">${esc(st.name)} braucht ${(cls.size === 'L' || cls.size === 'XL') ? 'einen Pier' : 'ein Dock'} für dieses Schiff.</p>` : ''}
     </div>
     <div class="section"><h3>Für eigene Produktion behalten</h3>
       <input type="range" id="sellReserve" data-change="sell-reserve" data-st="${st.id}" data-ware="${m.ware}" min="0" max="${Math.max(1, Math.round(Math.max(limit, ctx.stock)))}" step="${Math.max(1, Math.round(Math.max(limit, ctx.stock) / 100))}" value="${Math.round(reserveFor(st, m.ware, limit))}" aria-label="Reserve">

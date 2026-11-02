@@ -23,10 +23,10 @@ function withFighter(cls = 'mamba'): { s: GameState; f: Ship } {
 }
 
 describe('Kampfschiffe: Daten aus X4', () => {
-  it('acht Split-Schiffe (S, M und der Zerstörer) mit Preis, Material und Kampfwert', () => {
-    expect(FIGHTERS.map((c) => c.id).sort()).toEqual(['asp', 'balaur', 'chimera', 'cobra', 'dragon', 'jaguar', 'mamba', 'rattlesnake']);
+  it('neun Split-Schiffe (S, M, Zerstörer und Träger) mit Preis, Material und Kampfwert', () => {
+    expect(FIGHTERS.map((c) => c.id).sort()).toEqual(['asp', 'balaur', 'chimera', 'cobra', 'dragon', 'jaguar', 'mamba', 'raptor', 'rattlesnake']);
     for (const c of FIGHTERS) {
-      expect(c.id === 'rattlesnake' ? ['L'] : ['S', 'M']).toContain(c.size);
+      expect(c.id === 'rattlesnake' ? ['L'] : c.id === 'raptor' ? ['XL'] : ['S', 'M']).toContain(c.size);
       expect(c.combat!.power).toBeGreaterThan(0);
       expect(c.materials.hullparts).toBeGreaterThan(100);
       expect(c.materials.energycells).toBeGreaterThan(0);

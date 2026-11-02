@@ -1,4 +1,4 @@
-// Baukosten der Split-Kampfschiffe (S, M und der Zerstörer Rattlesnake) und des Bergungsschleppers Manticore aus dem Spieldaten-Auszug crissian/x4: Rumpfpreis und -material,
+// Baukosten der Split-Kampfschiffe (S, M, der Zerstörer Rattlesnake und der Träger Raptor) und des Bergungsschleppers Manticore aus dem Spieldaten-Auszug crissian/x4: Rumpfpreis und -material,
 // Hülle, Plätze und Standardausrüstung (Kampftriebwerke, Schilde, Steuerdüsen, Pulslaser, Puls-Lasertürme, Täuschkörper) mit
 // Preis und Material – im selben Aufbau wie shipdata.json der Frachter und Miner.
 // Die Datendateien werden nur als Text gelesen (keine fremde Ausführung).
@@ -46,6 +46,7 @@ const PICK = {
   dragon: 'ship_spl_m_corvette_01_a',
   cobra: 'ship_spl_m_frigate_01_a',
   rattlesnake: 'ship_spl_l_destroyer_01_a',
+  raptor: 'ship_spl_xl_carrier_01_a',
   manticore: 'ship_gen_m_tugboat_01_a',
 };
 const SZ = { small: 's', medium: 'm', large: 'l', extralarge: 'xl' };
@@ -76,6 +77,20 @@ for (const [key, id] of Object.entries(PICK)) {
       equip('turret_spl_l_laser_01_mk1', 'Puls-Laserturm L Mk1', tuL),
       equip('turret_spl_m_laser_01_mk1', 'Puls-Laserturm M Mk1', tuM),
       equip('countermeasure_flares_01', 'Täuschkörper', 10),
+    ];
+  } else if (key === 'raptor') {
+    // Träger: ein XL-Schild und 49 M-Schilde, keine Bordgeschütze, 8 L- und 93 M-Türme
+    const shXL = bySize(r, 'shields', 'xl'), shM = bySize(r, 'shields', 'm');
+    const tuL = bySize(r, 'turrets', 'l'), tuM = bySize(r, 'turrets', 'm');
+    slots = { ...slots, shieldsXL: shXL, shieldsM: shM, turretsL: tuL, turretsM: tuM, hangarS: 100, hangarM: 4 };
+    equipment = [
+      equip('engine_spl_xl_allround_01_mk1', 'Allzwecktriebwerk XL Mk1', engines),
+      equip('shield_spl_xl_standard_01_mk1', 'Schildgenerator XL Mk1', shXL),
+      equip('shield_spl_m_standard_01_mk1', 'Schildgenerator M Mk1', shM),
+      equip('thruster_gen_xl_allround_01_mk1', 'Steuerdüsen XL Mk1', 1),
+      equip('turret_spl_l_laser_01_mk1', 'Puls-Laserturm L Mk1', tuL),
+      equip('turret_spl_m_laser_01_mk1', 'Puls-Laserturm M Mk1', tuM),
+      equip('countermeasure_flares_01', 'Täuschkörper', 20),
     ];
   } else if (key === 'manticore') {
     // Bergungsschlepper: drei feste Schrott-Traktorstrahlen statt Waffen

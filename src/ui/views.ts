@@ -757,11 +757,11 @@ function fighterPanel(state: GameState, s: Ship, p: Panel): string {
       <div><small>Hülle</small><b class="${hullOf(s) < 0.5 ? 'neg' : ''}">${Math.round(hullOf(s) * 100)} % <span class="small muted">von ${fmtInt(cb.hull)}</span></b></div>
       <div><small>Schild</small><b>${fmtInt(cb.shield)}</b></div>
       <div><small>Schaden/s</small><b>${fmtInt(cb.dps)}</b></div>
-      <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${c.size === 'L' ? c.parts.filter((x) => /Hauptbatterie|turm/.test(x.name)).map((x) => `${x.count} × ${esc(x.name)}`).join(' · ') : `${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}`}</b></div>
+      <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${c.size === 'L' || c.size === 'XL' ? c.parts.filter((x) => /Hauptbatterie|turm/.test(x.name)).map((x) => `${x.count} × ${esc(x.name)}`).join(' · ') : `${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}`}</b></div>
     </div></div>
     <div class="section"><h3>Befehl ${helpBtn('fighters')}</h3>
       <p class="small" style="margin:0 0 6px">Aktiv: <b>${esc(combatOrderText(state, o))}</b></p>
-      <p class="small muted" style="margin:0">Befehle gibst du auf der Karte: Schiff antippen oder mehrere mit dem Lasso einkreisen (gedrückt halten, bis sich der Ring füllt, dann ziehen) – dann die Kugel neben der Gruppe antippen. Greift Gegner im Wachbereich selbst an; unter 25 % Hülle fliegt es zur Reparatur heim. S- und M-Schiffe können im Gefecht verloren gehen.</p>
+      <p class="small muted" style="margin:0">Befehle gibst du auf der Karte: Schiff antippen oder mehrere mit dem Lasso einkreisen (gedrückt halten, bis sich der Ring füllt, dann ziehen) – dann die Kugel neben der Gruppe antippen. Greift Gegner im Wachbereich selbst an; unter 25 % Hülle fliegt es zur Reparatur heim. S- und M-Schiffe können im Gefecht verloren gehen, L und XL bleiben liegen und werden abgeschleppt.</p>
     </div>
     <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon(home ? 'station' : 'fleet', 20)}<div class="grow"><div class="title">${esc(home?.name ?? 'Frei – keiner Station zugeordnet')}</div><div class="sub">${esc(home ? `${sector(home.sector).name} · Rückkehr, wenn ein Geleit endet` : 'Hält nach einem Geleit die Position')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
     <div class="card-actions"><button class="btn" ${act('focus', { kind: 'ship', id: s.id })}>${icon('target', 20)}Auf Karte zeigen</button><button class="btn danger" ${act('ask-sell-ship', { id: s.id })}>Verkaufen</button></div>`,

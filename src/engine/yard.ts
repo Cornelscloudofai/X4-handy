@@ -11,19 +11,20 @@ import { emit, log, rand } from './util';
 import { book } from './ledger';
 
 /** Bauzeit eines Schiffs in Sekunden (Spielwert; in X4 hängt sie von Rumpf und Ausrüstung ab) */
-export const SHIP_BUILD_TIME: Record<'S' | 'M' | 'L', number> = { S: 6 * 60, M: 12 * 60, L: 30 * 60 };
+export const SHIP_BUILD_TIME: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 6 * 60, M: 12 * 60, L: 30 * 60, XL: 100 * 60 };
 export const MAX_YARD_QUEUE = 8;
 const MAX_SHIPS = 60;
 
 type Result = { ok: boolean; msg: string };
 
 /** Schiffsgrößen, die eine Station bauen kann */
-export function yardSizes(st: Station): Set<'S' | 'M' | 'L'> {
-  const out = new Set<'S' | 'M' | 'L'>();
+export function yardSizes(st: Station): Set<'S' | 'M' | 'L' | 'XL'> {
+  const out = new Set<'S' | 'M' | 'L' | 'XL'>();
   for (const m of st.modules) {
     const y = MODULE_MAP[m.def]?.yardSize;
     if (y === 'M') { out.add('S'); out.add('M'); }
     if (y === 'L') out.add('L');
+    if (y === 'XL') out.add('XL');
   }
   return out;
 }
@@ -57,7 +58,7 @@ export function queueShipBuild(state: GameState, stationId: string, cls: string,
   const st = stationById(state, stationId);
   const c = SHIP_MAP[cls];
   if (!st || !c) return { ok: false, msg: 'Station oder Schiff nicht gefunden.' };
-  if (!yardSizes(st).has(c.size)) return { ok: false, msg: c.size === 'L' ? 'Dafür braucht die Station eine L-Schiffsfertigung.' : 'Dafür braucht die Station eine S/M-Schiffsfertigung.' };
+  if (!yardSizes(st).has(c.size)) return { ok: false, msg: c.size === 'XL' ? 'Dafür braucht die Station eine XL-Schiffsfertigung.' : c.size === 'L' ? 'Dafür braucht die Station eine L-Schiffsfertigung.' : 'Dafür braucht die Station eine S/M-Schiffsfertigung.' };
   st.yard ??= { queue: [], build: null };
   if (st.yard.queue.length >= MAX_YARD_QUEUE) return { ok: false, msg: `Höchstens ${MAX_YARD_QUEUE} Schiffe in der Warteschlange.` };
   st.yard.queue.push({ uid: state.nextId++, cls, order });
@@ -113,7 +114,7 @@ export function stepYard(state: GameState, st: Station, dt: number): void {
     const ship = newShip(state, job.cls, st);
     state.ships.push(ship);
     state.totals.shipsBuilt = (state.totals.shipsBuilt ?? 0) + 1;
-    if (c.size === 'L') state.totals.shipsBuiltL = (state.totals.shipsBuiltL ?? 0) + 1;
+    if (c.size === 'L' || c.size === 'XL') state.totals.shipsBuiltL = (state.totals.shipsBuiltL ?? 0) + 1;
     log(state, `${st.name}: ${ship.name} (${c.name}) vom Stapel gelaufen.`, 'good', true, { kind: 'ship', id: ship.id });
   }
   emit({ type: 'shipBuilt', station: st.id, cls: job.cls });
@@ -152,7 +153,7 @@ export function stepShipOrders(state: GameState, dt: number): void {
   const faction = SECTOR_MAP[sec].faction;
   const o: ShipOrder = {
     id: state.nextId++, faction, sector: sec, cls: c.id, price: Math.round((c.price * (0.9 + rand(state) * 0.2)) / 1000) * 1000,
-    rep: c.size === 'L' ? 2 : 1, deadline: state.time + OFFER_TTL, status: 'offer',
+    rep: c.size === 'L' || c.size === 'XL' ? 2 : 1, deadline: state.time + OFFER_TTL, status: 'offer',
   };
   state.shipOrders.push(o);
   log(state, `Schiffsbestellung: ${FACTIONS[faction].short} sucht eine ${c.name} (${o.price.toLocaleString('de-DE')} Cr).`, 'info', true, { kind: 'shipOrder', id: o.id });

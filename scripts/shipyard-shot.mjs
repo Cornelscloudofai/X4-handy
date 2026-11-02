@@ -15,9 +15,9 @@ await page.click('text=Loslegen mit Handel');
 await page.waitForTimeout(2200);
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.state.credits = 5_000_000; g.ui.modal = { type: 'buyShip', station: g.state.stations[0].id, role: 'all' }; g.refresh(); });
 await page.waitForTimeout(1500);
-// 8 zivile Schiffe (Miner, Transporter), 8 Kampfschiffe (mit Zerstörer Rattlesnake) und der Schlepper Manticore
-if ((await page.locator('#modal .sy-thumb').count()) !== 17) fail('Nicht alle 17 Schiffe in der Leiste');
-// Rattlesnake und Manticore haben noch kein Bild (Symbol statt Draufsicht)
+// 8 zivile Schiffe (Miner, Transporter), 9 Kampfschiffe (mit Zerstörer Rattlesnake und Träger Raptor) und der Schlepper
+if ((await page.locator('#modal .sy-thumb').count()) !== 18) fail('Nicht alle 18 Schiffe in der Leiste');
+// Rattlesnake, Raptor und Manticore haben noch kein Bild (Symbol statt Draufsicht)
 if ((await page.locator('#modal .sy-thumb img').count()) < 15) fail('Draufsichten fehlen');
 await page.screenshot({ path: `${out}/werft-1.png` });
 await page.click('#modal [data-act="buyship-sel"][data-cls="tuatara"]');
@@ -32,7 +32,7 @@ await page.waitForTimeout(1300);
 await page.screenshot({ path: `${out}/werft-3-wyvern.png` });
 await page.click('#modal [data-act="buyship-role"][data-role="fighter"]');
 await page.waitForTimeout(400);
-if ((await page.locator('#modal .sy-thumb').count()) !== 9) fail('Filter Kampf zeigt nicht 9 Schiffe (8 Kampfschiffe und der Schlepper)');
+if ((await page.locator('#modal .sy-thumb').count()) !== 10) fail('Filter Kampf zeigt nicht 10 Schiffe (9 Kampfschiffe und der Schlepper)');
 await page.click('#modal [data-act="buyship-sel"][data-cls="cobra"]');
 await page.waitForTimeout(1300);
 if (!(await page.locator('#modal .sy-stat', { hasText: 'Kampfwert' }).count())) fail('Kampfschiff ohne Kampfwert');

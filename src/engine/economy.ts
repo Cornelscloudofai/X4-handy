@@ -453,7 +453,8 @@ export function stepConstruction(state: GameState, st: Station, dt: number): voi
   }
 }
 
-export function hasDockFor(st: Station, size: 'S' | 'M' | 'L'): boolean {
+export function hasDockFor(st: Station, size: 'S' | 'M' | 'L' | 'XL'): boolean {
+  if (size === 'XL') size = 'L'; // XL legt wie L am Pier an
   const kind = size === 'L' ? 'pier' : 'dock';
   // Die S/M-Schiffsfertigung hat eigene Andockplätze für S- und M-Schiffe
   return st.modules.some((m) => MODULE_MAP[m.def]?.kind === kind || (size !== 'L' && m.def === 'yard_m'));
