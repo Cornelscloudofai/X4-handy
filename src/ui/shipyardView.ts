@@ -2,6 +2,7 @@
 // Draufsicht zum Durchblättern, dazu Werte im Vergleich und der Preis. Szenenbilder liegen in src/assets/schiffe/
 // (<Klasse>.jpg oder .webp, z. B. boa.jpg) und werden erst beim Anzeigen geladen; fehlt eins, steht die Draufsicht groß
 // vor einem Weltraum-Hintergrund.
+import { TOW_SPEED } from '../engine/tow';
 import { SHIP_CLASSES } from '../data/ships';
 import { STORAGE_LABEL } from '../data/wares';
 import { sector } from '../data/sectors';
@@ -31,19 +32,19 @@ export function shipScene(cls: string): string | undefined {
 
 /** Hintergrund, falls ein Szenenbild fehlt: Miner vor Asteroiden, Gassammler vor Nebel, Frachter vor Planeten */
 function studioBg(c: ShipClassDef): string {
-  const id = c.role === 'fighter' ? 'nebel-rot-tuerkis' : c.role === 'trader' ? 'planet-tuerkis' : c.storage === 'Liquid' ? 'wirbel-violett' : 'asteroiden-sonne';
+  const id = c.role === 'fighter' || c.role === 'tug' ? 'nebel-rot-tuerkis' : c.role === 'trader' ? 'planet-tuerkis' : c.storage === 'Liquid' ? 'wirbel-violett' : 'asteroiden-sonne';
   return BG_IMAGES.find((b) => b.id === id)?.url ?? '';
 }
 
 const SIZE_LABEL: Record<string, string> = { S: 'Klein', M: 'Mittel', L: 'Groß' };
-const roleLabel = (c: ShipClassDef) => (c.combat ? c.combat.type : c.role === 'trader' ? 'Transporter' : c.storage === 'Liquid' ? 'Gassammler' : 'Erz-Miner');
+const roleLabel = (c: ShipClassDef) => (c.combat ? c.combat.type : c.role === 'tug' ? 'Bergungsschlepper' : c.role === 'trader' ? 'Transporter' : c.storage === 'Liquid' ? 'Gassammler' : 'Erz-Miner');
 
-/** Farbe einer Schiffsklasse (Kampf rot, Fracht türkis, Gas violett, Erz gelb) – wie auf der Karte */
-export const shipColor = (c: ShipClassDef): string => (c.role === 'fighter' ? '#ff7a66' : c.role === 'trader' ? '#5ff0d8' : c.storage === 'Liquid' ? '#b79bff' : '#ffc45e');
+/** Farbe einer Schiffsklasse (Kampf rot, Schlepper orange, Fracht türkis, Gas violett, Erz gelb) – wie auf der Karte */
+export const shipColor = (c: ShipClassDef): string => (c.role === 'fighter' ? '#ff7a66' : c.role === 'tug' ? '#ffa04d' : c.role === 'trader' ? '#5ff0d8' : c.storage === 'Liquid' ? '#b79bff' : '#ffc45e');
 /** Symbol einer Schiffsklasse */
-export const shipIcon = (c: ShipClassDef): 'fighter' | 'miner' | 'trader' => (c.role === 'fighter' ? 'fighter' : c.role === 'miner' ? 'miner' : 'trader');
+export const shipIcon = (c: ShipClassDef): 'fighter' | 'miner' | 'trader' | 'wrench' => (c.role === 'fighter' ? 'fighter' : c.role === 'tug' ? 'wrench' : c.role === 'miner' ? 'miner' : 'trader');
 /** Kurzbezeichnung auf den Vorschaukacheln */
-const tagOf = (c: ShipClassDef): string => (c.role === 'fighter' ? 'Kampf' : c.role === 'trader' ? 'Fracht' : c.storage === 'Liquid' ? 'Gas' : 'Erz');
+const tagOf = (c: ShipClassDef): string => (c.role === 'fighter' ? 'Kampf' : c.role === 'tug' ? 'Bergung' : c.role === 'trader' ? 'Fracht' : c.storage === 'Liquid' ? 'Gas' : 'Erz');
 
 /** Balken im Vergleich zum stärksten Schiff der Werft */
 function statBar(label: string, value: string, frac: number, color: string): string {
@@ -53,7 +54,8 @@ function statBar(label: string, value: string, frac: number, color: string): str
 export function shipyardModal(state: GameState, m: Extract<Modal, { type: 'buyShip' }>): string {
   const st = stationById(state, m.station) ?? state.stations[0];
   if (!st) return '';
-  const list = SHIP_CLASSES.filter((c) => m.role === 'all' || c.role === m.role);
+  // Schlepper stehen bei den Kampfschiffen (Bergung gehört zum Gefecht)
+  const list = SHIP_CLASSES.filter((c) => m.role === 'all' || c.role === m.role || (m.role === 'fighter' && c.role === 'tug'));
   const c = list.find((x) => x.id === m.sel) ?? list[0];
   if (!c) return '';
   const max = (f: (x: ShipClassDef) => number) => Math.max(...SHIP_CLASSES.map(f));
@@ -85,6 +87,10 @@ export function shipyardModal(state: GameState, m: Extract<Modal, { type: 'buySh
     statBar('Schaden/s', `${fmtInt(cb.dps)}`, cb.dps / cmax((x) => x.dps), color),
     statBar('Reisetempo', `${fmtNum(c.speed, 1)} km/s`, c.speed / max((x) => x.speed), color),
     statBar('Höchsttempo', `${fmtInt(c.maxSpeed)} m/s`, c.maxSpeed / max((x) => x.maxSpeed), color),
+  ].join('') : c.role === 'tug' ? [
+    statBar('Reisetempo', `${fmtNum(c.speed, 1)} km/s`, c.speed / max((x) => x.speed), color),
+    statBar('Mit Last', `${fmtNum(c.speed * TOW_SPEED, 1)} km/s`, (c.speed * TOW_SPEED) / max((x) => x.speed), color),
+    statBar('Höchsttempo', `${fmtInt(c.maxSpeed)} m/s`, c.maxSpeed / max((x) => x.maxSpeed), color),
   ].join('') : [
     statBar('Frachtraum', `${fmtInt(c.capacity)} m³`, c.capacity / max((x) => x.capacity), color),
     statBar('Reisetempo', `${fmtNum(c.speed, 1)} km/s`, c.speed / max((x) => x.speed), color),
@@ -99,7 +105,7 @@ export function shipyardModal(state: GameState, m: Extract<Modal, { type: 'buySh
     <div class="segment sy-tabs">${tabs}</div>
     <div class="sy-strip">${thumbs}</div>
     <div class="sy-detail" data-key="${c.id}">
-      <p class="sy-desc">${esc(c.description)}${cb ? ` ${cb.guns} Bordkanone${cb.guns === 1 ? '' : 'n'}${cb.turrets ? `, ${cb.turrets} Türme` : ''}${cb.missiles ? `, Platz für ${cb.missiles} Raketen` : ''}.` : ` Lädt ${esc(STORAGE_LABEL[c.storage])}.`}</p>
+      <p class="sy-desc">${esc(c.description)}${cb ? ` ${cb.guns} Bordkanone${cb.guns === 1 ? '' : 'n'}${cb.turrets ? `, ${cb.turrets} Türme` : ''}${cb.missiles ? `, Platz für ${cb.missiles} Raketen` : ''}.` : c.role === 'tug' ? '' : ` Lädt ${esc(STORAGE_LABEL[c.storage])}.`}</p>
       <div class="sy-stats">${stats}</div>
       <div class="price-breakdown"><span>Rumpf <b>${fmtCr(c.hullPrice)}</b></span>${c.parts.map((p) => `<span>${p.count}× ${esc(p.name)} <b>${fmtCr(p.count * p.price)}</b></span>`).join('')}</div>
       ${picker}

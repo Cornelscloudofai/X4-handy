@@ -50,17 +50,22 @@ function build(): ShipClassDef[] {
 // Maßstab als das der Frachter – umgerechnet mit dem Verhältnis der Tuatara (2 513 zu 6 369).
 
 interface RawMil {
-  name: string; size: 'S' | 'M'; hull: number; crew: number; missiles: number; travel: number; hullPrice: number;
+  name: string; size: 'S' | 'M' | 'L'; hull: number; crew: number; missiles: number; travel: number; hullPrice: number;
   hullMaterials: { ware: string; amount: number }[];
-  slots: { engines: number; shields: number; weapons: number; launchers: number; turrets: number };
+  /** Zerstörer: Schilde und Türme nach Größe getrennt */
+  slots: { engines: number; shields: number; weapons: number; launchers: number; turrets: number; shieldsL?: number; shieldsM?: number; turretsL?: number; turretsM?: number };
   equipment: { id: string; name: string; count: number; price: number; materials: { ware: string; amount: number }[] }[];
 }
 const MIL = (military as unknown as { ships: Record<string, RawMil> }).ships;
 const TRAVEL_SCALE = 2513 / 6369;
 /** Schildkapazität je Generator (Split Mk1) */
-const SHIELD_CAP = { S: 740, M: 3848 };
-/** Schaden je Sekunde mit Salvenpausen: Pulslaser S/M, Puls-Laserturm M (18 × 8er-Salve, 3,8/s, 2,4 s Pause) */
-const GUN_DPS = { S: 105, M: 154 }, TURRET_DPS = 32;
+const SHIELD_CAP = { S: 740, M: 3848, L: 38845 };
+/**
+ * Schaden je Sekunde mit Salvenpausen: Pulslaser S/M, Puls-Laserturm M (18 × 8er-Salve, 3,8/s, 2,4 s Pause),
+ * Puls-Laserturm L (272 × 8, alle 0,8 s, 5 s Nachladen ≈ 191/s). Hauptbatterie der Rattlesnake: 1 400 × 12 mit 2,3/s und
+ * 6 s Nachladen ≈ 1 500/s – gegen Jäger und Korvetten trifft sie kaum, darum zählt nur ein Viertel.
+ */
+const GUN_DPS = { S: 105, M: 154, L: 375 }, TURRET_DPS = 32, TURRET_L_DPS = 191;
 const MIL_INFO: Record<string, { type: string; v: number; description: string }> = {
   jaguar: { type: 'Aufklärer', v: 390, description: 'Schneller Aufklärer mit einer Bordkanone. Für Patrouillen über weite Strecken, nicht für schwere Gefechte.' },
   mamba: { type: 'Jäger', v: 330, description: 'Vielseitiger Jäger mit zwei Kanonen und zwei Schilden – das Arbeitstier der Split-Staffeln.' },
@@ -69,6 +74,7 @@ const MIL_INFO: Record<string, { type: string; v: number; description: string }>
   chimera: { type: 'Schwerer Jäger', v: 394, description: 'Schwerer Jäger mit fünf Kanonen und großem Profil. Viel Feuerkraft für ein S-Schiff.' },
   dragon: { type: 'Korvette', v: 478, description: 'Korvette mit sechs Kanonen und zwei Türmen. Hält im Zweikampf gegen fast jedes Schiff stand.' },
   cobra: { type: 'Fregatte', v: 518, description: 'Fregatte mit vier Türmen und starker Hülle. Geleitschiff für Konvois und Stationswache.' },
+  rattlesnake: { type: 'Zerstörer', v: 157, description: 'Zerstörer der Split: vier schwere Hauptgeschütze, achtzehn Türme, 92 Mann Besatzung. Langsam, aber keine Piratenrotte hält ihm stand. Wird er doch niedergekämpft, bleibt er kampfunfähig liegen und muss abgeschleppt werden.' },
 };
 
 function buildMilitary(): ShipClassDef[] {
@@ -79,8 +85,9 @@ function buildMilitary(): ShipClassDef[] {
     const materials: Record<string, number> = {};
     for (const m of r.hullMaterials) materials[m.ware] = (materials[m.ware] ?? 0) + m.amount;
     for (const e of r.equipment) for (const m of e.materials) materials[m.ware] = (materials[m.ware] ?? 0) + m.amount * e.count;
-    const shield = r.slots.shields * SHIELD_CAP[r.size];
-    const dps = r.slots.weapons * GUN_DPS[r.size] + r.slots.turrets * TURRET_DPS;
+    const sl = r.slots;
+    const shield = sl.shieldsL != null ? (sl.shieldsL ?? 0) * SHIELD_CAP.L + (sl.shieldsM ?? 0) * SHIELD_CAP.M : sl.shields * SHIELD_CAP[r.size];
+    const dps = sl.weapons * GUN_DPS[r.size] + (sl.turretsL != null ? sl.turretsL * TURRET_L_DPS + (sl.turretsM ?? 0) * TURRET_DPS : sl.turrets * TURRET_DPS);
     const power = Math.round(r.hull / 100 + shield / 50 + dps / 10);
     return {
       id, name: r.name, role: 'fighter' as const, size: r.size, storage: 'Container' as const, capacity: 0, miningRate: 0,
@@ -91,7 +98,23 @@ function buildMilitary(): ShipClassDef[] {
   });
 }
 
-export const SHIP_CLASSES: ShipClassDef[] = [...build(), ...buildMilitary()];
+// ---- Bergungsschlepper Manticore (X4: ship_gen_m_tugboat_01_a, „salvage“, von den Freien Familien gebaut) ----
+// Drei feste Schrott-Traktorstrahlen statt Waffen. Holt kampfunfähige Schiffe ab und schleppt sie zur Reparatur heim.
+function buildTug(): ShipClassDef {
+  const r = MIL.manticore;
+  const materials: Record<string, number> = {};
+  for (const m of r.hullMaterials) materials[m.ware] = (materials[m.ware] ?? 0) + m.amount;
+  for (const e of r.equipment) for (const m of e.materials) materials[m.ware] = (materials[m.ware] ?? 0) + m.amount * e.count;
+  return {
+    id: 'manticore', name: r.name, role: 'tug', size: r.size, storage: 'Container', capacity: 0, miningRate: 0,
+    speed: (r.travel * TRAVEL_SCALE) / 1000, maxSpeed: 214, // 5 × 1 300 Schub / 30,3 Luftwiderstand
+    price: Math.round(r.hullPrice + r.equipment.reduce((sum, e) => sum + e.count * e.price, 0)), hullPrice: Math.round(r.hullPrice),
+    parts: r.equipment.map((e) => ({ name: e.name, count: e.count, price: e.price })), materials, crew: r.crew,
+    description: 'Bergungsschlepper mit drei Traktorstrahlen. Holt kampfunfähige Schiffe ab – große Frachter, Miner und Zerstörer – und schleppt sie zur Reparatur an ihre Heimatstation. Arbeitet von selbst, sobald eines liegen bleibt.',
+  };
+}
+
+export const SHIP_CLASSES: ShipClassDef[] = [...build(), ...buildMilitary(), buildTug()];
 
 export const SHIP_MAP: Record<string, ShipClassDef> = Object.fromEntries(SHIP_CLASSES.map((s) => [s.id, s]));
 

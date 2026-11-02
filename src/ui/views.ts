@@ -54,6 +54,7 @@ import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin
 import { combatOrderText } from '../engine/combat';
 import { DEFEND_R, DETER, DETER_ON, hostileState, hostileText, hostilesIn, sectorSecurity } from '../engine/hostiles';
 import { FIGHT_R, fightersAt, hostileHp, hullOf, wrecksOf } from '../engine/battle';
+import { TOW_SPEED, tugFor } from '../engine/tow';
 import { shipColor, shipIcon } from './shipyardView';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
 import { netWorth } from '../engine/stats';
@@ -703,6 +704,43 @@ export function commandHtml(state: GameState, ui: UIState): string {
   return `${top}${ui.order ? '' : `<div class="orb-wrap ${ui.orbOpen ? 'open' : ''}"><button class="orb" ${act('orb-toggle')} aria-label="Befehle">${icon(ui.orbOpen ? 'close' : 'fighter', 20)}</button>${menu}</div>`}`;
 }
 
+/** Kampfunfähiges Schiff: wer es holt – oder dass ein Schlepper fehlt (mit Kaufknopf) */
+function towBox(state: GameState, s: Ship): string {
+  if (!s.disabled) return '';
+  const tug = tugFor(state, s.id);
+  const any = state.ships.some((x) => SHIP_MAP[x.cls].role === 'tug');
+  const txt = tug ? `${esc(tug.name)} ${tug.tow!.stage === 'tow' ? 'schleppt es heim' : tug.tow!.stage === 'hook' ? 'koppelt gerade an' : 'ist unterwegs'}. An der Heimatstation wird es aus Hüllenteilen repariert und arbeitet danach weiter.`
+    : any ? 'Alle Bergungsschlepper sind beschäftigt – es kommt als Nächstes dran.'
+    : 'Manövrierunfähig. Nur ein Bergungsschlepper (Manticore) bringt es zur Reparatur nach Hause.';
+  return `<div class="box warn-box" style="margin:0 0 12px;padding:10px 12px;border-color:#ff7a66"><div class="small" style="margin:0 0 ${tug || any ? 0 : 8}px">${icon('warn', 15)} <b>Kampfunfähig.</b> ${txt}</div>${tug || any || !state.stations[0] ? '' : `<button class="btn small amber" ${act('buyship-modal', { st: s.home || state.stations[0].id, role: 'fighter', cls: 'manticore' })}>${icon('wrench', 16)}Bergungsschlepper kaufen · ${fmtCr(SHIP_MAP.manticore.price)}</button>`}</div>`;
+}
+
+/** Fenster eines Bergungsschleppers: Auftrag, Werte, Heimat */
+function tugPanel(state: GameState, s: Ship, p: Panel): string {
+  const c = SHIP_MAP[s.cls];
+  const url = classSpriteUrl(s.cls);
+  const home = stationById(state, s.home);
+  const t = s.tow ? state.ships.find((x) => x.id === s.tow!.ship) : undefined;
+  const waiting = state.ships.filter((x) => x.disabled && !tugFor(state, x.id));
+  const hero = `<div class="ship-hero" style="--c:${shipColor(c)}">${url ? `<img src="${url}" alt="">` : `<span class="ship-hero-ic">${icon('wrench', 96)}</span>`}
+    <div class="ship-hero-txt"><span class="state ${shipState(s)}"><i></i>${esc(s.status)}</span></div></div>`;
+  return sheet(s.name, `${c.name} · Bergungsschlepper`, `
+    ${hero}
+    <div class="section"><h3>Auftrag</h3><div class="box rows">${t
+      ? `<div class="row tap" ${act('open-ship', { id: t.id })}>${icon('wrench', 20)}<div class="grow"><div class="title">${esc(t.name)}</div><div class="sub">${esc(SHIP_MAP[t.cls].name)} · ${esc(sector(t.sector).name)}</div></div>${icon('chev', 20, 'chev')}</div>`
+      : `<div class="row">${icon('check', 20)}<div class="grow"><div class="title">Kein Schiff zu bergen</div><div class="sub">Startet von selbst, sobald ein großes Schiff liegen bleibt.</div></div></div>`}</div>
+      ${waiting.length ? `<p class="small muted" style="margin:6px 0 0">Warten noch: ${waiting.map((x) => esc(x.name)).join(', ')}</p>` : ''}</div>
+    <div class="section"><div class="kv">
+      <div><small>Hülle</small><b>${fmtInt(8000)}</b></div>
+      <div><small>Tempo</small><b>${fmtNum(c.speed, 1)} km/s <span class="small muted">· mit Last ${fmtNum(c.speed * TOW_SPEED, 1)}</span></b></div>
+      <div class="wide"><small>Ausrüstung</small><b style="font-size:15px">${c.parts.filter((x) => /Traktor/.test(x.name)).map((x) => `${x.count} × ${esc(x.name)}`).join('')}</b></div>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">Holt große Schiffe (L), die nach einem verlorenen Gefecht oder einem Überfall liegen bleiben, über alle Sektoren ab und schleppt sie zu ihrer Heimatstation. Ankoppeln dauert drei Minuten, mit Last fliegt er halb so schnell. ${helpBtn('fighters')}</p></div>
+    <div class="section"><h3>Heimatstation</h3><div class="box rows"><div class="row tap" ${act('home-modal', { id: s.id })}>${icon(home ? 'station' : 'fleet', 20)}<div class="grow"><div class="title">${esc(home?.name ?? 'Frei – keiner Station zugeordnet')}</div><div class="sub">${esc(home ? `${sector(home.sector).name} · wartet hier auf den nächsten Einsatz` : 'Wartet, wo der letzte Einsatz endete')}</div></div><span class="small muted">Ändern</span>${icon('chev', 20, 'chev')}</div></div></div>
+    <div class="card-actions"><button class="btn" ${act('focus', { kind: 'ship', id: s.id })}>${icon('target', 20)}Auf Karte zeigen</button><button class="btn danger" ${act('ask-sell-ship', { id: s.id })}>Verkaufen</button></div>`,
+  { back: !!p.back });
+}
+
 /** Fenster eines Kampfschiffs: Werte, Befehl (Wache, Patrouille, Geleit, Flieg zu), Heimatstation */
 function fighterPanel(state: GameState, s: Ship, p: Panel): string {
   const c = SHIP_MAP[s.cls], cb = c.combat!;
@@ -713,12 +751,13 @@ function fighterPanel(state: GameState, s: Ship, p: Panel): string {
     <div class="ship-hero-txt"><span class="state ${shipState(s)}"><i></i>${esc(s.status)}</span></div></div>`;
   return sheet(s.name, `${c.name} · ${cb.type}`, `
     ${hero}
+    ${towBox(state, s)}
     <div class="section"><div class="kv">
       <div><small>Kampfwert</small><b>${fmtInt(cb.power)}${hullOf(s) < 1 ? ` <span class="small muted">· ${fmtInt(cb.power * hullOf(s))} jetzt</span>` : ''}</b></div>
       <div><small>Hülle</small><b class="${hullOf(s) < 0.5 ? 'neg' : ''}">${Math.round(hullOf(s) * 100)} % <span class="small muted">von ${fmtInt(cb.hull)}</span></b></div>
       <div><small>Schild</small><b>${fmtInt(cb.shield)}</b></div>
       <div><small>Schaden/s</small><b>${fmtInt(cb.dps)}</b></div>
-      <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}</b></div>
+      <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${c.size === 'L' ? c.parts.filter((x) => /Hauptbatterie|turm/.test(x.name)).map((x) => `${x.count} × ${esc(x.name)}`).join(' · ') : `${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}`}</b></div>
     </div></div>
     <div class="section"><h3>Befehl ${helpBtn('fighters')}</h3>
       <p class="small" style="margin:0 0 6px">Aktiv: <b>${esc(combatOrderText(state, o))}</b></p>
@@ -1352,6 +1391,7 @@ function freeOrders(state: GameState, s: Ship): string {
 function shipPanel(state: GameState, s: Ship, p: Panel): string {
   const c = SHIP_MAP[s.cls];
   if (c.combat) return fighterPanel(state, s, p);
+  if (c.role === 'tug') return tugPanel(state, s, p);
   const rank = pilotRank(s);
   const home = stationById(state, s.home);
   let orders = '';
@@ -1380,6 +1420,7 @@ function shipPanel(state: GameState, s: Ship, p: Panel): string {
       <div class="ship-hero-cargo"><small>Laderaum ${Math.round(fill * 100)} %</small><i><b style="width:${Math.round(fill * 100)}%;${s.cargo ? `--c:${WARES[s.cargo.ware].color}` : ''}"></b></i></div></div></div>`;
   return sheet(s.name, c.name, `
     ${hero}
+    ${towBox(state, s)}
     ${dockWarn}
     <div class="section"><div class="kv">
       <div><small>Fracht</small><b style="font-size:15px">${s.cargo ? `${fmtAmount(s.cargo.amount)} ${esc(WARES[s.cargo.ware].name)}` : 'leer'}</b></div>

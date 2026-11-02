@@ -115,6 +115,16 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
   Sektorenkarte, Späher, Peilen, Tor-Baustelle und offenes Tor; kommen auch nach den Grundlagen (nur „Hilfe ausblenden“
   schaltet sie ab). Hilfeseite „Sektorenkarte und Erkundung“
 - [ ] Stufe 5 – Ausbau
+  - [x] Abschleppen (`src/engine/tow.ts`, `tests/tow.test.ts`, `scripts/tow-shot.mjs`): Zerstörer Rattlesnake (L, X4-Werte,
+    Hauptbatterie gegen Jäger nur zu einem Viertel im Kampfwert); L-Kampfschiffe bleiben nach einem verlorenen Gefecht,
+    große Frachter und Miner nach einem unbeantworteten Überfall (Frist abgelaufen oder 0 Sterne) kampfunfähig liegen.
+    Bergungsschlepper Manticore (X4 `ship_gen_m_tugboat_01_a`, drei Schrott-Traktorstrahlen) holt sie von selbst ab:
+    hinfliegen, drei Minuten ankoppeln, mit halbem Tempo zur Heimatstation schleppen; dort Reparatur aus Hüllenteilen
+    (L: 30 Minuten von 0 auf 100 %), danach arbeitet das Schiff weiter, Ladung bleibt an Bord. Liegende Schiffe werden
+    nicht noch einmal überfallen. Bilder für Rattlesnake und Manticore fehlen noch
+  - [ ] Verteidigungstürme als Stationsmodul
+  - [ ] Tor-Ereignis in Rhy
+  - [ ] Eigene Kampfschiffe als Flügelleute im Minispiel
 
 ## Vorerst ausgeschaltet (zum Testen der Gefechte)
 

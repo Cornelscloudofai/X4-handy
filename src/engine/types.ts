@@ -54,7 +54,7 @@ export interface ModuleDef {
   rhak?: boolean;
 }
 
-export type ShipRole = 'miner' | 'trader' | 'fighter';
+export type ShipRole = 'miner' | 'trader' | 'fighter' | 'tug';
 
 /** Kampfwerte eines Kampfschiffs (X4-Daten, Standardausrüstung Mk1) */
 export interface CombatStats {
@@ -385,8 +385,11 @@ export interface Ship {
   combat?: CombatOrder;
   /** Kampfschiff: Zustand der Hülle 0 … 1 (fehlt = unbeschädigt) */
   hp?: number;
-  /** L/XL nach einem verlorenen Gefecht: kann weder fliegen noch eingesetzt werden, bis es abgeschleppt ist */
+  /** L nach einem verlorenen Gefecht oder unbeantworteten Überfall: kann weder fliegen noch eingesetzt werden, bis es
+   *  abgeschleppt ist (tow.ts) */
   disabled?: boolean;
+  /** Bergungsschlepper: holt dieses Schiff ab (fly), koppelt an (hook) oder schleppt es heim (tow) */
+  tow?: { ship: string; stage: 'fly' | 'hook' | 'tow'; t: number };
   /** Kampfschiff: greift gerade diese Gegnerrotte an */
   engage?: number;
   /** Kampfschiff: auf dem Rückweg zur Reparatur (bis die Hülle wieder fast voll ist) */

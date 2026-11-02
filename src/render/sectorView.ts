@@ -35,6 +35,7 @@ const C = {
   miner: '#ffc45e',
   trader: '#5ff0d8',
   fighter: '#ff7a66',
+  tug: '#ffa04d',
   npc: '#9fb4c8',
 };
 
@@ -398,7 +399,7 @@ export class SectorRenderer {
       const [sx, sy] = cam.toScreen(sh.x, sh.z);
       const sm = Math.max(30, shipLength(cls.size, cam.zoom));
       if (sx < -sm || sx > W + sm || sy < -sm || sy > H + sm) continue;
-      const color = cls.role === 'fighter' ? C.fighter : cls.role === 'miner' ? C.miner : C.trader;
+      const color = cls.role === 'fighter' ? C.fighter : cls.role === 'tug' ? C.tug : cls.role === 'miner' ? C.miner : C.trader;
       const moving = !docked && sh.phase !== 'mining' && sh.path.length > 0;
       // Angedockte Schiffe liegen im Dock – nicht über dem Stationssymbol zeichnen (ausgewählte bleiben sichtbar)
       if (docked && sh.id !== selShip && state.stations.some((x) => x.sector === sec.id && Math.hypot(x.x - sh.x, x.z - sh.z) < 8)) continue;
@@ -2316,12 +2317,35 @@ export class SectorRenderer {
       }
       if (Math.hypot(x2 - x1, y2 - y1) > 60) this.arrowHead(ctx, (x1 + x2) / 2 + (x2 - x1) * 0.04, (y1 + y2) / 2 + (y2 - y1) * 0.04, Math.atan2(y2 - y1, x2 - x1), rgba(C.trader, alpha));
     }
+    // Abschleppen: Zugseil vom Schlepper zur Last; liegengebliebene Schiffe mit pulsierendem Warnring
+    const shipS = 1, motion = !ui.reducedMotion;
+    for (const sh of state.ships) {
+      if (sh.sector !== ui.sector) continue;
+      if (sh.tow && sh.tow.stage !== 'fly') {
+        const t = state.ships.find((x) => x.id === sh.tow!.ship);
+        if (t && t.sector === sh.sector) {
+          const [ax, ay] = cam.toScreen(sh.x, sh.z), [bx, by] = cam.toScreen(t.x, t.z);
+          ctx.setLineDash(sh.tow.stage === 'hook' ? [2, 4] : []);
+          ctx.strokeStyle = rgba(C.tug, sh.tow.stage === 'hook' ? 0.5 + 0.3 * Math.sin(now / 160) : 0.75);
+          ctx.lineWidth = 1.6 * shipS;
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      if (sh.disabled) {
+        const [x, y] = cam.toScreen(sh.x, sh.z);
+        const k = motion ? 0.5 + 0.5 * Math.sin(now / 300) : 0.7;
+        ctx.strokeStyle = rgba('#ff5a46', 0.35 + 0.4 * k);
+        ctx.lineWidth = 1.5 * shipS;
+        ctx.beginPath(); ctx.arc(x, y, (11 + 3 * k) * shipS, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
     // Aktuelle Flüge
     for (const sh of state.ships) {
       if (sh.sector !== ui.sector || !sh.path.length) continue;
       const cls = SHIP_MAP[sh.cls];
       const hl = sh.id === selShip || sh.home === selStation;
-      const color = cls.role === 'fighter' ? C.fighter : cls.role === 'miner' ? C.miner : C.trader;
+      const color = cls.role === 'fighter' ? C.fighter : cls.role === 'tug' ? C.tug : cls.role === 'miner' ? C.miner : C.trader;
       ctx.setLineDash(hl ? [6, 7] : [3, 7]);
       ctx.lineDashOffset = -now / 50;
       ctx.strokeStyle = rgba(color, hl ? 0.8 : anySel ? 0.12 : 0.3);

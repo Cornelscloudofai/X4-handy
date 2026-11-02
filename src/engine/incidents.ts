@@ -17,6 +17,7 @@ import { book } from './ledger';
 import type { FactionId, GameState, Ship } from './types';
 import { log, normalSpeed } from './util';
 import { stormActive, tideFactor } from './phenomena';
+import { disableShip, tows } from './tow';
 
 /** raid Überfall · fault Störung · vein reiche Ader · tide Flut in der Cascade · freight Sonderfracht · rush Eilzuschlag
  *  · dock Andocken im Sturm von Glutsee I */
@@ -286,6 +287,13 @@ function loseCargo(state: GameState, inc: Incident, share: number): string {
   return `Ladung im Wert von ${Math.round(value).toLocaleString('de-DE')} Cr verloren`;
 }
 
+/** Ziel eines verlorenen Überfalls, das liegen bleibt (nur L) */
+function raidCripples(state: GameState, inc: Incident): Ship | undefined {
+  const sh = state.ships.find((x) => x.id === inc.target);
+  return sh && tows(sh) && !sh.disabled ? sh : undefined;
+}
+const FOE_LABEL: Record<string, string> = { pirates: 'Piraten', xenon: 'Xenon', khaak: 'Kha\'ak' };
+
 function repairFault(state: GameState, inc: Incident): void {
   const st = state.stations.find((x) => x.id === inc.target);
   const m = st?.modules.find((x) => x.uid === inc.module);
@@ -297,7 +305,10 @@ function autoResolve(state: GameState, inc: Incident): void {
   remove(state, inc);
   if (inc.kind === 'raid') {
     const lost = loseCargo(state, inc, RAID_AUTO_LOSS);
-    log(state, `Überfall vorbei: Die Begleitung der Familie hat die Angreifer vertrieben${lost ? ` – ${lost}` : ''}.`, 'info', false, { kind: 'ship', id: inc.target });
+    // große Frachter und Miner (L) überstehen einen unbeantworteten Überfall nicht unbeschadet: Antrieb zerschossen
+    const big = raidCripples(state, inc);
+    log(state, big ? `Überfall vorbei: Die Angreifer sind abgezogen${lost ? ` – ${lost}` : ''}.` : `Überfall vorbei: Die Begleitung der Familie hat die Angreifer vertrieben${lost ? ` – ${lost}` : ''}.`, 'info', false, { kind: 'ship', id: inc.target });
+    if (big) disableShip(state, big, `wurde beim Überfall von ${FOE_LABEL[inc.foe ?? 'pirates']} zusammengeschossen`);
   } else if (inc.kind === 'fault') {
     const st = state.stations.find((x) => x.id === inc.target);
     if (st) addWare(st, 'hullparts', -Math.min(FAULT_REPAIR, st.inventory.hullparts ?? 0));
@@ -335,6 +346,8 @@ export function resolveIncident(state: GameState, id: number, stars: number): st
     const lost = loseCargo(state, inc, RAID_LOSS[k]);
     if (k === 3) book(state, RAID_BOUNTY, 'other', 'Kopfgeld: Angreifer vertrieben', { kind: 'ship', id: inc.target });
     msg = k ? `Angriff abgewehrt${lost ? ` – ${lost}` : ' – die Ladung ist vollständig'}${k === 3 ? `, ${RAID_BOUNTY.toLocaleString('de-DE')} Cr Kopfgeld` : ''}.` : `Der Frachter kam durch – ${lost || 'ohne Verlust'}.`;
+    const big = k ? undefined : raidCripples(state, inc);
+    if (big) { msg = `Nicht abgewehrt – ${lost || 'die Ladung ist noch an Bord'}, der Antrieb ist zerschossen.`; disableShip(state, big, `wurde beim Überfall von ${FOE_LABEL[inc.foe ?? 'pirates']} zusammengeschossen`); }
   } else if (inc.kind === 'fault') {
     if (k >= 1) { repairFault(state, inc); msg = 'Störung behoben, das Modul läuft wieder voll.'; }
     else { reopenFault(state, inc); msg = 'Nicht geschafft – die Wartung kümmert sich bis zum Fristende.'; }

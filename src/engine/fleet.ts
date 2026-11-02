@@ -20,6 +20,8 @@ import { FIELD_STEPS, fieldCapFactor, fieldFloor, fieldRegenFactor, finishSurvey
 import { RANK_RANGE, applyOpportunity, effectivePrice, noteDelivery, noteTrip, pilotRank, relationBonus } from './trading';
 import { book } from './ledger';
 import { stepFighter } from './combat';
+import { hullOf, repairAtHome } from './battle';
+import { stepDisabled, stepTug } from './tow';
 
 /**
  * Rohstofffelder (neue Spiele): Der Vorrat eines Felds erschöpft sich beim Abbau und wächst langsam nach.
@@ -62,6 +64,13 @@ function goTo(s: Ship, to: Place, dockFor?: string): void {
 
 export function stepShip(state: GameState, s: Ship, dt: number): void {
   const cls = SHIP_MAP[s.cls];
+  if (cls.role === 'tug') { stepTug(state, s, dt); return; }
+  if (s.disabled && cls.role !== 'fighter') { stepDisabled(state, s); return; }
+  // nach dem Abschleppen: erst an der Heimat reparieren, dann wieder an die Arbeit
+  if (cls.role !== 'fighter' && hullOf(s) < 1) {
+    if (repairAtHome(state, s, dt)) { s.path = []; return; }
+    if (hullOf(s) < 0.95 && !stationById(state, s.home)) s.hp = 1; // ohne Heimat keine Werkstatt: weiter wie bisher
+  }
   if (cls.role === 'fighter') stepFighter(state, s, dt);
   else if (cls.role === 'miner') { if (s.home) stepMiner(state, s, dt); else stepFreeMiner(state, s, dt); }
   else stepTrader(state, s, dt);

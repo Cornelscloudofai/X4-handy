@@ -132,6 +132,12 @@ function galaxyTip(state: GameState, ui: UIState): CoachStep | null {
 /** Kampfschiffe auf der Karte: Auswahl, Befehlskugel, Gegner */
 function combatTip(state: GameState, ui: UIState): CoachStep | null {
   if (ui.order || ui.gesture) return null;
+  if (state.ships.some((x) => x.disabled)) {
+    const t = once(state, 'tip-tow', null, state.ships.some((x) => SHIP_MAP[x.cls].role === 'tug')
+      ? 'Ein großes Schiff ist liegen geblieben. Dein Bergungsschlepper holt es von selbst ab und schleppt es zur Reparatur an seine Heimatstation – das Zugseil siehst du auf der Karte.'
+      : 'Ein großes Schiff ist liegen geblieben (roter Ring auf der Karte). Nach Hause bringt es nur ein Bergungsschlepper: Schiff antippen → ⓘ → „Bergungsschlepper kaufen“. Er holt es dann von selbst ab.');
+    if (t) return t;
+  }
   if (ui.group.length && !ui.orbOpen && document.querySelector('#cmd .orb')) {
     return once(state, 'tip-orb', '#cmd .orb', 'Die Kugel gehört zu deiner Auswahl. Antippen zeigt die Befehle: Flieg zu, Patrouille, Wache, Geleit, Angreifen. Danach tippst du das Ziel auf der Karte an.');
   }

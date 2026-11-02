@@ -9,6 +9,7 @@ import { FOE_NAME, hostileState, type Hostile } from './hostiles';
 import { RAID_BOUNTY, incidentById, repelRaid } from './incidents';
 import { book } from './ledger';
 import type { GameState, Ship } from './types';
+import { disableShip } from './tow';
 import { emit, log, normalSpeed } from './util';
 
 /** Gefechtsabstand (km): so nah müssen eigene Kampfschiffe an der Rotte sein */
@@ -76,11 +77,7 @@ function shipDown(state: GameState, s: Ship, h: Hostile): void {
     // wer es begleitet hat oder von ihm begleitet wurde, verliert den Bezug von selbst (combat.ts)
     log(state, `${s.name} (${c.name}) wurde im Gefecht mit ${FOE_NAME[h.foe]} in ${SECTOR_MAP[s.sector].name} zerstört. Das Wrack lässt sich bergen.`, 'bad', true, { kind: 'sector', id: s.sector });
   } else {
-    s.disabled = true;
-    s.hp = 0.05;
-    s.path = [];
-    s.status = 'Kampfunfähig – muss abgeschleppt werden';
-    log(state, `${s.name} ist kampfunfähig und treibt in ${SECTOR_MAP[s.sector].name}. Es muss abgeschleppt werden.`, 'bad', true, { kind: 'ship', id: s.id });
+    disableShip(state, s, `hat das Gefecht mit ${FOE_NAME[h.foe]} verloren`);
   }
 }
 
@@ -139,7 +136,8 @@ export function repairAtHome(state: GameState, s: Ship, dt: number): boolean {
   const home = state.stations.find((x) => x.id === s.home);
   if (!home || home.sector !== s.sector || Math.hypot(home.x - s.x, home.z - s.z) > 20) return false;
   const per = (SHIP_MAP[s.cls].materials.hullparts ?? 0) * REPAIR_SHARE; // Hüllenteile für 0 → 100 %
-  const step = Math.min(1 - hullOf(s), dt / REPAIR_TIME);
+  // große Schiffe brauchen länger (L: eine halbe Stunde von 0 auf 100 %)
+  const step = Math.min(1 - hullOf(s), dt / (REPAIR_TIME * (SHIP_MAP[s.cls].size === 'L' ? 6 : 1)));
   const need = per * step;
   if ((home.inventory.hullparts ?? 0) < need) { s.status = `Wartet auf Hüllenteile zur Reparatur (${Math.round(hullOf(s) * 100)} %)`; return true; }
   addWare(home, 'hullparts', -need);

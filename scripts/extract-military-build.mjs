@@ -1,4 +1,4 @@
-// Baukosten der Split-Kampfschiffe (S und M) aus dem Spieldaten-Auszug crissian/x4: Rumpfpreis und -material,
+// Baukosten der Split-Kampfschiffe (S, M und der Zerstörer Rattlesnake) und des Bergungsschleppers Manticore aus dem Spieldaten-Auszug crissian/x4: Rumpfpreis und -material,
 // Hülle, Plätze und Standardausrüstung (Kampftriebwerke, Schilde, Steuerdüsen, Pulslaser, Puls-Lasertürme, Täuschkörper) mit
 // Preis und Material – im selben Aufbau wie shipdata.json der Frachter und Miner.
 // Die Datendateien werden nur als Text gelesen (keine fremde Ausführung).
@@ -45,25 +45,58 @@ const PICK = {
   balaur: 'ship_spl_s_heavyfighter_02_a',
   dragon: 'ship_spl_m_corvette_01_a',
   cobra: 'ship_spl_m_frigate_01_a',
+  rattlesnake: 'ship_spl_l_destroyer_01_a',
+  manticore: 'ship_gen_m_tugboat_01_a',
 };
+const SZ = { small: 's', medium: 'm', large: 'l', extralarge: 'xl' };
+/** Plätze einer Art nach Größe zählen (z. B. Schilde L und M beim Zerstörer) */
+const bySize = (r, key, z, filter) => count(r, key, (l) => l.includes(`Size.${Object.keys(SZ).find((k) => SZ[k] === z)}`) && (!filter || filter(l)));
 const out = {};
 for (const [key, id] of Object.entries(PICK)) {
   const r = record(shipsTxt, id);
   const size = r.match(/size:\s*Size\.(\w+)/)[1];
-  const z = size === 'small' ? 's' : 'm';
+  const z = SZ[size];
   const engines = count(r, 'engines');
   const shields = count(r, 'shields');
   const guns = count(r, 'weapons', (l) => !l.includes('missile'));
   const launchers = count(r, 'weapons', (l) => l.includes('missile'));
   const turrets = count(r, 'turrets');
-  const equipment = [
-    equip(`engine_spl_${z}_combat_01_mk1`, 'Kampftriebwerk Mk1', engines),
-    equip(`shield_spl_${z}_standard_01_mk1`, 'Schildgenerator Mk1', shields),
-    equip(`thruster_gen_${z}_allround_01_mk1`, `Steuerdüsen ${z.toUpperCase()} Mk1`, 1),
-    ...(guns ? [equip(`weapon_gen_${z}_laser_01_mk1`, `Pulslaser ${z.toUpperCase()} Mk1`, guns)] : []),
-    ...(turrets ? [equip('turret_spl_m_laser_01_mk1', 'Puls-Laserturm M Mk1', turrets)] : []),
-    equip('countermeasure_flares_01', 'Täuschkörper', 5),
-  ].filter((e) => e.count > 0);
+  let equipment, slots = { engines, shields, weapons: guns, launchers, turrets };
+  if (key === 'rattlesnake') {
+    // Zerstörer: ein L-Schild und M-Schilde, Hauptbatterie (4 × L), L- und M-Türme mit Lasern
+    const shL = bySize(r, 'shields', 'l'), shM = bySize(r, 'shields', 'm');
+    const tuL = bySize(r, 'turrets', 'l'), tuM = bySize(r, 'turrets', 'm');
+    slots = { ...slots, shieldsL: shL, shieldsM: shM, turretsL: tuL, turretsM: tuM };
+    equipment = [
+      equip('engine_spl_l_allround_01_mk1', 'Allzwecktriebwerk L Mk1', engines),
+      equip('shield_spl_l_standard_01_mk1', 'Schildgenerator L Mk1', shL),
+      equip('shield_spl_m_standard_01_mk1', 'Schildgenerator M Mk1', shM),
+      equip('thruster_gen_l_allround_01_mk1', 'Steuerdüsen L Mk1', 1),
+      equip('weapon_spl_l_destroyer_01_mk1', 'Hauptbatterie Rattlesnake', guns),
+      equip('turret_spl_l_laser_01_mk1', 'Puls-Laserturm L Mk1', tuL),
+      equip('turret_spl_m_laser_01_mk1', 'Puls-Laserturm M Mk1', tuM),
+      equip('countermeasure_flares_01', 'Täuschkörper', 10),
+    ];
+  } else if (key === 'manticore') {
+    // Bergungsschlepper: drei feste Schrott-Traktorstrahlen statt Waffen
+    equipment = [
+      equip('engine_spl_m_allround_01_mk1', 'Allzwecktriebwerk M Mk1', engines),
+      equip('shield_spl_m_standard_01_mk1', 'Schildgenerator M Mk1', shields),
+      equip('thruster_gen_m_allround_01_mk1', 'Steuerdüsen M Mk1', 1),
+      equip('turret_gen_m_scrapbeam_01_mk1', 'Schrott-Traktorstrahl', turrets),
+      equip('countermeasure_flares_01', 'Täuschkörper', 5),
+    ];
+  } else {
+    equipment = [
+      equip(`engine_spl_${z}_combat_01_mk1`, 'Kampftriebwerk Mk1', engines),
+      equip(`shield_spl_${z}_standard_01_mk1`, 'Schildgenerator Mk1', shields),
+      equip(`thruster_gen_${z}_allround_01_mk1`, `Steuerdüsen ${z.toUpperCase()} Mk1`, 1),
+      ...(guns ? [equip(`weapon_gen_${z}_laser_01_mk1`, `Pulslaser ${z.toUpperCase()} Mk1`, guns)] : []),
+      ...(turrets ? [equip('turret_spl_m_laser_01_mk1', 'Puls-Laserturm M Mk1', turrets)] : []),
+      equip('countermeasure_flares_01', 'Täuschkörper', 5),
+    ];
+  }
+  equipment = equipment.filter((e) => e.count > 0);
   out[key] = {
     x4Id: id,
     name: r.match(/name:\s*'([^']+)'/)[1],
@@ -75,7 +108,7 @@ for (const [key, id] of Object.entries(PICK)) {
     missiles: num(r, /missile:\s*(\d+)/),
     hullPrice: num(r, /avg:\s*([\d.]+)/),
     hullMaterials: materials(r),
-    slots: { engines, shields, weapons: guns, launchers, turrets },
+    slots,
     equipment,
   };
 }

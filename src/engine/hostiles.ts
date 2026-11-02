@@ -88,7 +88,7 @@ function hash(a: number, b: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-const isCargoShip = (s: Ship): boolean => SHIP_MAP[s.cls].role !== 'fighter';
+const isCargoShip = (s: Ship): boolean => SHIP_MAP[s.cls].role !== 'fighter' && SHIP_MAP[s.cls].role !== 'tug' && !s.disabled;
 
 /** Kampfwert eigener Kampfschiffe im Umkreis */
 export function defenseNear(state: GameState, sector: string, x: number, z: number, r = DEFEND_R): number {

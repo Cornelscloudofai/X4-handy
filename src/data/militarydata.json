@@ -867,6 +867,316 @@
      ]
     }
    ]
+  },
+  "rattlesnake": {
+   "x4Id": "ship_spl_l_destroyer_01_a",
+   "name": "Rattlesnake",
+   "size": "L",
+   "hull": 242650,
+   "travel": 6592,
+   "crew": 92,
+   "missiles": 160,
+   "hullPrice": 15290790,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 11945
+    },
+    {
+     "ware": "hullparts",
+     "amount": 17375
+    }
+   ],
+   "slots": {
+    "engines": 3,
+    "shields": 16,
+    "weapons": 4,
+    "launchers": 0,
+    "turrets": 18,
+    "shieldsL": 1,
+    "shieldsM": 15,
+    "turretsL": 6,
+    "turretsM": 12
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_l_allround_01_mk1",
+     "name": "Allzwecktriebwerk L Mk1",
+     "count": 3,
+     "price": 368448,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 129
+      },
+      {
+       "ware": "energycells",
+       "amount": 37
+      },
+      {
+       "ware": "engineparts",
+       "amount": 101
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_l_standard_01_mk1",
+     "name": "Schildgenerator L Mk1",
+     "count": 1,
+     "price": 45874,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 57
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 14
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 12
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator M Mk1",
+     "count": 15,
+     "price": 17072,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 21
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 5
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_l_allround_01_mk1",
+     "name": "Steuerdüsen L Mk1",
+     "count": 1,
+     "price": 281595,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 100
+      },
+      {
+       "ware": "energycells",
+       "amount": 158
+      },
+      {
+       "ware": "engineparts",
+       "amount": 69
+      }
+     ]
+    },
+    {
+     "id": "weapon_spl_l_destroyer_01_mk1",
+     "name": "Hauptbatterie Rattlesnake",
+     "count": 4,
+     "price": 1483915,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 338
+      },
+      {
+       "ware": "energycells",
+       "amount": 3060
+      },
+      {
+       "ware": "weaponscomponents",
+       "amount": 343
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_l_laser_01_mk1",
+     "name": "Puls-Laserturm L Mk1",
+     "count": 6,
+     "price": 33007,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 5
+      },
+      {
+       "ware": "energycells",
+       "amount": 68
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 15
+      }
+     ]
+    },
+    {
+     "id": "turret_spl_m_laser_01_mk1",
+     "name": "Puls-Laserturm M Mk1",
+     "count": 12,
+     "price": 16503,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 34
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 10,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
+  },
+  "manticore": {
+   "x4Id": "ship_gen_m_tugboat_01_a",
+   "name": "Manticore",
+   "size": "M",
+   "hull": 8000,
+   "travel": 3173,
+   "crew": 7,
+   "missiles": 0,
+   "hullPrice": 402755,
+   "hullMaterials": [
+    {
+     "ware": "energycells",
+     "amount": 136
+    },
+    {
+     "ware": "hullparts",
+     "amount": 375
+    }
+   ],
+   "slots": {
+    "engines": 5,
+    "shields": 1,
+    "weapons": 0,
+    "launchers": 0,
+    "turrets": 3
+   },
+   "equipment": [
+    {
+     "id": "engine_spl_m_allround_01_mk1",
+     "name": "Allzwecktriebwerk M Mk1",
+     "count": 5,
+     "price": 12654,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 25
+      },
+      {
+       "ware": "engineparts",
+       "amount": 10
+      }
+     ]
+    },
+    {
+     "id": "shield_spl_m_standard_01_mk1",
+     "name": "Schildgenerator M Mk1",
+     "count": 1,
+     "price": 17072,
+     "materials": [
+      {
+       "ware": "energycells",
+       "amount": 21
+      },
+      {
+       "ware": "fieldcoils",
+       "amount": 5
+      },
+      {
+       "ware": "shieldcomponents",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "thruster_gen_m_allround_01_mk1",
+     "name": "Steuerdüsen M Mk1",
+     "count": 1,
+     "price": 13019,
+     "materials": [
+      {
+       "ware": "antimatterconverters",
+       "amount": 4
+      },
+      {
+       "ware": "energycells",
+       "amount": 7
+      },
+      {
+       "ware": "engineparts",
+       "amount": 3
+      }
+     ]
+    },
+    {
+     "id": "turret_gen_m_scrapbeam_01_mk1",
+     "name": "Schrott-Traktorstrahl",
+     "count": 3,
+     "price": 15718,
+     "materials": [
+      {
+       "ware": "advancedelectronics",
+       "amount": 2
+      },
+      {
+       "ware": "energycells",
+       "amount": 32
+      },
+      {
+       "ware": "turretcomponents",
+       "amount": 7
+      }
+     ]
+    },
+    {
+     "id": "countermeasure_flares_01",
+     "name": "Täuschkörper",
+     "count": 5,
+     "price": 2421,
+     "materials": [
+      {
+       "ware": "advancedcomposites",
+       "amount": 1
+      },
+      {
+       "ware": "energycells",
+       "amount": 9
+      }
+     ]
+    }
+   ]
   }
  }
 }

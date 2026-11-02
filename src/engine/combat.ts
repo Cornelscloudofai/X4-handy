@@ -8,6 +8,7 @@ import { FIGHT_R, RETREAT_AT, hullOf, repairAtHome } from './battle';
 import { FOE_NAME, hostileState, hostilesIn, type Hostile } from './hostiles';
 import type { CombatOrder, GameState, Ship } from './types';
 import { rand } from './util';
+import { stepDisabled } from './tow';
 
 /** Abstand, in dem ein Wachschiff seine Station umkreist (km) */
 export const GUARD_R = 14;
@@ -64,7 +65,7 @@ function engageTarget(state: GameState, s: Ship, o: CombatOrder): Hostile | unde
 /** Ein Kampfschiff einen Takt weiterführen */
 export function stepFighter(state: GameState, s: Ship, dt: number): void {
   const cls = SHIP_MAP[s.cls];
-  if (s.disabled) { s.path = []; s.engage = undefined; s.status = 'Kampfunfähig – muss abgeschleppt werden'; return; }
+  if (s.disabled) { s.engage = undefined; stepDisabled(state, s); return; }
   const o = s.combat ?? (s.combat = s.home ? { kind: 'guard', station: s.home } : { kind: 'move', sector: s.sector, x: s.x, z: s.z });
   s.timer = Math.max(0, s.timer - dt);
   // Schwer beschädigt: zurück zur Heimatstation und dort reparieren, bis die Hülle wieder fast voll ist
