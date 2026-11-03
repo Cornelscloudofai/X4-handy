@@ -67,10 +67,46 @@ if (!hit.bow || hit.off) fail('Rumpftreffer falsch: ' + JSON.stringify(hit));
 await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 0.72; g.zoom = 0.72; });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: `${out}/raptor-5-nah.png` });
-// ganz nah an den Bug: Türme mit eigener Art sichtbar
-await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 1.2; g.zoom = 1.2; const a = g.aimA; g.px += 0; window.__bow = [g.px + Math.cos(a) * g.ship.size * 0.36, g.py + Math.sin(a) * g.ship.size * 0.36]; });
+// Kameraschieber: ganz nah, Griff nach oben ziehen → Kamera wandert zum Bug, zweimal tippen → zurück zur Mitte
+await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 1.2; g.zoom = 1.2; });
+await page.waitForTimeout(800);
+const track = await page.evaluate(() => window.__mg.game.panTrack);
+const cam0 = await page.evaluate(() => { const g = window.__mg.game; return [g.camX, g.camY]; });
+await page.mouse.move(track.x, (track.y0 + track.y1) / 2);
+await page.mouse.down();
+await page.mouse.move(track.x, track.y0 + 4, { steps: 6 });
 await page.waitForTimeout(1200);
-await page.screenshot({ path: `${out}/raptor-6-tuerme-nah.png` });
+await page.screenshot({ path: `${out}/raptor-6-bug-nah.png` });
+await page.mouse.up();
+const pan = await page.evaluate(() => { const g = window.__mg.game; const a = g.aimA; const cx = g.camX + g.w / 2 / g.zoom, cy = g.camY + g.h / 2 / g.zoom; return { pan: g.camPan, along: (cx - g.px) * Math.cos(a) + (cy - g.py) * Math.sin(a) }; });
+if (!(pan.pan < -0.9 && pan.along > 400)) fail('Kameraschieber bewegt die Kamera nicht zum Bug: ' + JSON.stringify(pan));
+await page.mouse.click(track.x, (track.y0 + track.y1) / 2);
+await page.mouse.click(track.x, (track.y0 + track.y1) / 2);
+await page.waitForTimeout(200);
+if ((await page.evaluate(() => window.__mg.game.camPan)) !== 0) fail('Doppeltippen setzt die Kamera nicht zurück');
+void cam0;
+// Treffer am Rumpf: mit Schild blaue Welle (Ring), ohne Schild rote Funken
+const fxHit = await page.evaluate(() => {
+  const g = window.__mg.game, a = g.aimA;
+  const x = g.px + Math.cos(a) * 300 + Math.cos(a + Math.PI / 2) * 40, y = g.py + Math.sin(a) * 300 + Math.sin(a + Math.PI / 2) * 40;
+  const list = () => (g.fx.list ?? g.fx.items ?? g.fx.parts ?? []);
+  const n0 = list().length, s0 = g.shield;
+  g.damagePlayer(5, 1, [x, y]);
+  const blue = list().slice(n0).some((p) => p.kind === 'ring' && /7fd8ff/i.test(p.color));
+  g.shield = 0;
+  const n1 = list().length;
+  g.damagePlayer(5, 1, [x, y]);
+  const red = list().slice(n1).some((p) => /ff5a3a/i.test(p.color));
+  g.shield = s0;
+  return { blue, red, n: list().length };
+});
+if (!fxHit.blue || !fxHit.red) fail('Treffereffekte fehlen: ' + JSON.stringify(fxHit));
+// Großschiff: mehr Gegner, mehr Angreifer zugleich
+const foes = await page.evaluate(() => { const g = window.__mg.game; return { big: g.big, foeCount: g.foeCount, attackCap: g.attackCap, cap: g.fieldCap, speed: g.ship.speed, turn: g.ship.turn }; });
+if (!(foes.big > 1 && foes.foeCount > 3.6 && foes.attackCap > 6 && foes.cap > 56)) fail('Großschiff: nicht mehr Gegner: ' + JSON.stringify(foes));
+await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 0.36; g.zoom = 0.36; });
+await page.waitForTimeout(4000);
+await page.screenshot({ path: `${out}/raptor-7-gefecht.png` });
 await browser.close();
-console.log(JSON.stringify({ info, shots, hit, errors }, null, 1));
+console.log(JSON.stringify({ info, shots, hit, pan, fxHit, foes, errors }, null, 1));
 if (errors.length) process.exit(1);

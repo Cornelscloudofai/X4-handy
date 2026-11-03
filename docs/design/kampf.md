@@ -129,6 +129,10 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
     Naht, weich über 160 Zeilen), 1254 × 5016 px. Länge 1 200 Spielpunkte nach dem M-Landeplatz (330 px ≈ ein M-Schiff).
     Türme auf den Sockeln im Bild: 114 M in acht Gruppen (Bug-Cluster, sieben gespiegelte Cluster-Paare) und 8 L (sechs vorn
     als Gruppe, zwei hinten einzeln); Turmart je Gruppe im Hangar. Treffer gegen den Rumpf als Kapsel, Schild als Ellipse.
+    Nach dem ersten Spieltest: träger (Tempo ×0,7, Drehrate ×0,35, halbe Beschleunigung als Spielwert `handling`),
+    Schild als schmaler Balken am unteren Bildrand statt Blase, Treffer am Rumpf (Schild: blauer Blitz mit kleiner Welle,
+    Hülle: rote Funken), Kameraschieber längs des Schiffs (Bug ↔ Heck, zweimal tippen = Mitte), Großschiff-Faktor 2,5
+    für Gegnerzahl, Gruppen, Schwärme, gleichzeitige Angreifer und Obergrenze auf dem Feld.
     Offen: Ebenen Flugdeck/Rumpf zum Landen der Jäger (Hangar), Raptor-Bild auf Sektorkarte und in der Werft
   - [ ] Verteidigungstürme als Stationsmodul
   - [ ] Tor-Ereignis in Rhy

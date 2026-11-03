@@ -84,7 +84,7 @@ export function hangarStats(lo: Loadout = loadout()): HangarStats {
     fire: (d.x4.weapons * sustainedDps(g, wd.beam) + turretSum(lo) + (d.lMounts?.length ?? 0) * sustainedDps(ltd.gun)) * m('dmg') * m('rate'),
     hull: d.x4.hull * m('hull'),
     shield: d.shield * MAMBA_SHIELD * SHIELDS[lo.shield].cap * m('shield'),
-    speed: d.x4.v * m('speed'),
+    speed: d.x4.v * (d.handling?.speed ?? 1) * m('speed'),
     range: (wd.beam ? 1.6 : km(g)) * m('velocity'),
   };
 }

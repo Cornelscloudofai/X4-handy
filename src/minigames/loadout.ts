@@ -63,6 +63,11 @@ export interface ShipDef {
   groups?: TurretGroup[];
   /** Sockeldurchmesser der L-Türme oben auf dem Rumpf (Anteil der Länge) */
   turretDL?: number;
+  /**
+   * Fahrgefühl über die X4-Werte hinaus (Spielwert): Tempo, Drehrate und Beschleunigung als Faktoren – für sehr große
+   * Schiffe, die sich sonst zu leicht steuern
+   */
+  handling?: { speed: number; turn: number; accel: number };
   role: string;
   desc: string;
   x4: X4Data;
@@ -128,8 +133,8 @@ function ship(cls: 'S' | 'M' | 'L' | 'XL', base: ShipBase): ShipDef {
   return {
     ...rest,
     cls,
-    speed: d.v / MAMBA.v,
-    turn: (MAMBA.dragYaw / d.dragYaw) * THRUSTER[cls],
+    speed: (d.v / MAMBA.v) * (base.handling?.speed ?? 1),
+    turn: (MAMBA.dragYaw / d.dragYaw) * THRUSTER[cls] * (base.handling?.turn ?? 1),
     hull: d.hull / MAMBA.hull,
     shield: (d.shields * SHIELD[cls].cap + m * SHIELD.M.cap) / MAMBA.shield,
     regen: (d.shields * SHIELD[cls].rate + m * SHIELD.M.rate) / MAMBA.regen,
@@ -256,6 +261,8 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     gunWidth: 0, gunPos: [], aspect: RP_W / RP_H,
     turrets: RP_T.pos, turretGroup: RP_T.group, groups: RP_T.groups,
     turretD: 22 / RP_H, turretDL: 66 / RP_H,
+    // 1,2 km Rumpf: deutlich träger, als die Datenwerte allein ergeben (Spieltest: zu wendig und etwas zu schnell)
+    handling: { speed: 0.7, turn: 0.35, accel: 0.5 },
     r: 150, size: RP_LEN, special: 'overdrive', sprite: 'split-raptor', fallback: 'split-jaeger-s',
   }),
   // Eigener Entwurf (kein Schiff aus den X4-Daten): Bomber der Split. Werte angenommen – zwischen Mamba und Asp,

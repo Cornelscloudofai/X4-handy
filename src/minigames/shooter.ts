@@ -599,6 +599,11 @@ export class ShooterGame implements MiniGame {
   private power = 1;
   /** Jäger, die gleichzeitig auf dich anfliegen dürfen (die übrigen kreisen in Abstand) */
   private attackCap = 2;
+  /**
+   * Großschiff-Faktor (Träger): Ein Schiff dieser Größe zieht ganze Flotten an – mehr Gegner je Welle, mehr Gruppen und
+   * Schwärme, mehr Angreifer zugleich, höhere Obergrenzen auf dem Feld, Nachschub dichter hintereinander. Sonst 1.
+   */
+  private big = 1;
   /** Wellen bis zum Sprungtor: große Schiffe fliegen eine längere Route */
   private nWaves = NORMAL_WAVES;
   /** Deckkraft der Hülle/Schild-Anzeige über den Gegnern (Einstellung, 0 = aus) */
@@ -770,13 +775,15 @@ export class ShooterGame implements MiniGame {
       ? this.ship.turrets.reduce((sum, _, i) => { const t = turretOf(lo, this.ship, i); return sum + effectiveDps(t.def.gun, t.def.beam); }, 0)
       : this.ship.turrets.length * effectiveDps(td.gun, td.beam);
     const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + turretDps + this.pL.length * effectiveDps(ltd.gun) + missileDps) / (2 * sustainedDps(WEAPONS.puls.s));
-    // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger
-    const power = Math.sqrt(durability * firepower) * Math.min(1, this.ship.speed);
+    // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger –
+    // beim Träger nicht: seine Türme decken alle Seiten zugleich ab
+    this.big = this.ship.aspect ? 2.5 : 1;
+    const power = Math.sqrt(durability * firepower) * (this.big > 1 ? 1 : Math.min(1, this.ship.speed));
     // Gegner haben feste Werte (nur die Stufe macht sie zäher). Ein starkes Schiff bekommt dafür mehr Gegner,
     // mehr Gruppen gleichzeitig, eine schwerere Mischung, Großziele mitten in der Welle und eine längere Route.
     this.power = power;
-    this.foeCount = clamp(Math.sqrt(power), 0.6, 3.6);
-    this.attackCap = clamp(Math.round(1 + Math.sqrt(power)), 2, 6);
+    this.foeCount = clamp(Math.sqrt(power), 0.6, 3.6 * this.big);
+    this.attackCap = clamp(Math.round(1 + Math.sqrt(power)), 2, Math.round(6 * this.big));
     this.nWaves = NORMAL_WAVES + (power >= 3.5 ? 1 : 0) + (power >= 10 ? 1 : 0) + (this.mission === 'station' ? 1 : 0);
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
@@ -980,6 +987,12 @@ export class ShooterGame implements MiniGame {
   /** Zoom-Tasten unter dem Radar: weiter weg (−) und näher heran (+) */
   private get btnZoomOut(): [number, number, number] { return [this.w - 82, TOP + 124, 15]; }
   private get btnZoomIn(): [number, number, number] { return [this.w - 38, TOP + 124, 15]; }
+  /** Träger: Schieber am rechten Rand, der die Kamera längs des Schiffs bewegt (oben Bug, unten Heck) */
+  private get panTrack(): { x: number; y0: number; y1: number } { return { x: this.w - 24, y0: TOP + 178, y1: TOP + 178 + 190 }; }
+  /** Kamera längs des Schiffs: −1 = Bug, 0 = Mitte, 1 = Heck */
+  private camPan = 0;
+  private panId: number | null = null;
+  private panTap = 0;
   private get btnDash(): [number, number, number] { return [this.w - 60, this.h - 182, 25]; }
   /** Befehlsknöpfe der Türme: links über dem Joystick (M oben, L darunter; nur wenn das Schiff solche Türme hat) */
   private get orderBtns(): ['m' | 'l', number, number, number][] {
@@ -990,7 +1003,7 @@ export class ShooterGame implements MiniGame {
   }
 
   hud(): HudItem[] {
-    const me: HudItem = { label: 'Jäger', value: `${Math.ceil(this.hull)} %`, warn: this.hull < 35 };
+    const me: HudItem = { label: this.ship.cls === 'S' ? 'Jäger' : this.ship.role, value: `${Math.ceil(this.hull)} %`, warn: this.hull < 35 };
     const pct = (w: Ward | undefined) => (w && !w.dead ? w.hull / w.max : 0);
     const w0 = this.wards[0];
     switch (this.mission) {
@@ -1024,6 +1037,15 @@ export class ShooterGame implements MiniGame {
     for (const [btn, step] of [[this.btnZoomOut, 1], [this.btnZoomIn, -1]] as const) {
       if (Math.hypot(x - btn[0], y - btn[1]) < btn[2] + 8) { this.setZoom(step); return; }
     }
+    if (this.onPanTrack(x, y)) {
+      // zweimal kurz angetippt: zurück zur Mitte
+      const now = performance.now();
+      if (now - this.panTap < 320) { this.camPan = 0; this.panTap = 0; sfx.tap(); return; }
+      this.panTap = now;
+      this.panId = id;
+      this.setPan(y);
+      return;
+    }
     const [bx, by, br] = this.btnMissile;
     if (Math.hypot(x - bx, y - by) < br + 10) { this.fireMissiles(); return; }
     const [dx, dy, dr] = this.btnDash;
@@ -1037,6 +1059,7 @@ export class ShooterGame implements MiniGame {
   }
 
   pointerMove(id: number, x: number, y: number): void {
+    if (this.panId === id) { this.setPan(y); return; }
     const od = this.orderDrag;
     if (od?.id === id) {
       // Richtung des Wischens wählt den Befehl
@@ -1061,6 +1084,7 @@ export class ShooterGame implements MiniGame {
   }
 
   pointerUp(id: number): void {
+    if (this.panId === id) this.panId = null;
     const od = this.orderDrag;
     if (od?.id === id) {
       // gewischt: gewählter Befehl; nur angetippt: weiter zum nächsten
@@ -1074,6 +1098,18 @@ export class ShooterGame implements MiniGame {
     if (this.fireId === id) this.fireId = null;
   }
 
+  /** Liegt der Punkt auf dem Kameraschieber (nur Träger)? */
+  private onPanTrack(x: number, y: number): boolean {
+    if (!this.ship.aspect) return false;
+    const t = this.panTrack;
+    return Math.abs(x - t.x) < 22 && y > t.y0 - 16 && y < t.y1 + 16;
+  }
+
+  private setPan(y: number): void {
+    const t = this.panTrack;
+    this.camPan = clamp(((y - t.y0) / (t.y1 - t.y0)) * 2 - 1, -1, 1);
+  }
+
   /** PC-Steuerung einschalten (Hinweis zur Belegung erscheint dann einige Sekunden) */
   private usePc(): void {
     if (!this.pc) { this.pc = true; this.pcT = 0; this.joy = null; this.aim = null; if (this.fireId !== 99) this.fireId = null; }
@@ -1082,7 +1118,7 @@ export class ShooterGame implements MiniGame {
   /** Liegt an dieser Stelle ein Knopf der Oberfläche (Zoom, Raketen, Spezial, Turmbefehle)? */
   private onButton(x: number, y: number): boolean {
     const near = (b: readonly [number, number, number], pad: number) => Math.hypot(x - b[0], y - b[1]) < b[2] + pad;
-    return near(this.btnZoomOut, 8) || near(this.btnZoomIn, 8) || near(this.btnMissile, 10) || near(this.btnDash, 10) || this.orderBtns.some(([, ox, oy, orr]) => Math.hypot(x - ox, y - oy) < orr + 8);
+    return near(this.btnZoomOut, 8) || near(this.btnZoomIn, 8) || this.onPanTrack(x, y) || near(this.btnMissile, 10) || near(this.btnDash, 10) || this.orderBtns.some(([, ox, oy, orr]) => Math.hypot(x - ox, y - oy) < orr + 8);
   }
 
   /** PC: Maus – zielen mit der Position, Linksklick feuert (gehalten), Rechtsklick Raketen, Mitte Spezialfähigkeit */
@@ -1388,7 +1424,7 @@ export class ShooterGame implements MiniGame {
     const small = this.smallKind;
     // Kha'ak ab Stärke 2,5: die Hälfte des Anteils geht an Jäger-Cluster (jaegerSwarm)
     const part = this.side === 'khaak' && this.power >= 2.5 ? 0.5 : 1;
-    return clamp(Math.round((this.waveBudget(i) * share * part) / SPEC[small].cost), this.side === 'khaak' ? 4 : 6, 40);
+    return clamp(Math.round((this.waveBudget(i) * share * part) / SPEC[small].cost), this.side === 'khaak' ? 4 : 6, Math.round(40 * this.big));
   }
 
   /**
@@ -1398,7 +1434,7 @@ export class ShooterGame implements MiniGame {
   swarms(i: number): number[] {
     const total = this.swarmSize(i);
     if (!total) return [];
-    const max = this.power >= 10 ? 3 : this.power >= 4 ? 2 : 1;
+    const max = (this.power >= 10 ? 3 : this.power >= 4 ? 2 : 1) + (this.big > 1 ? 2 : 0);
     if (this.side === 'khaak') return khaakClusters(total, max + 1, this.power >= 4);
     const n = clamp(Math.floor(total / 6), 1, max);
     return Array.from({ length: n }, (_, k) => Math.floor(total / n) + (k < total % n ? 1 : 0));
@@ -1480,7 +1516,7 @@ export class ShooterGame implements MiniGame {
       const eliteN = this.eliteLeft;
       // starke Schiffe: mehr Gruppen (jede mit eigenen Anflügen), die von mehr Seiten kommen
       // Konvoi und Station: mindestens drei Gruppen aus verschiedenen Richtungen
-      const groups = Math.min(6, Math.max(this.mission === 'konvoi' || this.mission === 'station' ? Math.min(3, kinds.length) : 1, (kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1) + Math.max(0, Math.floor(Math.sqrt(this.power)) - 1)));
+      const groups = Math.min(this.big > 1 ? 10 : 6, Math.max(this.mission === 'konvoi' || this.mission === 'station' ? Math.min(3, kinds.length) : 1, (kinds.length >= 7 && this.wave >= 1 ? 3 : kinds.length >= 3 ? 2 : 1) + Math.max(0, Math.floor(Math.sqrt(this.power)) - 1)));
       const per = Math.ceil(kinds.length / groups);
       const first = Math.floor(this.r() * 5);
       for (let g = 0; g < groups; g++) {
@@ -1490,7 +1526,8 @@ export class ShooterGame implements MiniGame {
         const from = (first + g * 2) % 5;
         if (g === 0) this.spawnGroup(part, from);
         // Konvoi: alle Gruppen fast gleichzeitig, jede auf einen anderen Frachter – man kann nicht überall sein
-        else this.reinforce.push({ t: this.mission === 'konvoi' ? 1.5 + g * 1.2 : 6 + g * (groups > 3 ? 3.5 : 5) + this.r() * 3, kinds: part, from });
+        // Großschiff: Gruppen dichter hintereinander – viele greifen zugleich an
+        else this.reinforce.push({ t: this.mission === 'konvoi' ? 1.5 + g * 1.2 : (6 + g * (groups > 3 ? 3.5 : 5)) / (this.big > 1 ? 2 : 1) + this.r() * 3, kinds: part, from });
       }
       // Großziele mitten in der Welle (ab Fregatten-Stärke): eine kleinere Fregatte bzw. ein K-Segment mit Türmen
       const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : this.power >= 3.5 && this.wave >= 1 ? 1 : 0;
@@ -1608,9 +1645,12 @@ export class ShooterGame implements MiniGame {
     }
   }
 
+  /** Obergrenze der Gegner auf dem Feld (Großschiff: entsprechend mehr) */
+  private get fieldCap(): number { return Math.round(56 * this.big); }
+
   /** Brut nur, solange nicht schon viele Späher unterwegs sind (sonst fluten Brutkammern das Feld) */
   private broodRoom(): boolean {
-    return this.enemies.length < 56 && this.enemies.filter((q) => q.kind === 'ks').length < 8;
+    return this.enemies.length < this.fieldCap && this.enemies.filter((q) => q.kind === 'ks').length < 8 * this.big;
   }
 
   /** Cluster bricht auf: alle Späher stieben nach außen auseinander und greifen einzeln an */
@@ -1924,7 +1964,7 @@ export class ShooterGame implements MiniGame {
     const a = Math.atan2(this.py - e.y, this.px - e.x);
     if (this.side !== 'khaak') {
       // Xenon: drei N-Drohnen, solange nicht schon viele unterwegs sind
-      if (this.enemies.filter((q) => q.kind === 'n').length >= 10 || this.enemies.length > 56) return;
+      if (this.enemies.filter((q) => q.kind === 'n').length >= 10 * this.big || this.enemies.length > this.fieldCap) return;
       for (let q = 0; q < 3; q++) {
         const j = this.makeEnemy('n', e.x + Math.cos(a) * 70 + (q - 1) * 16, e.y + Math.sin(a) * 70);
         const aa = a + (q - 1) * 0.5;
@@ -1953,7 +1993,7 @@ export class ShooterGame implements MiniGame {
   /** Brutöffnung des Nests: alle paar Sekunden zwei Drohnen, solange nicht schon viele unterwegs sind */
   private nestBrood(e: Enemy): void {
     const small = this.smallKind;
-    if (this.enemies.filter((q) => q.kind === small).length >= 4 + this.level * 2 || this.enemies.length > 56) return;
+    if (this.enemies.filter((q) => q.kind === small).length >= (4 + this.level * 2) * this.big || this.enemies.length > this.fieldCap) return;
     const p = e.parent!, a0 = Math.atan2(e.y - p.y, e.x - p.x);
     for (let q = 0; q < 2; q++) {
       const j = this.makeEnemy(small, e.x + Math.cos(a0) * 16, e.y + Math.sin(a0) * 16);
@@ -2032,8 +2072,8 @@ export class ShooterGame implements MiniGame {
     this.updateWards(dt);
     this.updateMission(dt);
     if (this.outcome) return;
-    // höchstens rund 60 Gegner zugleich – weitere Gruppen warten, bis Platz ist
-    const due = this.enemies.length < 60 ? this.reinforce.find((g) => this.waveT >= g.t) : undefined;
+    // höchstens rund 60 Gegner zugleich (Großschiff: entsprechend mehr) – weitere Gruppen warten, bis Platz ist
+    const due = this.enemies.length < this.fieldCap + 4 ? this.reinforce.find((g) => this.waveT >= g.t) : undefined;
     if (this.pendingSpawn >= 0) {
       this.pendingSpawn -= dt;
       if (this.pendingSpawn < 0) { this.pendingSpawn = -1; this.spawnWave(); }
@@ -2258,8 +2298,10 @@ export class ShooterGame implements MiniGame {
     }
     // camX/camY: Weltpunkt in der linken oberen Bildschirmecke; Bildschirm = (Welt − cam) · Zoom
     const Z = this.zoom, vw = this.w / Z, vh = this.h / Z;
-    const tx = (toFreighter ? this.fx1 : this.px) - vw / 2;
-    const ty = (toFreighter ? this.fy1 : this.py) - (TOP + (this.h - TOP) * 0.5) / Z;
+    // Träger: Kamera längs des Rumpfs verschoben (Schieber rechts) – so lässt sich das ganze Schiff aus der Nähe ansehen
+    const pan = !toFreighter && this.ship.aspect ? -this.camPan * this.ship.size * 0.46 : 0;
+    const tx = (toFreighter ? this.fx1 : this.px + Math.cos(this.aimA) * pan) - vw / 2;
+    const ty = (toFreighter ? this.fy1 : this.py + Math.sin(this.aimA) * pan) - (TOP + (this.h - TOP) * 0.5) / Z;
     const k = Math.min(1, dt * 4);
     // lange Schiffe (Träger) ragen über den Kartenrand: die Kamera darf entsprechend weiter hinaus
     const mg = 40 + (this.ship.aspect ? this.ship.size / 2 : 0);
@@ -2335,7 +2377,7 @@ export class ShooterGame implements MiniGame {
     // Schub in Blickrichtung; etwas Flugassistent bremst die Drift langsam ab
     // in Schubrichtung höchstens so schnell, wie die Düsen dorthin schaffen (seitlich und rückwärts weniger)
     const along = this.pvx * Math.cos(thrA) + this.pvy * Math.sin(thrA);
-    const acc = along < vmax * eff ? this.speed * ACCEL * thr * eff * (1 + this.cruise) : 0;
+    const acc = along < vmax * eff ? this.speed * ACCEL * (this.ship.handling?.accel ?? 1) * thr * eff * (1 + this.cruise) : 0;
     this.pvx += Math.cos(thrA) * acc * dt;
     this.pvy += Math.sin(thrA) * acc * dt;
     const damp = Math.exp(-DRIFT_DAMP * dt);
@@ -2675,7 +2717,7 @@ export class ShooterGame implements MiniGame {
           if (e.cd <= 0) {
             e.cd = 12 + this.r() * 2;
             // höchstens drei Bruten je Brutkasten, damit der Kampf nicht endlos wird
-            if ((e.brood ?? 0) < 3 && this.enemies.length < 56 && this.enemies.filter((q) => q.kind === 'kj').length < 4) {
+            if ((e.brood ?? 0) < 3 * this.big && this.enemies.length < this.fieldCap && this.enemies.filter((q) => q.kind === 'kj').length < 4 * this.big) {
               e.brood = (e.brood ?? 0) + 1;
               for (let q = 0; q < 2; q++) {
                 const j = this.makeEnemy('kj', e.x + (q - 0.5) * 14, e.y);
@@ -2902,7 +2944,7 @@ export class ShooterGame implements MiniGame {
       if (Math.random() < 0.6) this.fx.add({ x: m.x, y: m.y, color: '#ff8a5c', size: 1.2, max: 0.3 });
       const hw = this.wardAt(m.x, m.y, 2);
       if (hw) { this.hitWard(hw, 18 * this.enemyDmg * this.fScale, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
-      else if (this.onHull(m.x, m.y, 2)) { this.damagePlayer(18 * this.enemyDmg); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
+      else if (this.onHull(m.x, m.y, 2)) { this.damagePlayer(18 * this.enemyDmg, 1, [m.x, m.y]); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
     }
     this.eMissiles = this.eMissiles.filter((m) => m.life > 0 && m.hp > 0);
   }
@@ -2919,8 +2961,9 @@ export class ShooterGame implements MiniGame {
       return Math.hypot(x0 + cx * t - x, y0 + cy * t - y);
     };
     let end = len;
-    if (this.beamOnHull(dist, 2)) {
-      this.damagePlayer(dmg * this.enemyDmg, vsShield);
+    const kyonAt = this.beamOnHull(dist, 2);
+    if (kyonAt) {
+      this.damagePlayer(dmg * this.enemyDmg, vsShield, kyonAt);
       end = Math.min(end, (this.px - x0) * cx + (this.py - y0) * cy);
     }
     for (const w of this.wards) {
@@ -2966,7 +3009,8 @@ export class ShooterGame implements MiniGame {
           const t = clamp((x - e.x) * cx + (y - e.y) * cy, 0, LASER_LEN);
           return Math.hypot(e.x + cx * t - x, e.y + cy * t - y);
         };
-        if (this.beamOnHull(dist, -3)) this.damagePlayer(LASER_DPS * this.enemyDmg * dt);
+        const laserAt = this.beamOnHull(dist, -3);
+        if (laserAt) this.damagePlayer(LASER_DPS * this.enemyDmg * dt, 1, laserAt, 0.25);
         // Schutzziele: Frachter entlang der Längsachse prüfen; Schaden gesammelt, damit nicht jedes Bild Funken sprühen
         const hw = this.wards.find((w) => !w.dead && this.beamOnWard(w, dist));
         if (hw) {
@@ -3023,7 +3067,7 @@ export class ShooterGame implements MiniGame {
           continue;
         }
       } else {
-        if (this.onHull(b.x, b.y, 0)) { this.damagePlayer(b.dmg); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
+        if (this.onHull(b.x, b.y, 0)) { this.damagePlayer(b.dmg, 1, [b.x, b.y]); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
         const hw = this.wardAt(b.x, b.y);
         if (hw) { this.hitWard(hw, b.dmg * this.fScale, b.x, b.y); continue; }
         // geschleppte und treibende Container (Bergung) gehen zu Bruch
@@ -3313,24 +3357,43 @@ export class ShooterGame implements MiniGame {
     return Math.hypot(Math.max(0, Math.abs(along) - hl), across) < hw + pad;
   }
 
-  /** Strahl (Abstand eines Punkts zur Strahllinie) trifft das eigene Schiff – beim Träger an Punkten längs des Rumpfs */
-  private beamOnHull(dist: (x: number, y: number) => number, pad: number): boolean {
+  /**
+   * Strahl (Abstand eines Punkts zur Strahllinie) trifft das eigene Schiff – beim Träger an Punkten längs des Rumpfs.
+   * Liefert die getroffene Stelle (Rumpfachse) oder null.
+   */
+  private beamOnHull(dist: (x: number, y: number) => number, pad: number): [number, number] | null {
     const asp = this.ship.aspect;
-    if (!asp) return dist(this.px, this.py) < this.ship.r + pad;
+    if (!asp) return dist(this.px, this.py) < this.ship.r + pad ? [this.px, this.py] : null;
     const hw = this.ship.size * asp * 0.42, hl = this.ship.size / 2 - hw, c = Math.cos(this.aimA), s = Math.sin(this.aimA);
-    for (let k = -1; k <= 1.0001; k += 0.1) if (dist(this.px + c * hl * k, this.py + s * hl * k) < hw + pad) return true;
-    return false;
+    for (let k = -1; k <= 1.0001; k += 0.1) {
+      const x = this.px + c * hl * k, y = this.py + s * hl * k;
+      if (dist(x, y) < hw + pad) return [x, y];
+    }
+    return null;
   }
 
-  private damagePlayer(dmg: number, vsShield = 1): void {
+  private damagePlayer(dmg: number, vsShield = 1, at?: [number, number], fxChance = 1): void {
     if (this.dashT > 0) return;
     this.shieldWait = (2.5 * this.sh.delay * this.ship.delay) / (1 + 0.5 * this.c('regen')) * (1 - this.m('delay'));
+    // Träger: Treffer sitzen direkt am Rumpf – Schild blitzt blau mit kleiner Welle, Hülle sprüht rote Funken
+    const mark = !!this.ship.aspect && !!at && Math.random() < fxChance;
     if (this.shield > 0) {
       const s = Math.min(this.shield, dmg * vsShield);
       this.shield -= s;
       dmg -= s / vsShield;
       this.shieldHit = 0.25;
       if (dmg <= 0) sfx.shield();
+      if (mark) {
+        const [x, y] = at!;
+        this.fx.add({ x, y, color: '#dff6ff', size: 3.2, max: 0.12 });
+        this.fx.add({ x, y, color: '#7fd8ff', size: 2.2, kind: 'ring', max: 0.32 });
+        this.fx.burst(x, y, '#9fe6ff', 4, 90, 1, 'spark', 0.18);
+      }
+    }
+    if (dmg > 0 && mark) {
+      const [x, y] = at!;
+      this.fx.burst(x, y, '#ff5a3a', 5, 150, 1.1, 'spark', 0.28);
+      this.fx.burst(x, y, '#ffb070', 2, 90, 0.9, 'spark', 0.2);
     }
     if (dmg > 0) {
       // Hülle in Prozent: größere Schiffe halten entsprechend mehr aus
@@ -3529,6 +3592,7 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
     this.drawIndicators(ctx);
     this.drawRadar(ctx);
+    if (this.ship.aspect) this.drawHullBars(ctx);
     this.drawControls(ctx, t);
     this.drawProgress(ctx);
     if (this.banner > 0) {
@@ -4690,13 +4754,13 @@ export class ShooterGame implements MiniGame {
     ctx.save();
     ctx.translate(this.px, this.py);
     if (this.dashT > 0) ctx.globalAlpha = 0.55;
-    if (this.shieldHit > 0 || this.shield < this.shieldMax) {
+    // Träger: keine Blase – Treffer blitzen am Rumpf auf, der Schild steht als Balken am unteren Bildrand
+    if (!asp && (this.shieldHit > 0 || this.shield < this.shieldMax)) {
       const sa = this.shieldHit > 0 ? 0.6 : 0.12 * (this.shield / Math.max(1, this.shieldMax));
       ctx.strokeStyle = rgba('#7fd8ff', sa);
-      ctx.lineWidth = asp ? 3 : 2;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      if (asp) ctx.ellipse(0, 0, (this.ship.size * asp) / 2 + 14, this.ship.size / 2 + 14, this.aimA + Math.PI / 2, 0, Math.PI * 2);
-      else ctx.arc(0, 0, R + 6, 0, Math.PI * 2);
+      ctx.arc(0, 0, R + 6, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.rotate(this.aimA + Math.PI / 2);
@@ -4770,12 +4834,13 @@ export class ShooterGame implements MiniGame {
       ctx.stroke();
       ctx.restore();
     }
-    ctx.strokeStyle = 'rgba(127,216,255,0.8)';
-    ctx.lineWidth = asp ? 3 : 2;
-    ctx.beginPath();
-    if (asp) ctx.ellipse(this.px, this.py, (this.ship.size * asp) / 2 + 22, this.ship.size / 2 + 22, this.aimA + Math.PI / 2, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
-    else ctx.arc(this.px, this.py, R + 11, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
-    ctx.stroke();
+    if (!asp) {
+      ctx.strokeStyle = 'rgba(127,216,255,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(this.px, this.py, R + 11, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
+      ctx.stroke();
+    }
     void t;
   }
 
@@ -4953,6 +5018,57 @@ export class ShooterGame implements MiniGame {
       if (c) arrow(c.x, c.y, '#ffd27a', 7);
     }
     if (this.mission === 'ueberfall') arrow(this.gateX, this.gateCy, '#9fe6ff', 8);
+  }
+
+  /** Kameraschieber des Trägers: schmale Schiene mit Schiffsumriss, oben Bug, unten Heck */
+  private drawPanTrack(ctx: CanvasRenderingContext2D): void {
+    const t = this.panTrack, y = t.y0 + ((this.camPan + 1) / 2) * (t.y1 - t.y0), on = this.panId != null;
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,14,22,0.55)';
+    ctx.beginPath();
+    ctx.roundRect(t.x - 9, t.y0 - 14, 18, t.y1 - t.y0 + 28, 9);
+    ctx.fill();
+    // Schiffsumriss als Schiene: spitz zum Bug
+    ctx.strokeStyle = on ? 'rgba(159,255,240,0.6)' : 'rgba(110,220,205,0.3)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(t.x, t.y0 - 8); ctx.lineTo(t.x + 4, t.y0 + 10); ctx.lineTo(t.x + 4, t.y1 + 4); ctx.lineTo(t.x - 4, t.y1 + 4); ctx.lineTo(t.x - 4, t.y0 + 10);
+    ctx.closePath();
+    ctx.stroke();
+    // Mitte
+    ctx.fillStyle = 'rgba(110,220,205,0.35)';
+    ctx.fillRect(t.x - 6, (t.y0 + t.y1) / 2 - 0.5, 12, 1);
+    // Griff
+    ctx.fillStyle = on ? '#9ffff0' : 'rgba(159,255,240,0.75)';
+    ctx.beginPath();
+    ctx.roundRect(t.x - 8, y - 4, 16, 8, 4);
+    ctx.fill();
+    ctx.font = '600 8px "Chakra Petch", Barlow, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(169,195,198,0.7)';
+    ctx.fillText('BUG', t.x, t.y0 - 18);
+    ctx.fillText('HECK', t.x, t.y1 + 26);
+    ctx.restore();
+  }
+
+  /**
+   * Träger: Schild und Hülle als schmale Balken mittig am unteren Bildrand – unaufdringlich, damit das Schiff frei bleibt.
+   * Schild hellblau (blitzt bei Treffern kurz auf), darunter die Hülle als dünne Linie (rot, wenn sie knapp wird).
+   */
+  private drawHullBars(ctx: CanvasRenderingContext2D): void {
+    const W = Math.min(260, this.w * 0.5), x = (this.w - W) / 2, y = this.h - 14;
+    const sf = clamp(this.shield / Math.max(1, this.shieldMax), 0, 1), hf = clamp(this.hull / 100, 0, 1);
+    const flash = this.shieldHit > 0 ? Math.min(1, this.shieldHit * 4) : 0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,14,22,0.45)';
+    ctx.fillRect(x, y - 1, W, 3);
+    ctx.fillStyle = rgba('#7fd8ff', 0.55 + 0.4 * flash);
+    ctx.fillRect(x, y - 1, W * sf, 3);
+    ctx.fillStyle = 'rgba(5,14,22,0.45)';
+    ctx.fillRect(x, y + 4, W, 1.5);
+    ctx.fillStyle = hf > 0.3 ? 'rgba(232,214,190,0.55)' : 'rgba(255,90,70,0.85)';
+    ctx.fillRect(x, y + 4, W * hf, 1.5);
+    ctx.restore();
   }
 
   /** Radar um den eigenen Jäger (±RADAR Welteinheiten); Gegner außerhalb erscheinen am Rand */
@@ -5224,6 +5340,7 @@ export class ShooterGame implements MiniGame {
     }
     this.drawAmmo(ctx);
     this.drawOrders(ctx);
+    if (this.ship.aspect) this.drawPanTrack(ctx);
     for (const [btn, label, can] of [[this.btnZoomOut, '−', this.zoomGoal > ZOOMS[ZOOMS.length - 1]], [this.btnZoomIn, '+', this.zoomGoal < ZOOMS[0]]] as const) {
       ctx.fillStyle = 'rgba(5,14,22,0.78)';
       ctx.strokeStyle = can ? 'rgba(110,220,205,0.55)' : 'rgba(110,220,205,0.18)';
