@@ -1,7 +1,7 @@
 // Ausrüstung für das Kampf-Minispiel: welches Schiff du fliegst, welche Waffen und Türme es trägt, welcher Schild.
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
-export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'wolf' | 'dragon' | 'cobra' | 'klapperschlange' | 'argon';
+export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'wolf' | 'dragon' | 'cobra' | 'klapperschlange' | 'raptor' | 'argon';
 export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'schnellplasma' | 'plasmasalve';
 export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson';
 /** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
@@ -46,10 +46,23 @@ export interface LMount {
   cover: [number, number][];
 }
 
+/**
+ * Turmgruppe eines Trägers: Ein Cluster (links und rechts gespiegelt) bzw. ein oder mehrere L-Türme bekommen gemeinsam
+ * eine Turmart. Reihenfolge vom Bug zum Heck.
+ */
+export interface TurretGroup { name: string; kind: 'M' | 'L' }
+
 export interface ShipDef {
   name: string;
   /** Klasse für die Anzeige */
-  cls: 'S' | 'M' | 'L';
+  cls: 'S' | 'M' | 'L' | 'XL';
+  /** Seitenverhältnis des Bilds (Breite : Länge) bei langen Schiffen; size ist dann die Länge (sonst quadratisch) */
+  aspect?: number;
+  /** Träger: Gruppe je Turm (Index in groups) – die Türme liegen alle in turrets, L-Türme oben auf dem Rumpf */
+  turretGroup?: number[];
+  groups?: TurretGroup[];
+  /** Sockeldurchmesser der L-Türme oben auf dem Rumpf (Anteil der Länge) */
+  turretDL?: number;
   role: string;
   desc: string;
   x4: X4Data;
@@ -92,12 +105,12 @@ export interface ShipDef {
  */
 const MAMBA = { hull: 3600, shield: 2 * 740, regen: 2 * 35, v: 330, dragYaw: 3.3 };
 // Annahme L-Schild (Split Mk1): 30 000, lädt 230/s nach 1,5 s – die genauen Werte stehen noch aus.
-const SHIELD = { S: { cap: 740, rate: 35, delay: 3.5 }, M: { cap: 3848, rate: 74, delay: 2 }, L: { cap: 30000, rate: 230, delay: 1.5 } };
+const SHIELD = { S: { cap: 740, rate: 35, delay: 3.5 }, M: { cap: 3848, rate: 74, delay: 2 }, L: { cap: 30000, rate: 230, delay: 1.5 }, XL: { cap: 100800, rate: 454, delay: 3 } };
 /**
  * Annahme (Drehmoment der Steuerdüsen steht nicht in den Daten): M-Steuerdüsen drehen doppelt so stark wie S,
  * L-Steuerdüsen achtmal so stark – sonst wäre der Zerstörer (Drehwiderstand 123) im Minispiel kaum zu lenken.
  */
-const THRUSTER = { S: 1, M: 2, L: 8 };
+const THRUSTER = { S: 1, M: 2, L: 8, XL: 30 };
 export type GunSize = 's' | 'm' | 'l';
 
 /** Waffenplätze gleichmäßig über die Breite verteilen */
@@ -108,7 +121,7 @@ function spreadGuns(n: number, width: number): number[] {
 
 type ShipBase = Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hull' | 'shield' | 'regen' | 'delay' | 'gunSize' | 'guns'> & { gunWidth: number; /** Lage der Rohre wie im Bild (sonst gleichmäßig verteilt) */ gunPos?: number[] };
 
-function ship(cls: 'S' | 'M' | 'L', base: ShipBase): ShipDef {
+function ship(cls: 'S' | 'M' | 'L' | 'XL', base: ShipBase): ShipDef {
   const d = base.x4;
   const { gunWidth, gunPos, ...rest } = base;
   const m = d.mShields ?? 0;
@@ -122,9 +135,44 @@ function ship(cls: 'S' | 'M' | 'L', base: ShipBase): ShipDef {
     regen: (d.shields * SHIELD[cls].rate + m * SHIELD.M.rate) / MAMBA.regen,
     delay: SHIELD[cls].delay / SHIELD.S.delay,
     guns: gunPos ?? spreadGuns(d.weapons, gunWidth),
-    gunSize: cls === 'L' ? 'l' : cls === 'M' ? 'm' : 's',
+    gunSize: cls === 'L' || cls === 'XL' ? 'l' : cls === 'M' ? 'm' : 's',
   };
 }
+
+// ---- Träger Raptor: Bild 1254 × 5016 px (Bug oben), Lagen aus dem Bild gemessen (scripts/raptor-sprite.mjs) ----
+/** Bildmaße; Länge im Spiel nach dem M-Landeplatz auf dem Rumpf (330 px ≈ ein M-Schiff, etwa 80 Spielpunkte) */
+const RP_W = 1254, RP_H = 5016, RP_LEN = 1200;
+/** M-Cluster einer Seite (linke Seite, Bildpunkte) – die rechte ist gespiegelt; Spalten- und Zeilenlagen */
+const RP_PAIRS: { name: string; cols: number[]; rows: number[] }[] = [
+  { name: 'Bugflanken', cols: [328, 364], rows: [751, 791, 832] },
+  { name: 'Vordere Schultern', cols: [303, 340], rows: [1237, 1280, 1324] },
+  { name: 'Seitendeck vorn', cols: [247, 282], rows: [1918, 1961, 2006] },
+  { name: 'Mittelrumpf', cols: [462, 499], rows: [2397, 2440, 2485, 2515, 2546, 2587] },
+  { name: 'Hinterer Rumpf', cols: [439, 476], rows: [2953, 2996, 3040, 3084] },
+  { name: 'Seitendeck hinten', cols: [220, 257], rows: [3753, 3785, 3828, 3871] },
+  { name: 'Heck', cols: [434, 472], rows: [4392, 4436, 4483] },
+];
+/** Rumpfmitte (Symmetrieachse) im Bild */
+const RP_AXIS = 625;
+const rp = (x: number, y: number): [number, number] => [Math.round(((x - RP_W / 2) / RP_H) * RP_LEN * 10) / 10, Math.round(((y - RP_H / 2) / RP_H) * RP_LEN * 10) / 10];
+function raptorTurrets(): { pos: [number, number][]; group: number[]; groups: TurretGroup[] } {
+  const pos: [number, number][] = [], group: number[] = [], groups: TurretGroup[] = [];
+  const add = (g: number, x: number, y: number) => { pos.push(rp(x, y)); group.push(g); };
+  // Bug-Cluster in der Mitte (2 × 5)
+  groups.push({ name: 'Bug-Cluster', kind: 'M' });
+  for (const y of [330, 369, 409, 450, 490]) for (const x of [607, 643]) add(0, x, y);
+  for (const p of RP_PAIRS) {
+    const g = groups.push({ name: p.name, kind: 'M' }) - 1;
+    for (const y of p.rows) for (const x of p.cols) { add(g, x, y); add(g, 2 * RP_AXIS - x, y); }
+  }
+  // L-Türme: sechs vorn (eine Gruppe), zwei hinten neben dem Landeplatz (je einzeln)
+  const lf = groups.push({ name: 'L-Türme vorn', kind: 'L' }) - 1;
+  for (const [x, y] of [[502, 1160], [482, 1550], [448, 1938]]) { add(lf, x, y); add(lf, 2 * RP_AXIS - x, y); }
+  add(groups.push({ name: 'L-Turm hinten links', kind: 'L' }) - 1, 327, 3350);
+  add(groups.push({ name: 'L-Turm hinten rechts', kind: 'L' }) - 1, 918, 3350);
+  return { pos, group, groups };
+}
+const RP_T = raptorTurrets();
 
 /** Lagen aus einem Schiffsbild (Bildpunkte, Bildgröße img) in Spielpunkte bei Zeichengröße size umrechnen */
 function fromImage(img: number, size: number, pts: [number, number][]): [number, number][] {
@@ -199,6 +247,16 @@ export const SHIPS: Record<ShipId, ShipDef> = {
       { pivot: [505, 440], min: -25, max: 130, cover: [[463, 494], [468, 440], [493, 420], [530, 387], [537, 392], [536, 448]] },
     ]),
     r: 46, size: RS_SIZE, special: 'overdrive', sprite: 'split-klapperschlange', fallback: 'split-jaeger-s',
+  }),
+  raptor: ship('XL', {
+    name: 'Raptor', role: 'Träger', desc: 'Träger der Split, 1,2 km lang: 114 M-Türme in Clustern entlang des Rumpfs und acht schwere L-Türme – je Cluster wählst du die Turmart. Keine Bordkanonen, keine Raketen; sehr langsam, aber kaum zu knacken. Waffenüberladung: kurz doppelte Feuerrate aller Türme.',
+    // X4 9.0: 1 XL-Triebwerk, 1 XL- und 49 M-Schilde, keine Bordwaffen, 8 L- und 93 M-Türme; Tempo aus Schub
+    // 13 715 / Luftwiderstand 120,6. Türme hier nach den Sockeln im Bild: 114 M und 8 L.
+    x4: { hull: 590000, engines: 1, shields: 1, mShields: 49, weapons: 0, launchers: 0, turrets: 122, missiles: 0, v: 114, dragYaw: 867 },
+    gunWidth: 0, gunPos: [], aspect: RP_W / RP_H,
+    turrets: RP_T.pos, turretGroup: RP_T.group, groups: RP_T.groups,
+    turretD: 22 / RP_H, turretDL: 66 / RP_H,
+    r: 150, size: RP_LEN, special: 'overdrive', sprite: 'split-raptor', fallback: 'split-jaeger-s',
   }),
   // Eigener Entwurf (kein Schiff aus den X4-Daten): Bomber der Split. Werte angenommen – zwischen Mamba und Asp,
   // dafür drei Raketenwerfer (Flügel links/rechts, Rückenschacht), großes Raketenlager und schnelles Nachladen.
@@ -484,14 +542,15 @@ export const MISSILES: Record<MissileId, MissileDef> = {
 };
 export const MISSILE_IDS = Object.keys(MISSILES) as MissileId[];
 
-export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId; /** schwere L-Türme (nur Zerstörer) */ lturret?: LTurretId; /** Raketenart (nur Schiffe mit Raketenwerfer) */ missile?: MissileId }
+export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId; /** schwere L-Türme (nur Zerstörer) */ lturret?: LTurretId; /** Raketenart (nur Schiffe mit Raketenwerfer) */ missile?: MissileId;
+  /** Träger: Turmart je Gruppe (Index wie ShipDef.groups; M-Gruppen TurretId, L-Gruppen LTurretId) */ groups?: string[] }
 export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'plasma', missile: 'lenk' };
 /** Namen aus früheren Versionen (gespeicherte Ausrüstung) */
 const OLD: Record<string, string> = { impuls: 'puls', splitter: 'schrot' };
 
 const KEY = 'x4-sektorbau-ausruestung';
 
-function valid(l: Partial<Record<keyof Loadout, string>> | null | undefined): Loadout {
+function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups'>, string>> & { groups?: unknown }) | null | undefined): Loadout {
   const weapon = OLD[l?.weapon ?? ''] ?? l?.weapon, turret = OLD[l?.turret ?? ''] ?? l?.turret;
   return {
     ship: l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship,
@@ -500,7 +559,25 @@ function valid(l: Partial<Record<keyof Loadout, string>> | null | undefined): Lo
     shield: l?.shield && l.shield in SHIELDS ? (l.shield as ShieldId) : DEFAULT_LOADOUT.shield,
     lturret: l?.lturret && l.lturret in LTURRETS ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,
     missile: l?.missile && l.missile in MISSILES ? (l.missile as MissileId) : DEFAULT_LOADOUT.missile,
+    groups: validGroups(l?.groups),
   };
+}
+
+/** Turmarten der Trägergruppen prüfen; fehlende Gruppen bekommen Pulstürme bzw. schwere Plasmatürme */
+function validGroups(g: unknown): string[] {
+  const list = Array.isArray(g) ? g : [];
+  return (SHIPS.raptor.groups ?? []).map((gr, i) => {
+    const v = list[i];
+    return gr.kind === 'L' ? (typeof v === 'string' && v in LTURRETS ? v : 'plasma') : (typeof v === 'string' && v in TURRETS ? v : 'puls');
+  });
+}
+
+/** Turm i des Schiffs: Art, Werte und ob es ein L-Turm ist (Träger je Gruppe, sonst die gewählte M-Turmart) */
+export function turretOf(lo: Loadout, d: ShipDef, i: number): { id: string; def: TurretDef; L: boolean } {
+  const g = d.turretGroup?.[i];
+  if (g == null || !d.groups) return { id: lo.turret, def: TURRETS[lo.turret], L: false };
+  const kind = d.groups[g].kind, id = lo.groups?.[g] ?? (kind === 'L' ? 'plasma' : 'puls');
+  return kind === 'L' ? { id, def: LTURRETS[(id in LTURRETS ? id : 'plasma') as LTurretId], L: true } : { id, def: TURRETS[(id in TURRETS ? id : 'puls') as TurretId], L: false };
 }
 
 let current: Loadout | null = null;
@@ -530,6 +607,7 @@ export function setLoadout(patch: Partial<Loadout>): Loadout {
 /** Kurzbeschreibung für das Menü */
 export function loadoutLabel(l: Loadout = loadout()): string {
   const s = SHIPS[l.ship];
+  if (s.groups) return `${s.name} · ${s.turrets.length} Türme in ${s.groups.length} Gruppen · ${SHIELDS[l.shield].name}`;
   const lt = s.lMounts?.length ? ` · ${s.lMounts.length} L-Türme: ${LTURRETS[l.lturret ?? 'plasma'].name}` : '';
   return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer (${MISSILES[l.missile ?? 'lenk'].name})` : ''}${lt}${s.turrets.length ? ` · ${s.turrets.length} ${s.lMounts?.length ? 'M-' : ''}Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
 }

@@ -55,6 +55,8 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'split-cobra-ki': { xs: [-0.08, 0, 0.083], y: 0.384, color: '#ff9a4a' },
   'split-wolf-ki': { xs: [-0.124, 0.123], y: 0.389, color: '#ff9a4a' },
   'split-klapperschlange-ki': { xs: [-0.1, 0, 0.1], y: 0.455, color: '#ff9a4a' },
+  // Träger (Bild 1 : 4, Anteile der Länge): Flammen im Bild, das Spiel lässt die Spitzen flackern
+  'split-raptor-ki': { xs: [-0.022, 0, 0.022], y: 0.456, color: '#ff9a4a' },
   // Miner und Frachter auf der Sektorkarte
   'split-alligator-min-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
   'split-alligator-gas-ki': { xs: [-0.059, 0.059], y: 0.37, color: '#ff9a4a' },
@@ -218,6 +220,7 @@ export function projectileSprite(name: string): HTMLImageElement | null {
 const HULL: Record<string, [number, number, number]> = {
   'split-jaguar': [150, 64, 32], 'split-asp': [163, 58, 28], 'split-balaur': [127, 62, 43], 'split-chimera': [185, 64, 40],
   'split-dragon': [193, 51, 39], 'split-cobra': [140, 63, 42], 'split-klapperschlange': [178, 56, 34], 'split-jaeger-s': [133, 65, 38],
+  'split-raptor': [112, 44, 38],
 };
 
 /**

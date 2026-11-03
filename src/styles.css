@@ -1271,6 +1271,14 @@ h3 .count { margin-right: auto; display: inline-grid; place-items: center; min-w
 .hgr-dstats .hgr-g { grid-template-columns: 70px minmax(0, 1fr) 66px; }
 .hgr-dbody { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
 .hgr-cards { display: flex; gap: 10px; overflow-x: auto; padding: 4px 14px 10px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.hgr-groups { display: flex; flex-direction: column; gap: 8px; padding: 4px 14px 10px; max-height: 46vh; overflow-y: auto; }
+.hgr-grp { background: rgba(10, 30, 40, 0.75); border: 1px solid rgba(95, 240, 216, 0.18); border-radius: 12px; padding: 8px 10px; }
+.hgr-grp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.hgr-grp-h b { font-size: 14px; }
+.hgr-grp-h small { color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.hgr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hgr-chip { border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); background: rgba(0, 0, 0, 0.35); color: var(--text); border-radius: 999px; padding: 5px 10px; font-size: 12.5px; min-height: 32px; }
+.hgr-chip.on { background: color-mix(in srgb, var(--c) 30%, transparent); border-color: var(--c); color: #fff; font-weight: 600; }
 .hgr-cards::-webkit-scrollbar { display: none; }
 .hgr-card { flex: none; width: 138px; scroll-snap-align: start; position: relative; overflow: hidden; display: flex; flex-direction: column; text-align: left; color: var(--text); padding: 0 0 9px; border-radius: 16px;
   border: 1px solid var(--line); background: linear-gradient(180deg, rgba(20, 44, 62, 0.9), rgba(8, 20, 30, 0.95)); transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s; }

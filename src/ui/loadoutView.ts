@@ -5,7 +5,7 @@
 // (vier Mod-Sockel). Navigation: höchstens eine Ebene (Hangar → Schublade); Zurück schließt immer zuerst die Schublade.
 import {
   LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
-  loadout, sustainedDps, weaponGun, type Loadout, type ShipId, type X4Gun,
+  loadout, sustainedDps, turretOf, weaponGun, type Loadout, type ShipId, type X4Gun,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
 import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
@@ -77,16 +77,22 @@ const MISSILE_LOOK: Record<string, string> = { lenk: '#ffb070', schwer: '#ff7a3a
 /** Werte des Schiffs mit Bewaffnung und Mods (für Werteleiste und Vergleich) */
 export function hangarStats(lo: Loadout = loadout()): HangarStats {
   const d = SHIPS[lo.ship], mx = modStats();
-  const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret], ltd = LTURRETS[lo.lturret ?? 'plasma'];
+  const wd = WEAPONS[lo.weapon], ltd = LTURRETS[lo.lturret ?? 'plasma'];
   const g = weaponGun(wd, d.gunSize);
   const m = (k: ModStat) => 1 + (mx[k] ?? 0);
   return {
-    fire: (d.x4.weapons * sustainedDps(g, wd.beam) + d.turrets.length * sustainedDps(td.gun, td.beam) + (d.lMounts?.length ?? 0) * sustainedDps(ltd.gun)) * m('dmg') * m('rate'),
+    fire: (d.x4.weapons * sustainedDps(g, wd.beam) + turretSum(lo) + (d.lMounts?.length ?? 0) * sustainedDps(ltd.gun)) * m('dmg') * m('rate'),
     hull: d.x4.hull * m('hull'),
     shield: d.shield * MAMBA_SHIELD * SHIELDS[lo.shield].cap * m('shield'),
     speed: d.x4.v * m('speed'),
     range: (wd.beam ? 1.6 : km(g)) * m('velocity'),
   };
+}
+
+/** Dauerleistung aller Türme (Träger: je Turm seine Gruppe) */
+function turretSum(lo: Loadout): number {
+  const d = SHIPS[lo.ship];
+  return d.turrets.reduce((sum, _, i) => { const t = turretOf(lo, d, i); return sum + sustainedDps(t.def.gun, t.def.beam); }, 0);
 }
 
 /** Lage der Bauteile im Schiffsbild (Anteile des Bildes, Bug oben) */
@@ -125,9 +131,10 @@ export function loadoutView(m: LoModal): string {
   type Hot = { view: LoView; slot?: ModSlot; key: string; ic: string; label: string; value: string; cls?: string; color?: string };
   const hots: Hot[] = mode === 'gear'
     ? [
-      { view: 'weapon', key: 'weapon', ic: WEAPON_LOOK[lo.weapon]?.[0] ?? 'gun', label: `Kanonen ${ship.x4.weapons}×${ship.gunSize.toUpperCase()}`, value: wd.name },
+      ...(ship.x4.weapons ? [{ view: 'weapon' as LoView, key: 'weapon', ic: WEAPON_LOOK[lo.weapon]?.[0] ?? 'gun', label: `Kanonen ${ship.x4.weapons}×${ship.gunSize.toUpperCase()}`, value: wd.name }] : []),
       ...(ship.lMounts?.length ? [{ view: 'lturret' as LoView, key: 'lturret', ic: 'turret', label: `L-Türme ${ship.lMounts.length}×`, value: ltd.name }] : []),
-      ...(ship.turrets.length ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `${ship.lMounts?.length ? 'M-Türme' : 'Türme'} ${ship.turrets.length}×`, value: td.name }] : []),
+      ...(ship.groups ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `Türme ${ship.turrets.length}× in ${ship.groups.length} Gruppen`, value: 'je Cluster wählen' }]
+        : ship.turrets.length ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `${ship.lMounts?.length ? 'M-Türme' : 'Türme'} ${ship.turrets.length}×`, value: td.name }] : []),
       ...(ship.x4.launchers ? [{ view: 'missile' as LoView, key: 'missile', ic: 'rocket', label: `Raketen ${ship.x4.launchers}×`, value: missile.name }] : []),
       { view: 'shield', key: 'shield', ic: 'shield', label: `Schild ${ship.x4.shields}×${ship.cls}${ship.x4.mShields ? `+${ship.x4.mShields}×M` : ''}`, value: SHIELDS[lo.shield].name },
     ]
@@ -158,11 +165,11 @@ export function loadoutView(m: LoModal): string {
   if (view === 'ship') {
     const cur = hangarStats(lo);
     title = 'Schiff'; sub = 'Feuerkraft mit deiner Bewaffnung · seitlich blättern';
-    const cards = (cls: 'S' | 'M' | 'L') => SHIP_IDS.filter((id) => SHIPS[id].cls === cls).map((id) => {
+    const cards = (cls: 'S' | 'M' | 'L' | 'XL') => SHIP_IDS.filter((id) => SHIPS[id].cls === cls).map((id) => {
       const d = SHIPS[id], s2 = hangarStats({ ...lo, ship: id });
       return card({ key: 'ship', value: id, on: lo.ship === id, name: `${d.name} · ${d.cls}`, big: `${num(s2.fire)}/s`, sm: `${d.role} · Hülle ${num(d.x4.hull)} · ${d.x4.v} m/s`, img: pic(id), ds: `${pct(s2.fire, cur.fire) ? `<i>Feuer</i>${pct(s2.fire, cur.fire)}` : ''}${pct(s2.hull, cur.hull) ? `<i>Hülle</i>${pct(s2.hull, cur.hull)}` : ''}${delta(s2.speed, cur.speed, (x) => `${num(x)} m/s`)}` });
     }).join('');
-    body = `<div class="hgr-cards">${cards('S')}${cards('M')}${cards('L')}</div>
+    body = `<div class="hgr-cards">${cards('S')}${cards('M')}${cards('L')}${cards('XL')}</div>
       <div class="hgr-desc"><b>${esc(ship.name)}:</b> ${esc(ship.desc)} <span class="muted">Spezialfähigkeit: ${esc(SPECIALS[ship.special].name)} (Taste ${SPECIALS[ship.special].key}).</span></div>`;
   } else if (view === 'weapon') {
     const n = ship.x4.weapons, size = ship.gunSize, curDps = n * sustainedDps(g, wd.beam), curKm = wd.beam ? 1.6 : km(g);
@@ -173,6 +180,17 @@ export function loadoutView(m: LoModal): string {
       const [ic, col] = WEAPON_LOOK[id] ?? ['gun', '#3fe0c5'];
       return card({ key: 'weapon', value: id, on: lo.weapon === id, name: d.name, big: `${num(dps)}/s`, sm: d.beam ? 'Dauerstrahl' : `${num(r, 1)} km`, ic, color: col, img: spriteUrl(`waffe-${id}-ki`), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(r, curKm, (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(wd.name)}:</b> ${esc(wd.desc)}<small>${esc(gunData(g, wd.beam))}</small></div>`;
+  } else if (view === 'turret' && ship.groups) {
+    // Träger: je Gruppe (vom Bug zum Heck) die Turmart wählen – Cluster links und rechts gleich
+    title = 'Türme'; sub = `${ship.turrets.length} Türme · je Gruppe vom Bug zum Heck · links und rechts gleich`;
+    const groups = ship.groups;
+    body = `<div class="hgr-groups">${groups.map((gr, gi) => {
+      const n = ship.turretGroup!.filter((x) => x === gi).length, cur = lo.groups?.[gi] ?? (gr.kind === 'L' ? 'plasma' : 'puls');
+      const ids: string[] = gr.kind === 'L' ? LTURRET_IDS : TURRET_IDS;
+      const def = (id: string) => (gr.kind === 'L' ? LTURRETS[id as keyof typeof LTURRETS] : TURRETS[id as keyof typeof TURRETS]);
+      return `<div class="hgr-grp"><div class="hgr-grp-h"><b>${esc(gr.name)}</b><small>${n} × ${gr.kind} · ${num(n * sustainedDps(def(cur).gun, def(cur).beam))}/s</small></div>
+        <div class="hgr-chips">${ids.map((id) => `<button class="hgr-chip ${id === cur ? 'on' : ''}" style="--c:${def(id).color}" ${act('loadout-group', { g: gi, value: id })}>${esc(def(id).name.replace(/^Schwerer /, '').replace(/-?[Tt]urm$/, ''))}</button>`).join('')}</div></div>`;
+    }).join('')}</div><div class="hgr-desc">Pulstürme schwenken schnell und holen Raketen und Jäger herunter, Plasma- und Bosonentürme knacken große Ziele. Die Turmbefehle (M, L) im Kampf gelten weiter für alle Türme ihrer Größe.</div>`;
   } else if (view === 'turret') {
     const n = ship.turrets.length, curDps = n * sustainedDps(td.gun, td.beam);
     title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;

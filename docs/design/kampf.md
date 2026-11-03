@@ -123,7 +123,13 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
     (L: 30 Minuten von 0 auf 100 %), danach arbeitet das Schiff weiter, Ladung bleibt an Bord. Liegende Schiffe werden
     nicht noch einmal überfallen. Dazu der Träger Raptor (XL, X4-Werte: 590 000 Hülle, 1 XL- und 49 M-Schilde, 8 L- und
     93 M-Türme, 36,6 Mio Cr; XL-Werft, Pier, Reparatur eine Stunde); Schiffsgröße XL im ganzen Spiel. Hangar noch ohne
-    Aufgabe. Bilder für Rattlesnake, Raptor und Manticore fehlen noch
+    Aufgabe. Bilder für Rattlesnake und Manticore fehlen noch
+  - [x] Raptor im Kampf-Minispiel (`src/minigames/loadout.ts`, `scripts/raptor-sprite.mjs`, `scripts/raptor-shot.mjs`):
+    KI-Bild aus vier Abschnitten (Heck → Bug) zusammengesetzt, Nähte automatisch ausgerichtet (Versatz und Streckung je
+    Naht, weich über 160 Zeilen), 1254 × 5016 px. Länge 1 200 Spielpunkte nach dem M-Landeplatz (330 px ≈ ein M-Schiff).
+    Türme auf den Sockeln im Bild: 114 M in acht Gruppen (Bug-Cluster, sieben gespiegelte Cluster-Paare) und 8 L (sechs vorn
+    als Gruppe, zwei hinten einzeln); Turmart je Gruppe im Hangar. Treffer gegen den Rumpf als Kapsel, Schild als Ellipse.
+    Offen: Ebenen Flugdeck/Rumpf zum Landen der Jäger (Hangar), Raptor-Bild auf Sektorkarte und in der Werft
   - [ ] Verteidigungstürme als Stationsmodul
   - [ ] Tor-Ereignis in Rhy
   - [ ] Eigene Kampfschiffe als Flügelleute im Minispiel

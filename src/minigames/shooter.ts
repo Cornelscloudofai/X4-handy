@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -606,8 +606,8 @@ export class ShooterGame implements MiniGame {
   /** Gegnerstärke aus dem Entwicklungswerkzeug (beim Start der Runde gelesen) */
   private tune = enemyTune();
   private tuneVer = enemyTuneVersion();
-  /** Türme des eigenen Schiffs: Pause und Richtung */
-  private pTur: { cd: number; a: number; mag: number }[] = [];
+  /** Türme des eigenen Schiffs: Pause und Richtung; beim Träger je Turm eigene Art (Waffe, Drehtempo, Bild, L-Turm) */
+  private pTur: { cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean }[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
   private turTurn = 5;
   private turType = 'puls';
@@ -738,7 +738,12 @@ export class ShooterGame implements MiniGame {
     this.turType = lo.turret;
     this.mag = this.wpn.mag;
     this.sh = SHIELDS[lo.shield];
-    this.pTur = this.ship.turrets.map(() => ({ cd: 0, a: -Math.PI / 2, mag: this.tw.mag }));
+    this.pTur = this.ship.turrets.map((_, i) => {
+      if (!this.ship.groups) return { cd: 0, a: -Math.PI / 2, mag: this.tw.mag };
+      // Träger: Art je Turmgruppe
+      const t = turretOf(lo, this.ship, i), w = gameGun(t.def.gun, t.def);
+      return { cd: 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L };
+    });
     // schwere L-Türme an der Bordwand (nur Zerstörer)
     const ltd = LTURRETS[lo.lturret ?? 'plasma'];
     if (this.ship.lMounts?.length) {
@@ -761,7 +766,10 @@ export class ShooterGame implements MiniGame {
     // nur zu einem Drittel – das Lager ist begrenzt
     const mX4 = MISSILE_DMG * this.mDef.dmg * (this.mDef.split ?? 1) / (DMG_SCALE * 6);
     const missileDps = this.launchers.length ? ((this.launchers.length * 2 / this.mDef.slots) * mX4) / (this.missileCdMax / TIME) / 3 : 0;
-    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + this.ship.turrets.length * effectiveDps(td.gun, td.beam) + this.pL.length * effectiveDps(ltd.gun) + missileDps) / (2 * sustainedDps(WEAPONS.puls.s));
+    const turretDps = this.ship.groups
+      ? this.ship.turrets.reduce((sum, _, i) => { const t = turretOf(lo, this.ship, i); return sum + effectiveDps(t.def.gun, t.def.beam); }, 0)
+      : this.ship.turrets.length * effectiveDps(td.gun, td.beam);
+    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + turretDps + this.pL.length * effectiveDps(ltd.gun) + missileDps) / (2 * sustainedDps(WEAPONS.puls.s));
     // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger
     const power = Math.sqrt(durability * firepower) * Math.min(1, this.ship.speed);
     // Gegner haben feste Werte (nur die Stufe macht sie zäher). Ein starkes Schiff bekommt dafür mehr Gegner,
@@ -2253,8 +2261,10 @@ export class ShooterGame implements MiniGame {
     const tx = (toFreighter ? this.fx1 : this.px) - vw / 2;
     const ty = (toFreighter ? this.fy1 : this.py) - (TOP + (this.h - TOP) * 0.5) / Z;
     const k = Math.min(1, dt * 4);
-    this.camX += (clamp(tx, -40, this.WW - vw + 40) - this.camX) * k;
-    this.camY += (clamp(ty, -TOP / Z - 40, this.WH - vh + 40) - this.camY) * k;
+    // lange Schiffe (Träger) ragen über den Kartenrand: die Kamera darf entsprechend weiter hinaus
+    const mg = 40 + (this.ship.aspect ? this.ship.size / 2 : 0);
+    this.camX += (clamp(tx, -mg, this.WW - vw + mg) - this.camX) * k;
+    this.camY += (clamp(ty, -TOP / Z - mg, this.WH - vh + mg) - this.camY) * k;
   }
 
   private updatePlayer(dt: number): void {
@@ -2494,21 +2504,22 @@ export class ShooterGame implements MiniGame {
   private updateTurrets(dt: number): void {
     this.tBeams = [];
     if (!this.pTur.length) return;
-    const w = this.tw, range = w.range;
     const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
     for (const [i, t] of this.pTur.entries()) {
       const [tx0, ty0] = this.ship.turrets[i];
       const x = this.px + tx0 * c - ty0 * sn, y = this.py + tx0 * sn + ty0 * c;
       t.cd -= dt;
+      // Träger: jeder Turm mit eigener Waffe und eigenem Drehtempo
+      const w = t.w ?? this.tw, range = w.range, turn = t.turn ?? this.turTurn;
       let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = range;
       // Raketenabwehr zuerst – nur bei „alle“ und „S“; wer die Türme auf M- oder L-Schiffe ansetzt, gibt sie auf
-      const order = this.orders.m;
+      const order = t.L ? this.orders.l : this.orders.m;
       if (order === 'alle' || order === 'S') for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
       if (!tgt) { tgt = this.pickTarget(x, y, range, order); if (tgt) bd = Math.hypot(tgt.x - x, tgt.y - y); }
       if (!tgt) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
       const lt = w.beam ? 0 : bd / w.speed;
       const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
-      t.a = wrapA(turnTo(t.a, want, dt * this.turTurn));
+      t.a = wrapA(turnTo(t.a, want, dt * turn));
       if (w.beam) {
         // Dauerstrahl: trifft sofort, solange der Turm auf dem Ziel liegt (Schaden pro Sekunde wie die Bordstrahler)
         if (Math.abs(wrapA(want - t.a)) > 0.08) continue;
@@ -2530,7 +2541,8 @@ export class ShooterGame implements MiniGame {
         }
         t.cd = w.interval * this.tempo;
         if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
-        sfx.turretShot(this.turType, this.panAt(x));
+        if (t.type && t.L) sfx.heavyShot(t.type as LTurretId, this.panAt(x));
+        else sfx.turretShot(t.type ?? this.turType, this.panAt(x));
       }
     }
   }
@@ -2890,7 +2902,7 @@ export class ShooterGame implements MiniGame {
       if (Math.random() < 0.6) this.fx.add({ x: m.x, y: m.y, color: '#ff8a5c', size: 1.2, max: 0.3 });
       const hw = this.wardAt(m.x, m.y, 2);
       if (hw) { this.hitWard(hw, 18 * this.enemyDmg * this.fScale, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
-      else if (Math.hypot(this.px - m.x, this.py - m.y) < this.ship.r + 2) { this.damagePlayer(18 * this.enemyDmg); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
+      else if (this.onHull(m.x, m.y, 2)) { this.damagePlayer(18 * this.enemyDmg); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
     }
     this.eMissiles = this.eMissiles.filter((m) => m.life > 0 && m.hp > 0);
   }
@@ -2907,7 +2919,7 @@ export class ShooterGame implements MiniGame {
       return Math.hypot(x0 + cx * t - x, y0 + cy * t - y);
     };
     let end = len;
-    if (dist(this.px, this.py) < this.ship.r + 2) {
+    if (this.beamOnHull(dist, 2)) {
       this.damagePlayer(dmg * this.enemyDmg, vsShield);
       end = Math.min(end, (this.px - x0) * cx + (this.py - y0) * cy);
     }
@@ -2954,7 +2966,7 @@ export class ShooterGame implements MiniGame {
           const t = clamp((x - e.x) * cx + (y - e.y) * cy, 0, LASER_LEN);
           return Math.hypot(e.x + cx * t - x, e.y + cy * t - y);
         };
-        if (dist(this.px, this.py) < this.ship.r - 3) this.damagePlayer(LASER_DPS * this.enemyDmg * dt);
+        if (this.beamOnHull(dist, -3)) this.damagePlayer(LASER_DPS * this.enemyDmg * dt);
         // Schutzziele: Frachter entlang der Längsachse prüfen; Schaden gesammelt, damit nicht jedes Bild Funken sprühen
         const hw = this.wards.find((w) => !w.dead && this.beamOnWard(w, dist));
         if (hw) {
@@ -3011,7 +3023,7 @@ export class ShooterGame implements MiniGame {
           continue;
         }
       } else {
-        if (Math.hypot(this.px - b.x, this.py - b.y) < this.ship.r) { this.damagePlayer(b.dmg); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
+        if (this.onHull(b.x, b.y, 0)) { this.damagePlayer(b.dmg); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
         const hw = this.wardAt(b.x, b.y);
         if (hw) { this.hitWard(hw, b.dmg * this.fScale, b.x, b.y); continue; }
         // geschleppte und treibende Container (Bergung) gehen zu Bruch
@@ -3287,6 +3299,29 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Schaden am Jäger: erst Schild, dann Hülle; vsShield > 1 trifft den Schild stärker (Kyon) */
+  /**
+   * Trifft ein Punkt das eigene Schiff? Sonst ein Kreis (Trefferradius); lange Schiffe (Träger) als Kapsel längs der
+   * Flugrichtung – so trifft ein Schuss auf Bug oder Heck, nicht nur nahe der Mitte.
+   */
+  private onHull(x: number, y: number, pad: number): boolean {
+    const asp = this.ship.aspect;
+    if (!asp) return Math.hypot(this.px - x, this.py - y) < this.ship.r + pad;
+    const dx = x - this.px, dy = y - this.py, c = Math.cos(this.aimA), s = Math.sin(this.aimA);
+    const along = dx * c + dy * s, across = -dx * s + dy * c;
+    // Rumpf ohne die Gitterstreben am Rand: gut vier Fünftel der Bildbreite
+    const hw = this.ship.size * asp * 0.42, hl = this.ship.size / 2 - hw;
+    return Math.hypot(Math.max(0, Math.abs(along) - hl), across) < hw + pad;
+  }
+
+  /** Strahl (Abstand eines Punkts zur Strahllinie) trifft das eigene Schiff – beim Träger an Punkten längs des Rumpfs */
+  private beamOnHull(dist: (x: number, y: number) => number, pad: number): boolean {
+    const asp = this.ship.aspect;
+    if (!asp) return dist(this.px, this.py) < this.ship.r + pad;
+    const hw = this.ship.size * asp * 0.42, hl = this.ship.size / 2 - hw, c = Math.cos(this.aimA), s = Math.sin(this.aimA);
+    for (let k = -1; k <= 1.0001; k += 0.1) if (dist(this.px + c * hl * k, this.py + s * hl * k) < hw + pad) return true;
+    return false;
+  }
+
   private damagePlayer(dmg: number, vsShield = 1): void {
     if (this.dashT > 0) return;
     this.shieldWait = (2.5 * this.sh.delay * this.ship.delay) / (1 + 0.5 * this.c('regen')) * (1 - this.m('delay'));
@@ -4649,17 +4684,19 @@ export class ShooterGame implements MiniGame {
       }
       ctx.restore();
     }
-    // Schildblase: beim langen Zerstörer um das ganze Schiff
+    // Schildblase: beim langen Zerstörer um das ganze Schiff, beim Träger als Ellipse längs des Rumpfs
     const R = this.ship.cls === 'L' ? this.ship.size * 0.5 : this.ship.r;
+    const asp = this.ship.aspect;
     ctx.save();
     ctx.translate(this.px, this.py);
     if (this.dashT > 0) ctx.globalAlpha = 0.55;
     if (this.shieldHit > 0 || this.shield < this.shieldMax) {
       const sa = this.shieldHit > 0 ? 0.6 : 0.12 * (this.shield / Math.max(1, this.shieldMax));
       ctx.strokeStyle = rgba('#7fd8ff', sa);
-      ctx.lineWidth = 2;
+      ctx.lineWidth = asp ? 3 : 2;
       ctx.beginPath();
-      ctx.arc(0, 0, R + 6, 0, Math.PI * 2);
+      if (asp) ctx.ellipse(0, 0, (this.ship.size * asp) / 2 + 14, this.ship.size / 2 + 14, this.aimA + Math.PI / 2, 0, Math.PI * 2);
+      else ctx.arc(0, 0, R + 6, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.rotate(this.aimA + Math.PI / 2);
@@ -4680,12 +4717,14 @@ export class ShooterGame implements MiniGame {
         ctx.closePath();
         ctx.fill();
       }
-      ctx.drawImage(sprite.img, -size / 2, -size / 2, size, size);
+      // lange Schiffe (Träger): Bild im eigenen Seitenverhältnis, size ist die Länge
+      const sw = size * (asp ?? 1);
+      ctx.drawImage(sprite.img, -sw / 2, -size / 2, sw, size);
       if (this.pL.length) this.drawLTurrets(ctx, sprite.img, size);
       if (this.odT > 0) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.3 + 0.2 * Math.sin(t * 30);
-        ctx.drawImage(sprite.img, -size / 2, -size / 2, size, size);
+        ctx.drawImage(sprite.img, -sw / 2, -size / 2, sw, size);
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;
       }
@@ -4706,9 +4745,9 @@ export class ShooterGame implements MiniGame {
       ctx.save();
       ctx.translate(this.px + tx0 * c - ty0 * sn, this.py + tx0 * sn + ty0 * c);
       // Turmbild in der Farbe, die zum Rumpf passt; der runde Sockel deckt den Sockel im Schiffsbild
-      const ts = turretSprite(this.turType, this.ship.sprite);
+      const ts = turretSprite(tur.type ?? this.turType, this.ship.sprite);
       if (ts) {
-        const W = (this.ship.size * (this.ship.turretD ?? 0.1)) / ts.d;
+        const W = (this.ship.size * ((tur.L ? this.ship.turretDL : undefined) ?? this.ship.turretD ?? 0.1)) / ts.d;
         ctx.rotate(tur.a + Math.PI / 2);
         ctx.drawImage(ts.img, -ts.px * W, -ts.py * W, W, W);
         ctx.restore();
@@ -4718,7 +4757,7 @@ export class ShooterGame implements MiniGame {
       ctx.strokeStyle = '#ffb070';
       ctx.lineWidth = 1.4;
       // Größe passend zu den Sockeln im Schiffsbild
-      const tr = this.ship.size * (this.ship.turretD ?? 0.1) * 0.4;
+      const tr = this.ship.size * ((tur.L ? this.ship.turretDL : undefined) ?? this.ship.turretD ?? 0.1) * 0.4;
       ctx.beginPath();
       ctx.arc(0, 0, tr, 0, Math.PI * 2);
       ctx.fill();
@@ -4732,9 +4771,10 @@ export class ShooterGame implements MiniGame {
       ctx.restore();
     }
     ctx.strokeStyle = 'rgba(127,216,255,0.8)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = asp ? 3 : 2;
     ctx.beginPath();
-    ctx.arc(this.px, this.py, R + 11, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
+    if (asp) ctx.ellipse(this.px, this.py, (this.ship.size * asp) / 2 + 22, this.ship.size / 2 + 22, this.aimA + Math.PI / 2, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
+    else ctx.arc(this.px, this.py, R + 11, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
     ctx.stroke();
     void t;
   }
@@ -5076,7 +5116,8 @@ export class ShooterGame implements MiniGame {
 
   private drawAmmo(ctx: CanvasRenderingContext2D): void {
     const w = this.wpn;
-    if (!w.mag || w.beam) return;
+    // ohne Bordkanonen (Träger) kein Magazin
+    if (!w.mag || w.beam || !this.guns.length) return;
     // klein und unaufdringlich unter den Zoom-Knöpfen – frei vom großen Zielstick
     const W = 84, H = 4;
     const x = this.w - W - 20, y = TOP + 184;
@@ -5209,7 +5250,8 @@ export class ShooterGame implements MiniGame {
       ctx.arc(fbx, fby, fbr, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (this.ctrl === 'eins' && !this.pc) drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', 'F', t);
+    // Feuertaste nur mit Bordkanonen (der Träger hat nur Türme, die selbst feuern)
+    if (this.ctrl === 'eins' && !this.pc && this.guns.length) drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', 'F', t);
     const [bx, by, br] = this.btnMissile;
     if (this.launchers.length) {
       drawButton(ctx, bx, by, br, this.ammo > 0 ? 1 - this.missileCd / this.missileCdMax : 0, '#ffb547', 'R', t);

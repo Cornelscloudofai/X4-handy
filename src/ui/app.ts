@@ -1422,6 +1422,16 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
+      case 'loadout-group': {
+        // Träger: Turmart einer Turmgruppe (Cluster oder L-Türme)
+        const g = Number(d.g), cur = [...(loadout().groups ?? [])];
+        if (cur[g] === d.value) break;
+        if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, prev: hangarStats(), undo: { groups: loadout().groups } }; sfx.build(); }
+        cur[g] = String(d.value);
+        setLoadout({ groups: cur });
+        refresh();
+        break;
+      }
       case 'loadout-set': {
         // Hangar: Werte und Ausrüstung vor dem Einbau merken (Vorschau in der Werteleiste, Rückgängig)
         if (ui.modal?.type === 'loadout') {

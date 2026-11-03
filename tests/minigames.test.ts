@@ -9,7 +9,7 @@ import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame, clusterLayout, clusterSlots, jaegerClusters, khaakClusters } from '../src/minigames/shooter';
 import { turretArtName } from '../src/render/shipArt';
-import { SHIP_IDS, TURRET_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
+import { SHIPS, SHIP_IDS, TURRET_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
 import { Score, pickGoals, rng, type GameResult, type Level, type MiniGame, type Mode } from '../src/minigames/common';
 import { recordResult, resetRecords, totalStars, unlocked, badgeCount } from '../src/minigames/records';
 
@@ -821,18 +821,21 @@ describe('Kampf', () => {
   });
 
   it('alle Schiffe, Waffen, Türme und Schilde sind spielbar', () => {
-    let wins = 0;
+    let wins = 0, rounds = 0;
     for (const ship of SHIP_IDS) for (const [i, weapon] of WEAPON_IDS.entries()) {
+      // ohne Bordkanonen (Träger) spielt die Waffe keine Rolle: eine Runde reicht
+      if (!SHIPS[ship].x4.weapons && i > 0) continue;
       const lo = { ship, weapon, turret: TURRET_IDS[i % TURRET_IDS.length], shield: i % 2 ? 'schwer' : 'leicht' } as Loadout;
       const g = new ShooterGame({ ...cfg(1, 3), loadout: lo }, 'xenon');
       g.resize(W, H);
       const r = run(g, () => g.autopilot(), 600);
       expect(r.points).toBeGreaterThan(0);
+      rounds++;
       if (r.success) wins++;
     }
     // die meisten Zusammenstellungen schafft auch der einfache Autopilot
-    expect(wins).toBeGreaterThanOrEqual(SHIP_IDS.length * WEAPON_IDS.length * 0.6);
-  }, 30000);
+    expect(wins).toBeGreaterThanOrEqual(rounds * 0.6);
+  }, 60000);
 
   it('Zwei Sticks: rechts zielen und feuern, links Schub auch rückwärts', () => {
     const g = new ShooterGame({ ...cfg(1, 3), controls: 'zwei' }, 'xenon');
