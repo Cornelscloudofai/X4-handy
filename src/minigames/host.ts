@@ -218,6 +218,11 @@ function resize(): void {
   s.h = Math.max(1, r.height);
   s.canvas.width = Math.round(s.w * s.dpr);
   s.canvas.height = Math.round(s.h * s.dpr);
+  // linker Sicherheitsrand des Geräts (Kerbe, abgerundete Ecken im Querformat), soweit er ins Spielfeld ragt –
+  // Bedienelemente am linken Rand bleiben so immer ganz sichtbar
+  const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-left')) || 0;
+  const g = s.game as { safeL?: number };
+  if ('safeL' in g) g.safeL = Math.max(0, inset - r.left);
   s.game.resize(s.w, s.h);
 }
 

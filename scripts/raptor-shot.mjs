@@ -126,7 +126,7 @@ await page.evaluate(() => window.__mg.game.setOrder('g4', 'alle'));
 const [, bx0, by0] = btns[0];
 await page.mouse.move(bx0, by0);
 await page.mouse.down();
-await page.mouse.move(bx0 - 40, by0, { steps: 4 });
+await page.mouse.move(bx0 + 30, by0 + 30, { steps: 4 });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/raptor-9-markierung.png` });
 await page.mouse.up();

@@ -1078,6 +1078,23 @@ describe('Turmbefehle', () => {
     g.setOrder('m', 'alle');
   });
 
+  it('Befehlsknöpfe sitzen ganz am linken Rand – auch mit Sicherheitsrand des Geräts – und die Auswahl bleibt im Bild', () => {
+    for (const ship of ['cobra', 'klapperschlange', 'raptor'] as const) for (const safeL of [0, 44]) {
+      const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship, weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
+      (g as unknown as { safeL: number }).safeL = safeL;
+      g.resize(W, H);
+      const btns = (g as unknown as { orderBtns: [string, number, number, number][] }).orderBtns;
+      expect(btns.length).toBeGreaterThan(0);
+      for (const [, x, , r] of btns) {
+        expect(x - r).toBeGreaterThanOrEqual(safeL + 4);
+        expect(x - r).toBeLessThanOrEqual(safeL + 8);
+        // aufgeklappte Auswahl fächert nur nach oben, rechts und unten: die Kreise direkt über und unter dem Knopf
+        // (die am weitesten links) ragen nicht über den Rand
+        expect(x - (r < 18 ? 17 : 19)).toBeGreaterThanOrEqual(safeL);
+      }
+    }
+  });
+
   it('Träger: je Feuergruppe ein eigener Befehlsknopf; jede Gruppe folgt ihrem Befehl', () => {
     const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'raptor', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
     g.resize(W, H);

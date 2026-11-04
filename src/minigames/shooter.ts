@@ -306,8 +306,12 @@ type OrderKey = 'm' | 'l' | `g${number}`;
 const ORDER_KEY = 'x4-sektorbau-turmbefehle';
 /** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
 const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', boss: 'L', turret: 'L', ks: 'S', kj: 'S', ka: 'M', kk: 'M', cargo: 'L' };
-/** Auswahl beim Wischen: oben alle, links S, rechts M, unten L, schräg rechts oben Strukturen */
-const ORDER_DIRS: [TurretOrder, number, number][] = [['alle', 0, -1], ['S', -1, 0], ['M', 1, 0], ['L', 0, 1], ['struktur', Math.SQRT1_2, -Math.SQRT1_2]];
+/**
+ * Auswahl beim Wischen – die Knöpfe sitzen am linken Rand, darum fächert die Auswahl nach rechts auf:
+ * oben alle, schräg rechts oben Strukturen, rechts M, schräg rechts unten S, unten L
+ */
+const D45 = Math.SQRT1_2;
+const ORDER_DIRS: [TurretOrder, number, number][] = [['alle', 0, -1], ['struktur', D45, -D45], ['M', 1, 0], ['S', D45, D45], ['L', 0, 1]];
 const ORDER_SHORT: Record<TurretOrder, string> = { alle: 'ALLE', S: 'S', M: 'M', L: 'L', struktur: 'STR' };
 const ORDER_TEXT: Record<TurretOrder, string> = { alle: 'alle Ziele', S: 'zuerst S-Schiffe', M: 'zuerst M-Schiffe', L: 'zuerst L-Schiffe', struktur: 'zuerst Türme, Bauteile und Brutstätten' };
 interface Orders { m: TurretOrder; l: TurretOrder; /** Träger: je Feuergruppe */ g: TurretOrder[] }
@@ -580,6 +584,8 @@ export class ShooterGame implements MiniGame {
   private reloadLeft = 0;
   private reloadMax = 1;
   private ringFlash = 0;
+  /** Linker Sicherheitsrand des Geräts im Spielfeld (vom Host gesetzt) */
+  safeL = 0;
   /** Zielmarkierung nach einem Turmbefehl: Restzeit und Befehl (die passenden Gegner leuchten kurz auf) */
   private markT = 0;
   private markOrder: TurretOrder = 'alle';
@@ -1022,13 +1028,15 @@ export class ShooterGame implements MiniGame {
     const out: [OrderKey, number, number, number][] = [];
     // Träger: je Feuergruppe ein kleiner Knopf, vom Bug (oben) zum Heck (unten), L-Gruppen darunter
     const gs = this.ship.groups;
+    // ganz am linken Rand (mit kleinem Abstand und dem Sicherheitsrand des Geräts), damit das Bild frei bleibt
+    const edge = this.safeL + 6;
     if (gs) {
-      const step = 33, y1 = this.h - 262;
-      gs.forEach((_, i) => out.push([`g${i}`, 66, y1 - (gs.length - 1 - i) * step, 14]));
+      const step = 31, y1 = this.h - 262;
+      gs.forEach((_, i) => out.push([`g${i}`, edge + 14, y1 - (gs.length - 1 - i) * step, 14]));
       return out;
     }
-    if (this.pTur.length) out.push(['m', 74, this.h - (this.pL.length ? 330 : 270), 22]);
-    if (this.pL.length) out.push(['l', 74, this.h - 270, 22]);
+    if (this.pTur.length) out.push(['m', edge + 20, this.h - (this.pL.length ? 330 : 270), 20]);
+    if (this.pL.length) out.push(['l', edge + 20, this.h - 270, 20]);
     return out;
   }
 
@@ -3431,8 +3439,8 @@ export class ShooterGame implements MiniGame {
   private damagePlayer(dmg: number, vsShield = 1, at?: [number, number], fxChance = 1): void {
     if (this.dashT > 0) return;
     this.shieldWait = (2.5 * this.sh.delay * this.ship.delay) / (1 + 0.5 * this.c('regen')) * (1 - this.m('delay'));
-    // Träger: Treffer sitzen direkt am Rumpf – Schild blitzt blau mit kleiner Welle, Hülle sprüht rote Funken
-    const mark = !!this.ship.aspect && !!at && Math.random() < fxChance;
+    // Treffer sitzen direkt am Schiff – Schild blitzt blau mit kleiner Welle, Hülle sprüht rote Funken
+    const mark = !!at && Math.random() < fxChance;
     if (this.shield > 0) {
       const s = Math.min(this.shield, dmg * vsShield);
       this.shield -= s;
@@ -3650,7 +3658,7 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
     this.drawIndicators(ctx);
     this.drawRadar(ctx);
-    if (this.ship.aspect) this.drawHullBars(ctx);
+    this.drawHullBars(ctx);
     this.drawControls(ctx, t);
     this.drawProgress(ctx);
     if (this.banner > 0) {
@@ -4806,21 +4814,11 @@ export class ShooterGame implements MiniGame {
       }
       ctx.restore();
     }
-    // Schildblase: beim langen Zerstörer um das ganze Schiff, beim Träger als Ellipse längs des Rumpfs
-    const R = this.ship.cls === 'L' ? this.ship.size * 0.5 : this.ship.r;
     const asp = this.ship.aspect;
     ctx.save();
     ctx.translate(this.px, this.py);
     if (this.dashT > 0) ctx.globalAlpha = 0.55;
-    // Träger: keine Blase – Treffer blitzen am Rumpf auf, der Schild steht als Balken am unteren Bildrand
-    if (!asp && (this.shieldHit > 0 || this.shield < this.shieldMax)) {
-      const sa = this.shieldHit > 0 ? 0.6 : 0.12 * (this.shield / Math.max(1, this.shieldMax));
-      ctx.strokeStyle = rgba('#7fd8ff', sa);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, R + 6, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    // keine Schildblase: Treffer blitzen direkt am Schiff auf, der Schild steht als Balken am unteren Bildrand
     ctx.rotate(this.aimA + Math.PI / 2);
     // Flamme nach Schub (driftet der Jäger ohne Schub, glimmen die Düsen nur)
     const thrust = Math.min(1.6, 0.15 + this.thrust * (1 + this.cruise * 0.6));
@@ -4905,13 +4903,7 @@ export class ShooterGame implements MiniGame {
       ctx.stroke();
       ctx.restore();
     }
-    if (!asp) {
-      ctx.strokeStyle = 'rgba(127,216,255,0.8)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(this.px, this.py, R + 11, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * this.shield) / Math.max(1, this.shieldMax));
-      ctx.stroke();
-    }
+
     void t;
   }
 
@@ -5151,7 +5143,7 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Träger: Schild und Hülle als schmale Balken mittig am unteren Bildrand – unaufdringlich, damit das Schiff frei bleibt.
+   * Schild und Hülle als schmale Balken mittig am unteren Bildrand (alle Schiffe) – unaufdringlich, damit das Schiff frei bleibt.
    * Schild hellblau (blitzt bei Treffern kurz auf), darunter die Hülle als dünne Linie (rot, wenn sie knapp wird).
    */
   private drawHullBars(ctx: CanvasRenderingContext2D): void {
@@ -5317,9 +5309,9 @@ export class ShooterGame implements MiniGame {
         ctx.textAlign = 'left';
         ctx.fillStyle = 'rgba(5,14,22,0.82)';
         const name = this.orderName(which), tw = ctx.measureText(name).width;
-        ctx.fillRect(x + dist + br + 6, y - 9, tw + 12, 18);
+        ctx.fillRect(x + dist + br + 8, y - 9, tw + 12, 18);
         ctx.fillStyle = '#e4f3f0';
-        ctx.fillText(name, x + dist + br + 12, y);
+        ctx.fillText(name, x + dist + br + 14, y);
         ctx.textAlign = 'center';
       }
       for (const [o, dx, dy] of ORDER_DIRS) {
