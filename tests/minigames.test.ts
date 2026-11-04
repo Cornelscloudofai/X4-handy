@@ -845,8 +845,8 @@ describe('Kampf', () => {
     g.resize(W, H);
     const a = g as unknown as { pvx: number; pvy: number; aimA: number; fireId: number | null; bullets: { from: string }[] };
     // rechter Stick nach oben bis über den Feuerring ausgelenkt: Blick nach oben, Bordkanonen feuern
-    g.pointerDown(1, W * 0.8, H * 0.6);
-    g.pointerMove(1, W * 0.8, H * 0.6 - 102);
+    g.pointerDown(1, W * 0.65, H * 0.6);
+    g.pointerMove(1, W * 0.65, H * 0.6 - 92);
     // linker Stick nach unten: Schub rückwärts, der Jäger blickt weiter nach oben
     g.pointerDown(2, W * 0.2, H * 0.6);
     g.pointerMove(2, W * 0.2, H * 0.6 + 70);
@@ -864,6 +864,25 @@ describe('Kampf', () => {
     expect(a.fireId).toBeNull();
   });
 
+  it('Zwei Sticks: rechter Stick bleibt ganz im Bild und wandert nicht mit', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), controls: 'zwei' }, 'xenon');
+    g.resize(W, H);
+    const a = g as unknown as { aim: { ox: number; oy: number; kx: number } | null; fireId: number | null };
+    // Daumen setzt dicht am rechten Rand auf: Mitte rückt so weit ein, dass der Kreis ganz im Bild liegt
+    g.pointerDown(1, W - 20, H * 0.6);
+    const ox = a.aim!.ox;
+    expect(ox + 96).toBeLessThanOrEqual(W);
+    // weit nach rechts über den Rand hinaus gezogen: die Mitte bleibt stehen, der Ausschlag ist voll, es wird gefeuert
+    g.pointerMove(1, W + 200, H * 0.6);
+    g.update(DT);
+    expect(a.aim!.ox).toBe(ox);
+    expect(a.aim!.kx).toBeCloseTo(1);
+    expect(a.fireId).toBe(1);
+    // zurück zur Mitte: kein Ausschlag mehr
+    g.pointerMove(1, ox, H * 0.6);
+    expect(Math.abs(a.aim!.kx)).toBeLessThan(0.05);
+  });
+
   it('Zwei Sticks: rechter Stick lenkt stufenlos, voll am mittleren Ring ohne zu feuern, erst außen feuern', () => {
     const turned = (px: number) => {
       const g = new ShooterGame({ ...cfg(1, 3), controls: 'zwei' }, 'xenon');
@@ -871,12 +890,12 @@ describe('Kampf', () => {
       const a = g as unknown as { aimA: number; fireId: number | null };
       a.aimA = -Math.PI / 2;
       // nach rechts auslenken: Drehung im Uhrzeigersinn, je weiter desto schneller
-      g.pointerDown(1, W * 0.8, H * 0.6);
-      g.pointerMove(1, W * 0.8 + px, H * 0.6);
+      g.pointerDown(1, W * 0.65, H * 0.6);
+      g.pointerMove(1, W * 0.65 + px, H * 0.6);
       for (let i = 0; i < 6; i++) g.update(DT);
       return { d: a.aimA + Math.PI / 2, fire: a.fireId };
     };
-    const small = turned(25), full = turned(80), edge = turned(105);
+    const small = turned(22), full = turned(68), edge = turned(92);
     expect(small.d).toBeGreaterThan(0);
     expect(full.d).toBeGreaterThan(small.d * 2);
     expect(full.fire).toBeNull();

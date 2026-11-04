@@ -323,6 +323,11 @@ interface Wing {
   t: number; bay: number;
   /** Ziel und wie lange es schon verfolgt wird */
   tgt: Enemy | null; tgtT: number; slot: number;
+  /**
+   * Angriff (Jäger): Anflug – Durchziehen am Ziel vorbei – Ausholen zu einem Punkt (ex, ey) – neuer Anflug; side wählt die
+   * Seite, nach der abgedreht wird. Korvetten halten stattdessen Abstand. hitT: kurz nach einem Treffer (Abdrehen)
+   */
+  phase: 'run' | 'pass' | 'extend'; phT: number; ex: number; ey: number; side: 1 | -1; hitT: number;
 }
 /** Landeweg: von außen aufs Deck, dann unter den Rumpf (Sekunden je Abschnitt) */
 const BAY_T1 = 0.9, BAY_T2 = 1.1;
@@ -364,7 +369,8 @@ const JOY_R = 78;
 /** Zeiger-Kennung der Maus (PC-Steuerung) */
 const MOUSE_ID = 77;
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-const AIM_R = 108;
+/** Rechter Steuerkreis: fest an der Stelle, wo der Daumen aufsetzt, ganz im Bild (nie bis an den Rand verschoben) */
+const AIM_R = 96;
 /**
  * Zwei Sticks, rechter Stick: bis zum mittleren Ring (AIM_FULL) lenkt er stufenlos – wenig Ausschlag dreht langsam, am
  * Ring mit voller Drehrate, noch ohne zu feuern; erst ab dem äußeren Ring (AIM_FIRE) wird gefeuert.
@@ -686,6 +692,8 @@ export class ShooterGame implements MiniGame {
   private orderDrag: { id: number; which: OrderKey; x0: number; y0: number; pick: string | null } | null = null;
   /** Staffel (eigene Begleitschiffe) */
   private wings: Wing[] = [];
+  /** Auf der taktischen Karte gewähltes Ziel: alle Begleiter greifen es an */
+  private wingFocus: Enemy | null = null;
   /** Startabstand zwischen zwei Schiffen aus dem Hangar */
   private launchCd = 0;
   private wingsPlaced = false;
@@ -790,6 +798,7 @@ export class ShooterGame implements MiniGame {
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
     ];
     this.ship = SHIPS[lo.ship];
+    this.controls = [...this.controls, 'Auge-Taste neben dem Zoom: freie Sicht (ziehen verschiebt, zwei Finger zoomen, Schiff antippen = folgen), nochmal: Beobachter, der dem Gefecht folgt. Radar antippen: taktische Karte in Zeitlupe – dort einen Gegner antippen, und die Staffel greift ihn an'];
     if (this.ship.turrets.length) this.controls = [...this.controls, `Turmbefehle: Knopf ${this.ship.lMounts?.length ? '„M“ bzw. „L“' : '„M“'} links halten und wischen – nach oben alle Ziele, links zuerst S-Schiffe (Jäger), rechts M-Schiffe (Boote), unten L-Schiffe (Fregatte, K-Segment); antippen schaltet weiter. Raketen schießen die M-Türme nur bei „alle“ und „S“ ab`];
     // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
     const wOk = weaponFits(WEAPONS[lo.weapon], SHIPS[lo.ship].gunSize);
@@ -1061,9 +1070,33 @@ export class ShooterGame implements MiniGame {
   private get btnZoomOut(): [number, number, number] { return [this.w - 82, TOP + 124, 15]; }
   private get btnZoomIn(): [number, number, number] { return [this.w - 38, TOP + 124, 15]; }
   /** Träger: Schieber am rechten Rand, der die Kamera längs des Schiffs bewegt (oben Bug, unten Heck) */
-  private get panTrack(): { x: number; y0: number; y1: number } { return { x: this.w - 24, y0: TOP + 178, y1: TOP + 178 + 190 }; }
+  private get panTrack(): { x: number; y0: number; y1: number } {
+    // endet mit Abstand über der Ausweichtaste (auf kleinen Bildschirmen kürzer)
+    const [, dy, dr] = this.btnDash;
+    return { x: this.w - 24, y0: TOP + 178, y1: Math.max(TOP + 178 + 70, Math.min(TOP + 178 + 190, dy - dr - 30)) };
+  }
   /** Kamera längs des Schiffs: −1 = Bug, 0 = Mitte, 1 = Heck */
   private camPan = 0;
+  /**
+   * Kamera: am eigenen Schiff, frei (ziehen verschiebt, zwei Finger zoomen, Objekt antippen = folgen) oder Beobachter
+   * (fährt von selbst zum dichtesten Gefecht). camFX/camFY: Weltpunkt in der Mitte des Spielbereichs
+   */
+  private camMode: 'schiff' | 'frei' | 'auto' = 'schiff';
+  private camFX = 0;
+  private camFY = 0;
+  private camFollow: Enemy | Wing | null = null;
+  private camTouch = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number }>();
+  private pinchD = 0;
+  private pinched = false;
+  private autoT = 0;
+  private autoX = 0;
+  private autoY = 0;
+  /** Taktische Karte (Radar antippen): ganze Karte in Zeitlupe, Ziel für die Staffel wählen */
+  private tac = false;
+  /** Taste für die Kamera: links neben den Zoom-Tasten */
+  private get btnCam(): [number, number, number] { return [this.w - 126, TOP + 124, 15]; }
+  /** Radar oben rechts (antippen öffnet die taktische Karte) */
+  private get radarRect(): [number, number, number, number] { return [this.w - 102, TOP + 6, 92, 92]; }
   private panId: number | null = null;
   private panTap = 0;
   private get btnDash(): [number, number, number] { return [this.w - 60, this.h - 182, 25]; }
@@ -1076,11 +1109,20 @@ export class ShooterGame implements MiniGame {
     const edge = this.safeL + 6;
     const wing = this.wings.length > 0;
     if (gs) {
-      const step = 31, y1 = this.h - 262;
-      gs.forEach((_, i) => out.push([`g${i}`, edge + 14, y1 - (gs.length - 1 - i) * step, 14]));
-      // Staffel über den Feuergruppen, etwas abgesetzt
-      if (wing) out.push(['w', edge + 14, y1 - gs.length * step - 10, 14]);
-      return out;
+      // vom oberen Textbereich (Fortschritt, zwei Zeilen) bis über den Joystick; reicht der Platz nicht für eine
+      // Spalte mit gut greifbaren Knöpfen, zwei Spalten nebeneinander
+      const keys: OrderKey[] = [...(wing ? ['w' as const] : []), ...gs.map((_, i) => `g${i}` as OrderKey)];
+      const y1 = this.h - 262, top = TOP + 50, gap = wing ? 10 : 0, n = keys.length;
+      const fit = (m: number) => Math.min(31, (y1 - top - 14 - gap) / Math.max(1, m - 1));
+      const cols = fit(n) >= 26 ? 1 : 2, per = Math.ceil(n / cols), step = fit(per), r = Math.min(14, step * 0.46);
+      keys.forEach((k, i) => {
+        const c = Math.floor(i / per), j = i % per;
+        // jede Spalte endet unten bei y1; die Staffel (oben in Spalte 1) etwas abgesetzt
+        const y = y1 - (per - 1 - j) * step - (c === 0 && wing && j === 0 ? gap : 0);
+        out.push([k, edge + r + c * (2 * r + 7), c === 0 ? y : y1 - (n - per - 1 - j) * step, r]);
+      });
+      // Reihenfolge der Liste wie bisher: Feuergruppen, dann die Staffel
+      return [...out.filter(([k]) => k !== 'w'), ...out.filter(([k]) => k === 'w')];
     }
     if (this.pTur.length) out.push(['m', edge + 20, this.h - (this.pL.length ? 330 : 270), 20]);
     if (this.pL.length) out.push(['l', edge + 20, this.h - 270, 20]);
@@ -1125,6 +1167,11 @@ export class ShooterGame implements MiniGame {
   pointerDown(id: number, x: number, y: number): void {
     if (id !== MOUSE_ID && this.pc) { this.pc = false; this.keys.clear(); this.mouseFire = false; }
     if (this.choosing) { this.pickCardAt(x, y); return; }
+    if (this.tac) { this.tacTap(x, y); return; }
+    const [rx, ry, rw, rh] = this.radarRect;
+    if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) { this.openTac(); return; }
+    const [cbx, cby, cbr] = this.btnCam;
+    if (Math.hypot(x - cbx, y - cby) < cbr + 8) { this.setCamMode(this.camMode === 'schiff' ? 'frei' : this.camMode === 'frei' ? 'auto' : 'schiff'); return; }
     const [fbx, fby, fbr] = this.btnFire;
     if (this.ctrl === 'eins' && Math.hypot(x - fbx, y - fby) < fbr + 12) { this.fireId = id; return; }
     for (const [btn, step] of [[this.btnZoomOut, 1], [this.btnZoomIn, -1]] as const) {
@@ -1146,13 +1193,42 @@ export class ShooterGame implements MiniGame {
     for (const [which, ox, oy, orr] of this.orderBtns) {
       if (Math.hypot(x - ox, y - oy) < orr + 8) { this.orderDrag = { id, which, x0: ox, y0: oy, pick: null }; sfx.tap(); return; }
     }
+    // freie Sicht: Finger verschieben die Kamera (zwei Finger zoomen) statt zu steuern
+    if (this.camMode !== 'schiff') {
+      this.camTouch.set(id, { x, y, x0: x, y0: y, t0: performance.now() });
+      if (this.camTouch.size === 2) { const [a, b] = [...this.camTouch.values()]; this.pinchD = Math.hypot(a.x - b.x, a.y - b.y); this.pinched = true; }
+      return;
+    }
     // zwei Sticks: rechte Hälfte zielt und feuert, linke fliegt
-    if (this.ctrl !== 'eins' && x > this.w / 2) { if (!this.aim) this.aim = { id, ox: x, oy: y, kx: 0, ky: 0 }; return; }
+    if (this.ctrl !== 'eins' && x > this.w / 2) {
+      if (!this.aim) {
+        // Mitte so weit vom Rand, dass der ganze Kreis samt Feuerring erreichbar bleibt
+        const ox = clamp(x, this.w / 2 + AIM_R * 0.5, this.w - AIM_R - 8), oy = clamp(y, TOP + AIM_R, this.h - AIM_R - 8);
+        this.aim = { id, ox, oy, kx: 0, ky: 0 };
+        this.pointerMove(id, x, y);
+      }
+      return;
+    }
     if (!this.joy) this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 };
   }
 
   pointerMove(id: number, x: number, y: number): void {
     if (this.panId === id) { this.setPan(y); return; }
+    const ct = this.camTouch.get(id);
+    if (ct) {
+      if (this.camTouch.size >= 2) {
+        ct.x = x; ct.y = y;
+        const [a, b] = [...this.camTouch.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (this.pinchD > 0 && d > 0) this.zoom = this.zoomGoal = clamp(this.zoom * (d / this.pinchD), ZOOMS[ZOOMS.length - 1], ZOOMS[0]);
+        this.pinchD = d;
+        return;
+      }
+      this.camFX -= (x - ct.x) / this.zoom;
+      this.camFY -= (y - ct.y) / this.zoom;
+      ct.x = x; ct.y = y;
+      if (Math.hypot(x - ct.x0, y - ct.y0) > 10) { this.camFollow = null; if (this.camMode === 'auto') this.camMode = 'frei'; }
+      return;
+    }
     const od = this.orderDrag;
     if (od?.id === id) {
       // Richtung des Wischens wählt den Befehl
@@ -1168,9 +1244,12 @@ export class ShooterGame implements MiniGame {
     let dx = x - j.ox, dy = y - j.oy;
     const d = Math.hypot(dx, dy), max = j === this.aim ? AIM_R : JOY_R;
     if (d > max) {
-      // Basis wandert mit, damit man nie „am Anschlag hängt“
-      j.ox += (dx / d) * (d - max);
-      j.oy += (dy / d) * (d - max);
+      // linker Stick: Basis wandert mit, damit man nie „am Anschlag hängt“; der rechte bleibt fest (sonst wandert er zum
+      // Bildrand, und der Feuerring auf der Randseite ist nicht mehr zu erreichen)
+      if (j !== this.aim) {
+        j.ox += (dx / d) * (d - max);
+        j.oy += (dy / d) * (d - max);
+      }
       dx = (dx / d) * max;
       dy = (dy / d) * max;
     }
@@ -1180,6 +1259,18 @@ export class ShooterGame implements MiniGame {
 
   pointerUp(id: number): void {
     if (this.panId === id) this.panId = null;
+    const ct = this.camTouch.get(id);
+    if (ct) {
+      this.camTouch.delete(id);
+      // kurz angetippt (ohne Ziehen, ohne Zoomen): dem Objekt dort folgen
+      if (!this.pinched && Math.hypot(ct.x - ct.x0, ct.y - ct.y0) < 10 && performance.now() - ct.t0 < 400) this.followAt(ct.x0, ct.y0);
+      if (!this.camTouch.size) {
+        // nach dem Zoomen mit zwei Fingern auf die nächste Zoomstufe einrasten (für die Tasten + und −)
+        if (this.pinched) this.zoomGoal = ZOOMS.reduce((a, z) => (Math.abs(z - this.zoom) < Math.abs(a - this.zoom) ? z : a), ZOOMS[0]);
+        this.pinched = false; this.pinchD = 0;
+      }
+      return;
+    }
     const od = this.orderDrag;
     if (od?.id === id) {
       // gewischt: gewählter Befehl; nur angetippt: weiter zum nächsten
@@ -1210,6 +1301,240 @@ export class ShooterGame implements MiniGame {
     this.camPan = clamp(((y - t.y0) / (t.y1 - t.y0)) * 2 - 1, -1, 1);
   }
 
+  // ---------- Kamera und taktische Karte ----------
+
+  /** Kameramodus wechseln: beim Verlassen des Schiffs lassen die Sticks los – der Träger behält seinen Kurs */
+  private setCamMode(m: 'schiff' | 'frei' | 'auto'): void {
+    if (m === this.camMode) return;
+    if (this.camMode === 'schiff') {
+      this.camFX = this.camX + this.w / 2 / this.zoom;
+      this.camFY = this.camY + (TOP + (this.h - TOP) * 0.5) / this.zoom;
+      this.releaseSticks();
+    }
+    this.camMode = m;
+    this.camFollow = null;
+    this.camTouch.clear();
+    this.pinched = false;
+    this.autoT = 0;
+    if (m === 'schiff' && this.joy?.id === 98) this.joy = null;
+    sfx.tap();
+    const text = m === 'frei' ? 'Freie Sicht: ziehen, zwei Finger zoomen, Schiff antippen = folgen' : m === 'auto' ? 'Beobachter: Kamera folgt dem Gefecht' : 'Kamera am eigenen Schiff';
+    this.floats.add(this.camFX, this.camFY - 60 / this.zoom, text, '#9fe6ff', 13);
+  }
+
+  /** Sticks loslassen; der Träger fliegt mit dem letzten Schub weiter */
+  private releaseSticks(): void {
+    const j = this.joy;
+    this.joy = this.ship.aspect && j && j.id !== 99 ? { id: 98, ox: j.ox, oy: j.oy, kx: j.kx, ky: j.ky } : j?.id === 99 ? j : null;
+    this.aim = null;
+    if (this.fireId !== 99) this.fireId = null;
+  }
+
+  /** Objekt an einer Bildschirmstelle (Gegner, Begleiter, eigenes Schiff); maxPx: Fangradius in Bildpunkten */
+  private objectAt(wx: number, wy: number, maxPx: number, scale: number): Enemy | Wing | 'p' | null {
+    let best: Enemy | Wing | 'p' | null = null, bd = Infinity;
+    const test = (o: Enemy | Wing | 'p', x: number, y: number, r: number) => {
+      const d = Math.max(0, Math.hypot(x - wx, y - wy) - r) * scale;
+      if (d < maxPx && d < bd) { bd = d; best = o; }
+    };
+    for (const e of this.enemies) if (!e.parent) test(e, e.x, e.y, e.r);
+    for (const w of this.wings) if (w.state === 'fly' || w.state === 'home') test(w, w.x, w.y, w.def.size * 0.4);
+    if (this.outcome !== 'player') test('p', this.px, this.py, this.ship.aspect ? 0 : this.ship.r);
+    return best;
+  }
+
+  /** Freie Sicht: angetippt – folgen (eigenes Schiff: zurück zur normalen Kamera) */
+  private followAt(sx: number, sy: number): void {
+    const o = this.objectAt(this.camX + sx / this.zoom, this.camY + sy / this.zoom, 36, this.zoom);
+    if (!o) return;
+    if (o === 'p') { this.setCamMode('schiff'); return; }
+    this.camFollow = o;
+    if (this.camMode === 'auto') this.camMode = 'frei';
+    sfx.tick();
+  }
+
+  /** Beobachter: Mitte des dichtesten Gefechts (viele Gegner nah beieinander, eigene Schiffe zählen mehr) */
+  private hotspot(): [number, number] {
+    const units: [number, number, number][] = [];
+    for (const e of this.enemies) if (!e.parent) units.push([e.x, e.y, 1]);
+    const foes = units.length;
+    for (const w of this.wings) if (w.state === 'fly') units.push([w.x, w.y, 1.5]);
+    if (this.outcome !== 'player') units.push([this.px, this.py, 2]);
+    for (const w of this.liveWards) units.push([this.wx(w), this.wy(w), 2]);
+    if (!foes) return [this.px, this.py];
+    const R = 480;
+    const score = (x: number, y: number) => {
+      let sc = 0, f = 0;
+      for (const [ux, uy, k] of units) if (Math.hypot(ux - x, uy - y) < R) { sc += k; if (k === 1) f++; }
+      return f ? sc : 0;
+    };
+    let bx = this.px, by = this.py, bs = -1;
+    for (let i = 0; i < foes; i++) { const sc = score(units[i][0], units[i][1]); if (sc > bs) { bs = sc; bx = units[i][0]; by = units[i][1]; } }
+    // beim bisherigen Brennpunkt bleiben, solange er nicht deutlich schwächer ist (kein Hin- und Herspringen)
+    if (this.autoX || this.autoY) { const cur = score(this.autoX, this.autoY); if (cur >= bs * 0.75) { bx = this.autoX; by = this.autoY; bs = cur; } }
+    // Schwerpunkt der Einheiten dort
+    let sx = 0, sy = 0, n = 0;
+    for (const [ux, uy, k] of units) if (Math.hypot(ux - bx, uy - by) < R) { sx += ux * k; sy += uy * k; n += k; }
+    return n ? [sx / n, sy / n] : [bx, by];
+  }
+
+  private openTac(): void {
+    if (this.choosing || this.endT >= 0) return;
+    this.tac = true;
+    this.releaseSticks();
+    this.orderDrag = null;
+    sfx.tap();
+  }
+
+  /** Taktische Karte: Lage der Karte im Bild und die Tasten darunter */
+  private get tacLayout(): { x0: number; y0: number; sc: number; btns: [string, string, number, number, number, number][] } {
+    const btns: [string, string, number, number, number, number][] = [];
+    const m = 14, bh = 34, rows = this.wings.length ? 2 : 1;
+    const bottom = this.h - 18 - rows * (bh + 8);
+    if (this.wings.length) {
+      const bw = (this.w - m * 2 - 3 * 6) / 4;
+      WING_DIRS.forEach(([o], i) => btns.push([o, o === 'angriff' ? 'Angriff' : o === 'struktur' ? 'Strukturen' : o === 'schutz' ? 'Schutz' : this.ship.bays ? 'Landen' : 'Sammeln', m + i * (bw + 6), this.h - 18 - 2 * bh - 8, bw, bh]));
+    }
+    btns.push(['zu', 'Zurück zum Kampf', m, this.h - 18 - bh, this.w - m * 2, bh]);
+    const top = TOP + 44, avW = this.w - m * 2, avH = bottom - top - 26;
+    const sc = Math.min(avW / this.WW, avH / this.WH);
+    return { x0: m + (avW - this.WW * sc) / 2, y0: top + (avH - this.WH * sc) / 2, sc, btns };
+  }
+
+  /** Taktische Karte angetippt: Taste, Gegner (Staffel greift ihn an), Begleiter (folgen) oder freie Stelle (hinsehen) */
+  private tacTap(x: number, y: number): void {
+    const L = this.tacLayout;
+    for (const [k, , bx, by, bw, bh] of L.btns) {
+      if (x < bx || x > bx + bw || y < by || y > by + bh) continue;
+      if (k === 'zu') { this.tac = false; sfx.tap(); }
+      else { this.wingFocus = null; this.setWingOrder(k as WingOrder); }
+      return;
+    }
+    const wx = (x - L.x0) / L.sc, wy = (y - L.y0) / L.sc;
+    if (wx < -60 || wy < -60 || wx > this.WW + 60 || wy > this.WH + 60) return;
+    const o = this.objectAt(wx, wy, 24, L.sc);
+    if (o && o !== 'p' && !('state' in o)) {
+      if (this.wings.some((w) => w.state === 'fly' || w.state === 'dock' || w.state === 'out')) {
+        // Ziel für die ganze Staffel
+        this.wingFocus = o;
+        for (const w of this.wings) if (w.state === 'fly') { w.tgt = o; w.tgtT = 0; w.phase = 'run'; w.phT = 0; }
+        if (this.orders.w !== 'angriff' && this.orders.w !== 'struktur') this.setWingOrder('angriff');
+        this.markT = 0;
+        this.floats.add(o.x, o.y - o.r - 20, `Staffel greift an: ${o.nest ? 'Nest' : o.plat ? 'Turmplattform' : SPEC[o.kind].name}`, '#ffd27a', 13);
+        sfx.tick();
+        vibrate(15);
+        return;
+      }
+    }
+    // sonst: Karte schließen und dorthin sehen (Begleiter oder Gegner: ihm folgen; eigenes Schiff: normale Kamera)
+    this.tac = false;
+    if (o === 'p') { this.setCamMode('schiff'); return; }
+    if (this.camMode === 'schiff') this.setCamMode('frei');
+    else if (this.camMode === 'auto') this.camMode = 'frei';
+    this.camFX = clamp(wx, 0, this.WW); this.camFY = clamp(wy, 0, this.WH);
+    this.camFollow = o;
+  }
+
+  /** Taktische Karte: ganze Karte mit allen Einheiten, Bildausschnitt, Staffelbefehle */
+  private drawTac(ctx: CanvasRenderingContext2D): void {
+    const L = this.tacLayout, { x0, y0, sc } = L, P = (x: number, y: number): [number, number] => [x0 + x * sc, y0 + y * sc];
+    ctx.save();
+    ctx.fillStyle = 'rgba(3,9,14,0.9)';
+    ctx.fillRect(0, TOP - 4, this.w, this.h - TOP + 4);
+    ctx.font = '600 12px "Chakra Petch", Barlow, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e4f3f0';
+    ctx.fillText('TAKTISCHE KARTE', 14, TOP + 18);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffb547';
+    ctx.fillText('ZEITLUPE ¼', this.w - 14, TOP + 18);
+    ctx.textAlign = 'left';
+    ctx.font = '500 11px Barlow, sans-serif';
+    ctx.fillStyle = 'rgba(169,195,198,0.85)';
+    ctx.fillText(this.wings.length ? 'Gegner antippen: Staffel greift ihn an · sonst: dorthin sehen' : 'Antippen: dorthin sehen bzw. folgen', 14, TOP + 34);
+    // Karte, Raster alle 1 000
+    ctx.fillStyle = 'rgba(10,26,34,0.85)';
+    ctx.fillRect(x0, y0, this.WW * sc, this.WH * sc);
+    ctx.strokeStyle = 'rgba(110,220,205,0.08)';
+    ctx.lineWidth = 1;
+    for (let gx = 1000; gx < this.WW; gx += 1000) { ctx.beginPath(); ctx.moveTo(x0 + gx * sc, y0); ctx.lineTo(x0 + gx * sc, y0 + this.WH * sc); ctx.stroke(); }
+    for (let gy = 1000; gy < this.WH; gy += 1000) { ctx.beginPath(); ctx.moveTo(x0, y0 + gy * sc); ctx.lineTo(x0 + this.WW * sc, y0 + gy * sc); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(110,220,205,0.35)';
+    ctx.strokeRect(x0 + 0.5, y0 + 0.5, this.WW * sc - 1, this.WH * sc - 1);
+    // Bildausschnitt der Kamera
+    ctx.strokeStyle = 'rgba(228,243,240,0.45)';
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(x0 + this.camX * sc, y0 + (this.camY + TOP / this.zoom) * sc, (this.w / this.zoom) * sc, ((this.h - TOP) / this.zoom) * sc);
+    ctx.setLineDash([]);
+    const dot = (x: number, y: number, r: number, col: string, square = false) => {
+      const [px, py] = P(x, y);
+      ctx.fillStyle = col;
+      if (square) ctx.fillRect(px - r, py - r, r * 2, r * 2);
+      else { ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); }
+    };
+    for (const k of this.rocks) dot(k.x, k.y, 1.5, 'rgba(168,154,138,0.5)');
+    for (const c of this.crates) if (!c.done) dot(c.x, c.y, 2, c.tow ? '#9ffff0' : '#ffd27a', true);
+    if (this.gateT >= 0 || this.mission === 'ueberfall') dot(this.gateX, this.gateCy, 5, 'rgba(159,230,255,0.7)');
+    for (const w of this.liveWards) {
+      const [px, py] = P(this.wx(w), this.wy(w));
+      ctx.strokeStyle = 'rgba(95,240,216,0.3)';
+      ctx.beginPath(); ctx.arc(px, py, 300 * sc, 0, Math.PI * 2); ctx.stroke();
+      dot(this.wx(w), this.wy(w), w.kind === 'station' ? 5 : 3.5, w.kind === 'berger' ? '#6be38f' : '#5ff0d8', w.kind === 'station');
+    }
+    for (const e of this.enemies) {
+      if (e.parent) continue;
+      const big = e.kind === 'boss' || e.kind === 'cargo';
+      dot(e.x, e.y, big ? Math.max(4, e.r * sc) : isStructure(e) ? 2.6 : 2, e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, isStructure(e) && !big);
+    }
+    // Ziel der Staffel
+    const f = this.wingFocus;
+    if (f && this.enemies.includes(f)) {
+      const [px, py] = P(f.x, f.y), r = Math.max(8, f.r * sc + 5);
+      ctx.strokeStyle = '#ffd27a';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.stroke();
+    }
+    // Staffel als kleine Pfeile
+    ctx.fillStyle = '#9fe6ff';
+    for (const w of this.wings) {
+      if (w.state !== 'fly' && w.state !== 'home') continue;
+      const [px, py] = P(w.x, w.y);
+      ctx.save(); ctx.translate(px, py); ctx.rotate(w.a);
+      ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-3, 2.6); ctx.lineTo(-3, -2.6); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // eigenes Schiff: Träger als Umriss in voller Länge, sonst Pfeil
+    if (this.outcome !== 'player') {
+      const [px, py] = P(this.px, this.py);
+      ctx.save(); ctx.translate(px, py); ctx.rotate(this.aimA);
+      ctx.fillStyle = '#ffffff';
+      if (this.ship.aspect) {
+        // Träger als halbdurchsichtiger Umriss mit Bugspitze (verdeckt nichts darunter)
+        const l = Math.max(8, this.ship.size * sc), b = Math.max(3, l * this.ship.aspect);
+        ctx.beginPath(); ctx.moveTo(l / 2, 0); ctx.lineTo(l * 0.3, -b / 2); ctx.lineTo(-l / 2, -b / 2); ctx.lineTo(-l / 2, b / 2); ctx.lineTo(l * 0.3, b / 2); ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.2; ctx.stroke();
+      }
+      else { ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, 4); ctx.lineTo(-4, -4); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+    }
+    // Tasten
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const [k, label, bx, by, bw, bh] of L.btns) {
+      const on = k === this.orders.w;
+      ctx.fillStyle = on ? 'rgba(255,181,71,0.9)' : 'rgba(10,30,40,0.95)';
+      ctx.strokeStyle = k === 'zu' ? 'rgba(110,220,205,0.6)' : 'rgba(127,216,255,0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = on ? '#1a1206' : '#e4f3f0';
+      ctx.font = `600 ${bw < 90 ? 11 : 13}px "Chakra Petch", Barlow, sans-serif`;
+      ctx.fillText(label, bx + bw / 2, by + bh / 2 + 0.5);
+    }
+    ctx.restore();
+  }
+
   /** PC-Steuerung einschalten (Hinweis zur Belegung erscheint dann einige Sekunden) */
   private usePc(): void {
     if (!this.pc) { this.pc = true; this.pcT = 0; this.joy = null; this.aim = null; if (this.fireId !== 99) this.fireId = null; }
@@ -1218,7 +1543,8 @@ export class ShooterGame implements MiniGame {
   /** Liegt an dieser Stelle ein Knopf der Oberfläche (Zoom, Raketen, Spezial, Turmbefehle)? */
   private onButton(x: number, y: number): boolean {
     const near = (b: readonly [number, number, number], pad: number) => Math.hypot(x - b[0], y - b[1]) < b[2] + pad;
-    return near(this.btnZoomOut, 8) || near(this.btnZoomIn, 8) || this.onPanTrack(x, y) || near(this.btnMissile, 10) || near(this.btnDash, 10) || this.orderBtns.some(([, ox, oy, orr]) => Math.hypot(x - ox, y - oy) < orr + 8);
+    const [rx, ry, rw, rh] = this.radarRect;
+    return this.tac || (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) || near(this.btnCam, 8) || near(this.btnZoomOut, 8) || near(this.btnZoomIn, 8) || this.onPanTrack(x, y) || near(this.btnMissile, 10) || near(this.btnDash, 10) || this.orderBtns.some(([, ox, oy, orr]) => Math.hypot(x - ox, y - oy) < orr + 8);
   }
 
   /** PC: Maus – zielen mit der Position, Linksklick feuert (gehalten), Rechtsklick Raketen, Mitte Spezialfähigkeit */
@@ -1226,13 +1552,14 @@ export class ShooterGame implements MiniGame {
     this.usePc();
     this.mouseX = x;
     this.mouseY = y;
-    if (kind === 'move') { if (this.orderDrag?.id === MOUSE_ID) this.pointerMove(MOUSE_ID, x, y); return; }
+    if (kind === 'move') { if (this.orderDrag?.id === MOUSE_ID || this.camTouch.has(MOUSE_ID)) this.pointerMove(MOUSE_ID, x, y); return; }
     if (kind === 'up') {
       if (button === 0) this.mouseFire = false;
-      if (this.orderDrag?.id === MOUSE_ID) this.pointerUp(MOUSE_ID);
+      if (this.orderDrag?.id === MOUSE_ID || this.camTouch.has(MOUSE_ID)) this.pointerUp(MOUSE_ID);
       return;
     }
-    if (this.choosing || (button === 0 && this.onButton(x, y))) { this.pointerDown(MOUSE_ID, x, y); return; }
+    // freie Sicht: Maus zieht die Karte
+    if (this.choosing || (button === 0 && (this.onButton(x, y) || this.camMode !== 'schiff'))) { this.pointerDown(MOUSE_ID, x, y); return; }
     if (button === 0) this.mouseFire = true;
     else if (button === 2) this.fireMissiles();
     else if (button === 1) this.doSpecial();
@@ -1246,6 +1573,8 @@ export class ShooterGame implements MiniGame {
     if (repeat) return code === 'Space' || code === 'KeyR';
     if (code === 'Space') { this.usePc(); this.doSpecial(); return true; }
     if (code === 'KeyR') { this.usePc(); this.fireMissiles(); return true; }
+    if (code === 'KeyV') { this.setCamMode(this.camMode === 'schiff' ? 'frei' : this.camMode === 'frei' ? 'auto' : 'schiff'); return true; }
+    if (code === 'KeyM' || code === 'Tab') { if (this.tac) this.tac = false; else this.openTac(); return true; }
     if (code === 'Equal' || code === 'NumpadAdd') { this.setZoom(-1); return true; }
     if (code === 'Minus' || code === 'NumpadSubtract') { this.setZoom(1); return true; }
     return false;
@@ -1269,7 +1598,7 @@ export class ShooterGame implements MiniGame {
     for (const [id, n] of Object.entries(wing) as [ShipId, number][]) for (let i = 0; i < n; i++) {
       const def = SHIPS[id], w = gameGun(weaponGun(WEAPONS.puls, def.gunSize), WEAPONS.puls);
       const max = 100 * def.hull, shMax = 70 * def.shield;
-      const wing: Wing = { id: k, ship: id, def, w, x: this.px, y: this.py, vx: 0, vy: 0, a: this.aimA, hp: max, max, sh: shMax, shMax, cd: 0, mag: w.mag, flash: 0, state: bays ? 'dock' : 'fly', t: 0, bay: bays ? k % bays.length : 0, tgt: null, tgtT: 0, slot: k };
+      const wing: Wing = { id: k, ship: id, def, w, x: this.px, y: this.py, vx: 0, vy: 0, a: this.aimA, hp: max, max, sh: shMax, shMax, cd: 0, mag: w.mag, flash: 0, state: bays ? 'dock' : 'fly', t: 0, bay: bays ? k % bays.length : 0, tgt: null, tgtT: 0, slot: k, phase: 'run', phT: 0, ex: 0, ey: 0, side: k % 2 ? -1 : 1, hitT: 0 };
       if (!bays) { const [fx, fy] = this.slotPos(k); wing.x = fx; wing.y = fy; }
       this.wings.push(wing);
       k++;
@@ -1341,33 +1670,84 @@ export class ShooterGame implements MiniGame {
       }
       // fliegend: beschädigt oder auf Befehl heim (Träger) – sonst kämpfen bzw. Formation halten
       if (carrier && (order === 'landen' || w.hp < w.max * 0.3)) w.state = 'home';
-      let gx: number, gy: number, tgt: Enemy | null = null;
+      let gx = w.x, gy = w.y, tgt: Enemy | null = null, stand: number | null = null;
       if (w.state === 'home') {
         [gx, gy] = this.toWorld(...this.bay(w.bay, 'out'));
         if (Math.hypot(gx - w.x, gy - w.y) < 18) { w.state = 'in'; w.t = 0; continue; }
       } else {
-        // Ziel: nach Befehl (Schutz nur Gegner nahe deinem Schiff), Ziel eine Weile halten
-        if (w.tgt && (!this.enemies.includes(w.tgt) || (w.tgtT += dt) > 6)) { w.tgt = null; w.tgtT = 0; }
-        if (!w.tgt && order !== 'landen') {
+        // Ziel: nach Befehl (Schutz nur Gegner nahe deinem Schiff), Ziel eine Weile halten; ein auf der taktischen Karte
+        // gewähltes Ziel geht vor. Flügelmann (ungerade Nummer) greift das Ziel seines Rottenführers an
+        const focus = this.wingFocus && this.enemies.includes(this.wingFocus) ? this.wingFocus : null;
+        if (!focus) this.wingFocus = null;
+        if (w.tgt && (!this.enemies.includes(w.tgt) || (w.tgtT += dt) > (w.tgt === focus ? 1e9 : 6))) { w.tgt = null; w.tgtT = 0; }
+        const lead = w.id % 2 ? this.wings[w.id - 1] : undefined;
+        const lt0 = w.tgt;
+        if (focus && order !== 'landen' && order !== 'schutz') w.tgt = focus;
+        else if (lead && lead.state === 'fly' && lead.tgt && order !== 'landen') { w.tgt = lead.tgt; w.side = lead.side; }
+        else if (!w.tgt && order !== 'landen') {
           const pick = this.pickTarget(w.x, w.y, order === 'schutz' ? 520 : 1100, order === 'struktur' ? 'struktur' : 'alle');
           if (pick && (order !== 'schutz' || Math.hypot(pick.x - this.px, pick.y - this.py) < this.ship.size * 0.5 + 420)) { w.tgt = pick; w.tgtT = 0; }
         }
+        if (w.tgt !== lt0) { w.phase = 'run'; w.phT = 0; }
         tgt = w.tgt;
         if (tgt) {
-          // Anflug mit Vorhalt; ganz nah seitlich vorbei (kein Rammen)
           const d = Math.hypot(tgt.x - w.x, tgt.y - w.y), lt = d / Math.max(1, w.w.speed);
-          gx = tgt.x + tgt.vx * lt; gy = tgt.y + tgt.vy * lt;
-          if (d < tgt.r + 50) { gx += Math.cos(w.a + 1.3) * 120; gy += Math.sin(w.a + 1.3) * 120; }
+          const lx = tgt.x + tgt.vx * lt, ly = tgt.y + tgt.vy * lt;
+          if (w.def.cls !== 'S') {
+            // Korvette/Fregatte: Abstand halten (zwei Drittel der Reichweite), seitwärts weitergleiten, Bug zum Ziel
+            const Rr = clamp(w.w.range * 0.65, tgt.r + 140, 900), base = Math.atan2(w.y - tgt.y, w.x - tgt.x) + 0.3 * w.side;
+            gx = tgt.x + Math.cos(base) * Rr; gy = tgt.y + Math.sin(base) * Rr;
+            stand = Math.atan2(ly - w.y, lx - w.x);
+          } else {
+            w.phT += dt;
+            const toT = Math.atan2(tgt.y - w.y, tgt.x - w.x), closing = Math.cos(toT - Math.atan2(w.vy, w.vx)) > 0;
+            if (w.phase === 'run') {
+              // Anflug mit Vorhalt; Flügelmann leicht versetzt neben dem Führer
+              gx = lx; gy = ly;
+              if (lead && lead.state === 'fly') { gx += Math.cos(toT + Math.PI / 2 * w.side) * 50; gy += Math.sin(toT + Math.PI / 2 * w.side) * 50; }
+              // nah dran (oder schon vorbei) bzw. unter Beschuss aus der Nähe: durchziehen statt einzukurven
+              if (d < tgt.r + 70 + speed * 0.25 || (d < 260 && !closing && w.phT > 0.6) || (w.hitT > 0 && d < 380)) { w.phase = 'pass'; w.phT = 0; }
+            }
+            if (w.phase === 'pass') {
+              gx = w.x + Math.cos(w.a) * 400; gy = w.y + Math.sin(w.a) * 400;
+              if (w.phT > 0.55) {
+                // Ausholen: schräg weg vom Ziel, 450 bis 750 weit, dann im weiten Bogen wenden
+                const away = w.a + 0.5 * w.side, far = 450 + this.r() * 300;
+                w.ex = clamp(tgt.x + Math.cos(away) * far, 60, this.WW - 60); w.ey = clamp(tgt.y + Math.sin(away) * far, 60, this.WH - 60);
+                w.phase = 'extend'; w.phT = 0;
+              }
+            }
+            if (w.phase === 'extend') {
+              gx = w.ex; gy = w.ey;
+              if (Math.hypot(w.ex - w.x, w.ey - w.y) < 110 || w.phT > 4.5) { w.phase = 'run'; w.phT = 0; if (this.r() < 0.4) w.side = (-w.side) as 1 | -1; }
+            }
+          }
         } else [gx, gy] = this.slotPos(w.slot);
       }
+      w.hitT = Math.max(0, w.hitT - dt);
       const dx = gx - w.x, dy = gy - w.y, dist = Math.hypot(dx, dy);
-      const want = Math.atan2(dy, dx);
-      w.a = wrapA(turnTo(w.a, want, turn * dt));
-      // ohne Ziel in der Formation abbremsen; sonst volle Fahrt in Blickrichtung
-      const sp = tgt || w.state === 'home' ? speed : Math.min(speed, dist * 2.2 + Math.hypot(this.pvx, this.pvy));
-      const k = Math.min(1, dt * 2.5);
-      w.vx += (Math.cos(w.a) * sp - w.vx) * k;
-      w.vy += (Math.sin(w.a) * sp - w.vy) * k;
+      if (stand !== null) {
+        // Abstand halten: Blick zum Ziel, Bewegung unabhängig davon (seitwärts/rückwärts gleiten), am Platz langsam
+        w.a = wrapA(turnTo(w.a, stand, turn * dt));
+        const sp = Math.min(speed * 0.75, dist * 1.6);
+        const k = Math.min(1, dt * 2);
+        w.vx += ((dist > 1 ? dx / dist : 0) * sp - w.vx) * k;
+        w.vy += ((dist > 1 ? dy / dist : 0) * sp - w.vy) * k;
+      } else {
+        const want = Math.atan2(dy, dx);
+        w.a = wrapA(turnTo(w.a, want, turn * dt));
+        // ohne Ziel in der Formation abbremsen; sonst volle Fahrt in Blickrichtung
+        const sp = tgt || w.state === 'home' ? speed : Math.min(speed, dist * 2.2 + Math.hypot(this.pvx, this.pvy));
+        const k = Math.min(1, dt * 2.5);
+        w.vx += (Math.cos(w.a) * sp - w.vx) * k;
+        w.vy += (Math.sin(w.a) * sp - w.vy) * k;
+      }
+      // Abstand zu den anderen Begleitern (kein Verklumpen)
+      for (const o of this.wings) {
+        if (o === w || o.state !== 'fly') continue;
+        const ox = w.x - o.x, oy = w.y - o.y, od = Math.hypot(ox, oy), min = (w.def.size + o.def.size) * 0.55 + 12;
+        if (od > 0.1 && od < min) { w.vx += (ox / od) * (min - od) * dt * 6; w.vy += (oy / od) * (min - od) * dt * 6; }
+      }
       w.x += w.vx * dt; w.y += w.vy * dt;
       // Bordkanonen: feuern, wenn das Ziel vorn liegt
       if (tgt && w.cd <= 0) {
@@ -1460,6 +1840,7 @@ export class ShooterGame implements MiniGame {
     const s = Math.min(w.sh, dmg);
     w.sh -= s; dmg -= s;
     if (s > 0) this.fx.add({ x, y, color: '#7fd8ff', size: 1.6, kind: 'ring', max: 0.25 });
+    w.hitT = 0.7;
     if (dmg > 0) { w.hp -= dmg; w.flash = 0.15; this.fx.burst(x, y, '#ff5a3a', 3, 110, 1, 'spark', 0.22); }
     if (w.hp <= 0) {
       w.state = 'dead';
@@ -2414,6 +2795,8 @@ export class ShooterGame implements MiniGame {
 
   update(dt: number): void {
     if (this.done) return;
+    // taktische Karte: Zeitlupe
+    if (this.tac) { if (this.endT >= 0 || this.choosing) this.tac = false; else dt *= 0.25; }
     this.fx.update(dt);
     this.floats.update(dt);
     this.shake = Math.max(0, this.shake - dt);
@@ -2466,6 +2849,8 @@ export class ShooterGame implements MiniGame {
       this.spawnWave();
     }
     this.updatePlayer(dt);
+    // freie Sicht oder Karte ohne Eingabe: Jäger bremsen ab und halten die Stelle (der Träger behält seinen Kurs)
+    if ((this.camMode !== 'schiff' || this.tac) && !this.joy) { const k = Math.max(0, 1 - dt * 1.2); this.pvx *= k; this.pvy *= k; }
     this.updateEnemies(dt);
     this.updateBlasts(dt);
     this.updateShots(dt);
@@ -2661,6 +3046,22 @@ export class ShooterGame implements MiniGame {
     }
     // camX/camY: Weltpunkt in der linken oberen Bildschirmecke; Bildschirm = (Welt − cam) · Zoom
     const Z = this.zoom, vw = this.w / Z, vh = this.h / Z;
+    if (!toFreighter && this.camMode !== 'schiff') {
+      const f = this.camFollow;
+      if (f && ('state' in f ? f.state === 'dead' || f.state === 'dock' : !this.enemies.includes(f))) this.camFollow = null;
+      if (this.camFollow) {
+        const k = Math.min(1, dt * 4);
+        this.camFX += (this.camFollow.x - this.camFX) * k; this.camFY += (this.camFollow.y - this.camFY) * k;
+      } else if (this.camMode === 'auto' && !this.camTouch.size) {
+        if ((this.autoT -= dt) <= 0) { this.autoT = 1.5; [this.autoX, this.autoY] = this.hotspot(); }
+        const k = Math.min(1, dt * 1.2);
+        this.camFX += (this.autoX - this.camFX) * k; this.camFY += (this.autoY - this.camFY) * k;
+      }
+      this.camFX = clamp(this.camFX, 0, this.WW); this.camFY = clamp(this.camFY, 0, this.WH);
+      this.camX = this.camFX - vw / 2;
+      this.camY = this.camFY - (TOP + (this.h - TOP) * 0.5) / Z;
+      return;
+    }
     // Träger: Kamera längs des Rumpfs verschoben (Schieber rechts) – so lässt sich das ganze Schiff aus der Nähe ansehen
     const pan = !toFreighter && this.ship.aspect ? -this.camPan * this.ship.size * 0.46 : 0;
     const tx = (toFreighter ? this.fx1 : this.px + Math.cos(this.aimA) * pan) - vw / 2;
@@ -2682,7 +3083,7 @@ export class ShooterGame implements MiniGame {
     if (this.pc && j?.id !== 99) {
       // PC: Schiff dreht sich (mit seiner Wendigkeit) zur Maus; W/A/S/D geben Schub aus Sicht des Schiffs
       this.pcT += dt;
-      if (this.mouseX >= 0) {
+      if (this.mouseX >= 0 && this.camMode === 'schiff' && !this.tac) {
         const wx = this.camX + this.mouseX / this.zoom, wy = this.camY + this.mouseY / this.zoom;
         if (Math.hypot(wx - this.px, wy - this.py) > 8) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(wy - this.py, wx - this.px), this.turnRate * dt));
       }
@@ -3968,6 +4369,7 @@ export class ShooterGame implements MiniGame {
     this.drawHullBars(ctx);
     this.drawControls(ctx, t);
     this.drawProgress(ctx);
+    if (this.tac) this.drawTac(ctx);
     if (this.banner > 0) {
       const a = Math.min(1, this.banner * 2) * Math.min(1, (2.4 - this.banner) * 4);
       ctx.save();
@@ -5347,13 +5749,32 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Pfeile am Rand für Gegner (und Frachter) außerhalb des Bildes */
+  /**
+   * Lage eines Randpfeils (bzw. seiner Beschriftung mit halber Breite m): am Bildrand, aber frei von Fortschrittstext
+   * oben links, Radar und Zoom oben rechts, Befehlsknöpfen links und Kameraschieber rechts
+   */
+  private indicatorPos(sx: number, sy: number, m = 0): [number, number] {
+    let x = clamp(sx, 12 + m, this.w - 12 - m);
+    const btns = this.orderBtns;
+    if (btns.length) {
+      const y0 = Math.min(...btns.map(([, , by, r]) => by - r)) - 8, y1 = Math.max(...btns.map(([, , by, r]) => by + r)) + 8;
+      const x1 = Math.max(...btns.map(([, bx, , r]) => bx + r)) + 10;
+      if (sy > y0 && sy < y1) x = Math.max(x, x1 + m);
+    }
+    if (this.ship.aspect) {
+      const t = this.panTrack;
+      if (sy > t.y0 - 22 && sy < t.y1 + 22) x = Math.min(x, t.x - 18 - m);
+    }
+    // oben rechts Radar und Zoom, oben links der Fortschritt
+    const y = clamp(sy, x > this.w - 150 - m ? TOP + 162 : x < this.w * 0.62 ? TOP + 46 : TOP + 12, this.h - 12);
+    return [x, y];
+  }
+
   private drawIndicators(ctx: CanvasRenderingContext2D): void {
     const arrow = (wx: number, wy: number, color: string, size = 6): [number, number] | null => {
       const sx = (wx - this.camX) * this.zoom, sy = (wy - this.camY) * this.zoom;
       if (sx > 0 && sx < this.w && sy > TOP && sy < this.h) return null;
-      const x = clamp(sx, 12, this.w - 12);
-      // nicht unter dem Radar oben rechts
-      const y = clamp(sy, x > this.w - 116 ? TOP + 162 : TOP + 12, this.h - 12);
+      const [x, y] = this.indicatorPos(sx, sy);
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(Math.atan2(sy - y, sx - x));
@@ -5383,7 +5804,7 @@ export class ShooterGame implements MiniGame {
       const L = e.grp != null ? lead.get(e.grp) : undefined;
       if (pos && L && L.e === e && L.d > 220) {
         const eta = Math.max(1, Math.ceil((L.d - 120) / SPEC[e.kind].speed));
-        const tx = clamp(pos[0], 30, this.w - 30), ty = clamp(pos[1] + (pos[1] > this.h - 30 ? -16 : 16), TOP + 10, this.h - 10);
+        const [tx, ty] = this.indicatorPos(pos[0] + (pos[0] < 30 ? 18 : pos[0] > this.w - 30 ? -18 : 0), pos[1] + (pos[1] > this.h - 30 ? -16 : 16), 18);
         ctx.fillStyle = 'rgba(5,14,22,0.8)';
         ctx.fillRect(tx - 17, ty - 8, 34, 16);
         ctx.fillStyle = eta <= 8 ? '#ff9aa4' : '#ffd27a';
@@ -5533,6 +5954,16 @@ export class ShooterGame implements MiniGame {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+    // Hinweis: antippen öffnet die taktische Karte (kleine Ecken unten rechts)
+    const [rx, ry, rw2, rh2] = this.radarRect, ex = rx + rw2 - 4, ey = ry + rh2 - 4;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(159,255,240,0.6)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(ex - 7, ey); ctx.lineTo(ex, ey); ctx.lineTo(ex, ey - 7);
+    ctx.moveTo(ex - 3, ey - 3); ctx.lineTo(ex - 8, ey - 8);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawProgress(ctx: CanvasRenderingContext2D): void {
@@ -5607,7 +6038,7 @@ export class ShooterGame implements MiniGame {
     // beim Aufklappen nur der gehaltene Knopf (die Auswahl liegt sonst über den anderen)
     const shown = this.orderDrag ? btns.filter(([w]) => w === this.orderDrag!.which) : btns;
     for (const [which, x, y, r] of shown) {
-      const isW = which === 'w', cur = this.orderOf(which), open = this.orderDrag?.which === which, small = r < 18;
+      const isW = which === 'w', cur = this.orderOf(which), open = this.orderDrag?.which === which, small = r < 18, tiny = r < 13;
       ctx.fillStyle = open ? 'rgba(20,48,60,0.92)' : isW ? 'rgba(10,40,52,0.85)' : 'rgba(5,14,22,0.78)';
       ctx.strokeStyle = isW ? 'rgba(127,216,255,0.8)' : cur === 'alle' ? 'rgba(110,220,205,0.45)' : 'rgba(255,181,71,0.8)';
       ctx.lineWidth = small ? 1.3 : 1.6;
@@ -5616,7 +6047,7 @@ export class ShooterGame implements MiniGame {
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#e4f3f0';
-      ctx.font = `700 ${small ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
+      ctx.font = `700 ${tiny ? 9 : small ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
       ctx.fillText(this.orderLabel(which), x, y - (small ? 3.5 : 5));
       ctx.fillStyle = isW ? '#9fe6ff' : cur === 'alle' ? 'rgba(169,195,198,0.85)' : '#ffb547';
       ctx.font = `600 ${small ? 7 : 9}px "Chakra Petch", Barlow, sans-serif`;
@@ -5741,7 +6172,7 @@ export class ShooterGame implements MiniGame {
     };
     const j = this.joy;
     if (this.pc) this.drawPcHint(ctx);
-    if (j && j.id !== 99 && !this.pc) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
+    if (j && j.id < 98 && !this.pc) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
     if (this.aim) {
       // mittlerer Ring (gestrichelt): volle Lenkung; Band außen ab dem Feuerring: feuern
       stick(this.aim, AIM_FULL, true, this.fireId !== null ? '#ffb547' : '#3fe0c5', AIM_R);
@@ -5790,6 +6221,21 @@ export class ShooterGame implements MiniGame {
     ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('ZOOM', this.w - 60, TOP + 152);
+    // Kamerataste: Auge; Beschriftung zeigt den Modus
+    {
+      const [cx, cy, cr] = this.btnCam, on = this.camMode !== 'schiff';
+      ctx.fillStyle = on ? 'rgba(40,30,8,0.85)' : 'rgba(5,14,22,0.78)';
+      ctx.strokeStyle = on ? 'rgba(255,181,71,0.85)' : 'rgba(110,220,205,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = on ? '#ffd27a' : '#9ffff0';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.ellipse(cx, cy, 8, 4.6, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = on ? '#ffd27a' : '#9ffff0';
+      ctx.beginPath(); ctx.arc(cx, cy, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = on ? '#ffd27a' : 'rgba(169,195,198,0.7)';
+      ctx.fillText(this.camMode === 'frei' ? (this.camFollow ? 'FOLGEN' : 'FREI') : this.camMode === 'auto' ? 'AUTO' : 'SICHT', cx, TOP + 152);
+    }
     const [fbx, fby, fbr] = this.btnFire;
     if (this.ctrl === 'eins' && !this.pc && this.fireId !== null && this.fireId !== 99) {
       ctx.fillStyle = 'rgba(127,255,240,0.25)';
