@@ -304,6 +304,67 @@ export const SHIPS: Record<ShipId, ShipDef> = {
 };
 export const SHIP_IDS = Object.keys(SHIPS) as ShipId[];
 
+// ---- Größenmaßstab der Schiffe im Kampf-Minispiel ----
+/**
+ * Schiffslängen aus X4 5.00 in Metern (Tabelle „X4 5.00 Ship Lengths“, im Spiel gemessen). Wolf: eigener Entwurf, wie
+ * Balaur angenommen; Argon-Jäger: wie der Argon-S-Jäger Elite.
+ */
+export const X4_LENGTH: Record<ShipId, number> = {
+  jaguar: 25.8, mamba: 32.0, asp: 26.9, balaur: 30.7, chimera: 31.2, wolf: 30.7, argon: 21.7,
+  dragon: 149.2, cobra: 147.7, klapperschlange: 906.4, raptor: 3191,
+};
+/** Sichtbare Rumpflänge im bisherigen Maßstab (Spielpunkte; gemessen mit scripts/size-sheet.mjs) */
+const VIS_BEFORE: Record<ShipId, number> = {
+  jaguar: 28, mamba: 38, asp: 33, balaur: 41, chimera: 41, wolf: 45, argon: 37, dragon: 69, cobra: 80, klapperschlange: 195, raptor: 1185,
+};
+/**
+ * Maßstab: x4 – durchgehend echtes X4-Verhältnis, Mamba wie bisher (38 Punkte, 32 m); gestaucht – S-Jäger wie bisher
+ * mit echten Verhältnissen untereinander, ab der Cobra (80) echtes Verhältnis, dazwischen stufenlos; bisher – alte Größen
+ */
+export type SizeScale = 'x4' | 'gestaucht' | 'bisher';
+const SCALE_KEY = 'x4-sektorbau-massstab';
+/** Sichtbare Länge (Spielpunkte) eines Schiffs mit dieser X4-Länge im Maßstab */
+export function scaledLength(m: number, scale: SizeScale): number {
+  const s = 38 / 32.0;
+  if (scale === 'x4') return m * s;
+  const at35 = 35 * s, cobra = 80;
+  if (m <= 35) return m * s;
+  if (m <= 147.7) return at35 + ((m - 35) / (147.7 - 35)) * (cobra - at35);
+  return m * (cobra / 147.7);
+}
+/** Grundwerte der Schiffe (bisheriger Maßstab), aus denen jeder Maßstab abgeleitet wird */
+const SHIP_BASE: Record<string, ShipDef> = JSON.parse(JSON.stringify(SHIPS));
+/** Lagen und Größen eines Schiffs mit Faktor k skalieren (Anteile wie turretD und lMounts bleiben) */
+function scaleShip(b: ShipDef, k: number): ShipDef {
+  const pt = (p: [number, number]): [number, number] => [Math.round(p[0] * k * 10) / 10, Math.round(p[1] * k * 10) / 10];
+  // Jäger mit Zeichengröße 40 zeichnet das Spiel etwas kleiner (SPRITE_SIZE · 0,86 = 39,6): bei k = 1 unverändert lassen
+  const size = Math.abs(k - 1) < 1e-6 ? b.size : Math.round(b.size * k * 10) / 10;
+  return {
+    ...b, size, r: Math.round(b.r * k * 10) / 10,
+    guns: b.guns.map((g) => Math.round(g * k * 10) / 10),
+    turrets: b.turrets.map(pt),
+    launcherPos: b.launcherPos?.map((g) => Math.round(g * k * 10) / 10),
+    bays: b.bays?.map((bay) => ({ out: pt(bay.out), deck: pt(bay.deck), in: pt(bay.in) })),
+  };
+}
+let scaleNow: SizeScale = 'bisher';
+/** Gewählter Maßstab (gemerkt im Browser); Standard: echtes X4-Verhältnis */
+export function sizeScale(): SizeScale { return scaleNow; }
+/** Maßstab setzen: alle Schiffe in SHIPS werden aus den Grundwerten neu berechnet */
+export function setSizeScale(scale: SizeScale, remember = true): void {
+  scaleNow = scale;
+  for (const id of SHIP_IDS) {
+    const k = scale === 'bisher' ? 1 : scaledLength(X4_LENGTH[id], scale) / VIS_BEFORE[id];
+    Object.assign(SHIPS[id], scaleShip(SHIP_BASE[id], k));
+  }
+  if (remember) try { globalThis.localStorage?.setItem(SCALE_KEY, scale); } catch { /* Speicher nicht verfügbar */ }
+}
+{
+  let saved: string | null = null;
+  try { saved = globalThis.localStorage?.getItem(SCALE_KEY) ?? null; } catch { /* Speicher nicht verfügbar */ }
+  setSizeScale(saved === 'gestaucht' || saved === 'bisher' || saved === 'x4' ? saved : 'x4', false);
+}
+
 /**
  * X4-Werte einer Waffe (Mk1, Spieldaten 9.0): Schaden je Geschoss, Schüsse pro Sekunde, Geschosse je Schuss,
  * Salve bzw. Magazin (Schüsse, 0 = Dauerfeuer) und Pause danach (s), Geschosstempo (m/s), Flugzeit (s),

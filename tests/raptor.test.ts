@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LOADOUT, LTURRETS, SHIPS, TURRETS, turretOf } from '../src/minigames/loadout';
+import { DEFAULT_LOADOUT, LTURRETS, SHIPS, TURRETS, setSizeScale, turretOf } from '../src/minigames/loadout';
+
+// Lagen der Türme in Bildpunkten des alten Maßstabs
+setSizeScale('bisher', false);
 
 describe('Träger Raptor im Kampf-Minispiel', () => {
   const d = SHIPS.raptor;

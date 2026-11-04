@@ -13,7 +13,7 @@ import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, sp
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { modState } from '../minigames/mods';
 import { musicFx } from '../audio/rhythm';
-import { SHIPS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS } from '../minigames/loadout';
+import { SHIPS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, sizeScale } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1928,6 +1928,8 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <p class="small muted" style="margin:6px 0 0">Am PC schaltet sich die Maus-und-Tastatur-Steuerung von selbst ein: Das Schiff dreht sich zur Maus, W/A/S/D (oder Pfeiltasten) fliegen vorwärts, rückwärts und seitwärts, Linksklick feuert, Rechtsklick oder R Raketen, Leertaste Spezialfähigkeit, Mausrad Zoom.</p></div>
         <div class="section"><h3>Anzeige über den Gegnern</h3><div class="segment">${ENEMY_BAR_STEPS.map((v, i) => `<button class="${enemyBars() === v ? 'on' : ''}" ${act('mg-bars', { v: String(v) })}>${['Aus', 'Dezent', 'Mittel', 'Deutlich'][i]}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Zwei feine Linien über jedem Gegner: oben der Schild (hellblau, lädt nach 3 s ohne Treffer wieder auf), darunter die Hülle. Unbeschädigte Gegner noch blasser.</p></div>
+        <div class="section"><h3>Größenverhältnis</h3><div class="segment">${(['x4', 'gestaucht', 'bisher'] as const).map((k) => `<button class="${sizeScale() === k ? 'on' : ''}" ${act('mg-scale', { scale: k })}>${k === 'x4' ? 'Wie in X4' : k === 'gestaucht' ? 'Gestaucht' : 'Bisher'}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">${sizeScale() === 'x4' ? 'Längen wie in X4, Mamba (32 m) als Maß: Cobra und Dragon knapp sechsmal so lang wie ein Jäger, Klapperschlange 1 076, Raptor 3 790 Punkte.' : sizeScale() === 'gestaucht' ? 'Jäger und Korvetten wie in X4, große Schiffe zusammengeschoben, damit sie noch auf den Bildschirm passen.' : 'Die alten Größen von vor dem Abgleich mit X4.'} Gilt nur für den Kampfmodus, nicht für die Sektorkarte.</p></div>
         ${tuneSection(m.level)}
         <div class="section"><h3>Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;

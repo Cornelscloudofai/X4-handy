@@ -244,7 +244,12 @@ const SHOT_V: Partial<Record<EKind, number>> = { jaeger: 300, kanone: 240, n: 34
 /** Bis zu dieser Entfernung lassen sich Gegner vom Jäger abfangen (danach kämpfen sie mit ihm statt mit dem Frachter) */
 const AGGRO = 380;
 /** Karte: Breite, Länge je Streckenabschnitt, Rand oben/unten */
-const MAP_W = 2600, LEG = 900, MAP_PAD = 520;
+/**
+ * Kampfkarte: Breite (bisher 2 600, jetzt deutlich größer) und Abstand der Route zum Rand; LEG ist die Strecke, die
+ * der Frachter je Welle fliegt (bleibt, damit Einsätze nicht länger dauern). Sehr lange Schiffe (Träger im X4-Maßstab)
+ * bekommen eine noch größere Karte: mindestens 2,2-mal ihre Länge.
+ */
+const MAP_W = 6500, LEG = 900, MAP_PAD = 520;
 /** Frachter-Tempo auf seiner Route */
 const F_SPEED = 24;
 /** Hülle eines Frachters, der Station (Einsatz „Station verteidigen“) und Abstand der Konvoi-Frachter quer zur Route */
@@ -470,7 +475,7 @@ const CARDS: Card[] = [
 
 
 /** Zoomstufen des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick); per Taste wählbar, wird gemerkt */
-const ZOOMS = [1.2, 0.95, 0.72, 0.58, 0.46, 0.36, 0.27, 0.2];
+const ZOOMS = [1.2, 0.95, 0.72, 0.58, 0.46, 0.36, 0.27, 0.2, 0.15, 0.11, 0.08, 0.06];
 const ZOOM_KEY = 'x4-sektorbau-kampfzoom';
 function readZoom(): number {
   try {
@@ -941,19 +946,21 @@ export class ShooterGame implements MiniGame {
       kind: 'frachter', name, ox, oy, hull: F_MAX, max: F_MAX, flash: 0, dead: false, ph,
       tur: [{ ox: 0, oy: -30, cd: 0, a: -Math.PI / 2, hp: 1, max: 1 }, { ox: 0, oy: 34, cd: 0.3, a: Math.PI / 2, hp: 1, max: 1 }],
     });
-    this.WW = MAP_W;
+    this.WW = Math.max(MAP_W, Math.round(this.ship.size * 2.2));
+    // Rand oben und unten: mit großer Karte entsprechend mehr Platz (lange Schiffe ragen sonst über den Rand)
+    const pad = MAP_PAD + Math.max(0, (this.WW - 2600) * 0.25);
     if (m === 'geleit' || m === 'konvoi') {
       // der Frachter (bzw. der Konvoi) fliegt von unten nach oben zum Tor
-      this.WH = MAP_PAD * 2 + LEG * (this.mode === 'endless' ? 5 : this.nWaves);
+      this.WH = pad * 2 + LEG * (this.mode === 'endless' ? 5 : this.nWaves);
       this.fX = this.WW / 2;
-      this.fY = this.fGoal = this.WH - MAP_PAD;
+      this.fY = this.fGoal = this.WH - pad;
       this.wards = m === 'konvoi' ? [frachter(-KONVOI_GAP, 0, 0, 'West'), frachter(0, 50, 2.1, 'Mitte'), frachter(KONVOI_GAP, 0, 4.2, 'Ost')] : [frachter(0)];
       this.px = this.fX;
       this.py = this.fY + 120;
       return;
     }
     // die übrigen Einsätze auf einer quadratischen Karte
-    this.WH = MAP_W;
+    this.WH = this.WW;
     this.fX = this.WW / 2;
     this.fY = this.fGoal = this.WH / 2;
     this.px = this.fX;
@@ -971,20 +978,22 @@ export class ShooterGame implements MiniGame {
       w.hull = w.max * 0.75;
       this.wards = [w];
     } else if (m === 'bergung') {
-      this.fY = this.fGoal = this.WH - 620;
+      // Bergungsschiff etwas unterhalb der Mitte, das Wrackfeld 930 darüber (wie auf der alten Karte)
+      this.fY = this.fGoal = this.WH / 2 + 680;
       this.wards = [{ ...frachter(0), kind: 'berger', name: 'Bergungsschiff', hull: BERGER_MAX, max: BERGER_MAX }];
       this.py = this.fY - 160;
       this.spawnWreckField();
     } else if (m === 'nest') {
       // Nest oben in der Mitte, du kommst von unten
-      this.fY = this.fGoal = 640;
-      this.py = this.WH - 380;
+      // Nest oben, du kommst von unten – Abstand wie auf der alten Karte (1 580), damit der Anflug nicht ewig dauert
+      this.fY = this.fGoal = 640 + Math.max(0, (this.WW - 2600) * 0.25);
+      this.py = Math.min(this.WH - 380, this.fY + 1580 + this.ship.size * 0.5);
     } else if (m === 'ueberfall') {
       // der Konvoi startet unten und fliegt zum Tor oben; du startest seitlich vor ihm
-      this.WH = MAP_PAD * 2 + 2500;
-      this.fY = this.fGoal = this.WH - MAP_PAD;
+      this.WH = pad * 2 + 2500;
+      this.fY = this.fGoal = this.WH - pad;
       this.gateX = this.fX;
-      this.gateY = MAP_PAD - 120;
+      this.gateY = pad - 120;
       this.gateT = 0;
       this.px = this.fX - 700;
       this.py = this.fY - 1100;
@@ -2119,10 +2128,10 @@ export class ShooterGame implements MiniGame {
 
   /** Wrackfeld mit Containern zwischen den Wracks (Bergung) */
   private spawnWreckField(): void {
-    const cx = this.fX, cy = 1050;
+    const cx = this.fX, cy = this.fY - 930;
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + this.r() * 0.6, d = 180 + this.r() * 620;
-      this.wrecks.push({ x: clamp(cx + Math.cos(a) * d * 1.3, 140, this.WW - 140), y: clamp(cy + Math.sin(a) * d * 0.75, 160, this.WH - 900), rot: this.r() * Math.PI * 2, size: 90 + this.r() * 90 });
+      this.wrecks.push({ x: clamp(cx + Math.cos(a) * d * 1.3, 140, this.WW - 140), y: clamp(cy + Math.sin(a) * d * 0.75, 160, this.fY - 280), rot: this.r() * Math.PI * 2, size: 90 + this.r() * 90 });
     }
     for (let i = 0; i < CRATES; i++) {
       let x = 0, y = 0;
@@ -2246,7 +2255,8 @@ export class ShooterGame implements MiniGame {
     if (this.side === 'pirate') return;
     const kh = this.side === 'khaak';
     if (this.mission === 'bergung') {
-      this.spawnPlats([[700, 780, kh ? 'dreifach' : 'xgatling'], [1900, 780, kh ? 'zwilling' : 'xzwilling'], [1300, 430, kh ? 'lanze' : 'xlaser']]);
+      const x = this.fX, y = this.fY - 1200;
+      this.spawnPlats([[x - 600, y, kh ? 'dreifach' : 'xgatling'], [x + 600, y, kh ? 'zwilling' : 'xzwilling'], [x, y - 350, kh ? 'lanze' : 'xlaser']]);
     } else if (this.mission === 'flucht') {
       const x = this.fX, y = this.fY;
       this.spawnPlats([[x - 430, y - 260, kh ? 'dreifach' : 'xgatling'], [x + 430, y - 260, kh ? 'zwilling' : 'xzwilling'], [x, y - 560, kh ? 'strahl' : 'xlaser']]);

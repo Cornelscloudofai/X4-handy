@@ -9,7 +9,10 @@ import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame, clusterLayout, clusterSlots, jaegerClusters, khaakClusters } from '../src/minigames/shooter';
 import { turretArtName } from '../src/render/shipArt';
-import { SHIPS, SHIP_IDS, TURRET_IDS, WEAPON_IDS, type Loadout } from '../src/minigames/loadout';
+import { SHIPS, SHIP_IDS, TURRET_IDS, WEAPON_IDS, setSizeScale, type Loadout } from '../src/minigames/loadout';
+
+// Lagen und Maße in diesen Tests beziehen sich auf die alten Größen (vor dem X4-Maßstab)
+setSizeScale('bisher', false);
 import { Score, pickGoals, rng, type GameResult, type Level, type MiniGame, type Mode } from '../src/minigames/common';
 import { recordResult, resetRecords, totalStars, unlocked, badgeCount } from '../src/minigames/records';
 

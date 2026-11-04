@@ -43,7 +43,7 @@ import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutVi
 import { tuneFromSlider } from '../minigames/tunePanel';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
-import { SHIPS, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
+import { SHIPS, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode, Place } from '../minigames/common';
 import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
@@ -1414,6 +1414,11 @@ function onClick(e: MouseEvent): void {
       }
       case 'mg-tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
+        refresh();
+        break;
+      }
+      case 'mg-scale': {
+        setSizeScale(d.scale as SizeScale);
         refresh();
         break;
       }
