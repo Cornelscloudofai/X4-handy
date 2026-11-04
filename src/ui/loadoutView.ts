@@ -190,7 +190,7 @@ export function loadoutView(m: LoModal): string {
       const def = (id: string) => (gr.kind === 'L' ? LTURRETS[id as keyof typeof LTURRETS] : TURRETS[id as keyof typeof TURRETS]);
       return `<div class="hgr-grp"><div class="hgr-grp-h"><b>${esc(gr.name)}</b><small>${n} × ${gr.kind} · ${num(n * sustainedDps(def(cur).gun, def(cur).beam))}/s</small></div>
         <div class="hgr-chips">${ids.map((id) => `<button class="hgr-chip ${id === cur ? 'on' : ''}" style="--c:${def(id).color}" ${act('loadout-group', { g: gi, value: id })}>${esc(def(id).name.replace(/^Schwerer /, '').replace(/-?[Tt]urm$/, ''))}</button>`).join('')}</div></div>`;
-    }).join('')}</div><div class="hgr-desc">Pulstürme schwenken schnell und holen Raketen und Jäger herunter, Plasma- und Bosonentürme knacken große Ziele. Die Turmbefehle (M, L) im Kampf gelten weiter für alle Türme ihrer Größe.</div>`;
+    }).join('')}</div><div class="hgr-desc">Pulstürme schwenken schnell und holen Raketen und Jäger herunter, Plasma- und Bosonentürme knacken große Ziele. Im Kampf hat jede Gruppe links einen eigenen kleinen Befehlsknopf (M1 … M8 vom Bug zum Heck, L1 … L3): wischen wählt das Ziel – alle, S, M, L oder Strukturen (Türme, Bauteile, Brutstätten).</div>`;
   } else if (view === 'turret') {
     const n = ship.turrets.length, curDps = n * sustainedDps(td.gun, td.beam);
     title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;

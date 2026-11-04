@@ -841,9 +841,9 @@ describe('Kampf', () => {
     const g = new ShooterGame({ ...cfg(1, 3), controls: 'zwei' }, 'xenon');
     g.resize(W, H);
     const a = g as unknown as { pvx: number; pvy: number; aimA: number; fireId: number | null; bullets: { from: string }[] };
-    // rechter Stick nach oben weit ausgelenkt: Blick nach oben, Bordkanonen feuern
+    // rechter Stick nach oben bis über den Feuerring ausgelenkt: Blick nach oben, Bordkanonen feuern
     g.pointerDown(1, W * 0.8, H * 0.6);
-    g.pointerMove(1, W * 0.8, H * 0.6 - 70);
+    g.pointerMove(1, W * 0.8, H * 0.6 - 102);
     // linker Stick nach unten: Schub rückwärts, der Jäger blickt weiter nach oben
     g.pointerDown(2, W * 0.2, H * 0.6);
     g.pointerMove(2, W * 0.2, H * 0.6 + 70);
@@ -859,6 +859,26 @@ describe('Kampf', () => {
     for (let i = 0; i < 30; i++) g.update(DT);
     expect(a.pvy).toBeGreaterThan(v0 * 0.6);
     expect(a.fireId).toBeNull();
+  });
+
+  it('Zwei Sticks: rechter Stick lenkt stufenlos, voll am mittleren Ring ohne zu feuern, erst außen feuern', () => {
+    const turned = (px: number) => {
+      const g = new ShooterGame({ ...cfg(1, 3), controls: 'zwei' }, 'xenon');
+      g.resize(W, H);
+      const a = g as unknown as { aimA: number; fireId: number | null };
+      a.aimA = -Math.PI / 2;
+      // nach rechts auslenken: Drehung im Uhrzeigersinn, je weiter desto schneller
+      g.pointerDown(1, W * 0.8, H * 0.6);
+      g.pointerMove(1, W * 0.8 + px, H * 0.6);
+      for (let i = 0; i < 6; i++) g.update(DT);
+      return { d: a.aimA + Math.PI / 2, fire: a.fireId };
+    };
+    const small = turned(25), full = turned(80), edge = turned(105);
+    expect(small.d).toBeGreaterThan(0);
+    expect(full.d).toBeGreaterThan(small.d * 2);
+    expect(full.fire).toBeNull();
+    expect(edge.fire).toBe(1);
+    expect(Math.abs(edge.d - full.d)).toBeLessThan(full.d * 0.05);
   });
 
   it('Klapperschlange: L-Türme schwenken nur in ihrem Bereich, auch spitz nach vorn über den Bug', () => {
@@ -1034,6 +1054,53 @@ describe('Turmbefehle', () => {
     // Türme zeigen nach links (zum Boot), nicht nach rechts (zum Jäger)
     expect(a.pTur.every((t) => Math.cos(t.a) < -0.5)).toBe(true);
     g.setOrder('m', 'alle');
+  });
+
+  it('„Strukturen“: Türme nehmen zuerst einen Geschützturm, auch wenn ein Jäger näher ist; Wischen schräg nach oben', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'cobra', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
+    g.resize(W, H);
+    const a = g as unknown as { px: number; py: number; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; pTur: { a: number }[]; orders: { m: string }; orderBtns: [string, number, number, number][] };
+    for (let i = 0; i < 2000 && a.enemies.length < 2; i++) g.update(DT);
+    const [e1, e2] = a.enemies;
+    e1.kind = 'jaeger'; e2.kind = 'turret';
+    const [, bx, by] = a.orderBtns[0];
+    g.pointerDown(7, bx, by);
+    g.pointerMove(7, bx + 40, by - 40);
+    g.pointerUp(7);
+    expect(a.orders.m).toBe('struktur');
+    for (let i = 0; i < 90; i++) {
+      Object.assign(e1, { x: a.px + 120, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
+      Object.assign(e2, { x: a.px - 200, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
+      a.enemies.length = 0; a.enemies.push(e1, e2);
+      g.update(DT);
+    }
+    expect(a.pTur.every((t) => Math.cos(t.a) < -0.5)).toBe(true);
+    g.setOrder('m', 'alle');
+  });
+
+  it('Träger: je Feuergruppe ein eigener Befehlsknopf; jede Gruppe folgt ihrem Befehl', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'raptor', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
+    g.resize(W, H);
+    const a = g as unknown as { px: number; py: number; aimA: number; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; pTur: { a: number; g?: number }[]; orders: { g: string[] }; orderBtns: [string, number, number, number][] };
+    expect(a.orderBtns.map(([k]) => k)).toEqual(['g0', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g9', 'g10']);
+    for (let i = 0; i < 3000 && a.enemies.length < 2; i++) g.update(DT);
+    const [e1, e2] = a.enemies;
+    e1.kind = 'jaeger'; e2.kind = 'kanone';
+    // Bug-Cluster (g0): M-Schiffe zuerst; die anderen alle
+    g.setOrder('g0', 'M');
+    for (let k = 1; k < 11; k++) g.setOrder(`g${k}`, 'alle');
+    a.aimA = -Math.PI / 2;
+    for (let i = 0; i < 120; i++) {
+      // Jäger nah rechts am Bug, Boot weiter links am Bug
+      Object.assign(e1, { x: a.px + 120, y: a.py - 520, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
+      Object.assign(e2, { x: a.px - 260, y: a.py - 520, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
+      a.enemies.length = 0; a.enemies.push(e1, e2);
+      g.update(DT);
+    }
+    const bow = a.pTur.filter((t) => t.g === 0);
+    expect(bow.every((t) => Math.cos(t.a) < -0.3)).toBe(true);
+    expect(a.orders.g[0]).toBe('M');
+    g.setOrder('g0', 'alle');
   });
 });
 

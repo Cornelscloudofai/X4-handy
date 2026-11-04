@@ -104,6 +104,33 @@ if (!fxHit.blue || !fxHit.red) fail('Treffereffekte fehlen: ' + JSON.stringify(f
 // Großschiff: mehr Gegner, mehr Angreifer zugleich
 const foes = await page.evaluate(() => { const g = window.__mg.game; return { big: g.big, foeCount: g.foeCount, attackCap: g.attackCap, cap: g.fieldCap, speed: g.ship.speed, turn: g.ship.turn }; });
 if (!(foes.big > 1 && foes.foeCount > 3.6 && foes.attackCap > 6 && foes.cap > 56)) fail('Großschiff: nicht mehr Gegner: ' + JSON.stringify(foes));
+// Feuergruppen: elf kleine Befehlsknöpfe links; M4 (Mittelrumpf) per Wischen schräg nach oben auf „Strukturen“
+await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 0.36; g.zoom = 0.36; });
+await page.waitForTimeout(2500);
+const btns = await page.evaluate(() => window.__mg.game.orderBtns);
+if (btns.length !== 11) fail(`Befehlsknöpfe: ${btns.length} statt 11`);
+const [, gx, gy] = btns[4];
+await page.mouse.move(gx, gy);
+await page.mouse.down();
+await page.mouse.move(gx + 30, gy - 30, { steps: 4 });
+await page.waitForTimeout(200);
+await page.screenshot({ path: `${out}/raptor-8-befehl.png` });
+await page.mouse.up();
+await page.waitForTimeout(200);
+const mark = await page.evaluate(() => ({ t: window.__mg.game.markT, o: window.__mg.game.markOrder }));
+if (!(mark.t > 0 && mark.o === 'struktur')) fail('Ziele werden nach dem Befehl nicht markiert: ' + JSON.stringify(mark));
+const ord = await page.evaluate(() => window.__mg.game.orders.g);
+if (ord[4] !== 'struktur') fail('Feuergruppe M5 nicht auf Strukturen: ' + JSON.stringify(ord));
+await page.evaluate(() => window.__mg.game.setOrder('g4', 'alle'));
+// Bug-Cluster auf S: Gruppe leuchtet beim Halten, die S-Ziele werden markiert
+const [, bx0, by0] = btns[0];
+await page.mouse.move(bx0, by0);
+await page.mouse.down();
+await page.mouse.move(bx0 - 40, by0, { steps: 4 });
+await page.waitForTimeout(300);
+await page.screenshot({ path: `${out}/raptor-9-markierung.png` });
+await page.mouse.up();
+await page.evaluate(() => window.__mg.game.setOrder('g0', 'alle'));
 await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 0.36; g.zoom = 0.36; });
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${out}/raptor-7-gefecht.png` });

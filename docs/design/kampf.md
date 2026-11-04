@@ -133,6 +133,11 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
     Schild als schmaler Balken am unteren Bildrand statt Blase, Treffer am Rumpf (Schild: blauer Blitz mit kleiner Welle,
     Hülle: rote Funken), Kameraschieber längs des Schiffs (Bug ↔ Heck, zweimal tippen = Mitte), Großschiff-Faktor 2,5
     für Gegnerzahl, Gruppen, Schwärme, gleichzeitige Angreifer und Obergrenze auf dem Feld.
+    Zweiter Spieltest: Gegner über dem eigenen Schiff gezeichnet, Drehrate ×0,15, Turmbefehl „Strukturen“ (Türme,
+    Bauteile, Nester, Brutkammern, Plattformen) für alle Schiffe, beim Träger je Feuergruppe ein eigener Befehlsknopf
+    (M1 … M8, L1 … L3). Zwei Sticks: rechter Stick lenkt stufenlos bis zum mittleren Ring (volle Drehrate ohne Feuer),
+    gefeuert wird erst ab dem äußeren Ring. Beim Halten eines Befehlsknopfs leuchten die Türme der Gruppe auf dem Schiff;
+    beim Wischen und kurz nach dem Setzen markieren Eckklammern die Gegner, die die Türme zuerst angreifen.
     Offen: Ebenen Flugdeck/Rumpf zum Landen der Jäger (Hangar), Raptor-Bild auf Sektorkarte und in der Werft
   - [ ] Verteidigungstürme als Stationsmodul
   - [ ] Tor-Ereignis in Rhy

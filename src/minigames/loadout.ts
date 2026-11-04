@@ -262,7 +262,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     turrets: RP_T.pos, turretGroup: RP_T.group, groups: RP_T.groups,
     turretD: 22 / RP_H, turretDL: 66 / RP_H,
     // 1,2 km Rumpf: deutlich träger, als die Datenwerte allein ergeben (Spieltest: zu wendig und etwas zu schnell)
-    handling: { speed: 0.7, turn: 0.35, accel: 0.5 },
+    handling: { speed: 0.7, turn: 0.15, accel: 0.5 },
     r: 150, size: RP_LEN, special: 'overdrive', sprite: 'split-raptor', fallback: 'split-jaeger-s',
   }),
   // Eigener Entwurf (kein Schiff aus den X4-Daten): Bomber der Split. Werte angenommen – zwischen Mamba und Asp,

@@ -296,22 +296,33 @@ const ACCEL = 2.4;
 const DRIFT_DAMP = 0.35;
 const TURN_ONLY = 0.35;
 
-/** Turmbefehle: welche Gegnerklasse die Türme zuerst angreifen (alle = das nächste Ziel) */
-export type TurretOrder = 'alle' | 'S' | 'M' | 'L';
+/**
+ * Turmbefehle: welche Gegnerklasse die Türme zuerst angreifen (alle = das nächste Ziel); struktur = feste Ziele:
+ * Geschütztürme, Bauteile großer Schiffe, Nester, Brutkammern, Turmplattformen
+ */
+export type TurretOrder = 'alle' | 'S' | 'M' | 'L' | 'struktur';
+/** Befehlsknopf: alle M- bzw. L-Türme, beim Träger je Feuergruppe (g0 … g10) */
+type OrderKey = 'm' | 'l' | `g${number}`;
 const ORDER_KEY = 'x4-sektorbau-turmbefehle';
 /** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
 const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', boss: 'L', turret: 'L', ks: 'S', kj: 'S', ka: 'M', kk: 'M', cargo: 'L' };
-/** Auswahl beim Wischen: oben alle, links S, rechts M, unten L */
-const ORDER_DIRS: [TurretOrder, number, number][] = [['alle', 0, -1], ['S', -1, 0], ['M', 1, 0], ['L', 0, 1]];
-function readOrders(): { m: TurretOrder; l: TurretOrder } {
+/** Auswahl beim Wischen: oben alle, links S, rechts M, unten L, schräg rechts oben Strukturen */
+const ORDER_DIRS: [TurretOrder, number, number][] = [['alle', 0, -1], ['S', -1, 0], ['M', 1, 0], ['L', 0, 1], ['struktur', Math.SQRT1_2, -Math.SQRT1_2]];
+const ORDER_SHORT: Record<TurretOrder, string> = { alle: 'ALLE', S: 'S', M: 'M', L: 'L', struktur: 'STR' };
+const ORDER_TEXT: Record<TurretOrder, string> = { alle: 'alle Ziele', S: 'zuerst S-Schiffe', M: 'zuerst M-Schiffe', L: 'zuerst L-Schiffe', struktur: 'zuerst Türme, Bauteile und Brutstätten' };
+interface Orders { m: TurretOrder; l: TurretOrder; /** Träger: je Feuergruppe */ g: TurretOrder[] }
+function readOrders(): Orders {
+  const ok = (o: unknown): TurretOrder => (o === 'S' || o === 'M' || o === 'L' || o === 'struktur' ? o : 'alle');
   try {
     const v = JSON.parse(globalThis.localStorage?.getItem(ORDER_KEY) ?? 'null');
-    const ok = (o: unknown): TurretOrder => (o === 'S' || o === 'M' || o === 'L' ? o : 'alle');
-    return { m: ok(v?.m), l: ok(v?.l) };
+    return { m: ok(v?.m), l: ok(v?.l), g: Array.isArray(v?.g) ? v.g.map(ok) : [] };
   } catch {
-    return { m: 'alle', l: 'alle' };
+    return { m: 'alle', l: 'alle', g: [] };
   }
 }
+/** Feste Ziele für den Befehl „Strukturen“: Geschütztürme, Bauteile (an einem großen Schiff), Nester, Brutkammern */
+const isStructure = (e: { kind: EKind; parent?: unknown; nest?: boolean; hive?: unknown; plat?: unknown; weapon?: string }): boolean =>
+  e.kind === 'turret' || !!e.parent || !!e.nest || !!e.hive || !!e.plat || e.weapon === 'brut';
 /** Radius der Steuerkreise (Bildpunkte) */
 const JOY_R = 78;
 /** Rechter Steuerkreis (Zielen/Lenken und Feuern) – größer für feineres Zielen */
@@ -319,8 +330,17 @@ const JOY_R = 78;
 const MOUSE_ID = 77;
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const AIM_R = 108;
-/** Zwei Sticks: rechts ab diesem Ausschlag wird gefeuert; Schub seitwärts ein Viertel, rückwärts ein Drittel */
-const AIM_FIRE = 0.55;
+/**
+ * Zwei Sticks, rechter Stick: bis zum mittleren Ring (AIM_FULL) lenkt er stufenlos – wenig Ausschlag dreht langsam, am
+ * Ring mit voller Drehrate, noch ohne zu feuern; erst ab dem äußeren Ring (AIM_FIRE) wird gefeuert.
+ * Schub seitwärts ein Viertel, rückwärts ein Drittel.
+ */
+const AIM_FULL = 0.72;
+const AIM_FIRE = 0.88;
+/** Totzone in der Mitte des rechten Sticks */
+const AIM_DEAD = 0.1;
+/** Lenkstärke 0 … 1 aus dem Ausschlag des rechten Sticks */
+const aimStrength = (ad: number): number => clamp((ad - AIM_DEAD) / (AIM_FULL - AIM_DEAD), 0, 1);
 const SIDE_THRUST = 1 / 4;
 const BACK_THRUST = 1 / 3;
 const AIM_ASSIST = 0.15;
@@ -560,6 +580,9 @@ export class ShooterGame implements MiniGame {
   private reloadLeft = 0;
   private reloadMax = 1;
   private ringFlash = 0;
+  /** Zielmarkierung nach einem Turmbefehl: Restzeit und Befehl (die passenden Gegner leuchten kurz auf) */
+  private markT = 0;
+  private markOrder: TurretOrder = 'alle';
   /** Magazin leer, wird nachgeladen (Anzeige zeigt dann 0 statt des schon wieder vollen Zählers) */
   private reloading = false;
   /** Reiseantrieb 0…1 */
@@ -612,7 +635,7 @@ export class ShooterGame implements MiniGame {
   private tune = enemyTune();
   private tuneVer = enemyTuneVersion();
   /** Türme des eigenen Schiffs: Pause und Richtung; beim Träger je Turm eigene Art (Waffe, Drehtempo, Bild, L-Turm) */
-  private pTur: { cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean }[] = [];
+  private pTur: { cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number }[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
   private turTurn = 5;
   private turType = 'puls';
@@ -623,7 +646,7 @@ export class ShooterGame implements MiniGame {
   private lTurType: LTurretId = 'plasma';
   /** Turmbefehle der M- und L-Türme (gemerkt) und ein laufendes Wischen am Befehlsknopf */
   orders = readOrders();
-  private orderDrag: { id: number; which: 'm' | 'l'; x0: number; y0: number; pick: TurretOrder | null } | null = null;
+  private orderDrag: { id: number; which: OrderKey; x0: number; y0: number; pick: TurretOrder | null } | null = null;
   /** Strahler: Strahlen dieses Bilds (von – bis) für die Darstellung */
   private beams: [number, number, number, number][] = [];
   /** Strahlentürme: Strahlen dieses Bilds (von – bis) */
@@ -747,7 +770,7 @@ export class ShooterGame implements MiniGame {
       if (!this.ship.groups) return { cd: 0, a: -Math.PI / 2, mag: this.tw.mag };
       // Träger: Art je Turmgruppe
       const t = turretOf(lo, this.ship, i), w = gameGun(t.def.gun, t.def);
-      return { cd: 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L };
+      return { cd: 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L, g: this.ship.turretGroup?.[i] };
     });
     // schwere L-Türme an der Bordwand (nur Zerstörer)
     const ltd = LTURRETS[lo.lturret ?? 'plasma'];
@@ -995,8 +1018,15 @@ export class ShooterGame implements MiniGame {
   private panTap = 0;
   private get btnDash(): [number, number, number] { return [this.w - 60, this.h - 182, 25]; }
   /** Befehlsknöpfe der Türme: links über dem Joystick (M oben, L darunter; nur wenn das Schiff solche Türme hat) */
-  private get orderBtns(): ['m' | 'l', number, number, number][] {
-    const out: ['m' | 'l', number, number, number][] = [];
+  private get orderBtns(): [OrderKey, number, number, number][] {
+    const out: [OrderKey, number, number, number][] = [];
+    // Träger: je Feuergruppe ein kleiner Knopf, vom Bug (oben) zum Heck (unten), L-Gruppen darunter
+    const gs = this.ship.groups;
+    if (gs) {
+      const step = 33, y1 = this.h - 262;
+      gs.forEach((_, i) => out.push([`g${i}`, 66, y1 - (gs.length - 1 - i) * step, 14]));
+      return out;
+    }
     if (this.pTur.length) out.push(['m', 74, this.h - (this.pL.length ? 330 : 270), 22]);
     if (this.pL.length) out.push(['l', 74, this.h - 270, 22]);
     return out;
@@ -1064,7 +1094,9 @@ export class ShooterGame implements MiniGame {
     if (od?.id === id) {
       // Richtung des Wischens wählt den Befehl
       const dx = x - od.x0, dy = y - od.y0;
-      const pick = Math.hypot(dx, dy) < 22 ? null : Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'S' : 'M') : dy < 0 ? 'alle' : 'L';
+      // nächste der fünf Richtungen (oben alle, links S, rechts M, unten L, schräg rechts oben Strukturen)
+      let pick: TurretOrder | null = null, best = -2;
+      if (Math.hypot(dx, dy) >= 20) for (const [o, ux, uy] of ORDER_DIRS) { const dot = (dx * ux + dy * uy) / Math.hypot(dx, dy); if (dot > best) { best = dot; pick = o; } }
       if (pick !== od.pick) { od.pick = pick; if (pick) sfx.tick(); }
       return;
     }
@@ -1088,7 +1120,7 @@ export class ShooterGame implements MiniGame {
     const od = this.orderDrag;
     if (od?.id === id) {
       // gewischt: gewählter Befehl; nur angetippt: weiter zum nächsten
-      const cur = this.orders[od.which];
+      const cur = this.orderOf(od.which);
       const next = od.pick ?? ORDER_DIRS[(ORDER_DIRS.findIndex(([o]) => o === cur) + 1) % ORDER_DIRS.length][0];
       this.setOrder(od.which, next);
       this.orderDrag = null;
@@ -1156,14 +1188,37 @@ export class ShooterGame implements MiniGame {
     if (Math.abs(dy) > 2) this.setZoom(dy > 0 ? 1 : -1);
   }
 
+  /** Aktueller Befehl eines Knopfs */
+  private orderOf(which: OrderKey): TurretOrder {
+    return which === 'm' || which === 'l' ? this.orders[which] : this.orders.g[Number(which.slice(1))] ?? 'alle';
+  }
+
+  /** Name eines Befehlsknopfs (Träger: Name der Feuergruppe) */
+  private orderName(which: OrderKey): string {
+    if (which === 'm') return 'M-Türme';
+    if (which === 'l') return 'L-Türme';
+    return this.ship.groups?.[Number(which.slice(1))]?.name ?? 'Türme';
+  }
+
+  /** Kurzname auf dem kleinen Knopf des Trägers: M1 … M8 vom Bug zum Heck, L1 … L3 */
+  private orderLabel(which: OrderKey): string {
+    if (which === 'm' || which === 'l') return which.toUpperCase();
+    const gs = this.ship.groups ?? [], i = Number(which.slice(1)), kind = gs[i]?.kind ?? 'M';
+    return `${kind}${gs.slice(0, i + 1).filter((g) => g.kind === kind).length}`;
+  }
+
   /** Turmbefehl setzen und merken (auch für Tests) */
-  setOrder(which: 'm' | 'l', o: TurretOrder): void {
-    if (this.orders[which] === o) return;
-    this.orders = { ...this.orders, [which]: o };
+  setOrder(which: OrderKey, o: TurretOrder): void {
+    // die Ziele des Befehls kurz markieren – auch wenn er schon galt
+    this.markOrder = o;
+    this.markT = 1.4;
+    if (this.orderOf(which) === o) return;
+    if (which === 'm' || which === 'l') this.orders = { ...this.orders, [which]: o };
+    else { const g = [...this.orders.g]; g[Number(which.slice(1))] = o; this.orders = { ...this.orders, g }; }
     try { globalThis.localStorage?.setItem(ORDER_KEY, JSON.stringify(this.orders)); } catch { /* Speicher nicht verfügbar */ }
     vibrate(15);
     sfx.tick();
-    this.floats.add(this.px, this.py - 50, `${which === 'm' ? 'M-Türme' : 'L-Türme'}: ${o === 'alle' ? 'alle Ziele' : `zuerst ${o}-Schiffe`}`, '#9ffcff', 13);
+    this.floats.add(this.px, this.py - 50, `${this.orderName(which)}: ${ORDER_TEXT[o]}`, '#9ffcff', 13);
   }
 
   /** Ziel nach Turmbefehl: bevorzugt die gewählte Klasse (sonst das nächste andere Ziel); ok prüft Winkel o. Ä. */
@@ -1174,7 +1229,7 @@ export class ShooterGame implements MiniGame {
       const d = Math.hypot(e.x - x, e.y - y);
       if (d >= range || !ok(e, d)) continue;
       if (d < bd) { bd = d; best = e; }
-      if (order !== 'alle' && ECLASS[e.kind] === order && d < pd) { pd = d; pref = e; }
+      if (order !== 'alle' && (order === 'struktur' ? isStructure(e) : ECLASS[e.kind] === order) && d < pd) { pd = d; pref = e; }
     }
     return pref ?? best;
   }
@@ -2341,12 +2396,12 @@ export class ShooterGame implements MiniGame {
       const a = this.aim, ad = a ? Math.min(1, Math.hypot(a.kx, a.ky)) : 0;
       if (this.ctrl === 'lenk') {
         // Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung
-        if (a && ad > 0.12) {
+        if (a && ad > AIM_DEAD) {
           const rel = Math.atan2(a.kx, -a.ky);
-          const k = clamp(rel / (Math.PI / 2), -1, 1) * Math.min(1, ad / 0.5);
+          const k = clamp(rel / (Math.PI / 2), -1, 1) * aimStrength(ad);
           this.aimA = wrapA(this.aimA + k * this.turnRate * dt);
         }
-      } else if (a && ad > 0.15) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * dt));
+      } else if (a && ad > AIM_DEAD) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * aimStrength(ad) * dt));
       if (this.fireId !== 99) {
         const fire = a && ad > AIM_FIRE ? a.id : null;
         // Rückmeldung, sobald der rechte Stick über den Ring geht und die Waffen auslösen: kurzes Vibrieren (wo das
@@ -2418,6 +2473,7 @@ export class ShooterGame implements MiniGame {
     // Bordkanonen: nur geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4)
     this.fireCd -= dt;
     this.ringFlash = Math.max(0, this.ringFlash - dt);
+    this.markT = Math.max(0, this.markT - dt);
     if (this.reloading) { this.reloadLeft = Math.max(0, this.fireCd); if (this.fireCd <= 0) this.reloading = false; }
     this.beams = [];
     for (const r of this.rails) r.t -= dt;
@@ -2555,7 +2611,7 @@ export class ShooterGame implements MiniGame {
       const w = t.w ?? this.tw, range = w.range, turn = t.turn ?? this.turTurn;
       let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = range;
       // Raketenabwehr zuerst – nur bei „alle“ und „S“; wer die Türme auf M- oder L-Schiffe ansetzt, gibt sie auf
-      const order = t.L ? this.orders.l : this.orders.m;
+      const order = t.g != null ? this.orderOf(`g${t.g}`) : t.L ? this.orders.l : this.orders.m;
       if (order === 'alle' || order === 'S') for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
       if (!tgt) { tgt = this.pickTarget(x, y, range, order); if (tgt) bd = Math.hypot(tgt.x - x, tgt.y - y); }
       if (!tgt) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
@@ -3579,12 +3635,14 @@ export class ShooterGame implements MiniGame {
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
     this.drawWards(ctx, t);
+    // eigenes Schiff unter den Gegnern: sie fliegen scheinbar darüber hinweg (wichtig beim großen Träger)
+    if (this.outcome !== 'player') this.drawPlayer(ctx, t);
     this.drawClusterMass(ctx, t);
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
+    this.drawTargetMarks(ctx, t);
     this.drawBlasts(ctx, t);
     this.drawBeams(ctx, t);
     // Geschosse über den Schiffen: die Türme liegen oben auf dem Rumpf, ihre Schüsse fliegen darüber hinweg
-    if (this.outcome !== 'player') this.drawPlayer(ctx, t);
     this.drawShots(ctx);
     if (this.outcome !== 'player') this.drawLock(ctx);
     this.fx.draw(ctx);
@@ -4804,10 +4862,23 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
     // eigene Türme (zielen frei)
     const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
+    // gehaltener Befehlsknopf: die Türme dieser Gruppe leuchten auf dem Schiff auf
+    const held = this.orderDrag?.which;
+    const glowOf = (tur: { L?: boolean; g?: number }) => !!held && (held === `g${tur.g}` || (tur.g == null && (held === 'm' ? !tur.L : held === 'l' && !!tur.L)));
     for (const [i, tur] of this.pTur.entries()) {
       const [tx0, ty0] = this.ship.turrets[i];
       ctx.save();
       ctx.translate(this.px + tx0 * c - ty0 * sn, this.py + tx0 * sn + ty0 * c);
+      if (glowOf(tur)) {
+        const rr = this.ship.size * ((tur.L ? this.ship.turretDL : undefined) ?? this.ship.turretD ?? 0.1) * 0.9 + 3 / this.zoom;
+        ctx.fillStyle = rgba('#ffd27a', 0.22 + 0.12 * Math.sin(t * 9));
+        ctx.strokeStyle = rgba('#ffd27a', 0.9);
+        ctx.lineWidth = 1.6 / this.zoom;
+        ctx.beginPath();
+        ctx.arc(0, 0, rr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
       // Turmbild in der Farbe, die zum Rumpf passt; der runde Sockel deckt den Sockel im Schiffsbild
       const ts = turretSprite(tur.type ?? this.turType, this.ship.sprite);
       if (ts) {
@@ -5020,6 +5091,34 @@ export class ShooterGame implements MiniGame {
     if (this.mission === 'ueberfall') arrow(this.gateX, this.gateCy, '#9fe6ff', 8);
   }
 
+  /**
+   * Zielmarkierung: beim Wischen am Befehlsknopf (gewählte Richtung) und kurz nach dem Setzen eines Befehls leuchten die
+   * Gegner auf, die die Türme zuerst angreifen – so ist sichtbar, wer was angreift
+   */
+  private drawTargetMarks(ctx: CanvasRenderingContext2D, t: number): void {
+    const o = this.orderDrag?.pick ?? (this.markT > 0 ? this.markOrder : null);
+    if (!o) return;
+    const a = this.orderDrag ? 0.85 : Math.min(1, this.markT / 0.4);
+    const pulse = 0.6 + 0.4 * Math.sin(t * 12);
+    ctx.save();
+    ctx.strokeStyle = rgba('#ffd27a', a * pulse);
+    ctx.lineWidth = 2 / this.zoom;
+    for (const e of this.enemies) {
+      const hit = o === 'alle' ? true : o === 'struktur' ? isStructure(e) : ECLASS[e.kind] === o;
+      if (!hit) continue;
+      const r = e.r + 8 / this.zoom, k = r * 0.45;
+      // Eckklammern um das Ziel
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(e.x + sx * r, e.y + sy * (r - k));
+        ctx.lineTo(e.x + sx * r, e.y + sy * r);
+        ctx.lineTo(e.x + sx * (r - k), e.y + sy * r);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   /** Kameraschieber des Trägers: schmale Schiene mit Schiffsumriss, oben Bug, unten Heck */
   private drawPanTrack(ctx: CanvasRenderingContext2D): void {
     const t = this.panTrack, y = t.y0 + ((this.camPan + 1) / 2) * (t.y1 - t.y0), on = this.panId != null;
@@ -5193,38 +5292,48 @@ export class ShooterGame implements MiniGame {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // beim Aufklappen nur der gehaltene Knopf (die Auswahl liegt sonst über dem anderen)
+    // beim Aufklappen nur der gehaltene Knopf (die Auswahl liegt sonst über den anderen)
     const shown = this.orderDrag ? btns.filter(([w]) => w === this.orderDrag!.which) : btns;
     for (const [which, x, y, r] of shown) {
-      const cur = this.orders[which], open = this.orderDrag?.which === which;
+      const cur = this.orderOf(which), open = this.orderDrag?.which === which, small = r < 18;
       ctx.fillStyle = open ? 'rgba(20,48,60,0.92)' : 'rgba(5,14,22,0.78)';
       ctx.strokeStyle = cur === 'alle' ? 'rgba(110,220,205,0.45)' : 'rgba(255,181,71,0.8)';
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = small ? 1.3 : 1.6;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#e4f3f0';
-      ctx.font = '700 13px "Chakra Petch", Barlow, sans-serif';
-      ctx.fillText(which === 'm' ? 'M' : 'L', x, y - 5);
+      ctx.font = `700 ${small ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
+      ctx.fillText(this.orderLabel(which), x, y - (small ? 3.5 : 5));
       ctx.fillStyle = cur === 'alle' ? 'rgba(169,195,198,0.85)' : '#ffb547';
-      ctx.font = '600 9px "Chakra Petch", Barlow, sans-serif';
-      ctx.fillText(cur === 'alle' ? 'ALLE' : `→ ${cur}`, x, y + 8);
+      ctx.font = `600 ${small ? 7 : 9}px "Chakra Petch", Barlow, sans-serif`;
+      ctx.fillText(cur === 'alle' ? 'ALLE' : cur === 'struktur' ? 'STR' : `→ ${cur}`, x, y + (small ? 5.5 : 8));
       if (!open) continue;
-      // aufgeklappte Auswahl
-      const pick = this.orderDrag!.pick;
+      // aufgeklappte Auswahl; beim Träger der Name der Feuergruppe darüber
+      const pick = this.orderDrag!.pick, dist = small ? 44 : 52, br = small ? 17 : 19;
+      if (small) {
+        ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(5,14,22,0.82)';
+        const name = this.orderName(which), tw = ctx.measureText(name).width;
+        ctx.fillRect(x + dist + br + 6, y - 9, tw + 12, 18);
+        ctx.fillStyle = '#e4f3f0';
+        ctx.fillText(name, x + dist + br + 12, y);
+        ctx.textAlign = 'center';
+      }
       for (const [o, dx, dy] of ORDER_DIRS) {
-        const bx = x + dx * 52, by = y + dy * 52, on = pick === o, active = cur === o;
+        const bx = x + dx * dist, by = y + dy * dist, on = pick === o, active = cur === o;
         ctx.fillStyle = on ? 'rgba(255,181,71,0.9)' : 'rgba(5,14,22,0.88)';
         ctx.strokeStyle = active ? '#ffb547' : 'rgba(110,220,205,0.5)';
         ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.arc(bx, by, 19, 0, Math.PI * 2);
+        ctx.arc(bx, by, br, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = on ? '#1a1206' : '#e4f3f0';
-        ctx.font = `700 ${o === 'alle' ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
-        ctx.fillText(o === 'alle' ? 'ALLE' : o, bx, by);
+        ctx.font = `700 ${o === 'alle' || o === 'struktur' ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
+        ctx.fillText(ORDER_SHORT[o], bx, by);
       }
     }
     ctx.restore();
@@ -5319,7 +5428,13 @@ export class ShooterGame implements MiniGame {
     if (this.pc) this.drawPcHint(ctx);
     if (j && j.id !== 99 && !this.pc) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
     if (this.aim) {
-      stick(this.aim, AIM_FIRE, true, this.fireId !== null ? '#ffb547' : '#3fe0c5', AIM_R);
+      // mittlerer Ring (gestrichelt): volle Lenkung; Band außen ab dem Feuerring: feuern
+      stick(this.aim, AIM_FULL, true, this.fireId !== null ? '#ffb547' : '#3fe0c5', AIM_R);
+      ctx.strokeStyle = rgba('#ffb547', this.fireId !== null ? 0.45 : 0.18);
+      ctx.lineWidth = AIM_R * (1 - AIM_FIRE);
+      ctx.beginPath();
+      ctx.arc(this.aim.ox, this.aim.oy, AIM_R * (1 + AIM_FIRE) / 2, 0, Math.PI * 2);
+      ctx.stroke();
       // Feuerschwelle leuchtet beim Überschreiten kurz auf
       if (this.ringFlash > 0) {
         ctx.strokeStyle = rgba('#ffd27a', this.ringFlash * 3);
