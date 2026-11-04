@@ -22,13 +22,18 @@ function marketEnd(state: GameState, key: string) {
  * Günstigste Bezugsquelle eines NPC-Händlers im Sektor: Handelsposten oder eine NPC-Fabrik, die die Ware herstellt –
  * gekauft wird direkt beim Hersteller, der Handelsposten ist nur einer von mehreren Märkten.
  */
-export function npcSource(state: GameState, sec: string, id: string): { key: string; price: number; stock: number } | null {
-  let best: { key: string; price: number; stock: number } | null = null;
+/**
+ * Günstigster Anbieter einer Ware im Sektor. min: Menge, die der Händler mindestens laden will – Anbieter, die das
+ * schaffen, gehen vor (sonst wählte er z. B. eine Hütte mit wenigen freien Hüllenteilen, weil sie etwas billiger ist,
+ * fände dort zu wenig und käme nie, obwohl der Handelsposten Tausende hat).
+ */
+export function npcSource(state: GameState, sec: string, id: string, min = 0): { key: string; price: number; stock: number } | null {
+  let best: { key: string; price: number; stock: number } | null = null, enough = false;
   for (const k of [sec, ...sector(sec).npcStations.filter((n) => n.makes?.includes(id)).map((n) => n.id)]) {
     const stock = buyableStock(state, k, id);
     if (stock < 1) continue;
-    const price = marketPrice(state, k, id);
-    if (!best || price < best.price || (price === best.price && stock > best.stock)) best = { key: k, price, stock };
+    const price = marketPrice(state, k, id), ok = stock >= min;
+    if (!best || (ok && !enough) || (ok === enough && (price < best.price || (price === best.price && stock > best.stock)))) { best = { key: k, price, stock }; enough = ok; }
   }
   return best;
 }
@@ -104,14 +109,15 @@ function trySpawnTrader(state: GameState, sectorId: string): void {
       const need = dock ? want : Math.min(want, bRoom);
       // Bezug beim günstigsten Anbieter (Hersteller oder Handelsposten); eine Kauforder der Station legt den Preis fest –
       // liegt der Einkauf darüber, kommt kein Händler, liegt er darunter, kommen sie umso lieber
-      const src = npcSource(state, sectorId, id);
+      // Kleine Restmengen fürs Baulager werden auch geliefert
+      const minBuy = bRoom > BUILD_TOLERANCE ? Math.min(units * 0.25, 200, bRoom) : Math.min(units * 0.25, 200);
+      // Anbieter, bei dem mindestens diese Menge zu haben ist (Baulager: auch den ganzen Bestand)
+      const src = npcSource(state, sectorId, id, bRoom > BUILD_TOLERANCE ? minBuy : minBuy * 2);
       const limit = tradeRule(st, id).price;
       if (!src || (limit != null && src.price > limit)) continue;
       const pay = limit ?? src.price;
       // Kleine Mengen fürs Baulager dürfen den Bestand ganz leeren, sonst höchstens die Hälfte
       const buy = Math.min(need, units, Math.max(src.stock * 0.5, Math.min(src.stock, bRoom)), spendable(state, 100_000) / pay);
-      // Kleine Restmengen fürs Baulager werden auch geliefert
-      const minBuy = bRoom > BUILD_TOLERANCE ? Math.min(units * 0.25, 200, bRoom) : Math.min(units * 0.25, 200);
       const bonus = limit != null ? 1 + (limit - src.price) / w.price.avg * 4 : 1;
       if (buy >= minBuy) offers.push({ item: { st: st.id, ware: id, kind: 'seller', amount: buy, market: src.key, price: limit }, w: buy * w.price.avg * 0.8 * bonus });
     }
