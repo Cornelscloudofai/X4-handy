@@ -68,6 +68,15 @@ export interface ShipDef {
    * Schiffe, die sich sonst zu leicht steuern
    */
   handling?: { speed: number; turn: number; accel: number };
+  /**
+   * Träger: Hangarbuchten an den Flugdecks (Spielpunkte, Bug oben). Anflug von außen (out) aufs Deck (deck), dann unter
+   * den roten Rumpf (in) – dort ist das Schiff gelandet und unsichtbar. Start in umgekehrter Reihenfolge.
+   */
+  bays?: { out: [number, number]; deck: [number, number]; in: [number, number] }[];
+  /** Bild der Rumpf-Ebene (Flugdecks durchsichtig): wird über gelandete und landende Schiffe gezeichnet */
+  hullLayer?: string;
+  /** Hangarplätze (Träger): so viele S- und M-Schiffe passen hinein */
+  hangar?: { S: number; M: number };
   role: string;
   desc: string;
   x4: X4Data;
@@ -178,6 +187,19 @@ function raptorTurrets(): { pos: [number, number][]; group: number[]; groups: Tu
   return { pos, group, groups };
 }
 const RP_T = raptorTurrets();
+/**
+ * Hangarbuchten: je Seite fünf Stellen am blauen Flugdeck (Bildpunkte, linke Seite; die rechte gespiegelt) – zwischen
+ * den Turmclustern, die auf dem Deck stehen. Anflug 90 px außerhalb des Gitters, Deckmitte, dann unter die Panzerplatten.
+ */
+const RP_BAYS_Y = [1720, 2250, 2650, 3050, 3420];
+function raptorBays(): NonNullable<ShipDef['bays']> {
+  const out: NonNullable<ShipDef['bays']> = [];
+  for (const y of RP_BAYS_Y) for (const side of [1, -1]) {
+    const x = (px: number) => (side > 0 ? px : 2 * RP_AXIS - px);
+    out.push({ out: rp(x(70), y), deck: rp(x(290), y), in: rp(x(430), y) });
+  }
+  return out;
+}
 
 /** Lagen aus einem Schiffsbild (Bildpunkte, Bildgröße img) in Spielpunkte bei Zeichengröße size umrechnen */
 function fromImage(img: number, size: number, pts: [number, number][]): [number, number][] {
@@ -263,6 +285,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     turretD: 22 / RP_H, turretDL: 66 / RP_H,
     // 1,2 km Rumpf: deutlich träger, als die Datenwerte allein ergeben (Spieltest: zu wendig und etwas zu schnell)
     handling: { speed: 0.7, turn: 0.15, accel: 0.5 },
+    bays: raptorBays(), hullLayer: 'split-raptor-rumpf', hangar: { S: 40, M: 4 },
     r: 150, size: RP_LEN, special: 'overdrive', sprite: 'split-raptor', fallback: 'split-jaeger-s',
   }),
   // Eigener Entwurf (kein Schiff aus den X4-Daten): Bomber der Split. Werte angenommen – zwischen Mamba und Asp,
@@ -550,14 +573,15 @@ export const MISSILES: Record<MissileId, MissileDef> = {
 export const MISSILE_IDS = Object.keys(MISSILES) as MissileId[];
 
 export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId; /** schwere L-Türme (nur Zerstörer) */ lturret?: LTurretId; /** Raketenart (nur Schiffe mit Raketenwerfer) */ missile?: MissileId;
-  /** Träger: Turmart je Gruppe (Index wie ShipDef.groups; M-Gruppen TurretId, L-Gruppen LTurretId) */ groups?: string[] }
+  /** Träger: Turmart je Gruppe (Index wie ShipDef.groups; M-Gruppen TurretId, L-Gruppen LTurretId) */ groups?: string[];
+  /** Staffel: eigene Begleitschiffe (S und M) – beim Träger im Hangar, sonst als Flügelleute */ wing?: Partial<Record<ShipId, number>> }
 export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'plasma', missile: 'lenk' };
 /** Namen aus früheren Versionen (gespeicherte Ausrüstung) */
 const OLD: Record<string, string> = { impuls: 'puls', splitter: 'schrot' };
 
 const KEY = 'x4-sektorbau-ausruestung';
 
-function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups'>, string>> & { groups?: unknown }) | null | undefined): Loadout {
+function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups' | 'wing'>, string>> & { groups?: unknown; wing?: unknown }) | null | undefined): Loadout {
   const weapon = OLD[l?.weapon ?? ''] ?? l?.weapon, turret = OLD[l?.turret ?? ''] ?? l?.turret;
   return {
     ship: l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship,
@@ -567,8 +591,37 @@ function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups'>, string>> & {
     lturret: l?.lturret && l.lturret in LTURRETS ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,
     missile: l?.missile && l.missile in MISSILES ? (l.missile as MissileId) : DEFAULT_LOADOUT.missile,
     groups: validGroups(l?.groups),
+    wing: validWing(l?.wing, l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship),
   };
 }
+
+/** Schiffe, die als Begleitschiffe mitfliegen können (S und M) */
+export const WING_IDS = (Object.keys(SHIPS) as ShipId[]).filter((id) => SHIPS[id].cls === 'S' || SHIPS[id].cls === 'M');
+/** Flügelleute ohne Träger: höchstens so viele */
+export const WING_MAX = 4;
+/** Platz für Begleitschiffe: Träger nach Hangar (S und M getrennt), sonst WING_MAX zusammen */
+export function wingRoom(ship: ShipId): { S: number; M: number; total: number } {
+  const h = SHIPS[ship].hangar;
+  return h ? { S: h.S, M: h.M, total: h.S + h.M } : { S: WING_MAX, M: WING_MAX, total: WING_MAX };
+}
+/** Staffel prüfen und auf den Platz des gewählten Schiffs kürzen */
+export function validWing(w: unknown, ship: ShipId): Partial<Record<ShipId, number>> {
+  const room = wingRoom(ship), out: Partial<Record<ShipId, number>> = {};
+  let s = 0, m = 0;
+  if (w && typeof w === 'object') for (const id of WING_IDS) {
+    const n = Math.floor(Number((w as Record<string, unknown>)[id]) || 0);
+    if (n <= 0) continue;
+    const isS = SHIPS[id].cls === 'S';
+    const free = Math.min(isS ? room.S - s : room.M - m, room.total - s - m);
+    const k = Math.max(0, Math.min(n, free));
+    if (!k) continue;
+    out[id] = k;
+    if (isS) s += k; else m += k;
+  }
+  return out;
+}
+/** Anzahl Begleitschiffe */
+export const wingCount = (w: Loadout['wing']): number => Object.values(w ?? {}).reduce((a, b) => a + (b ?? 0), 0);
 
 /** Turmarten der Trägergruppen prüfen; fehlende Gruppen bekommen Pulstürme bzw. schwere Plasmatürme */
 function validGroups(g: unknown): string[] {
@@ -614,9 +667,10 @@ export function setLoadout(patch: Partial<Loadout>): Loadout {
 /** Kurzbeschreibung für das Menü */
 export function loadoutLabel(l: Loadout = loadout()): string {
   const s = SHIPS[l.ship];
-  if (s.groups) return `${s.name} · ${s.turrets.length} Türme in ${s.groups.length} Gruppen · ${SHIELDS[l.shield].name}`;
+  const wn = wingCount(l.wing), wt = wn ? ` · Staffel ${wn}` : '';
+  if (s.groups) return `${s.name} · ${s.turrets.length} Türme in ${s.groups.length} Gruppen${wt} · ${SHIELDS[l.shield].name}`;
   const lt = s.lMounts?.length ? ` · ${s.lMounts.length} L-Türme: ${LTURRETS[l.lturret ?? 'plasma'].name}` : '';
-  return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer (${MISSILES[l.missile ?? 'lenk'].name})` : ''}${lt}${s.turrets.length ? ` · ${s.turrets.length} ${s.lMounts?.length ? 'M-' : ''}Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
+  return `${s.name} · ${s.x4.weapons}× ${WEAPONS[l.weapon].name}${wt}${s.x4.launchers ? ` · ${s.x4.launchers}× Raketenwerfer (${MISSILES[l.missile ?? 'lenk'].name})` : ''}${lt}${s.turrets.length ? ` · ${s.turrets.length} ${s.lMounts?.length ? 'M-' : ''}Türme: ${TURRETS[l.turret].name}` : ''} · ${SHIELDS[l.shield].name}`;
 }
 
 // ---- Steuerung im Kampf: ein Stick (Drehen + Schub, Feuertaste) oder zwei Sticks (links fliegen, rechts zielen und feuern) ----

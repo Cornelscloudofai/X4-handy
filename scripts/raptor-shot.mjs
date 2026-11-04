@@ -43,6 +43,17 @@ const lo = await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorb
 if (lo.ship !== 'raptor' || lo.groups?.[0] !== 'boson' || lo.groups?.[8] !== 'tau' || lo.groups?.[9] !== 'neutron' || lo.groups?.[10] !== 'plasma') fail('Turmgruppen nicht gemerkt: ' + JSON.stringify(lo.groups));
 await page.screenshot({ path: `${out}/raptor-3-tuerme.png` });
 await page.click('#modal .lo-back');
+await page.waitForTimeout(250);
+// Hangar: Staffel aus 6 Mamba und 2 Dragon
+await page.click('#modal .hgr-hot[data-view="wing"]');
+await page.waitForTimeout(300);
+for (let i = 0; i < 6; i++) await page.click('#modal [data-act="loadout-wing"][data-ship="mamba"][data-d="1"]');
+for (let i = 0; i < 2; i++) await page.click('#modal [data-act="loadout-wing"][data-ship="dragon"][data-d="1"]');
+await page.waitForTimeout(250);
+const wing = await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-ausruestung') ?? '{}').wing);
+if (wing?.mamba !== 6 || wing?.dragon !== 2) fail('Staffel nicht gemerkt: ' + JSON.stringify(wing));
+await page.screenshot({ path: `${out}/raptor-3b-staffel.png` });
+await page.click('#modal .lo-back');
 await page.waitForTimeout(200);
 await page.click('#modal [data-act="mg-back"]');
 await page.waitForTimeout(200);
@@ -54,6 +65,21 @@ await page.click('#modal [data-act="mg-play"][data-kind="pirates"]');
 await page.waitForTimeout(400);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(1500);
+// Staffel startet über die Flugdecks: nah heranzoomen auf eine Bucht
+await page.evaluate(() => { const g = window.__mg.game; g.setWingOrder('angriff'); g.zoomGoal = 1.2; g.zoom = 1.2; });
+let launch = null;
+for (let i = 0; i < 120 && !launch; i++) {
+  await page.waitForTimeout(50);
+  launch = await page.evaluate(() => { const g = window.__mg.game; const w = g.wings.find((x) => x.state === 'out' && x.t > 0.62 && x.t < 0.85); return w ? { bay: w.bay, t: w.t } : null; });
+}
+if (!launch) fail('Kein Schiff startet über das Flugdeck');
+else {
+  // Spiel kurz anhalten, Kamera auf die Bucht, dann Bild
+  await page.evaluate((b) => { const g = window.__mg.game; const ly = g.ship.bays[b].deck[1]; g.camPan = Math.max(-1, Math.min(1, ly / (g.ship.size * 0.46))); }, launch.bay);
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: `${out}/raptor-3c-start.png` });
+  await page.evaluate(() => { window.__mg.game.camPan = 0; });
+}
 const info = await page.evaluate(() => { const g = window.__mg.game; return { ship: g.ship.name, turrets: g.pTur.length, L: g.pTur.filter((t) => t.L).length, types: [...new Set(g.pTur.map((t) => t.type))], zoom: g.zoom }; });
 if (info.ship !== 'Raptor' || info.turrets !== 122 || info.L !== 8) fail('Gefecht: ' + JSON.stringify(info));
 // weit herauszoomen, Gegner nah an den Bug holen
@@ -108,7 +134,7 @@ if (!(foes.big > 1 && foes.foeCount > 3.6 && foes.attackCap > 6 && foes.cap > 56
 await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 0.36; g.zoom = 0.36; });
 await page.waitForTimeout(2500);
 const btns = await page.evaluate(() => window.__mg.game.orderBtns);
-if (btns.length !== 11) fail(`Befehlsknöpfe: ${btns.length} statt 11`);
+if (btns.length !== 12) fail(`Befehlsknöpfe: ${btns.length} statt 12 (11 Feuergruppen und Staffel)`);
 const [, gx, gy] = btns[4];
 await page.mouse.move(gx, gy);
 await page.mouse.down();
@@ -134,6 +160,8 @@ await page.evaluate(() => window.__mg.game.setOrder('g0', 'alle'));
 await page.evaluate(() => { const g = window.__mg.game; g.zoomGoal = 0.36; g.zoom = 0.36; });
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${out}/raptor-7-gefecht.png` });
+const wingState = await page.evaluate(() => window.__mg.game.wings.map((w) => w.state).join(','));
+if (!/fly/.test(wingState)) fail('Staffel fliegt nicht: ' + wingState);
 await browser.close();
 console.log(JSON.stringify({ info, shots, hit, pan, fxHit, foes, errors }, null, 1));
 if (errors.length) process.exit(1);

@@ -5,7 +5,7 @@
 // (vier Mod-Sockel). Navigation: höchstens eine Ebene (Hangar → Schublade); Zurück schließt immer zuerst die Schublade.
 import {
   LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
-  loadout, sustainedDps, turretOf, weaponGun, type Loadout, type ShipId, type X4Gun,
+  WING_IDS, loadout, sustainedDps, turretOf, weaponGun, wingCount, wingRoom, type Loadout, type ShipId, type X4Gun,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
 import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
@@ -14,7 +14,7 @@ import werkstattDeck from '../assets/hangar/werkstatt-deck.jpg';
 import { esc } from './dom';
 import { icon } from './icons';
 
-export type LoView = 'home' | 'ship' | 'weapon' | 'turret' | 'lturret' | 'missile' | 'shield' | 'mod' | 'art';
+export type LoView = 'home' | 'ship' | 'weapon' | 'turret' | 'lturret' | 'missile' | 'shield' | 'wing' | 'mod' | 'art';
 export type LoMode = 'gear' | 'mods';
 export interface HangarStats { fire: number; hull: number; shield: number; speed: number; range: number }
 export interface LoModal {
@@ -65,6 +65,7 @@ const GLYPH: Record<string, string> = {
   engine: '<path d="M8 4h8v8l-4 8-4-8z"/>',
   hull: '<path d="M4 8l8-5 8 5v8l-8 5-8-5z"/>',
   ship: '<path d="M12 2l4 9 5 4-9 3-9-3 5-4z"/>',
+  wing: '<path d="M7 3l3 6 4 3-7 2-5-2 4-3z"/><path d="M17 10l2 4 3 2-5 1-4-1 3-2z"/>',
 };
 const glyph = (k: string, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[k] ?? GLYPH.gun}</svg>`;
 const WEAPON_LOOK: Record<string, [string, string]> = {
@@ -106,6 +107,7 @@ function anchors(id: ShipId): Record<string, [number, number]> {
     turret: [0.5 + (t[0] / s) * 0.87, 0.5 + (t[1] / s) * 0.87],
     lturret: [0.36, 0.42],
     shield: [0.3, 0.6],
+    wing: [0.7, 0.72],
     engine: [0.5, 0.86],
     chassis: [0.64, 0.55],
     // Mod-Sockel der Werkstatt
@@ -136,6 +138,7 @@ export function loadoutView(m: LoModal): string {
       ...(ship.groups ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `Türme ${ship.turrets.length}× in ${ship.groups.length} Gruppen`, value: 'je Cluster wählen' }]
         : ship.turrets.length ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `${ship.lMounts?.length ? 'M-Türme' : 'Türme'} ${ship.turrets.length}×`, value: td.name }] : []),
       ...(ship.x4.launchers ? [{ view: 'missile' as LoView, key: 'missile', ic: 'rocket', label: `Raketen ${ship.x4.launchers}×`, value: missile.name }] : []),
+      { view: 'wing', key: 'wing', ic: 'wing', label: SHIPS[lo.ship].bays ? 'Hangar · Staffel' : 'Flügelleute', value: wingCount(lo.wing) ? `${wingCount(lo.wing)} Schiffe` : 'keine' },
       { view: 'shield', key: 'shield', ic: 'shield', label: `Schild ${ship.x4.shields}×${ship.cls}${ship.x4.mShields ? `+${ship.x4.mShields}×M` : ''}`, value: SHIELDS[lo.shield].name },
     ]
     : SLOTS.map((sl) => {
@@ -213,6 +216,18 @@ export function loadoutView(m: LoModal): string {
       const d = MISSILES[id];
       return card({ key: 'missile', value: id, on: (lo.missile ?? 'lenk') === id, name: d.name, big: `${d.split ? `${d.split} × ${Math.round(MISSILE_DMG * d.dmg)}` : Math.round(MISSILE_DMG * d.dmg)} Schaden`, sm: `${num(reach(d), 1)} km · ${d.slots > 1 ? `${d.slots} Plätze` : '1 Platz'}`, ic: 'rocket', color: MISSILE_LOOK[id], ds: `${delta(dmgOf(d), dmgOf(missile), (x) => `${Math.round(x)}`)}${delta(reach(d), reach(missile), (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(missile.name)}</b> – ${esc(missile.role)}. ${esc(missile.desc)}</div>`;
+  } else if (view === 'wing') {
+    // Staffel: je Schiffstyp die Anzahl – Träger nach Hangarplätzen (S und M getrennt), sonst bis zu vier Flügelleute
+    const room = wingRoom(lo.ship), w = lo.wing ?? {}, carrier = !!ship.bays;
+    const nS = WING_IDS.filter((id) => SHIPS[id].cls === 'S').reduce((a, id) => a + (w[id] ?? 0), 0), nM = WING_IDS.filter((id) => SHIPS[id].cls === 'M').reduce((a, id) => a + (w[id] ?? 0), 0);
+    title = carrier ? 'Hangar' : 'Flügelleute';
+    sub = carrier ? `S ${nS}/${room.S} · M ${nM}/${room.M} · starten und landen über die Flugdecks` : `${nS + nM}/${room.total} · fliegen mit dir in Formation`;
+    body = `<div class="hgr-groups">${WING_IDS.map((id) => {
+      const d = SHIPS[id], n = w[id] ?? 0, isS = d.cls === 'S';
+      const full = (isS ? nS >= room.S : nM >= room.M) || nS + nM >= room.total;
+      return `<div class="hgr-grp hgr-wing"><span class="hgr-wing-img">${pic(id) ? `<img src="${pic(id)}" alt="">` : glyph('ship', 26)}</span><div class="hgr-grp-h" style="flex:1;margin:0"><b>${esc(d.name)} · ${d.cls}</b><small>${esc(d.role)} · ${d.x4.weapons} Kanonen</small></div>
+        <div class="hgr-step"><button class="hgr-chip" ${n ? '' : 'disabled'} ${act('loadout-wing', { ship: id, d: -1 })} aria-label="Weniger">−</button><b>${n}</b><button class="hgr-chip" ${full ? 'disabled' : ''} ${act('loadout-wing', { ship: id, d: 1 })} aria-label="Mehr">+</button></div></div>`;
+    }).join('')}</div><div class="hgr-desc">${carrier ? 'Die Staffel startet nach Wellenbeginn nacheinander über die Flugdecks links und rechts. Unter 30 % Hülle oder auf Befehl „Landen“ fliegt ein Schiff zurück, wird im Hangar repariert und startet wieder.' : 'Flügelleute fliegen in Formation neben dir und greifen auf Befehl an.'} Im Kampf steuerst du die Staffel mit dem Knopf „ST“ links: Angriff, Strukturen, Schutz, ${carrier ? 'Landen' : 'Sammeln'}.</div>`;
   } else if (view === 'shield') {
     const cur = SHIELDS[lo.shield];
     title = 'Schild'; sub = `${ship.x4.shields} × ${ship.cls}${ship.x4.mShields ? ` + ${ship.x4.mShields} × M` : ''} · gilt für alle Schildplätze`;

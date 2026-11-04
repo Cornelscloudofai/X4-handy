@@ -1422,6 +1422,15 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
+      case 'loadout-wing': {
+        // Staffel: Anzahl eines Schiffstyps ändern (Grenzen prüft setLoadout)
+        const cur = { ...(loadout().wing ?? {}) } as Record<string, number>;
+        cur[String(d.ship)] = Math.max(0, (cur[String(d.ship)] ?? 0) + Number(d.d));
+        if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, prev: hangarStats(), undo: { wing: loadout().wing } }; sfx.tap(); }
+        setLoadout({ wing: cur });
+        refresh();
+        break;
+      }
       case 'loadout-group': {
         // Träger: Turmart einer Turmgruppe (Cluster oder L-Türme)
         const g = Number(d.g), cur = [...(loadout().groups ?? [])];

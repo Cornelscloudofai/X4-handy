@@ -63,11 +63,27 @@ const out = await page.evaluate(async ([srcs, wantPreview]) => {
     k.getContext('2d').drawImage(c, 0, y - 120, W, 240, 0, 0, W, 240);
     crops[y] = k.toDataURL('image/png');
   }
-  return { webp: c.toDataURL('image/webp', 0.95), png: wantPreview ? c.toDataURL('image/png') : '', W, H, seams, crops, fits };
+  // Rumpf-Ebene für den Hangar: die blaugrauen Flugdecks werden durchsichtig (weich ausgeblendet), alles andere bleibt.
+  // Gelandete Jäger liegen zwischen Schiffsbild und dieser Ebene – auf dem Deck sichtbar, unter dem roten Rumpf verdeckt.
+  const hull = document.createElement('canvas');
+  hull.width = W; hull.height = H;
+  const hg = hull.getContext('2d');
+  hg.drawImage(c, 0, 0);
+  const hd = hg.getImageData(0, 0, W, H), q = hd.data;
+  for (let k = 0; k < q.length; k += 4) {
+    const r = q[k], gg = q[k + 1], b = q[k + 2];
+    // Deck: blaugrau (Blau über Rot), nicht zu dunkel; Übergang weich, damit keine harten Kanten entstehen
+    const blue = (b - r - 6) / 22, lum = (r + gg + b) / 3;
+    const deck = Math.max(0, Math.min(1, blue)) * Math.max(0, Math.min(1, (lum - 28) / 25)) * (gg >= r ? 1 : 0.4);
+    if (deck > 0) q[k + 3] = Math.round(q[k + 3] * (1 - deck));
+  }
+  hg.putImageData(hd, 0, 0);
+  return { hull: hull.toDataURL('image/webp', 0.95), webp: c.toDataURL('image/webp', 0.95), png: wantPreview ? c.toDataURL('image/png') : '', W, H, seams, crops, fits };
 }, [srcs, !!preview]);
 await browser.close();
 const save = (file, url) => writeFile(file, Buffer.from(url.split(',')[1], 'base64'));
 await save(`${root}src/assets/sprites/split-raptor-ki.webp`, out.webp);
+await save(`${root}src/assets/sprites/split-raptor-rumpf-ki.webp`, out.hull);
 if (preview) {
   await save(`${preview}/raptor.png`, out.png);
   for (const [y, u] of Object.entries(out.crops)) await save(`${preview}/naht-${y}.png`, u);

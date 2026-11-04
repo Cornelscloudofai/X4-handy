@@ -138,7 +138,14 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
     (M1 … M8, L1 … L3). Zwei Sticks: rechter Stick lenkt stufenlos bis zum mittleren Ring (volle Drehrate ohne Feuer),
     gefeuert wird erst ab dem äußeren Ring. Beim Halten eines Befehlsknopfs leuchten die Türme der Gruppe auf dem Schiff;
     beim Wischen und kurz nach dem Setzen markieren Eckklammern die Gegner, die die Türme zuerst angreifen.
-    Offen: Ebenen Flugdeck/Rumpf zum Landen der Jäger (Hangar), Raptor-Bild auf Sektorkarte und in der Werft
+  - [x] Staffel im Kampf-Minispiel (`src/minigames/shooter.ts`, Abschnitt „Staffel“): im Hangar je Schiffstyp
+    wählbar – Träger bis 40 S und 4 M (Spielgrenze statt 100 S aus X4, wegen der Bildrate), sonst bis zu vier
+    Flügelleute. Träger: Start und Landung über zehn Buchten an den Flugdecks; Rumpf-Ebene `split-raptor-rumpf-ki`
+    (Decks durchsichtig) liegt über startenden/landenden Schiffen. Unter 30 % Hülle oder auf „Landen“ zurück, im Hangar
+    Reparatur (14 s von 0 auf voll), dann Neustart. Befehlsknopf „ST“: Angriff, Strukturen, Schutz, Landen/Sammeln.
+    Gegner greifen Begleitschiffe an, die ihnen näher sind als du; Treffer mit Schild- bzw. Funkeneffekt; Abschuss =
+    für diese Runde verloren. Gegnerzahl berücksichtigt die Staffel (halbe Feuerkraft)
+    Offen: Raptor-Bild auf Sektorkarte und in der Werft; echte Kampfschiffe aus der Flotte bei Gefechten aus der Welt
   - [ ] Verteidigungstürme als Stationsmodul
   - [ ] Tor-Ereignis in Rhy
   - [ ] Eigene Kampfschiffe als Flügelleute im Minispiel

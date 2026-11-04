@@ -1642,3 +1642,59 @@ describe('Kampf: Nachladen, Thermal-Desintegrator, Turmreichweite', () => {
     expect(fired).toBe(true);
   });
 });
+
+describe('Staffel', () => {
+  type W = { state: string; x: number; y: number; hp: number; max: number; t: number; tgt: unknown; slot: number };
+  type G = { px: number; py: number; aimA: number; wings: W[]; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; bullets: { from: string }[]; orderBtns: [string, number, number, number][]; orders: { w: string }; wave: number; onHull(x: number, y: number, p: number): boolean };
+
+  it('Träger: Staffel startet aus dem Hangar über das Flugdeck, kämpft, landet beschädigt, wird repariert und startet neu', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'raptor', weapon: 'puls', turret: 'puls', shield: 'leicht', wing: { mamba: 4, dragon: 1 } } }, 'pirate');
+    g.resize(W, H);
+    const a = g as unknown as G;
+    g.setWingOrder('angriff');
+    expect(a.wings.length).toBe(5);
+    expect(a.wings.every((w) => w.state === 'dock')).toBe(true);
+    expect(a.orderBtns.some(([k]) => k === 'w')).toBe(true);
+    // Start nacheinander: erst auf dem Deck, dann im Flug
+    const seen = new Set<string>();
+    for (let i = 0; i < 1200 && a.wings.some((w) => w.state !== 'fly'); i++) { g.update(DT); for (const w of a.wings) seen.add(w.state); }
+    expect(seen.has('out')).toBe(true);
+    expect(a.wings.every((w) => w.state === 'fly')).toBe(true);
+    // Gegner da: die Staffel feuert
+    for (let i = 0; i < 3000 && !a.enemies.length; i++) g.update(DT);
+    let shots = 0;
+    for (let i = 0; i < 600; i++) { g.update(DT); if (a.wings.some((w) => w.tgt)) shots++; }
+    expect(shots).toBeGreaterThan(0);
+    // ein Schiff schwer beschädigt: fliegt heim, landet, wird repariert und startet wieder
+    const w0 = a.wings.find((w) => w.state === 'fly')!;
+    w0.hp = w0.max * 0.2;
+    const states: string[] = [];
+    // zwischen den Wellen steht die Zeit, bis eine Verbesserungskarte gewählt ist
+    const step = () => { if ((g as unknown as { state: { choosing: boolean } }).state.choosing) (g as unknown as { chooseCard(i: number): void }).chooseCard(0); g.update(DT); };
+    for (let i = 0; i < 60 * 60 && states.at(-1) !== 'fly-again'; i++) {
+      step();
+      if (states.at(-1) !== w0.state) states.push(w0.state);
+      if (states.includes('dock') && w0.state === 'fly') states.push('fly-again');
+    }
+    expect(states).toEqual(expect.arrayContaining(['home', 'in', 'dock', 'out', 'fly-again']));
+    expect(w0.hp).toBeGreaterThanOrEqual(w0.max * 0.95);
+    // Befehl „Landen“: alle zurück in den Hangar
+    g.setWingOrder('landen');
+    for (let i = 0; i < 60 * 60 && a.wings.some((w) => w.state !== 'dock' && w.state !== 'dead'); i++) step();
+    expect(a.wings.filter((w) => w.state !== 'dead').every((w) => w.state === 'dock')).toBe(true);
+    g.setWingOrder('angriff');
+  });
+
+  it('ohne Träger: Flügelleute fliegen in Formation neben dir; „Schutz“ hält sie beim Schiff', () => {
+    const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'cobra', weapon: 'puls', turret: 'puls', shield: 'leicht', wing: { mamba: 2, asp: 5 } } }, 'xenon');
+    g.resize(W, H);
+    const a = g as unknown as G;
+    // höchstens vier Flügelleute
+    expect(a.wings.length).toBe(4);
+    expect(a.wings.every((w) => w.state === 'fly')).toBe(true);
+    g.setWingOrder('schutz');
+    for (let i = 0; i < 240; i++) g.update(DT);
+    expect(a.wings.every((w) => Math.hypot(w.x - a.px, w.y - a.py) < 900)).toBe(true);
+    g.setWingOrder('angriff');
+  });
+});

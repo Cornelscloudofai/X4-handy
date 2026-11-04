@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, type ControlMode, type Loadout, type LTurretId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, type ControlMode, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -301,8 +301,28 @@ const TURN_ONLY = 0.35;
  * Geschütztürme, Bauteile großer Schiffe, Nester, Brutkammern, Turmplattformen
  */
 export type TurretOrder = 'alle' | 'S' | 'M' | 'L' | 'struktur';
-/** Befehlsknopf: alle M- bzw. L-Türme, beim Träger je Feuergruppe (g0 … g10) */
-type OrderKey = 'm' | 'l' | `g${number}`;
+/** Befehlsknopf: alle M- bzw. L-Türme, beim Träger je Feuergruppe (g0 … g10), w = Staffel */
+type OrderKey = 'm' | 'l' | 'w' | `g${number}`;
+
+/**
+ * Eigenes Begleitschiff (Staffel): beim Träger im Hangar (dock), startet über das Flugdeck (out), kämpft (fly), fliegt
+ * beschädigt oder auf Befehl heim (home) und landet (in); sonst als Flügelmann. Werte wie das Schiff im Minispiel.
+ */
+interface Wing {
+  id: number; ship: ShipId; def: ShipDef; w: GameGun;
+  x: number; y: number; vx: number; vy: number; a: number;
+  hp: number; max: number; sh: number; shMax: number;
+  cd: number; mag: number; flash: number;
+  state: 'dock' | 'out' | 'fly' | 'home' | 'in' | 'dead';
+  /** Lauf auf dem Landeweg (0 … 1) und Bucht */
+  t: number; bay: number;
+  /** Ziel und wie lange es schon verfolgt wird */
+  tgt: Enemy | null; tgtT: number; slot: number;
+}
+/** Landeweg: von außen aufs Deck, dann unter den Rumpf (Sekunden je Abschnitt) */
+const BAY_T1 = 0.9, BAY_T2 = 1.1;
+/** Reparatur im Hangar: von 0 auf voll in so vielen Sekunden */
+const WING_REPAIR = 14;
 const ORDER_KEY = 'x4-sektorbau-turmbefehle';
 /** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
 const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', boss: 'L', turret: 'L', ks: 'S', kj: 'S', ka: 'M', kk: 'M', cargo: 'L' };
@@ -314,14 +334,20 @@ const D45 = Math.SQRT1_2;
 const ORDER_DIRS: [TurretOrder, number, number][] = [['alle', 0, -1], ['struktur', D45, -D45], ['M', 1, 0], ['S', D45, D45], ['L', 0, 1]];
 const ORDER_SHORT: Record<TurretOrder, string> = { alle: 'ALLE', S: 'S', M: 'M', L: 'L', struktur: 'STR' };
 const ORDER_TEXT: Record<TurretOrder, string> = { alle: 'alle Ziele', S: 'zuerst S-Schiffe', M: 'zuerst M-Schiffe', L: 'zuerst L-Schiffe', struktur: 'zuerst Türme, Bauteile und Brutstätten' };
-interface Orders { m: TurretOrder; l: TurretOrder; /** Träger: je Feuergruppe */ g: TurretOrder[] }
+/** Staffelbefehl: frei angreifen, gezielt Strukturen, beim eigenen Schiff schützen, landen (Träger) bzw. sammeln */
+export type WingOrder = 'angriff' | 'struktur' | 'schutz' | 'landen';
+const WING_DIRS: [WingOrder, number, number][] = [['angriff', 0, -1], ['struktur', Math.SQRT1_2, -Math.SQRT1_2], ['schutz', 1, 0], ['landen', 0, 1]];
+const WING_SHORT: Record<WingOrder, string> = { angriff: 'ANG', struktur: 'STR', schutz: 'SCH', landen: 'LAN' };
+const WING_TEXT: Record<WingOrder, string> = { angriff: 'frei angreifen', struktur: 'Türme, Bauteile und Brutstätten angreifen', schutz: 'beim Schiff bleiben und schützen', landen: 'zurück' };
+interface Orders { m: TurretOrder; l: TurretOrder; /** Träger: je Feuergruppe */ g: TurretOrder[]; /** Staffel */ w: WingOrder }
 function readOrders(): Orders {
   const ok = (o: unknown): TurretOrder => (o === 'S' || o === 'M' || o === 'L' || o === 'struktur' ? o : 'alle');
   try {
     const v = JSON.parse(globalThis.localStorage?.getItem(ORDER_KEY) ?? 'null');
-    return { m: ok(v?.m), l: ok(v?.l), g: Array.isArray(v?.g) ? v.g.map(ok) : [] };
+    const w: WingOrder = v?.w === 'struktur' || v?.w === 'schutz' || v?.w === 'landen' ? v.w : 'angriff';
+    return { m: ok(v?.m), l: ok(v?.l), g: Array.isArray(v?.g) ? v.g.map(ok) : [], w };
   } catch {
-    return { m: 'alle', l: 'alle', g: [] };
+    return { m: 'alle', l: 'alle', g: [], w: 'angriff' };
   }
 }
 /** Feste Ziele für den Befehl „Strukturen“: Geschütztürme, Bauteile (an einem großen Schiff), Nester, Brutkammern */
@@ -652,7 +678,12 @@ export class ShooterGame implements MiniGame {
   private lTurType: LTurretId = 'plasma';
   /** Turmbefehle der M- und L-Türme (gemerkt) und ein laufendes Wischen am Befehlsknopf */
   orders = readOrders();
-  private orderDrag: { id: number; which: OrderKey; x0: number; y0: number; pick: TurretOrder | null } | null = null;
+  private orderDrag: { id: number; which: OrderKey; x0: number; y0: number; pick: string | null } | null = null;
+  /** Staffel (eigene Begleitschiffe) */
+  private wings: Wing[] = [];
+  /** Startabstand zwischen zwei Schiffen aus dem Hangar */
+  private launchCd = 0;
+  private wingsPlaced = false;
   /** Strahler: Strahlen dieses Bilds (von – bis) für die Darstellung */
   private beams: [number, number, number, number][] = [];
   /** Strahlentürme: Strahlen dieses Bilds (von – bis) */
@@ -778,6 +809,8 @@ export class ShooterGame implements MiniGame {
       const t = turretOf(lo, this.ship, i), w = gameGun(t.def.gun, t.def);
       return { cd: 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L, g: this.ship.turretGroup?.[i] };
     });
+    // Staffel: Begleitschiffe aus dem Hangar (Träger) bzw. Flügelleute in Formation
+    this.initWings(lo);
     // schwere L-Türme an der Bordwand (nur Zerstörer)
     const ltd = LTURRETS[lo.lturret ?? 'plasma'];
     if (this.ship.lMounts?.length) {
@@ -803,7 +836,9 @@ export class ShooterGame implements MiniGame {
     const turretDps = this.ship.groups
       ? this.ship.turrets.reduce((sum, _, i) => { const t = turretOf(lo, this.ship, i); return sum + effectiveDps(t.def.gun, t.def.beam); }, 0)
       : this.ship.turrets.length * effectiveDps(td.gun, td.beam);
-    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + turretDps + this.pL.length * effectiveDps(ltd.gun) + missileDps) / (2 * sustainedDps(WEAPONS.puls.s));
+    // Staffel: ihre Bordkanonen zählen zur Hälfte (sie können abgeschossen werden und sind nicht immer im Kampf)
+    const wingDps = this.wings.reduce((sum, w) => sum + w.def.guns.length * effectiveDps(weaponGun(WEAPONS.puls, w.def.gunSize)), 0) * 0.5;
+    const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + turretDps + this.pL.length * effectiveDps(ltd.gun) + missileDps + wingDps) / (2 * sustainedDps(WEAPONS.puls.s));
     // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger –
     // beim Träger nicht: seine Türme decken alle Seiten zugleich ab
     this.big = this.ship.aspect ? 2.5 : 1;
@@ -1030,17 +1065,28 @@ export class ShooterGame implements MiniGame {
     const gs = this.ship.groups;
     // ganz am linken Rand (mit kleinem Abstand und dem Sicherheitsrand des Geräts), damit das Bild frei bleibt
     const edge = this.safeL + 6;
+    const wing = this.wings.length > 0;
     if (gs) {
       const step = 31, y1 = this.h - 262;
       gs.forEach((_, i) => out.push([`g${i}`, edge + 14, y1 - (gs.length - 1 - i) * step, 14]));
+      // Staffel über den Feuergruppen, etwas abgesetzt
+      if (wing) out.push(['w', edge + 14, y1 - gs.length * step - 10, 14]);
       return out;
     }
     if (this.pTur.length) out.push(['m', edge + 20, this.h - (this.pL.length ? 330 : 270), 20]);
     if (this.pL.length) out.push(['l', edge + 20, this.h - 270, 20]);
+    if (wing) out.push(['w', edge + 20, this.h - 270 - (this.pTur.length ? 60 : 0) - (this.pL.length ? 60 : 0), 20]);
     return out;
   }
 
   hud(): HudItem[] {
+    const base = this.hudBase();
+    if (!this.wings.length) return base;
+    const live = this.wings.filter((w) => w.state !== 'dead').length;
+    return [...base, { label: 'Staffel', value: `${live}/${this.wings.length}`, warn: live < this.wings.length }];
+  }
+
+  private hudBase(): HudItem[] {
     const me: HudItem = { label: this.ship.cls === 'S' ? 'Jäger' : this.ship.role, value: `${Math.ceil(this.hull)} %`, warn: this.hull < 35 };
     const pct = (w: Ward | undefined) => (w && !w.dead ? w.hull / w.max : 0);
     const w0 = this.wards[0];
@@ -1103,8 +1149,8 @@ export class ShooterGame implements MiniGame {
       // Richtung des Wischens wählt den Befehl
       const dx = x - od.x0, dy = y - od.y0;
       // nächste der fünf Richtungen (oben alle, links S, rechts M, unten L, schräg rechts oben Strukturen)
-      let pick: TurretOrder | null = null, best = -2;
-      if (Math.hypot(dx, dy) >= 20) for (const [o, ux, uy] of ORDER_DIRS) { const dot = (dx * ux + dy * uy) / Math.hypot(dx, dy); if (dot > best) { best = dot; pick = o; } }
+      let pick: string | null = null, best = -2;
+      if (Math.hypot(dx, dy) >= 20) for (const [o, ux, uy] of od.which === 'w' ? WING_DIRS : ORDER_DIRS) { const dot = (dx * ux + dy * uy) / Math.hypot(dx, dy); if (dot > best) { best = dot; pick = o; } }
       if (pick !== od.pick) { od.pick = pick; if (pick) sfx.tick(); }
       return;
     }
@@ -1128,9 +1174,14 @@ export class ShooterGame implements MiniGame {
     const od = this.orderDrag;
     if (od?.id === id) {
       // gewischt: gewählter Befehl; nur angetippt: weiter zum nächsten
-      const cur = this.orderOf(od.which);
-      const next = od.pick ?? ORDER_DIRS[(ORDER_DIRS.findIndex(([o]) => o === cur) + 1) % ORDER_DIRS.length][0];
-      this.setOrder(od.which, next);
+      if (od.which === 'w') {
+        const cur = this.orders.w;
+        this.setWingOrder((od.pick as WingOrder | null) ?? WING_DIRS[(WING_DIRS.findIndex(([o]) => o === cur) + 1) % WING_DIRS.length][0]);
+      } else {
+        const cur = this.orderOf(od.which);
+        const next = (od.pick as TurretOrder | null) ?? ORDER_DIRS[(ORDER_DIRS.findIndex(([o]) => o === cur) + 1) % ORDER_DIRS.length][0];
+        this.setOrder(od.which, next);
+      }
       this.orderDrag = null;
     }
     if (this.joy?.id === id) this.joy = null;
@@ -1196,8 +1247,233 @@ export class ShooterGame implements MiniGame {
     if (Math.abs(dy) > 2) this.setZoom(dy > 0 ? 1 : -1);
   }
 
+  // ---------- Staffel ----------
+
+  /** Begleitschiffe anlegen: Träger – alle im Hangar, sie starten nacheinander; sonst in Formation neben dir */
+  private initWings(lo: Loadout): void {
+    this.wings = [];
+    // auf den Platz des Schiffs kürzen (Träger: Hangar, sonst vier Flügelleute)
+    const wing = validWing(lo.wing, lo.ship);
+    if (!wingCount(wing)) return;
+    const bays = this.ship.bays;
+    let k = 0;
+    for (const [id, n] of Object.entries(wing) as [ShipId, number][]) for (let i = 0; i < n; i++) {
+      const def = SHIPS[id], w = gameGun(weaponGun(WEAPONS.puls, def.gunSize), WEAPONS.puls);
+      const max = 100 * def.hull, shMax = 70 * def.shield;
+      const wing: Wing = { id: k, ship: id, def, w, x: this.px, y: this.py, vx: 0, vy: 0, a: this.aimA, hp: max, max, sh: shMax, shMax, cd: 0, mag: w.mag, flash: 0, state: bays ? 'dock' : 'fly', t: 0, bay: bays ? k % bays.length : 0, tgt: null, tgtT: 0, slot: k };
+      if (!bays) { const [fx, fy] = this.slotPos(k); wing.x = fx; wing.y = fy; }
+      this.wings.push(wing);
+      k++;
+    }
+    this.launchCd = 1.5;
+  }
+
+  /** Lokale Schiffslage (Bug oben, Spielpunkte) → Welt */
+  private toWorld(lx: number, ly: number): [number, number] {
+    const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
+    return [this.px + lx * c - ly * sn, this.py + lx * sn + ly * c];
+  }
+
+  /** Platz in der Formation (ohne Ziel): Flügelleute schräg hinter dir, beim Träger in einem Ring um das Schiff */
+  private slotPos(k: number): [number, number] {
+    if (this.ship.bays) {
+      const a = (k / Math.max(1, this.wings.length)) * Math.PI * 2 + this.waveT * 0.05;
+      const R = this.ship.size * 0.62;
+      return this.toWorld(Math.cos(a) * R * 0.45, Math.sin(a) * R);
+    }
+    const side = k % 2 ? 1 : -1, row = Math.floor(k / 2) + 1, d = this.ship.size * 0.55 + 14;
+    return this.toWorld(side * d * row * 0.9, d * row * 0.8);
+  }
+
+  /** Landeweg einer Bucht (lokal): außen → Deck → unter dem Rumpf; t 0 … 1 */
+  private bayPoint(b: number, t: number): [number, number] {
+    const bay = this.ship.bays![b], k = BAY_T1 / (BAY_T1 + BAY_T2);
+    const lerp = (p: [number, number], q: [number, number], f: number): [number, number] => [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f];
+    return t < k ? lerp(bay.out, bay.deck, t / k) : lerp(bay.deck, bay.in, (t - k) / (1 - k));
+  }
+
+  /** Ein Begleitschiff einen Takt weiterführen */
+  private updateWings(dt: number): void {
+    if (!this.wings.length) return;
+    // Flügelleute: im ersten Takt an ihren Platz in der Formation (die Startlage steht erst nach resize fest)
+    if (!this.wingsPlaced) {
+      this.wingsPlaced = true;
+      if (!this.ship.bays) for (const w of this.wings) { [w.x, w.y] = this.slotPos(w.slot); w.a = this.aimA; }
+    }
+    this.launchCd -= dt;
+    const order = this.orders.w, carrier = !!this.ship.bays, total = BAY_T1 + BAY_T2;
+    for (const w of this.wings) {
+      if (w.state === 'dead') continue;
+      w.flash = Math.max(0, w.flash - dt);
+      w.cd -= dt;
+      const speed = 250 * w.def.speed, turn = 4.3 * w.def.turn;
+      if (w.state === 'dock') {
+        // im Hangar: reparieren, Schild laden; starten, sobald heil und kein Landebefehl gilt
+        w.hp = Math.min(w.max, w.hp + (w.max / WING_REPAIR) * dt);
+        w.sh = w.shMax;
+        w.mag = w.w.mag;
+        if (order !== 'landen' && w.hp >= w.max * 0.95 && this.launchCd <= 0 && this.wave >= 0) { w.state = 'out'; w.t = 0; this.launchCd = 0.45; }
+        continue;
+      }
+      if (w.state === 'out' || w.state === 'in') {
+        // auf dem Landeweg: Lage aus der Bucht, Blick in Bewegungsrichtung
+        w.t += dt / total;
+        const f = w.state === 'out' ? 1 - Math.min(1, w.t) : Math.min(1, w.t);
+        const [lx, ly] = this.bayPoint(w.bay, f), [nx, ny] = this.toWorld(lx, ly);
+        // Blick in Bewegungsrichtung (auf dem Deck gleitet es quer zum Träger)
+        if (Math.hypot(nx - w.x, ny - w.y) > 0.05) w.a = Math.atan2(ny - w.y, nx - w.x);
+        w.vx = (nx - w.x) / Math.max(dt, 1e-3); w.vy = (ny - w.y) / Math.max(dt, 1e-3);
+        w.x = nx; w.y = ny;
+        if (w.t >= 1) {
+          if (w.state === 'in') { w.state = 'dock'; w.vx = w.vy = 0; }
+          else { w.state = 'fly'; w.vx = Math.cos(w.a) * speed * 0.6; w.vy = Math.sin(w.a) * speed * 0.6; }
+        }
+        continue;
+      }
+      // fliegend: beschädigt oder auf Befehl heim (Träger) – sonst kämpfen bzw. Formation halten
+      if (carrier && (order === 'landen' || w.hp < w.max * 0.3)) w.state = 'home';
+      let gx: number, gy: number, tgt: Enemy | null = null;
+      if (w.state === 'home') {
+        [gx, gy] = this.toWorld(...this.bay(w.bay, 'out'));
+        if (Math.hypot(gx - w.x, gy - w.y) < 18) { w.state = 'in'; w.t = 0; continue; }
+      } else {
+        // Ziel: nach Befehl (Schutz nur Gegner nahe deinem Schiff), Ziel eine Weile halten
+        if (w.tgt && (!this.enemies.includes(w.tgt) || (w.tgtT += dt) > 6)) { w.tgt = null; w.tgtT = 0; }
+        if (!w.tgt && order !== 'landen') {
+          const pick = this.pickTarget(w.x, w.y, order === 'schutz' ? 520 : 1100, order === 'struktur' ? 'struktur' : 'alle');
+          if (pick && (order !== 'schutz' || Math.hypot(pick.x - this.px, pick.y - this.py) < this.ship.size * 0.5 + 420)) { w.tgt = pick; w.tgtT = 0; }
+        }
+        tgt = w.tgt;
+        if (tgt) {
+          // Anflug mit Vorhalt; ganz nah seitlich vorbei (kein Rammen)
+          const d = Math.hypot(tgt.x - w.x, tgt.y - w.y), lt = d / Math.max(1, w.w.speed);
+          gx = tgt.x + tgt.vx * lt; gy = tgt.y + tgt.vy * lt;
+          if (d < tgt.r + 50) { gx += Math.cos(w.a + 1.3) * 120; gy += Math.sin(w.a + 1.3) * 120; }
+        } else [gx, gy] = this.slotPos(w.slot);
+      }
+      const dx = gx - w.x, dy = gy - w.y, dist = Math.hypot(dx, dy);
+      const want = Math.atan2(dy, dx);
+      w.a = wrapA(turnTo(w.a, want, turn * dt));
+      // ohne Ziel in der Formation abbremsen; sonst volle Fahrt in Blickrichtung
+      const sp = tgt || w.state === 'home' ? speed : Math.min(speed, dist * 2.2 + Math.hypot(this.pvx, this.pvy));
+      const k = Math.min(1, dt * 2.5);
+      w.vx += (Math.cos(w.a) * sp - w.vx) * k;
+      w.vy += (Math.sin(w.a) * sp - w.vy) * k;
+      w.x += w.vx * dt; w.y += w.vy * dt;
+      // Bordkanonen: feuern, wenn das Ziel vorn liegt
+      if (tgt && w.cd <= 0) {
+        const d = Math.hypot(tgt.x - w.x, tgt.y - w.y), off = Math.abs(wrapA(Math.atan2(tgt.y - w.y, tgt.x - w.x) - w.a));
+        if (d < w.w.range && off < 0.25) {
+          const S = w.def.size === 40 ? SPRITE_SIZE * 0.86 : w.def.size;
+          for (const gxo of w.def.guns.length ? w.def.guns : [0]) {
+            const c = Math.cos(w.a + Math.PI / 2), sn = Math.sin(w.a + Math.PI / 2), fwd = S * (w.def.gunFwd ?? 0.3);
+            const ox = w.x + gxo * 0.5 * c + Math.cos(w.a) * fwd, oy = w.y + gxo * 0.5 * sn + Math.sin(w.a) * fwd;
+            const a = w.a + (this.r() - 0.5) * 2 * w.w.jitter;
+            this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.w.speed + w.vx * 0.3, vy: Math.sin(a) * w.w.speed + w.vy * 0.3, dmg: this.baseDmg * w.w.dmg, from: 'p', life: w.w.life, color: w.w.color, w: w.w.w, pierce: 0 });
+          }
+          w.cd = w.w.interval * this.tempo;
+          if (w.w.mag && --w.mag <= 0) { w.mag = w.w.mag; w.cd = w.w.reload * this.tempo; }
+        }
+      }
+    }
+  }
+
+  /** Begleitschiff zeichnen: Bild wie im Hangar, kleine Triebwerksflamme, Hüllenbalken wenn beschädigt, Kennung */
+  private drawWing(ctx: CanvasRenderingContext2D, w: Wing, t: number): void {
+    const sp = shipSprite(w.def.sprite, w.def.fallback);
+    const S = w.def.size === 40 ? SPRITE_SIZE * 0.86 : w.def.size;
+    ctx.save();
+    ctx.translate(w.x, w.y);
+    ctx.save();
+    ctx.rotate(w.a + Math.PI / 2);
+    if (sp) {
+      const moving = Math.hypot(w.vx, w.vy) > 20;
+      ctx.fillStyle = rgba(sp.engines.color, moving ? 0.75 : 0.3);
+      const fw = S / 22;
+      for (const fx of sp.engines.xs) {
+        const ex = fx * S, ey = sp.engines.y * S;
+        ctx.beginPath();
+        ctx.moveTo(ex - fw, ey); ctx.lineTo(ex + fw, ey); ctx.lineTo(ex, ey + 2 + (moving ? 8 + Math.random() * 3 : 1) * (Math.min(S, 92) / 40));
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.drawImage(sp.img, -S / 2, -S / 2, S, S);
+      if (w.flash > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = w.flash * 4;
+        ctx.drawImage(sp.img, -S / 2, -S / 2, S, S);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
+    } else {
+      ctx.scale(S / 40, S / 40);
+      drawFighterVector(ctx);
+    }
+    ctx.restore();
+    // Kennung „eigenes Schiff“: weit herausgezoomt ein kleiner türkiser Winkel, beschädigt ein Hüllenbalken
+    if (this.zoom < 0.5 && (w.state === 'fly' || w.state === 'home')) {
+      const k = 7 / this.zoom;
+      ctx.strokeStyle = rgba('#5ff0d8', 0.7 + 0.2 * Math.sin(t * 4 + w.id));
+      ctx.lineWidth = 1.5 / this.zoom;
+      ctx.beginPath();
+      ctx.moveTo(-k, -S * 0.6 - k); ctx.lineTo(0, -S * 0.6); ctx.lineTo(k, -S * 0.6 - k);
+      ctx.stroke();
+    }
+    if (w.hp < w.max * 0.999 && (w.state === 'fly' || w.state === 'home')) {
+      const bw = Math.max(S, 18 / this.zoom), bh = 2 / this.zoom, f = Math.max(0, w.hp / w.max);
+      ctx.fillStyle = 'rgba(5,14,22,0.6)';
+      ctx.fillRect(-bw / 2, S * 0.62, bw, bh);
+      ctx.fillStyle = f > 0.3 ? '#7fe08a' : '#ff5a46';
+      ctx.fillRect(-bw / 2, S * 0.62, bw * f, bh);
+    }
+    ctx.restore();
+  }
+
+  /** Lage einer Bucht (lokal): Anflugpunkt außen bzw. Ziel unter dem Rumpf */
+  private bay(b: number, which: 'out' | 'in'): [number, number] {
+    const bay = this.ship.bays![b];
+    return which === 'out' ? bay.out : bay.in;
+  }
+
+  /** Getroffenes eigenes Begleitschiff an dieser Stelle (fliegend, startend oder landend – nicht im Hangar) */
+  private wingAt(x: number, y: number): Wing | null {
+    for (const w of this.wings) {
+      if (w.state === 'dock' || w.state === 'dead') continue;
+      // landend unter dem Rumpf: geschützt
+      if ((w.state === 'in' && w.t > BAY_T1 / (BAY_T1 + BAY_T2)) || (w.state === 'out' && w.t < BAY_T2 / (BAY_T1 + BAY_T2))) continue;
+      if (Math.hypot(w.x - x, w.y - y) < w.def.r) return w;
+    }
+    return null;
+  }
+
+  /** Schaden an einem Begleitschiff: erst der Schild (blau), dann die Hülle (rote Funken); bei 0 explodiert es */
+  private damageWing(w: Wing, dmg: number, x: number, y: number): void {
+    const s = Math.min(w.sh, dmg);
+    w.sh -= s; dmg -= s;
+    if (s > 0) this.fx.add({ x, y, color: '#7fd8ff', size: 1.6, kind: 'ring', max: 0.25 });
+    if (dmg > 0) { w.hp -= dmg; w.flash = 0.15; this.fx.burst(x, y, '#ff5a3a', 3, 110, 1, 'spark', 0.22); }
+    if (w.hp <= 0) {
+      w.state = 'dead';
+      this.explode(w.x, w.y, '#ffb070', w.def.cls === 'M' ? 1.4 : 0.8);
+      this.floats.add(w.x, w.y - 20, `${w.def.name} verloren`, '#ff9a8a', 12);
+      if (w.tgt) w.tgt = null;
+    }
+  }
+
+  /** Begleitschiff, das ein Gegner angreift: fliegend, näher als du und in Angriffsreichweite */
+  private wingFor(e: Enemy, toP: number): Wing | null {
+    let best: Wing | null = null, bd = Math.min(toP, AGGRO);
+    for (const w of this.wings) {
+      if (w.state !== 'fly' && w.state !== 'home') continue;
+      const d = Math.hypot(w.x - e.x, w.y - e.y);
+      if (d < bd) { bd = d; best = w; }
+    }
+    return best;
+  }
+
   /** Aktueller Befehl eines Knopfs */
   private orderOf(which: OrderKey): TurretOrder {
+    if (which === 'w') return 'alle';
     return which === 'm' || which === 'l' ? this.orders[which] : this.orders.g[Number(which.slice(1))] ?? 'alle';
   }
 
@@ -1205,17 +1481,31 @@ export class ShooterGame implements MiniGame {
   private orderName(which: OrderKey): string {
     if (which === 'm') return 'M-Türme';
     if (which === 'l') return 'L-Türme';
+    if (which === 'w') return 'Staffel';
     return this.ship.groups?.[Number(which.slice(1))]?.name ?? 'Türme';
   }
 
   /** Kurzname auf dem kleinen Knopf des Trägers: M1 … M8 vom Bug zum Heck, L1 … L3 */
   private orderLabel(which: OrderKey): string {
+    if (which === 'w') return 'ST';
     if (which === 'm' || which === 'l') return which.toUpperCase();
     const gs = this.ship.groups ?? [], i = Number(which.slice(1)), kind = gs[i]?.kind ?? 'M';
     return `${kind}${gs.slice(0, i + 1).filter((g) => g.kind === kind).length}`;
   }
 
   /** Turmbefehl setzen und merken (auch für Tests) */
+  /** Staffelbefehl setzen und merken (auch für Tests) */
+  setWingOrder(o: WingOrder): void {
+    this.markOrder = o === 'struktur' ? 'struktur' : 'alle';
+    this.markT = o === 'angriff' || o === 'struktur' ? 1.4 : 0;
+    if (this.orders.w === o) return;
+    this.orders = { ...this.orders, w: o };
+    try { globalThis.localStorage?.setItem(ORDER_KEY, JSON.stringify(this.orders)); } catch { /* Speicher nicht verfügbar */ }
+    vibrate(15);
+    sfx.tick();
+    this.floats.add(this.px, this.py - 50, `Staffel: ${o === 'landen' && !this.ship.bays ? 'sammeln' : WING_TEXT[o]}`, '#9ffcff', 13);
+  }
+
   setOrder(which: OrderKey, o: TurretOrder): void {
     // die Ziele des Befehls kurz markieren – auch wenn er schon galt
     this.markOrder = o;
@@ -2520,6 +2810,7 @@ export class ShooterGame implements MiniGame {
     this.updateTurrets(dt);
     if (this.tBeams.length) sustain('turretBeam', 'beam', 0.45);
     this.updateLTurrets(dt);
+    this.updateWings(dt);
     // Drohnen kreisen und feuern selbst
     const drones = this.droneN;
     if (drones) {
@@ -2879,8 +3170,10 @@ export class ShooterGame implements MiniGame {
         else if (e.target === 'p' && toP > AGGRO * 2.2) e.target = 'f';
       } else e.target = 'f';
       const onP = e.target === 'p' || !ew;
-      const tx = onP || !ew ? this.px : this.wx(ew), ty = onP || !ew ? this.py : this.wy(ew);
-      const tvx = onP ? this.pvx : 0, tvy = onP ? this.pvy : this.moving ? this.fVy : 0;
+      // Begleitschiffe ziehen Gegner auf sich: ein fliegendes eigenes Schiff näher als du wird angegriffen
+      const foeW = onP ? this.wingFor(e, toP) : null;
+      const tx = foeW ? foeW.x : onP || !ew ? this.px : this.wx(ew), ty = foeW ? foeW.y : onP || !ew ? this.py : this.wy(ew);
+      const tvx = foeW ? foeW.vx : onP ? this.pvx : 0, tvy = foeW ? foeW.vy : onP ? this.pvy : this.moving ? this.fVy : 0;
       const dx = tx - e.x, dy = ty - e.y, d = Math.hypot(dx, dy) || 1;
       // Vorhaltepunkt für die eigenen Bordkanonen
       const lt = d / (SHOT_V[e.kind] ?? 300);
@@ -3132,6 +3425,8 @@ export class ShooterGame implements MiniGame {
         }
       } else {
         if (this.onHull(b.x, b.y, 0)) { this.damagePlayer(b.dmg, 1, [b.x, b.y]); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
+        const hitW = this.wingAt(b.x, b.y);
+        if (hitW) { this.damageWing(hitW, b.dmg, b.x, b.y); continue; }
         const hw = this.wardAt(b.x, b.y);
         if (hw) { this.hitWard(hw, b.dmg * this.fScale, b.x, b.y); continue; }
         // geschleppte und treibende Container (Bergung) gehen zu Bruch
@@ -3645,6 +3940,8 @@ export class ShooterGame implements MiniGame {
     this.drawWards(ctx, t);
     // eigenes Schiff unter den Gegnern: sie fliegen scheinbar darüber hinweg (wichtig beim großen Träger)
     if (this.outcome !== 'player') this.drawPlayer(ctx, t);
+    // Staffel im Flug über dem eigenen Schiff (ohne Träger auch beim Start, den es dann nicht gibt)
+    for (const w of this.wings) if (w.state === 'fly' || w.state === 'home' || (!this.ship.hullLayer && (w.state === 'in' || w.state === 'out'))) this.drawWing(ctx, w, t);
     this.drawClusterMass(ctx, t);
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
     this.drawTargetMarks(ctx, t);
@@ -4840,6 +5137,17 @@ export class ShooterGame implements MiniGame {
       // lange Schiffe (Träger): Bild im eigenen Seitenverhältnis, size ist die Länge
       const sw = size * (asp ?? 1);
       ctx.drawImage(sprite.img, -sw / 2, -size / 2, sw, size);
+      // Träger: startende und landende Schiffe liegen zwischen Schiffsbild und Rumpf-Ebene – auf dem Flugdeck
+      // sichtbar, unter den roten Panzerplatten verdeckt
+      const layer = this.ship.hullLayer ? projectileSprite(this.ship.hullLayer + '-ki') : null;
+      if (layer && this.wings.some((w) => w.state === 'in' || w.state === 'out')) {
+        ctx.save();
+        ctx.rotate(-(this.aimA + Math.PI / 2));
+        ctx.translate(-this.px, -this.py);
+        for (const w of this.wings) if (w.state === 'in' || w.state === 'out') this.drawWing(ctx, w, t);
+        ctx.restore();
+        ctx.drawImage(layer, -sw / 2, -size / 2, sw, size);
+      }
       if (this.pL.length) this.drawLTurrets(ctx, sprite.img, size);
       if (this.odT > 0) {
         ctx.globalCompositeOperation = 'lighter';
@@ -5088,7 +5396,9 @@ export class ShooterGame implements MiniGame {
    * Gegner auf, die die Türme zuerst angreifen – so ist sichtbar, wer was angreift
    */
   private drawTargetMarks(ctx: CanvasRenderingContext2D, t: number): void {
-    const o = this.orderDrag?.pick ?? (this.markT > 0 ? this.markOrder : null);
+    const raw = this.orderDrag?.pick ?? (this.markT > 0 ? this.markOrder : null);
+    // Staffel: Angriff markiert alle Gegner, Strukturen die festen Ziele; Schutz und Landen nichts
+    const o = this.orderDrag?.which === 'w' ? (raw === 'angriff' ? 'alle' : raw === 'struktur' ? 'struktur' : null) : raw;
     if (!o) return;
     const a = this.orderDrag ? 0.85 : Math.min(1, this.markT / 0.4);
     const pulse = 0.6 + 0.4 * Math.sin(t * 12);
@@ -5287,9 +5597,9 @@ export class ShooterGame implements MiniGame {
     // beim Aufklappen nur der gehaltene Knopf (die Auswahl liegt sonst über den anderen)
     const shown = this.orderDrag ? btns.filter(([w]) => w === this.orderDrag!.which) : btns;
     for (const [which, x, y, r] of shown) {
-      const cur = this.orderOf(which), open = this.orderDrag?.which === which, small = r < 18;
-      ctx.fillStyle = open ? 'rgba(20,48,60,0.92)' : 'rgba(5,14,22,0.78)';
-      ctx.strokeStyle = cur === 'alle' ? 'rgba(110,220,205,0.45)' : 'rgba(255,181,71,0.8)';
+      const isW = which === 'w', cur = this.orderOf(which), open = this.orderDrag?.which === which, small = r < 18;
+      ctx.fillStyle = open ? 'rgba(20,48,60,0.92)' : isW ? 'rgba(10,40,52,0.85)' : 'rgba(5,14,22,0.78)';
+      ctx.strokeStyle = isW ? 'rgba(127,216,255,0.8)' : cur === 'alle' ? 'rgba(110,220,205,0.45)' : 'rgba(255,181,71,0.8)';
       ctx.lineWidth = small ? 1.3 : 1.6;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -5298,9 +5608,9 @@ export class ShooterGame implements MiniGame {
       ctx.fillStyle = '#e4f3f0';
       ctx.font = `700 ${small ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
       ctx.fillText(this.orderLabel(which), x, y - (small ? 3.5 : 5));
-      ctx.fillStyle = cur === 'alle' ? 'rgba(169,195,198,0.85)' : '#ffb547';
+      ctx.fillStyle = isW ? '#9fe6ff' : cur === 'alle' ? 'rgba(169,195,198,0.85)' : '#ffb547';
       ctx.font = `600 ${small ? 7 : 9}px "Chakra Petch", Barlow, sans-serif`;
-      ctx.fillText(cur === 'alle' ? 'ALLE' : cur === 'struktur' ? 'STR' : `→ ${cur}`, x, y + (small ? 5.5 : 8));
+      ctx.fillText(isW ? WING_SHORT[this.orders.w] : cur === 'alle' ? 'ALLE' : cur === 'struktur' ? 'STR' : `→ ${cur}`, x, y + (small ? 5.5 : 8));
       if (!open) continue;
       // aufgeklappte Auswahl; beim Träger der Name der Feuergruppe darüber
       const pick = this.orderDrag!.pick, dist = small ? 44 : 52, br = small ? 17 : 19;
@@ -5314,8 +5624,11 @@ export class ShooterGame implements MiniGame {
         ctx.fillText(name, x + dist + br + 14, y);
         ctx.textAlign = 'center';
       }
-      for (const [o, dx, dy] of ORDER_DIRS) {
-        const bx = x + dx * dist, by = y + dy * dist, on = pick === o, active = cur === o;
+      const opts: [string, number, number, string][] = isW
+        ? WING_DIRS.map(([o, ox, oy]) => [o, ox, oy, o === 'landen' && !this.ship.bays ? 'SAM' : WING_SHORT[o]])
+        : ORDER_DIRS.map(([o, ox, oy]) => [o, ox, oy, ORDER_SHORT[o]]);
+      for (const [o, dx, dy, label] of opts) {
+        const bx = x + dx * dist, by = y + dy * dist, on = pick === o, active = isW ? this.orders.w === o : cur === o;
         ctx.fillStyle = on ? 'rgba(255,181,71,0.9)' : 'rgba(5,14,22,0.88)';
         ctx.strokeStyle = active ? '#ffb547' : 'rgba(110,220,205,0.5)';
         ctx.lineWidth = 1.4;
@@ -5324,8 +5637,8 @@ export class ShooterGame implements MiniGame {
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = on ? '#1a1206' : '#e4f3f0';
-        ctx.font = `700 ${o === 'alle' || o === 'struktur' ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
-        ctx.fillText(ORDER_SHORT[o], bx, by);
+        ctx.font = `700 ${label.length > 1 ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
+        ctx.fillText(label, bx, by);
       }
     }
     ctx.restore();
