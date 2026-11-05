@@ -56,7 +56,7 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
 
 - Umgesetzt mit `gasdrohne-b-ki` (Greifarme) ab 1:57 für 16 Takte, nur bei „Celestial Drift“, reine Zierde.
 - Noch offen: Rückmeldung des Spielers zu Figuren und Tempo; ggf. als zufälliges Ereignis bei weiteren Liedern.
-- Vorrat: `gasdrohne-a-ki.webp` und `bergbaudrohne-ki.webp` (Doppelbohrer – evtl. für das Erz-Minispiel).
+- Vorrat (`grafik-vorrat/drohnen/`): `gasdrohne-a-ki.webp` und `bergbaudrohne-ki.webp` (Doppelbohrer – evtl. für das Erz-Minispiel).
 
 ## Radio auf der Sektorkarte (vorgemerkt)
 

@@ -24,7 +24,7 @@ von freesound.org. Übernommen wurden ausschließlich Dateien ohne abweichende L
 | es-triebwerk-schleife.wav | impulse engine~.wav |
 | es-start.wav | takeoff.wav |
 | es-landung.wav | landing.wav |
-| es-traktorstrahl.wav | tractor beam~.wav |
+| es-traktorstrahl.wav (jetzt in `klang-vorrat/`, ersetzt durch sn-traktor-*) | tractor beam~.wav |
 
 Übernommen mit `node scripts/import-sound.mjs <datei> <name> [loop]`: verlustfrei als WAV (16 Bit, 44,1 kHz),
 Spitze auf −1 dBFS normalisiert; Einzelklänge ohne Stille am Ende, Schleifen unverändert (nahtlos).
