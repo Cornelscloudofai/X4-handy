@@ -63,10 +63,10 @@ describe('Größenverhältnis im Kampf', () => {
     x.enemies.length = 0;
     x.spawnBoss();
     const boss = x.enemies.find((e) => e.kind === 'boss')!;
-    expect(boss.r * 4.7).toBeCloseTo(1670 * 38 / 32, -1);
+    expect(boss.r * 4.7 * 0.977).toBeCloseTo(1670 * 38 / 32, -1);
     // Türme sitzen auf den Sockeln des großen Bilds
     const tur = x.enemies.filter((e) => e.parent === boss);
-    expect(Math.max(...tur.map((t) => Math.abs(t.ox!)))).toBeGreaterThan(61 * 10);
+    expect(Math.max(...tur.map((t) => Math.abs(t.ox!)))).toBeGreaterThan(400);
     setSizeScale('bisher', false);
     expect(mk('xenon').makeEnemy('m', 0, 0).r).toBe(14);
   });

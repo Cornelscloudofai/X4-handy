@@ -48,7 +48,8 @@ export const ENEMY_X4: Record<string, { m: number; vis: number; model: string }>
   n: { m: 34.7, vis: 36, model: 'Xenon N' },
   m: { m: 31.7, vis: 70, model: 'Xenon M' },
   xs: { m: 30.6, vis: 55, model: 'Xenon T (Größe)' },
-  'xenon:boss': { m: 1670, vis: 160, model: 'Xenon K' },
+  // das Schiff füllt 97,7 % der Bildhöhe
+  'xenon:boss': { m: 1670, vis: 156, model: 'Xenon K' },
   ks: { m: 15, vis: 18, model: 'geschätzt' },
   kj: { m: 25, vis: 26, model: 'geschätzt' },
   ka: { m: 35, vis: 43, model: 'geschätzt' },

@@ -36,6 +36,8 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'xenon-schirmdrohne-ki': { xs: [0], y: 0.33, color: '#ff3b4a' },
   'xenon-turm-laser-ki': { xs: [], y: 0, color: '#ff3b4a' },
   'xenon-turm-plasma-ki': { xs: [], y: 0, color: '#ff6a3d' },
+  // großer Xenon K (Boss): zwei Triebwerke am Heck
+  'xenon-k-gross-ki': { xs: [-0.09, 0.09], y: 0.46, color: '#ff3b4a' },
   'xenon-k-ki': { xs: [-0.217, -0.115, 0, 0.11, 0.218], y: 0.42, color: '#ff3b4a' },
   // Kha'ak: keine sichtbaren Triebwerke
   'khaak-spaeher-ki': { xs: [], y: 0, color: '#c77dff' },
@@ -179,11 +181,13 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   n: { name: 'xenon-n-ki', scale: 4.5 },
   m: { name: 'xenon-m-ki', scale: 5 },
   xs: { name: 'xenon-schirmdrohne-ki', scale: 4.2 },
-  // Xenon-K-Segment: 160 px bei Trefferradius 34; Laser- und Plasmatürme sitzen auf den vier Sockeln (siehe shooter.ts)
-  'xenon:boss': { name: 'xenon-k-ki', scale: 4.7 },
+  // Xenon K: Bild 160 px bei Trefferradius 34 (im X4-Maßstab 1,7 km); 8 L- und 14 M-Türme auf den Sockeln (siehe shooter.ts)
+  'xenon:boss': { name: 'xenon-k-gross-ki', scale: 4.7 },
   // Xenon-Türme: der runde Sockel ist der Drehpunkt; beim Plasmaturm liegt er unter der Bildmitte (oy)
   'xenon:turret-laser': { name: 'xenon-turm-laser-ki', scale: 4.8 },
   'xenon:turret-plasma': { name: 'xenon-turm-plasma-ki', scale: 2.8, oy: 0.11 },
+  // M-Türme des K: Zwillingskanone, Drehpunkt unter der Bildmitte (wie auf der Turmplattform)
+  'xenon:turret-m': { name: 'xenon-turm-zwilling-ki', scale: 5, oy: 0.2 },
   // Kha'ak: Späher (Schiff ~13 px, ein Drittel der Mamba), Jäger (~24 px), Abfangjäger (lange Raute), Korvette
   ks: { name: 'khaak-spaeher-ki', scale: 2.25 },
   kj: { name: 'khaak-jaeger-ki', scale: 2.6 },

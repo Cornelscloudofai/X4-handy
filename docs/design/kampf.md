@@ -99,6 +99,10 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
 - **Neue Gegnertypen für die Größenlücken** (Spielerwunsch): Xenon P (Fregatte, 138 m) als schwerer Wellengegner,
   Piraten-Großkampfschiff (Barbarossa-Größe, 1 164 m) als Piraten-Boss statt der Fregatte, ggf. Xenon I (5 178 m).
   Bilder fehlen noch – Prompts an den Spieler gegeben.
+- **Xenon K (neues Bild, umgesetzt):** 8 L-Türme auf den Ringsockeln (Plasma vorn/hinten, Laser mittschiffs), 14 M-Türme
+  (Zwillingskanone) an den Plattenenden und auf dem Rückgrat (`XENON_K_MOUNTS`). Bemannt je nach Stufe: Stufe 1 vier L
+  und fünf M, ab Stufe 5 bzw. gegen den Raptor alle 22.
+- **Staffel:** feste Pilot-Eigenarten (`pers`), Rotten verteilen sich auf Ziele; Raketenschiffe laden im Träger 5 s nach.
 
 ## Offene Fragen
 

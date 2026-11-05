@@ -278,9 +278,11 @@ for (const kind of ['pirates', 'xenon', 'khaak']) {
   await page.mouse.up();
   // Feuertaste halten: Bordkanonen feuern geradeaus
   await page.mouse.move(width - 66, 844 - 80);
+  const fired0 = await mg(() => window.__mg.game.fired);
   await page.mouse.down();
   await page.waitForTimeout(400);
-  const shots = await mg(() => window.__mg.game.bullets.filter((b) => b.from === 'p').length);
+  // abgegebene Salven zählen (Geschosse, die schon getroffen haben, sind nicht mehr in der Liste)
+  const shots = await mg(() => window.__mg.game.fired) - fired0;
   await page.mouse.up();
   if (!(shots > 0)) fail(`${kind}: Feuertaste feuert nicht`);
   // Raketentaste

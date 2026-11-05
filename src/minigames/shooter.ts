@@ -154,7 +154,8 @@ interface Enemy {
   /** Boss-Teile: Eltern und Versatz */
   parent?: Enemy; ox?: number; oy?: number;
   /** Xenon-Türme: Laserstrahl (zielt, lädt auf, feuert einen Strahl) oder dicke Plasmakugeln; Kha'ak-Brutkammer */
-  weapon?: 'laser' | 'plasma' | 'brut';
+  /** Turmart; m = mittlerer Turm (Zwillingskanone) am Xenon K */
+  weapon?: 'laser' | 'plasma' | 'brut' | 'm';
   /** Kha'ak: Cluster (fliegt geschlossen bis kurz vor dem Ziel) und Platz darin */
   cl?: number; slotX?: number; slotY?: number; slotFlip?: boolean;
   /** Kha'ak: Kyon-Strahl lädt (Restzeit) */
@@ -344,6 +345,16 @@ interface Wing {
 const WING_REARM = 5;
 /** feste Zufallszahl 0 … 1 je Begleiter und Merkmal (verschiebt den Zufall des Kampfs nicht) */
 const persRnd = (k: number, f: number) => { const x = Math.sin(k * 127.1 + f * 311.7) * 43758.5453; return x - Math.floor(x); };
+/**
+ * Turmsockel des Xenon K, gemessen im Bild (1 254 px, Bug oben) und umgerechnet auf Punkte bei Bildgröße 160
+ * (Trefferradius 34 × Bildmaßstab 4,7; im Kampf × Größenfaktor)
+ */
+const XENON_K_MOUNTS: [number, number, 'laser' | 'plasma' | 'm'][] = ([
+  [497, 213, 'plasma'], [750, 213, 'plasma'], [439, 380, 'laser'], [801, 380, 'laser'],
+  [440, 707, 'laser'], [802, 708, 'laser'], [462, 896, 'plasma'], [780, 897, 'plasma'],
+  [400, 247, 'm'], [843, 250, 'm'], [310, 372, 'm'], [938, 372, 'm'], [282, 548, 'm'], [973, 548, 'm'],
+  [290, 708, 'm'], [962, 708, 'm'], [355, 890, 'm'], [898, 892, 'm'], [627, 370, 'm'], [627, 525, 'm'], [627, 690, 'm'], [627, 860, 'm'],
+] as const).map(([x, y, w]) => [(x / 1254 - 0.5) * 159.8, (y / 1254 - 0.5) * 159.8, w]);
 /** Landeweg: von außen aufs Deck, dann unter den Rumpf (Sekunden je Abschnitt) */
 const BAY_T1 = 0.9, BAY_T2 = 1.1;
 /** Reparatur im Hangar: von 0 auf voll in so vielen Sekunden */
@@ -685,6 +696,8 @@ export class ShooterGame implements MiniGame {
    * Schwärme, mehr Angreifer zugleich, höhere Obergrenzen auf dem Feld, Nachschub dichter hintereinander. Sonst 1.
    */
   private big = 1;
+  /** abgegebene Salven der Bordkanonen (für Tests: Geschosse können schon getroffen haben und weg sein) */
+  fired = 0;
   /** Wellen bis zum Sprungtor: große Schiffe fliegen eine längere Route */
   private nWaves = NORMAL_WAVES;
   /** Deckkraft der Hülle/Schild-Anzeige über den Gegnern (Einstellung, 0 = aus) */
@@ -2636,25 +2649,49 @@ export class ShooterGame implements MiniGame {
     b.r = 34 * k;
     b.mini = mini;
     this.enemies.push(b);
-    const all: [number, number, ('laser' | 'plasma' | 'brut')?][] = this.side === 'pirate'
+    type Mount = [number, number, ('laser' | 'plasma' | 'brut' | 'm')?];
+    const all: Mount[] = this.side === 'pirate'
       // auf den drei Sockeln im Bild der Fregatte (Flügelenden links/rechts, Heckmitte); ab Stufe 4 ein vierter auf dem Bug
       ? [[-53, 4], [54, 4], [0, 30], ...(this.level >= 4 ? [[0, -40] as [number, number]] : [])]
       : this.side === 'xenon'
-        // auf den vier Sockeln des K-Segments: Laser auf den Flügeln, Plasma auf Bug und Heck
-        ? [[-61, 17, 'laser'], [61, 17, 'laser'], [0, -46, 'plasma'], [0, 39, 'plasma']]
+        // Xenon K: 8 L-Türme auf den großen Ringsockeln (vorn und hinten Plasma, mittschiffs Laser) und 14 M-Türme auf den
+        // kleinen Sockeln an den Plattenenden und auf dem Rückgrat
+        ? XENON_K_MOUNTS
         // Kha'ak-Brutschiff: Kyon-Türme (Strahl wie der Xenon-Laser) auf den runden Sockeln links und rechts,
         // Brutkästen auf den beiden Brutkammern vorn
         : [[-47, -2, 'laser'], [47, -2, 'laser'], [-25, -27, 'brut'], [25, -27, 'brut']];
     // Großziel: nur die beiden Flügeltürme; Kha'ak-Zerstörer: Kyon-Türme auf den Sockelpaaren an Bug und Heck
-    const offs = mini ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : all.slice(0, 2)) : all;
+    // Großziel: nur die beiden Flügeltürme (Xenon K: die Laser mittschiffs und vier M-Türme); Kha'ak-Zerstörer: Kyon-Türme
+    // auf den Sockelpaaren an Bug und Heck
+    const offs = mini ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? all.filter((m, i) => m[2] === 'laser' && i < 4 || m[2] === 'm' && i % 3 === 0) : all.slice(0, 2))
+      : this.side === 'xenon' ? this.kMounts() : all;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
-      t.parent = b; t.ox = ox * k; t.oy = oy * k; t.weapon = weapon; t.r *= k;
+      t.parent = b; t.ox = ox * k; t.oy = oy * k; t.weapon = weapon;
+      // Xenon K: Turmgröße passend zu den Sockeln im Bild; M-Türme leichter
+      if (this.side === 'xenon') {
+        // (im alten Maßstab nicht kleiner als bisher, sonst wären sie kaum zu treffen)
+        t.r = Math.max(weapon === 'm' ? 9 : 13, (weapon === 'm' ? 1.6 : 3) * k);
+        if (weapon === 'm') { t.hp = t.max = t.max * 0.6; t.sh = t.shMax = t.shMax * 0.6; }
+      } else t.r *= k;
       // Xenon-Türme feuern versetzt; ab Stufe 4 schneller (statt eines fünften Turms)
       if (weapon) t.cd = weapon === 'brut' ? 4 + this.r() * 3 : 1.5 + this.r() * 2;
       this.enemies.push(t);
     }
     if (!mini) this.bossT = 0;
+  }
+
+  /**
+   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 vier L- und fünf M-Türme, jede Stufe mehr, ab Stufe 5 (und gegen
+   * den Träger) alle 8 L und 14 M; zuerst die Laser mittschiffs, die M-Türme gleichmäßig über das Schiff verteilt
+   */
+  private kMounts(): typeof XENON_K_MOUNTS {
+    const full = this.level >= 5 || this.big > 1;
+    const nL = full ? 8 : 2 + this.level * 2, nM = full ? 14 : Math.min(14, 2 + this.level * 3);
+    const L = XENON_K_MOUNTS.filter((m) => m[2] !== 'm').sort((p, q) => (p[2] === 'laser' ? 0 : 1) - (q[2] === 'laser' ? 0 : 1)).slice(0, nL);
+    const M = XENON_K_MOUNTS.filter((m) => m[2] === 'm');
+    const pick = M.filter((_, i) => Math.floor((i * nM) / M.length) !== Math.floor(((i + 1) * nM) / M.length) || nM >= M.length);
+    return [...L, ...pick.slice(0, nM)];
   }
 
   /** Punkt im Abschnitt um die Route voraus, nicht direkt auf Frachter oder Jäger */
@@ -3378,6 +3415,7 @@ export class ShooterGame implements MiniGame {
     if (w.beam) {
       if (this.fireId !== null) { this.fireBeams(dt); sustain('beam', 'beam', 0.8); }
     } else if (this.fireId !== null && this.fireCd <= 0) {
+      this.fired++;
       sfx.shot(this.wpnId, this.panAt(this.px));
       let a0 = this.aimA;
       if (this.lock) {
