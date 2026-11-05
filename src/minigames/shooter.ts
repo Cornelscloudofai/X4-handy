@@ -20,7 +20,7 @@ import {
   type Place,
 } from './common';
 import { MISSION_GOALS, SHOOTER_ENDLESS_GOALS as ENDLESS_GOALS, SHOOTER_GOALS, SHOOTER_MUTATORS, SHOOTER_NORMAL_GOALS as NORMAL_GOALS } from './menuInfo';
-import { SPEC, enemyStats, drawFighterVector, type EKind } from './shooterData';
+import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './shooterData';
 export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
 export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
@@ -80,7 +80,8 @@ function eliteGlow(img: CanvasImageSource & { width: number; height: number }, c
   return out;
 }
 /** Jäger mit Anflügen (anfliegen, Salve, abdrehen) – Piraten, Xenon N und die kleinen Kha'ak */
-const FIGHTERS = new Set<EKind>(['jaeger', 'n', 'ks', 'kj', 'ka']);
+// Xenon M: mittlerer Jäger wie in X4 – fliegt Anflüge wie die anderen Jäger
+const FIGHTERS = new Set<EKind>(['jaeger', 'n', 'm', 'ks', 'kj', 'ka']);
 /** Kha'ak mit Kyon-Strahl: kurz aufladen, dann trifft der Strahl sofort entlang einer Linie (Schilde ×1,5) */
 const KYON_LEN = 320, KYON_SHIELD = 1.5;
 
@@ -238,7 +239,7 @@ const LASER_LEN = 600, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
 const TURRET_RANGE = 520, PLASMA_RANGE = 560;
 
 /** Drehrate je Gegnerart (rad/s): Jäger wendig, Kanonenboote träge – wer sie umkreist, ist vor ihren Kanonen sicher */
-const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 1.3, xs: 1.6, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
+const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 2.2, xs: 1.6, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
 /** Geschossgeschwindigkeit der Bordkanonen je Gegnerart (für den Vorhalt) */
 const SHOT_V: Partial<Record<EKind, number>> = { jaeger: 300, kanone: 240, n: 340, m: 430, rakete: 150, ks: 360, kj: 2000, ka: 2000, kk: 2000 };
 /** Bis zu dieser Entfernung lassen sich Gegner vom Jäger abfangen (danach kämpfen sie mit ihm statt mit dem Frachter) */
@@ -2486,7 +2487,7 @@ export class ShooterGame implements MiniGame {
   private makeEnemy(kind: EKind, x: number, y: number): Enemy {
     const s = SPEC[kind];
     const { hp, sh } = enemyStats(kind, this.level, { extra: this.mode === 'endless' ? 1 + this.wave * 0.06 : 1, tune: this.tune });
-    return { kind, x, y, vx: 0, vy: 0, hp, max: hp, sh, shMax: sh, shT: 9, shFlash: 0, cd: 1 + this.r() * 1.5, r: s.r, target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
+    return { kind, x, y, vx: 0, vy: 0, hp, max: hp, sh, shMax: sh, shT: 9, shFlash: 0, cd: 1 + this.r() * 1.5, r: kind === 'turret' || kind === 'boss' ? s.r : s.r * enemyScale(kind, this.side), target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
   }
 
   private spawnGroup(list: EKind[], from: number, swarm = false): void {
@@ -2597,13 +2598,15 @@ export class ShooterGame implements MiniGame {
 
   /** Boss weit voraus auf der Route – oder als Großziel (mini) mitten in einer Welle aus einer Anflugrichtung */
   private spawnBoss(mini = false, from = 0): void {
-    const [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120, this.fY - 1100)];
+    // X4-Größe: der Xenon K ist ein XL-Schiff (1,7 km), Fregatte und Brutschiff entsprechend; die Türme wachsen mit
+    const k = enemyScale('boss', this.side, mini);
+    const [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120 + 34 * k, this.fY - 1100 - 34 * k * 1.5)];
     const b = this.makeEnemy('boss', x, y);
     b.ang = mini ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
     const bs = enemyStats('boss', this.level, { mini, extra: this.mode === 'endless' ? 1 + this.wave * 0.05 : 1, tune: this.tune });
     b.hp = b.max = bs.hp;
     b.sh = b.shMax = bs.sh;
-    b.r = 34;
+    b.r = 34 * k;
     b.mini = mini;
     this.enemies.push(b);
     const all: [number, number, ('laser' | 'plasma' | 'brut')?][] = this.side === 'pirate'
@@ -2618,8 +2621,8 @@ export class ShooterGame implements MiniGame {
     // Großziel: nur die beiden Flügeltürme; Kha'ak-Zerstörer: Kyon-Türme auf den Sockelpaaren an Bug und Heck
     const offs = mini ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : all.slice(0, 2)) : all;
     for (const [ox, oy, weapon] of offs) {
-      const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
-      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = weapon;
+      const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
+      t.parent = b; t.ox = ox * k; t.oy = oy * k; t.weapon = weapon; t.r *= k;
       // Xenon-Türme feuern versetzt; ab Stufe 4 schneller (statt eines fünften Turms)
       if (weapon) t.cd = weapon === 'brut' ? 4 + this.r() * 3 : 1.5 + this.r() * 2;
       this.enemies.push(t);
@@ -3657,7 +3660,7 @@ export class ShooterGame implements MiniGame {
             this.enemyShot(e, a2, 175, 14, '#ff6a3d', 6, (PLASMA_RANGE + 40) / 175);
             // aus den Mündungen, nicht aus der Turmmitte
             const pb = this.bullets[this.bullets.length - 1];
-            pb.x += Math.cos(a2) * 19; pb.y += Math.sin(a2) * 19;
+            pb.x += Math.cos(a2) * 19 * (e.r / 13); pb.y += Math.sin(a2) * 19 * (e.r / 13);
           }
           continue;
         }
@@ -3789,7 +3792,8 @@ export class ShooterGame implements MiniGame {
           face = Math.atan2(wy, wx);
         } else {
           // Kanonen-, Raketenboote, Xenon M und Boss: Abstand halten, langsam kreisen, Bug zum Ziel drehen
-          const keep = e.kind === 'boss' ? 240 : e.kind === 'kanone' ? 190 : e.kind === 'rakete' ? 240 : e.kind === 'kk' ? 230 : 170;
+          // große Schiffe halten Abstand um ihren Rumpf herum
+          const keep = (e.kind === 'boss' ? 240 : e.kind === 'kanone' ? 190 : e.kind === 'rakete' ? 240 : e.kind === 'kk' ? 230 : 170) + Math.max(0, e.r - s.r) * 1.2;
           const radial = clamp((d - keep) / 60, -1, 1);
           const side = Math.abs(radial) < 0.5 ? 0.45 : 0.15;
           wx = (dx / d) * radial + (-dy / d) * e.dir * side;
@@ -3818,7 +3822,7 @@ export class ShooterGame implements MiniGame {
       // Bordkanonen: nur wenn das Ziel genau vor dem Bug liegt
       e.cd -= dt;
       const off = Math.abs(wrapA(aimAt - e.ang));
-      const range = e.kind === 'n' || e.kind === 'ks' ? 210 : e.kind === 'boss' ? 480 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320;
+      const range = (e.kind === 'n' || e.kind === 'ks' ? 210 : e.kind === 'boss' ? 480 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320) + Math.max(0, e.r - s.r);
       const cone = e.kind === 'kanone' ? 0.2 : e.kind === 'rakete' ? 0.5 : e.kind === 'kk' ? 0.3 : 0.12;
       // Jäger feuern nur im Anflug, nicht beim Abdrehen
       const breaking = fighter && !!e.brk && e.brk > 0;
@@ -3828,7 +3832,7 @@ export class ShooterGame implements MiniGame {
         else if (e.kind === 'kanone') { e.cd = 2.4; for (let q = 0; q < 3; q++) this.enemyShot(e, a + (q - 1) * 0.08, 240, 8, '#ffd27a'); }
         else if (e.kind === 'rakete') { e.cd = 4; this.eMissiles.push({ x: e.x, y: e.y, vx: Math.cos(e.ang) * 90, vy: Math.sin(e.ang) * 90, hp: 6, life: 7, target: e.target, wd: e.wd }); }
         else if (e.kind === 'n') { e.cd = 0.32; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 340, 4, '#ff5c6c'); }
-        else if (e.kind === 'm') { e.cd = 1.8; this.enemyShot(e, a, 430, 11, '#ff3b4a', 3); }
+        else if (e.kind === 'm') { e.cd = 1.1; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 430, 11, '#ff3b4a', 3); }
         else if (e.kind === 'ks') { e.cd = 0.36; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 360, 3.5, '#d9a6ff'); }
         // Kyon: erst laden (dünne Ziellinie), dann trifft der Strahl
         else if (e.kind === 'kj' || e.kind === 'ka') { e.cd = e.kind === 'ka' ? 0.8 : 1; e.shots = (e.shots ?? 0) + 1; e.kyT = 0.35; }

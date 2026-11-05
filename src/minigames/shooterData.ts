@@ -1,7 +1,7 @@
 // Gegnerwerte des Kampfs und das Jäger-Symbol: eigene Datei, damit Menü und Entwicklungswerkzeug sie nutzen können,
 // ohne den Kampf selbst zu laden (der wird erst beim Start nachgeladen).
 import type { Level } from './common';
-import { enemyTune } from './loadout';
+import { enemyTune, scaledLength, sizeScale } from './loadout';
 
 /** cargo: Frachter des Piratenkonvois (Einsatz „Überfall“) */
 export type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk' | 'cargo';
@@ -14,7 +14,7 @@ export const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: num
   rakete: { hp: 55, sh: 40, speed: 90, r: 13, color: '#ffd27a', name: 'Raketenboot', pts: 200, cost: 3.5 },
   schild: { hp: 70, sh: 80, speed: 85, r: 13, color: '#7fd8ff', name: 'Schildträger', pts: 250, cost: 4 },
   n: { hp: 15, sh: 12, speed: 205, r: 8, color: '#ff3b4a', name: 'Xenon N', pts: 60, cost: 1.5 },
-  m: { hp: 75, sh: 55, speed: 95, r: 14, color: '#ff5c6c', name: 'Xenon M', pts: 250, cost: 4 },
+  m: { hp: 75, sh: 55, speed: 150, r: 14, color: '#ff5c6c', name: 'Xenon M', pts: 250, cost: 4 },
   xs: { hp: 70, sh: 70, speed: 85, r: 13, color: '#ff9ab0', name: 'Schirmdrohne', pts: 250, cost: 4 },
   boss: { hp: 450, sh: 300, speed: 45, r: 34, color: '#ffb547', name: 'Boss', pts: 1500, cost: 0 },
   turret: { hp: 90, sh: 30, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
@@ -29,6 +29,41 @@ export const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: num
   cargo: { hp: 420, sh: 150, speed: 24, r: 22, color: '#ffb070', name: 'Piratenfrachter', pts: 800, cost: 0 },
 };
 
+
+/** Seite der Gegner im Kampf */
+export type ESide = 'pirate' | 'xenon' | 'khaak';
+
+/**
+ * Gegnergrößen nach X4 (Länge in m, X4 5.00): Vorbild und bisherige Bildgröße in Punkten (Trefferradius × Bildmaßstab).
+ * Im Maßstab „x4“ und „gestaucht“ wird jede Art auf ihre Länge gebracht, „bisher“ lässt alles beim Alten.
+ * Kha'ak stehen nicht in der Tabelle – ihre Längen sind geschätzt.
+ */
+export const ENEMY_X4: Record<string, { m: number; vis: number; model: string }> = {
+  jaeger: { m: 32.2, vis: 36, model: 'Kukri' },
+  schild: { m: 52.8, vis: 44, model: 'Shih' },
+  rakete: { m: 97.3, vis: 44, model: 'Korvette (Nemesis-Größe)' },
+  kanone: { m: 122.1, vis: 54, model: 'Minotaurus (Räuber)' },
+  cargo: { m: 122.5, vis: 110, model: 'Merkur' },
+  'pirate:boss': { m: 149.5, vis: 130, model: 'Fregatte (Astrid-Größe)' },
+  n: { m: 34.7, vis: 36, model: 'Xenon N' },
+  m: { m: 31.7, vis: 70, model: 'Xenon M' },
+  xs: { m: 30.6, vis: 55, model: 'Xenon T (Größe)' },
+  'xenon:boss': { m: 1670, vis: 160, model: 'Xenon K' },
+  ks: { m: 15, vis: 18, model: 'geschätzt' },
+  kj: { m: 25, vis: 26, model: 'geschätzt' },
+  ka: { m: 35, vis: 43, model: 'geschätzt' },
+  kk: { m: 60, vis: 63, model: 'geschätzt' },
+  'khaak:boss': { m: 600, vis: 163, model: 'Brutschiff, geschätzt' },
+  'khaak:boss-mini': { m: 300, vis: 146, model: 'Zerstörer, geschätzt' },
+};
+
+/** Größenfaktor einer Gegnerart (1 = bisherige Größe); Türme wachsen mit ihrem Schiff */
+export function enemyScale(kind: EKind, side: ESide, mini = false): number {
+  const sc = sizeScale();
+  if (sc === 'bisher') return 1;
+  const d = (mini ? ENEMY_X4[`${side}:${kind}-mini`] : undefined) ?? ENEMY_X4[`${side}:${kind}`] ?? ENEMY_X4[kind];
+  return d ? scaledLength(d.m, sc) / d.vis : 1;
+}
 
 const HP_MUL: Record<Level, number> = { 1: 1, 2: 1.15, 3: 1.3, 4: 1.45, 5: 1.6 };
 

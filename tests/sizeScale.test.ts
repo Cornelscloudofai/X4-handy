@@ -49,4 +49,25 @@ describe('Größenverhältnis im Kampf', () => {
       expect(G.WW).toBeGreaterThanOrEqual(SHIPS[ship].size * 2);
     }
   });
+
+  it('Gegner in X4-Größe: Jäger wie die Mamba, Korvetten und Fregatten groß, der Xenon K ein XL-Schiff', () => {
+    setSizeScale('x4', false);
+    const mk = (side: 'pirate' | 'xenon' | 'khaak') => new ShooterGame({ level: 1, seed: 1, mutator: null, mode: 'normal', mission: 'station', loadout: { ...DEFAULT_LOADOUT } }, side) as unknown as {
+      makeEnemy(k: string, x: number, y: number): { r: number }; spawnBoss(mini?: boolean): void; enemies: { kind: string; r: number; ox?: number; parent?: unknown }[];
+    };
+    // sichtbare Größe = Trefferradius × Bildmaßstab (shipArt.ts)
+    const p = mk('pirate'), x = mk('xenon');
+    expect(p.makeEnemy('jaeger', 0, 0).r * 3.6).toBeCloseTo(38.2, 0);
+    expect(p.makeEnemy('kanone', 0, 0).r * 3.4).toBeCloseTo(145, -1);
+    expect(x.makeEnemy('m', 0, 0).r * 5).toBeCloseTo(37.6, 0);
+    x.enemies.length = 0;
+    x.spawnBoss();
+    const boss = x.enemies.find((e) => e.kind === 'boss')!;
+    expect(boss.r * 4.7).toBeCloseTo(1670 * 38 / 32, -1);
+    // Türme sitzen auf den Sockeln des großen Bilds
+    const tur = x.enemies.filter((e) => e.parent === boss);
+    expect(Math.max(...tur.map((t) => Math.abs(t.ox!)))).toBeGreaterThan(61 * 10);
+    setSizeScale('bisher', false);
+    expect(mk('xenon').makeEnemy('m', 0, 0).r).toBe(14);
+  });
 });

@@ -93,6 +93,12 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
   Spieler wieder etwas meldet: mit Schiff und Ablauf nachstellen (Tests: `tests/wingCam.test.ts`).
 - **Klangauswahl:** Spieler hört die Varianten in Einstellungen → Hörprobe durch („Splitter 1“, „Tau 2“ …) und nennt,
   welche bleiben sollen; danach in `GUNS`/`VARIANTS`/`BOOMS`/`LOOPS` nur diese behalten.
+- **Gegnergrößen nach X4** (umgesetzt, `ENEMY_X4` in `src/minigames/shooterData.ts`): Jäger wie die Mamba, Xenon M
+  als mittlerer Jäger (fliegt Anflüge), Kanonenboot ~ Minotaurus-Räuber (122 m), Raketenboot Korvettengröße (97 m),
+  Piratenfregatte 150 m, Xenon K 1 670 m (XL), Kha'ak geschätzt (Brutschiff 600 m, Zerstörer 300 m).
+- **Neue Gegnertypen für die Größenlücken** (Spielerwunsch): Xenon P (Fregatte, 138 m) als schwerer Wellengegner,
+  Piraten-Großkampfschiff (Barbarossa-Größe, 1 164 m) als Piraten-Boss statt der Fregatte, ggf. Xenon I (5 178 m).
+  Bilder fehlen noch – Prompts an den Spieler gegeben.
 
 ## Offene Fragen
 
