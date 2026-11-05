@@ -1,6 +1,8 @@
 // Klangbibliothek: jeder Klang aus Oszillatoren, FM-Glocken und gefiltertem Rauschen gebaut, mit Hall, Panorama
 // und leichter Zufallsvariation, damit sich Wiederholungen nicht abnutzen.
-import { bell, duckFor, gate, graph, noise, sample, shaper, tone, vary, voiceOut, type Bus } from './engine';
+import { bell, duckFor, gate, graph, noise, norm, sample, shaper, tone, variant, vary, voiceOut, withVariant, type Bus } from './engine';
+
+import { LOOPS } from './ambience';
 
 type G = NonNullable<ReturnType<typeof graph>>;
 
@@ -235,31 +237,6 @@ function weaponEq(g: G, dest: AudioNode, bass = 5, far = 0): AudioNode {
 }
 
 /**
- * Lautheit der ersten 0,3 s je Aufnahme (dB RMS, gemessen beim Import): alle Varianten setzen gleich laut ein.
- * Aufnahmen: Sonniss GDC Game Audio Bundles (lizenzfrei für Spiele), siehe assets/sounds/QUELLEN.md
- */
-const RMS: Record<string, number> = {
-  'sn-puls-a': -8.5, 'sn-puls-b': -11.5, 'sn-puls-c': -7.7, 'sn-bolzen-a': -13.7, 'sn-bolzen-b': -10.3, 'sn-bolzen-c': -19.8,
-  'sn-schrot-a': -11.2, 'sn-schrot-b': -9.1, 'sn-plasma-a': -9.5, 'sn-plasma-b': -13.3, 'sn-neutron-a': -8.7, 'sn-neutron-b': -6.1,
-  'sn-tau-a': -10.8, 'sn-tau-b': -11.1, 'sn-thermal-a': -9, 'sn-thermal-b': -11.5, 'sn-boson-a': -7.8, 'sn-boson-b': -8.8,
-  'sn-schwer-a': -10.5, 'sn-schwer-b': -14.3, 'sn-gegner-a': -15, 'sn-gegner-b': -14.1, 'sn-gegner-c': -13.6,
-  'sn-expl-s-a': -5.6, 'sn-expl-s-b': -6.5, 'sn-expl-s-c': -7.2, 'sn-expl-m-a': -9.9, 'sn-expl-m-b': -4.6, 'sn-expl-m-c': -5.1,
-  'sn-expl-l-a': -7.6, 'sn-expl-l-b': -9, 'sn-expl-l-c': -6.5, 'sn-expl-boss-a': -7.2, 'sn-expl-boss-b': -9.7,
-  'sn-huelle-a': -17.5, 'sn-huelle-b': -9.8, 'sn-huelle-c': -6.7,
-};
-/** Pegel, der eine Aufnahme auf −10 dB RMS im Anschlag bringt (höchstens +12 dB) */
-const norm = (name: string) => Math.min(4, Math.pow(10, (-10 - (RMS[name] ?? -10)) / 20));
-const lastPick = new Map<string, string>();
-/** Variante wählen – nie zweimal hintereinander dieselbe */
-function variant(key: string, list: string[]): string {
-  const prev = lastPick.get(key);
-  const pool = list.length > 1 ? list.filter((x) => x !== prev) : list;
-  const v = pool[Math.floor(Math.random() * pool.length)];
-  lastPick.set(key, v);
-  return v;
-}
-
-/**
  * Waffen: Varianten (zufällig, nie zweimal dieselbe), Abspielrate < 1 = tiefer (je Schuss ±6 % gestreut), Pegel, Bassschlag
  * (Stärke, Grundton, Länge), Länge des Ausklangs (s)
  */
@@ -320,61 +297,80 @@ function heavyShot(kind: Gun = 'plasma', pan = 0): void {
 function enemyShot(pan = 0): void {
   if (!gate('enemyShot', 110)) return;
   play('sfx', { pan: pan * 0.7, verb: 0.2, gain: 1 }, (g, o, t) => {
-    const name = variant('gegner', ['sn-gegner-a', 'sn-gegner-b', 'sn-gegner-c']);
+    const name = variant('gegner', VARIANTS.gegner);
     if (!sample(g, weaponEq(g, o, 3, 0.6), name, { t, rate: vary(0.85, 0.08), gain: 0.1 * norm(name), dur: 0.9 })) sample(g, filt(g, o, 'lowpass', 2400), 'es-gegner', { t, rate: vary(0.8, 0.08), gain: 0.22 });
   });
 }
 
 /** Rakete startet */
+/** Varianten der übrigen Kampf- und Werkzeugklänge (Sonniss GDC, siehe QUELLEN.md) */
+export const VARIANTS = {
+  rakete: ['sn-rakete-a', 'sn-rakete-b', 'sn-rakete-c', 'sn-rakete-d'],
+  treffer: ['sn-treffer-a', 'sn-treffer-b', 'sn-treffer-c', 'sn-treffer-d'],
+  schild: ['sn-schild-a', 'sn-schild-b', 'sn-schild-c'],
+  funke: ['sn-funke-a', 'sn-funke-b'],
+  kyon: ['sn-kyon-a', 'sn-funke-b', 'sn-funke-a'],
+  phase: ['sn-phase-a', 'sn-phase-b', 'sn-phase-c', 'sn-phase-d'],
+  alarm: ['sn-alarm-a', 'sn-alarm-b', 'sn-alarm-c'],
+  gestein: ['sn-gestein-a', 'sn-gestein-b', 'sn-gestein-c', 'sn-gestein-d'],
+  kristall: ['sn-kristall-a', 'sn-kristall-b', 'sn-kristall-c'],
+  gegner: ['sn-gegner-a', 'sn-gegner-b', 'sn-gegner-c'],
+  huelle: ['sn-huelle-a', 'sn-huelle-b', 'sn-huelle-c'],
+};
+
+/** Aufnahme (Variante) mit Waffen-Klangfarbe; false, wenn noch nicht geladen */
+function rec(g: G, o: AudioNode, t: number, key: keyof typeof VARIANTS, k: { rate: number; gain: number; dur?: number; bass?: number; far?: number; spread?: number }): boolean {
+  const name = variant(key, VARIANTS[key]);
+  return sample(g, weaponEq(g, o, k.bass ?? 4, k.far ?? 0), name, { t, rate: vary(k.rate, k.spread ?? 0.06), gain: k.gain * norm(name), dur: k.dur });
+}
+
+/** Rakete startet: Abschuss mit Zischen, vier Varianten */
 function missile(): void {
   if (!gate('missile', 120)) return;
-  play('sfx', { verb: 0.06, gain: 1 }, (g, o, t) => {
-    sample(g, o, 'es-rakete', { t, rate: vary(1, 0.05), gain: 0.45 });
+  play('sfx', { verb: 0.14, gain: 1 }, (g, o, t) => {
+    if (rec(g, o, t, 'rakete', { rate: 0.95, gain: 0.42, dur: 1.6 })) weight(g, o, t, 0.12, 55, 0.2);
+    else sample(g, o, 'es-rakete', { t, rate: vary(1, 0.05), gain: 0.45 });
   });
 }
 
-/** Treffer am Gegner: kurzer, dumpfer Einschlag */
+/** Treffer am Gegner: kurzer, dumpfer Einschlag (häufig – darum leise und kurz) */
 function hit(pan = 0): void {
   if (!gate('hit', 50)) return;
-  play('sfx', { pan: pan * 0.6, gain: 1 }, (g, o, t) => {
-    if (!sample(g, filt(g, o, 'lowpass', 3000), 'es-treffer', { t, rate: vary(1.1, 0.08), gain: 0.14, dur: 0.22 })) tone(g, o, { f: vary(140, 0.06), to: 60, t, a: 0.001, d: 0.06, gain: 0.14 });
+  play('sfx', { pan: pan * 0.6, verb: 0.08, gain: 1 }, (g, o, t) => {
+    if (!rec(g, o, t, 'treffer', { rate: 0.95, gain: 0.16, dur: 0.45, far: 0.3 })) sample(g, filt(g, o, 'lowpass', 3000), 'es-treffer', { t, rate: vary(1.1, 0.08), gain: 0.14, dur: 0.22 });
   });
 }
 
 /**
- * Funke eingefangen (Gasströme): leises elektrisches Knistern – zwei, drei feine Knackser im hohen Bereich und ein
- * zarter, kurzer Summton; level (0–1, Ladung des Sammlers) hebt den Ton etwas an, damit man das Aufladen hört
+ * Funke eingefangen (Gasströme): kurzes elektrisches Knistern; level (0–1, Ladung des Sammlers) hebt den Ton etwas an,
+ * damit man das Aufladen hört
  */
 function zap(level = 0, pan = 0): void {
   if (!gate('zap', 70)) return;
   play('sfx', { pan: pan * 0.5, verb: 0.12, gain: 0.8 }, (g, o, t) => {
+    if (rec(g, o, t, 'funke', { rate: 0.9 + 0.3 * Math.min(1, level), gain: 0.2, dur: 0.35, bass: 0 })) return;
     const out = filt(g, o, 'lowpass', 7000);
-    const n = 2 + Math.floor(Math.random() * 2);
-    for (let i = 0; i < n; i++) noise(g, out, { t: t + i * vary(0.022, 0.3), type: 'bandpass', f: vary(5200, 0.2), q: 4, a: 0.0005, d: vary(0.012, 0.3), gain: 0.18 });
     const f = vary(880 + 440 * Math.min(1, level), 0.04);
     tone(g, out, { type: 'triangle', f, to: f * 0.92, t, a: 0.003, d: 0.07, gain: 0.2 });
-    tone(g, out, { f: f * 2.01, t: t + 0.005, a: 0.002, d: 0.04, gain: 0.05 });
   });
 }
 
-/** Kha'ak-Kyon-Strahl: heller, gläserner Pfeifton, der rasch abfällt, mit feinem Knistern */
+/** Kha'ak-Kyon-Strahl: heller, gläserner Strahl, der rasch abfällt */
 function kyon(pan = 0): void {
   if (!gate('kyon', 90)) return;
-  play('sfx', { pan: pan * 0.7, verb: 0.14, gain: 0.8 }, (g, o, t) => {
-    const out = filt(g, o, 'lowpass', 8000);
+  play('sfx', { pan: pan * 0.7, verb: 0.18, gain: 0.8 }, (g, o, t) => {
+    if (rec(g, o, t, 'kyon', { rate: 1, gain: 0.26, dur: 0.6, bass: 2, far: 0.2 })) return;
     const f = vary(1650, 0.06);
-    tone(g, out, { type: 'triangle', f, to: f * 0.55, t, a: 0.002, d: 0.16, gain: 0.16, glide: 0.14 });
-    tone(g, out, { f: f * 1.5, to: f * 0.8, t, a: 0.002, d: 0.1, gain: 0.06, glide: 0.09 });
-    noise(g, out, { t, type: 'bandpass', f: vary(6000, 0.2), q: 3, a: 0.0005, d: 0.03, gain: 0.12 });
+    tone(g, filt(g, o, 'lowpass', 8000), { type: 'triangle', f, to: f * 0.55, t, a: 0.002, d: 0.16, gain: 0.16, glide: 0.14 });
   });
 }
 
-/** Kha'ak-Phasensprung: kurzes, aufsteigendes Wischen */
+/** Kha'ak-Phasensprung: kurzes Wischen durch den Raum */
 function phase(pan = 0): void {
   if (!gate('phase', 120)) return;
-  play('sfx', { pan: pan * 0.6, verb: 0.2, gain: 0.8 }, (g, o, t) => {
+  play('sfx', { pan: pan * 0.6, verb: 0.25, gain: 0.8 }, (g, o, t) => {
+    if (rec(g, o, t, 'phase', { rate: 1, gain: 0.3, dur: 1.1, bass: 2 })) return;
     tone(g, o, { type: 'sine', f: vary(300, 0.05), to: 1400, t, a: 0.004, d: 0.14, gain: 0.14, glide: 0.12 });
-    noise(g, filt(g, o, 'highpass', 2500), { t, type: 'bandpass', f: 4000, q: 1, a: 0.01, d: 0.1, gain: 0.08 });
   });
 }
 
@@ -400,10 +396,11 @@ function explosion(size = 1, pan = 0): void {
   });
 }
 
-/** Schild fängt Treffer: elektrisches Knistern */
+/** Schild fängt Treffer: elektrisches Knistern, drei Varianten */
 function shield(): void {
   if (!gate('shield', 120)) return;
-  play('sfx', { verb: 0.08, gain: 1 }, (g, o, t) => {
+  play('sfx', { verb: 0.12, gain: 1 }, (g, o, t) => {
+    if (rec(g, o, t, 'schild', { rate: 1.05, gain: 0.3, dur: 0.6, bass: 2 })) return;
     if (!sample(g, o, 'es-schild', { t, rate: vary(1.15, 0.06), gain: 0.32, dur: 0.45 })) noise(g, o, { t, type: 'bandpass', f: 3200, to: 1200, q: 2.5, a: 0.003, d: 0.14, gain: 0.5 });
   });
 }
@@ -412,7 +409,7 @@ function shield(): void {
 function hull(): void {
   if (!gate('hull', 110)) return;
   play('sfx', { verb: 0.12, gain: 1 }, (g, o, t) => {
-    const name = variant('hull', ['sn-huelle-a', 'sn-huelle-b', 'sn-huelle-c']);
+    const name = variant('huelle', VARIANTS.huelle);
     if (!sample(g, weaponEq(g, o, 4, 0.1), name, { t, rate: vary(0.95, 0.07), gain: 1.5 * norm(name), dur: 0.9 })) sample(g, o, 'es-huelle', { t, rate: vary(1.05, 0.06), gain: 0.5, dur: 0.7 });
     weight(g, o, t, 0.24, 60, 0.2);
   });
@@ -421,12 +418,10 @@ function hull(): void {
 /** Neue Welle: tiefes Signalhorn */
 function alarm(): void {
   if (!gate('alarm', 1500)) return;
-  play('sfx', { verb: 0.1 }, (g, o, t) => {
+  play('sfx', { verb: 0.14 }, (g, o, t) => {
+    if (rec(g, o, t, 'alarm', { rate: 1, gain: 0.3, dur: 2.2, bass: 2, spread: 0 })) return;
     if (sample(g, o, 'es-alarm', { t, gain: 0.32, dur: 1.7 })) return;
-    const lp = g.ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.setValueAtTime(300, t); lp.frequency.exponentialRampToValueAtTime(1400, t + 0.3); lp.frequency.exponentialRampToValueAtTime(400, t + 0.9);
-    lp.connect(o);
-    for (const f of [hz(45), hz(52)]) tone(g, lp, { f, t, type: 'sawtooth', a: 0.15, d: 0.4, sus: 0.6, hold: 0.15, r: 0.4, gain: 0.08 });
+    for (const f of [hz(45), hz(52)]) tone(g, o, { f, t, type: 'sawtooth', a: 0.15, d: 0.4, sus: 0.6, hold: 0.15, r: 0.4, gain: 0.08 });
   });
 }
 
@@ -462,10 +457,13 @@ function fail(): void {
 // ---------- Minispiele: Werkzeuge ----------
 
 /** Gestein bricht: Aufnahme (Bruch) mit tiefem Rumpeln */
-function crack(): void {
+function crack(kind?: 'gestein' | 'kristall'): void {
   if (!gate('crack', 70)) return;
   play('sfx', { verb: 0.15, gain: 1 }, (g, o, t) => {
-    if (!sample(g, o, vary(1) > 1 ? 'es-gestein' : 'es-kristall-bruch', { t, rate: vary(0.95, 0.1), gain: 0.45, dur: 0.9 })) noise(g, o, { t, type: 'bandpass', f: vary(1800, 0.15), q: 1.5, a: 0.001, d: 0.06, gain: 0.35 });
+    // meist Gestein, ab und zu splittert Kristall mit
+    if (!rec(g, o, t, kind ?? (Math.random() < 0.7 ? 'gestein' : 'kristall'), { rate: 0.95, gain: 0.42, dur: 0.9 })) {
+      if (!sample(g, o, vary(1) > 1 ? 'es-gestein' : 'es-kristall-bruch', { t, rate: vary(0.95, 0.1), gain: 0.45, dur: 0.9 })) noise(g, o, { t, type: 'bandpass', f: vary(1800, 0.15), q: 1.5, a: 0.001, d: 0.06, gain: 0.35 });
+    }
     tone(g, o, { f: 90, to: 45, t, a: 0.002, d: 0.15, gain: 0.15 });
   });
 }
@@ -550,10 +548,17 @@ export const sfx = {
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 
-/** Hörprobe einer Schleife: zwei Sekunden mit Ein- und Ausblenden */
+/** Hörprobe einer Schleife: zwei Sekunden, Lautheit wie im Spiel */
 function demoLoop(name: string): () => void {
-  return () => play('sfx', { gain: 1 }, (g, o, t) => { sample(g, o, name, { t, gain: 0.5, dur: 2 }); });
+  return () => play('sfx', { gain: 1 }, (g, o, t) => { sample(g, o, name, { t, gain: 0.5 * norm(name), dur: 2 }); });
 }
+
+/** Jede Variante einzeln: „Splitter 1“, „Splitter 2“ … (so lässt sich genau sagen, welche bleiben soll) */
+function each(label: string, names: string[], fn: () => void): [string, () => void][] {
+  return names.map((n, i) => [`${label} ${i + 1}`, () => withVariant(n, fn)]);
+}
+const loopDemo = (label: string, names: string[]): [string, () => void][] => names.map((n, i) => [`${label} ${i + 1}`, demoLoop(n)]);
+const GUN_DEMO: [string, string][] = [['Puls-Laser', 'puls'], ['Bolzen', 'bolzen'], ['Splitter', 'schrot'], ['Plasma', 'plasma'], ['Neutron', 'neutron'], ['Tau', 'tau'], ['Thermal', 'thermal'], ['Boson', 'boson']];
 
 /** Hörprobe in den Einstellungen: Name → Klang */
 export const SOUND_DEMO: [string, () => void][] = [
@@ -561,10 +566,24 @@ export const SOUND_DEMO: [string, () => void][] = [
   ['Credits', () => coin(500)], ['Credits groß', () => coin(300000)], ['Bau beginnt', build], ['Bau fertig', buildDone],
   ['Auftrag erledigt', success], ['Neues Kapitel', chapter], ['Warnung', warn], ['Nachricht', ping],
   ['Schiff startet', launch], ['Andocken', dock], ['Auftrag angenommen', accept],
-  ['Puls-Laser', () => shot('puls')], ['Bolzen', () => shot('bolzen')], ['Splitter', () => shot('schrot')], ['Plasma', () => shot('plasma')],
-  ['Neutron', () => shot('neutron')], ['Tau', () => shot('tau')], ['Thermal', () => shot('thermal')], ['Boson', () => shot('boson')], ['Gegnerschuss', () => enemyShot()], ['Rakete', missile],
-  ['Treffer', () => hit()], ['Funke', () => zap(0.5)], ['Kyon-Strahl', () => kyon()], ['Phasensprung', () => phase()], ['Explosion klein', () => explosion(0.6)], ['Explosion groß', () => explosion(3)], ['Schild', shield], ['Hülle', hull],
-  ['Neue Welle', alarm], ['Boss', boss], ['Aufsammeln', pickup], ['Niederlage', fail],
-  ['Strahlwaffe', demoLoop('es-strahl-schleife')], ['Bergbaulaser', demoLoop('es-bergbaulaser-schleife')], ['Triebwerk', demoLoop('es-triebwerk-schleife')], ['Traktorstrahl', demoLoop('es-traktorstrahl')],
-  ['Gestein bricht', crack], ['Kristall', crystal], ['Ventil', valve], ['Fluss', flow], ['Schub', boost], ['Tor', chime], ['Steuerdüse', () => thrust()], ['Container', place],
+  ...GUN_DEMO.flatMap(([label, kind]) => each(label, GUNS[kind].s, () => shot(kind))),
+  ...each('L-Plasma', GUNS.schnellplasma.s, () => heavyShot('schnellplasma')),
+  ...each('Gegnerschuss', VARIANTS.gegner, () => enemyShot()),
+  ...each('Rakete', VARIANTS.rakete, missile),
+  ...each('Treffer', VARIANTS.treffer, () => hit()),
+  ...each('Schild', VARIANTS.schild, shield),
+  ...each('Hülle', VARIANTS.huelle, hull),
+  ...each('Explosion klein', BOOMS.s, () => explosion(0.6)),
+  ...each('Explosion mittel', BOOMS.m, () => explosion(1.2)),
+  ...each('Explosion groß', BOOMS.l, () => explosion(2.5)),
+  ...each('Explosion Großkampfschiff', BOOMS.boss, () => explosion(4)),
+  ...each('Funke', VARIANTS.funke, () => zap(0.5)),
+  ...each('Kyon-Strahl', VARIANTS.kyon, () => kyon()),
+  ...each('Phasensprung', VARIANTS.phase, () => phase()),
+  ...each('Neue Welle', VARIANTS.alarm, alarm),
+  ['Boss', boss], ['Aufsammeln', pickup], ['Niederlage', fail],
+  ...loopDemo('Strahlwaffe', LOOPS.beam), ...loopDemo('Bergbaulaser', LOOPS.drill), ...loopDemo('Triebwerk', LOOPS.engine), ...loopDemo('Traktorstrahl', LOOPS.tractor),
+  ...each('Gestein bricht', VARIANTS.gestein, () => crack('gestein')),
+  ...each('Kristall bricht', VARIANTS.kristall, () => crack('kristall')),
+  ['Kristall', crystal], ['Ventil', valve], ['Fluss', flow], ['Schub', boost], ['Tor', chime], ['Steuerdüse', () => thrust()], ['Container', place],
 ];

@@ -51,29 +51,77 @@ const noiseCache = new WeakMap<BaseAudioContext, AudioBuffer>();
 // ---------- Aufnahmen (CC0, src/assets/sounds) ----------
 
 const SAMPLE_URLS = import.meta.glob('../assets/sounds/*.wav', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const URL_OF = new Map(Object.entries(SAMPLE_URLS).map(([path, url]) => [path.split('/').pop()!.replace('.wav', ''), url]));
 const buffers = new Map<string, AudioBuffer>();
-let loadingAll: Promise<void> | null = null;
+const loading = new Map<string, Promise<void>>();
 
-/** Alle Aufnahmen laden und dekodieren (einmal, nach der ersten Berührung; zusammen unter 1 MB) */
-export function preloadSamples(ctx?: BaseAudioContext): Promise<void> {
+/** Eine Aufnahme laden und dekodieren (einmal je Kontext-Sitzung) */
+function loadSample(c: BaseAudioContext, name: string): Promise<void> {
+  let p = loading.get(name);
+  if (!p) {
+    const url = URL_OF.get(name);
+    p = url ? fetch(url).then((r) => r.arrayBuffer()).then((d) => c.decodeAudioData(d)).then((b) => { buffers.set(name, b); }).catch(() => { /* fehlt die Aufnahme, bleibt der synthetische Anteil */ }) : Promise.resolve();
+    loading.set(name, p);
+  }
+  return p;
+}
+
+/**
+ * Aufnahmen laden: ohne Filter alle; beim Start nur die kleinen alten (`es-*`, zusammen unter 1 MB) – die großen Kampf-
+ * und Werkzeugklänge (`sn-*`, Sonniss) erst, wenn ein Minispiel geöffnet wird (preloadSamples(undefined, 'sn-'))
+ */
+export function preloadSamples(ctx?: BaseAudioContext, prefix?: string): Promise<void> {
   const c = ctx ?? live?.ctx;
   if (!c) return Promise.resolve();
-  loadingAll ??= Promise.all(Object.entries(SAMPLE_URLS).map(async ([path, url]) => {
-    const name = path.split('/').pop()!.replace('.wav', '');
-    try {
-      const data = await (await fetch(url)).arrayBuffer();
-      buffers.set(name, await c.decodeAudioData(data));
-    } catch {
-      /* fehlt die Aufnahme, bleibt der synthetische Anteil */
-    }
-  })).then(() => undefined);
-  return loadingAll;
+  return Promise.all([...URL_OF.keys()].filter((n) => !prefix || n.startsWith(prefix)).map((n) => loadSample(c, n))).then(() => undefined);
+}
+
+/**
+ * Lautheit je Aufnahme (dB RMS, beim Import gemessen: Einzelklänge die ersten 0,3 s, Schleifen die ganze Länge) – damit
+ * alle Varianten gleich laut einsetzen. Aufnahmen `sn-*`: Sonniss GDC Game Audio Bundles, siehe assets/sounds/QUELLEN.md
+ */
+const RMS: Record<string, number> = {
+  'sn-puls-a': -8.5, 'sn-puls-b': -11.5, 'sn-puls-c': -7.7, 'sn-bolzen-a': -13.7, 'sn-bolzen-b': -10.3, 'sn-bolzen-c': -19.8,
+  'sn-schrot-a': -11.2, 'sn-schrot-b': -9.1, 'sn-plasma-a': -9.5, 'sn-plasma-b': -13.3, 'sn-neutron-a': -8.7, 'sn-neutron-b': -6.1,
+  'sn-tau-a': -10.8, 'sn-tau-b': -11.1, 'sn-thermal-a': -9, 'sn-thermal-b': -11.5, 'sn-boson-a': -7.8, 'sn-boson-b': -8.8,
+  'sn-schwer-a': -10.5, 'sn-schwer-b': -14.3, 'sn-gegner-a': -15, 'sn-gegner-b': -14.1, 'sn-gegner-c': -13.6,
+  'sn-expl-s-a': -5.6, 'sn-expl-s-b': -6.5, 'sn-expl-s-c': -7.2, 'sn-expl-m-a': -9.9, 'sn-expl-m-b': -4.6, 'sn-expl-m-c': -5.1,
+  'sn-expl-l-a': -7.6, 'sn-expl-l-b': -9, 'sn-expl-l-c': -6.5, 'sn-expl-boss-a': -7.2, 'sn-expl-boss-b': -9.7,
+  'sn-huelle-a': -17.5, 'sn-huelle-b': -9.8, 'sn-huelle-c': -6.7,
+  'sn-rakete-a': -7.5, 'sn-rakete-b': -18.5, 'sn-rakete-c': -10.2, 'sn-rakete-d': -13.8, 'sn-treffer-a': -14.5, 'sn-treffer-b': -10.5,
+  'sn-treffer-c': -12.8, 'sn-treffer-d': -17.4, 'sn-schild-a': -13.4, 'sn-schild-b': -16.7, 'sn-schild-c': -17.9, 'sn-funke-a': -10.7,
+  'sn-funke-b': -19.4, 'sn-kyon-a': -14.2, 'sn-phase-a': -15.1, 'sn-phase-b': -20.9, 'sn-phase-c': -15.7, 'sn-phase-d': -20.9,
+  'sn-gestein-a': -20.1, 'sn-gestein-b': -17.5, 'sn-gestein-c': -19.2, 'sn-gestein-d': -12.5, 'sn-kristall-a': -30.4, 'sn-kristall-b': -21.2,
+  'sn-kristall-c': -10.1, 'sn-alarm-a': -8, 'sn-alarm-b': -15.6, 'sn-alarm-c': -25.3,
+  'sn-bergbau-a-schleife': -12.7, 'sn-bergbau-b-schleife': -15.2, 'sn-bergbau-c-schleife': -13.6, 'sn-strahl-a-schleife': -14.1,
+  'sn-strahl-b-schleife': -13.2, 'sn-traktor-a-schleife': -23.6, 'sn-traktor-b-schleife': -25, 'sn-traktor-c-schleife': -32.5,
+  'sn-triebwerk-a-schleife': -14.1, 'sn-triebwerk-b-schleife': -14.4,
+};
+/** Pegel, der eine Aufnahme auf −10 dB RMS bringt (höchstens +12 dB) */
+export const norm = (name: string) => Math.min(4, Math.pow(10, (-10 - (RMS[name] ?? -10)) / 20));
+
+const lastPick = new Map<string, string>();
+/** Für die Hörprobe: diese Aufnahme statt einer zufälligen Variante */
+let forced: string | null = null;
+/** Variante wählen – nie zweimal hintereinander dieselbe (Hörprobe: die gewünschte) */
+export function variant(key: string, list: string[]): string {
+  if (forced && list.includes(forced)) return forced;
+  const prev = lastPick.get(key);
+  const pool = list.length > 1 ? list.filter((x) => x !== prev) : list;
+  const v = pool[Math.floor(Math.random() * pool.length)];
+  lastPick.set(key, v);
+  return v;
+}
+/** Hörprobe einer bestimmten Variante: fn spielt den Klang, dabei wird name gewählt */
+export function withVariant(name: string, fn: () => void): void {
+  forced = name;
+  try { fn(); } finally { forced = null; }
 }
 
 /** Aufnahme als nahtlose Schleife (für Dauerklänge); null, wenn sie (noch) nicht geladen ist */
 export function loopSample(g: Graph, dest: AudioNode, name: string): AudioBufferSourceNode | null {
   const b = buffers.get(name);
-  if (!b) return null;
+  if (!b) { void loadSample(g.ctx, name); return null; }
   const src = g.ctx.createBufferSource();
   src.buffer = b;
   src.loop = true;
@@ -84,7 +132,8 @@ export function loopSample(g: Graph, dest: AudioNode, name: string): AudioBuffer
 /** Aufnahme abspielen (Tonhöhe über die Abspielrate); false, wenn sie (noch) nicht geladen ist */
 export function sample(g: Graph, dest: AudioNode, name: string, o: { t: number; rate?: number; gain: number; offset?: number; dur?: number }): boolean {
   const b = buffers.get(name);
-  if (!b) return false;
+  // noch nicht geladen: jetzt nachladen (dieses Mal klingt der Ersatz)
+  if (!b) { if (!(g.ctx instanceof OfflineAudioContext)) void loadSample(g.ctx, name); return false; }
   const src = g.ctx.createBufferSource();
   src.buffer = b;
   src.playbackRate.value = o.rate ?? 1;
@@ -190,7 +239,7 @@ export function ensure(): Graph | null {
       if (!Ctx) return null;
       const ctx = new Ctx({ latencyHint: 'interactive' });
       live = build(ctx, true);
-      void preloadSamples();
+      void preloadSamples(undefined, 'es-');
       onChange.forEach((f) => f());
     }
     const c = live.ctx as AudioContext;

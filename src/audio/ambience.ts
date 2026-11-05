@@ -1,7 +1,7 @@
 // Atmosphäre und Klangteppich: ruhige, generative Weltraumklänge, die sich nie genau wiederholen.
 // Atmosphäre = tiefer Grundton + „Sternenwind“ (gefiltertes Rauschen) + Stationsbrummen beim Heranzoomen.
 // Klangteppich = langsam wechselnde Flächenakkorde in D-Dorisch mit vereinzelten Glockentönen; Tonart je Sektor.
-import { bell, graph, liveContext, loopSample, noiseBuffer, onAudioChange, renderOffline, settings, tone, voiceOut } from './engine';
+import { bell, graph, liveContext, loopSample, noiseBuffer, norm, onAudioChange, renderOffline, settings, tone, variant, voiceOut } from './engine';
 
 const hz = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
 
@@ -301,6 +301,14 @@ onAudioChange(() => (settings.on ? startSoundscape() : stopSoundscape()));
 
 // ---------- Dauerklänge (Bohrer, Saugen, Strahlwaffe, Triebwerk) ----------
 
+/** Dauerklänge als nahtlose Schleifen (Sonniss GDC, siehe QUELLEN.md): je Art zwei, drei Varianten */
+export const LOOPS = {
+  beam: ['sn-strahl-a-schleife', 'sn-strahl-b-schleife'],
+  drill: ['sn-bergbau-a-schleife', 'sn-bergbau-b-schleife', 'sn-bergbau-c-schleife'],
+  engine: ['sn-triebwerk-a-schleife', 'sn-triebwerk-b-schleife'],
+  tractor: ['sn-traktor-a-schleife', 'sn-traktor-b-schleife', 'sn-traktor-c-schleife'],
+};
+
 export interface LoopHandle { level: (v: number) => void; stop: () => void }
 const DUMMY: LoopHandle = { level: () => {}, stop: () => {} };
 
@@ -313,8 +321,13 @@ export function loop(kind: 'drill' | 'suction' | 'beam' | 'engine'): LoopHandle 
   out.gain.value = 0;
   const nodes: AudioScheduledSourceNode[] = [];
   // Echte Aufnahme als Schleife, wenn vorhanden (Strahlwaffe, Bergbaulaser, Triebwerk); Tonhöhe folgt der Stärke
-  const recName = kind === 'beam' ? 'es-strahl-schleife' : kind === 'drill' ? 'es-bergbaulaser-schleife' : kind === 'engine' ? 'es-triebwerk-schleife' : '';
-  const rec = recName ? loopSample(g, out, recName) : null;
+  const list = LOOPS[kind as keyof typeof LOOPS];
+  const pickName = list ? variant('loop-' + kind, list) : '';
+  // neue Aufnahme (Sonniss) mit angeglichener Lautheit; fehlt sie, die alte (Endless Sky)
+  let rec = pickName ? loopSample(g, out, pickName) : null;
+  const old = kind === 'beam' ? 'es-strahl-schleife' : kind === 'drill' ? 'es-bergbaulaser-schleife' : kind === 'engine' ? 'es-triebwerk-schleife' : '';
+  let lvl = rec ? norm(pickName) * 0.8 : 1;
+  if (!rec && old) { rec = loopSample(g, out, old); lvl = 1; }
   if (rec) {
     const t0 = c.currentTime;
     rec.start(t0, Math.random() * 2);
@@ -323,7 +336,7 @@ export function loop(kind: 'drill' | 'suction' | 'beam' | 'engine'): LoopHandle 
       level: (v) => {
         const t = c.currentTime;
         const k = Math.max(0, Math.min(1, v));
-        out.gain.setTargetAtTime((kind === 'engine' ? 0.25 + 0.55 * k : 0.6) * (k > 0 ? 1 : 0), t, 0.05);
+        out.gain.setTargetAtTime(lvl * (kind === 'engine' ? 0.25 + 0.55 * k : 0.6) * (k > 0 ? 1 : 0), t, 0.05);
         rec.playbackRate.setTargetAtTime(base * (0.9 + 0.25 * k), t, 0.1);
       },
       stop: () => { const t = c.currentTime; out.gain.setTargetAtTime(0, t, 0.06); rec.stop(t + 0.4); },

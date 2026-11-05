@@ -2,6 +2,7 @@
 // Einführung (Besonderheit der Runde, Nebenziele), Punktezeile mit Kombo, Pause, Auswertung mit Sternen,
 // Rekorden und Abzeichen. Das Hauptspiel ruht, solange ein Minispiel offen ist.
 import { sfx } from '../ui/sound';
+import { preloadSamples } from '../audio/engine';
 import { esc } from '../ui/dom';
 import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, type Level, type MiniGame, type Mode, type Mutator, type Place, type Rules } from './common';
 import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
@@ -166,6 +167,8 @@ export function minigameBack(): boolean {
 }
 
 export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameResult | null) => void, replay = false): void {
+  // Kampf- und Werkzeugklänge (groß, Sonniss) erst jetzt laden – im Sektor werden sie nicht gebraucht
+  void preloadSamples(undefined, 'sn-');
   if (!ready[kind]) {
     if (document.getElementById('mg-loading')) return;
     loadingNote('Lade …');
