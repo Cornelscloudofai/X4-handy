@@ -635,14 +635,16 @@ export const MISSILE_IDS = Object.keys(MISSILES) as MissileId[];
 
 export interface Loadout { ship: ShipId; weapon: WeaponId; turret: TurretId; shield: ShieldId; /** schwere L-Türme (nur Zerstörer) */ lturret?: LTurretId; /** Raketenart (nur Schiffe mit Raketenwerfer) */ missile?: MissileId;
   /** Träger: Turmart je Gruppe (Index wie ShipDef.groups; M-Gruppen TurretId, L-Gruppen LTurretId) */ groups?: string[];
-  /** Staffel: eigene Begleitschiffe (S und M) – beim Träger im Hangar, sonst als Flügelleute */ wing?: Partial<Record<ShipId, number>> }
+  /** Staffel: eigene Begleitschiffe (S und M) – beim Träger im Hangar, sonst als Flügelleute */ wing?: Partial<Record<ShipId, number>>;
+  /** Ausrüstung der Begleitschiffe je Schiffstyp: Bordwaffe, Turmart (M-Schiffe mit Türmen), Raketen (Schiffe mit Werfern) */ wingGear?: Partial<Record<ShipId, WingGear>> }
+export interface WingGear { weapon?: WeaponId; turret?: TurretId; missile?: MissileId }
 export const DEFAULT_LOADOUT: Loadout = { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'plasma', missile: 'lenk' };
 /** Namen aus früheren Versionen (gespeicherte Ausrüstung) */
 const OLD: Record<string, string> = { impuls: 'puls', splitter: 'schrot' };
 
 const KEY = 'x4-sektorbau-ausruestung';
 
-function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups' | 'wing'>, string>> & { groups?: unknown; wing?: unknown }) | null | undefined): Loadout {
+function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups' | 'wing' | 'wingGear'>, string>> & { groups?: unknown; wing?: unknown; wingGear?: unknown }) | null | undefined): Loadout {
   const weapon = OLD[l?.weapon ?? ''] ?? l?.weapon, turret = OLD[l?.turret ?? ''] ?? l?.turret;
   return {
     ship: l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship,
@@ -653,6 +655,7 @@ function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups' | 'wing'>, str
     missile: l?.missile && l.missile in MISSILES ? (l.missile as MissileId) : DEFAULT_LOADOUT.missile,
     groups: validGroups(l?.groups),
     wing: validWing(l?.wing, l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship),
+    wingGear: validWingGear(l?.wingGear),
   };
 }
 
@@ -678,6 +681,38 @@ export function validWing(w: unknown, ship: ShipId): Partial<Record<ShipId, numb
     if (!k) continue;
     out[id] = k;
     if (isS) s += k; else m += k;
+  }
+  return out;
+}
+/** Was ein Begleitschiff tragen kann: Waffen passend zu seinen Waffenplätzen, Türme nur mit Turmplätzen, Raketen nur mit Werfern */
+export function wingOptions(id: ShipId): { weapons: WeaponId[]; turrets: TurretId[]; missiles: MissileId[] } {
+  const d = SHIPS[id];
+  return {
+    weapons: WEAPON_IDS.filter((w) => weaponFits(WEAPONS[w], d.gunSize)),
+    turrets: d.turrets.length ? TURRET_IDS : [],
+    missiles: d.x4.launchers ? MISSILE_IDS : [],
+  };
+}
+/** Ausrüstung eines Begleitschiff-Typs (fehlende Angaben: Pulslaser, Pulstürme, Lenkraketen) */
+export function wingGearOf(lo: Loadout, id: ShipId): Required<WingGear> {
+  const g = lo.wingGear?.[id] ?? {}, o = wingOptions(id);
+  return {
+    weapon: g.weapon && o.weapons.includes(g.weapon) ? g.weapon : o.weapons.includes('puls') ? 'puls' : o.weapons[0],
+    turret: g.turret && TURRET_IDS.includes(g.turret) ? g.turret : 'puls',
+    missile: g.missile && MISSILE_IDS.includes(g.missile) ? g.missile : 'lenk',
+  };
+}
+function validWingGear(g: unknown): Partial<Record<ShipId, WingGear>> {
+  const out: Partial<Record<ShipId, WingGear>> = {};
+  if (!g || typeof g !== 'object') return out;
+  for (const id of WING_IDS) {
+    const x = (g as Record<string, Record<string, string> | undefined>)[id];
+    if (!x || typeof x !== 'object') continue;
+    const o = wingOptions(id), e: WingGear = {};
+    if (o.weapons.includes(x.weapon as WeaponId)) e.weapon = x.weapon as WeaponId;
+    if (o.turrets.includes(x.turret as TurretId)) e.turret = x.turret as TurretId;
+    if (o.missiles.includes(x.missile as MissileId)) e.missile = x.missile as MissileId;
+    if (Object.keys(e).length) out[id] = e;
   }
   return out;
 }

@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, type ControlMode, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -328,6 +328,9 @@ interface Wing {
    * Seite, nach der abgedreht wird. Korvetten halten stattdessen Abstand. hitT: kurz nach einem Treffer (Abdrehen)
    */
   phase: 'run' | 'pass' | 'extend'; phT: number; ex: number; ey: number; side: 1 | -1; hitT: number;
+  /** Ausrüstung aus dem Hangar: Bordwaffe, Türme (M-Schiffe) samt Turmart, Raketen (Lager, Nachladezeit) */
+  wType: WeaponId; tType: TurretId; tw: GameGun | null; tur: { cd: number; a: number; mag: number }[];
+  mDef: MissileDef | null; mCd: number; ammo: number;
 }
 /** Landeweg: von außen aufs Deck, dann unter den Rumpf (Sekunden je Abschnitt) */
 const BAY_T1 = 0.9, BAY_T2 = 1.1;
@@ -851,7 +854,7 @@ export class ShooterGame implements MiniGame {
       ? this.ship.turrets.reduce((sum, _, i) => { const t = turretOf(lo, this.ship, i); return sum + effectiveDps(t.def.gun, t.def.beam); }, 0)
       : this.ship.turrets.length * effectiveDps(td.gun, td.beam);
     // Staffel: ihre Bordkanonen zählen zur Hälfte (sie können abgeschossen werden und sind nicht immer im Kampf)
-    const wingDps = this.wings.reduce((sum, w) => sum + w.def.guns.length * effectiveDps(weaponGun(WEAPONS.puls, w.def.gunSize)), 0) * 0.5;
+    const wingDps = this.wings.reduce((sum, w) => sum + Math.max(1, w.def.guns.length) * effectiveDps(weaponGun(WEAPONS[w.wType], w.def.gunSize), WEAPONS[w.wType].beam) + w.tur.length * effectiveDps(TURRETS[w.tType].gun, TURRETS[w.tType].beam), 0) * 0.5;
     const firepower = (this.guns.length * effectiveDps(weaponGun(wd, this.ship.gunSize), wd.beam) + turretDps + this.pL.length * effectiveDps(ltd.gun) + missileDps + wingDps) / (2 * sustainedDps(WEAPONS.puls.s));
     // langsame Schiffe (Zerstörer) können nicht überall zugleich sein: ihre Stärke zählt entsprechend weniger –
     // beim Träger nicht: seine Türme decken alle Seiten zugleich ab
@@ -1616,9 +1619,12 @@ export class ShooterGame implements MiniGame {
     const bays = this.ship.bays;
     let k = 0;
     for (const [id, n] of Object.entries(wing) as [ShipId, number][]) for (let i = 0; i < n; i++) {
-      const def = SHIPS[id], w = gameGun(weaponGun(WEAPONS.puls, def.gunSize), WEAPONS.puls);
+      const def = SHIPS[id], gear = wingGearOf(lo, id), wd = WEAPONS[gear.weapon], td = TURRETS[gear.turret];
+      const w = gameGun(weaponGun(wd, def.gunSize), wd), tw = def.turrets.length ? gameGun(td.gun, td) : null;
       const max = 100 * def.hull, shMax = 70 * def.shield;
-      const wing: Wing = { id: k, ship: id, def, w, x: this.px, y: this.py, vx: 0, vy: 0, a: this.aimA, hp: max, max, sh: shMax, shMax, cd: 0, mag: w.mag, flash: 0, state: bays ? 'dock' : 'fly', t: 0, bay: bays ? k % bays.length : 0, tgt: null, tgtT: 0, slot: k, phase: 'run', phT: 0, ex: 0, ey: 0, side: k % 2 ? -1 : 1, hitT: 0 };
+      const wing: Wing = { id: k, ship: id, def, w, x: this.px, y: this.py, vx: 0, vy: 0, a: this.aimA, hp: max, max, sh: shMax, shMax, cd: 0, mag: w.mag, flash: 0, state: bays ? 'dock' : 'fly', t: 0, bay: bays ? k % bays.length : 0, tgt: null, tgtT: 0, slot: k, phase: 'run', phT: 0, ex: 0, ey: 0, side: k % 2 ? -1 : 1, hitT: 0,
+        wType: gear.weapon, tType: gear.turret, tw, tur: def.turrets.map(() => ({ cd: Math.random(), a: 0, mag: tw?.mag ?? 0 })),
+        mDef: def.x4.launchers ? MISSILES[gear.missile] : null, mCd: 2 + k * 0.7, ammo: def.x4.missiles };
       if (!bays) { const [fx, fy] = this.slotPos(k); wing.x = fx; wing.y = fy; }
       this.wings.push(wing);
       k++;
@@ -1670,6 +1676,7 @@ export class ShooterGame implements MiniGame {
         w.hp = Math.min(w.max, w.hp + (w.max / WING_REPAIR) * dt);
         w.sh = w.shMax;
         w.mag = w.w.mag;
+        w.ammo = w.def.x4.missiles;
         if (order !== 'landen' && w.hp >= w.max * 0.95 && this.launchCd <= 0 && this.wave >= 0) { w.state = 'out'; w.t = 0; this.launchCd = 0.45; }
         continue;
       }
@@ -1769,22 +1776,99 @@ export class ShooterGame implements MiniGame {
         if (od > 0.1 && od < min) { w.vx += (ox / od) * (min - od) * dt * 6; w.vy += (oy / od) * (min - od) * dt * 6; }
       }
       w.x += w.vx * dt; w.y += w.vy * dt;
-      // Bordkanonen: feuern, wenn das Ziel vorn liegt
-      if (tgt && w.cd <= 0) {
+      // Bordkanonen: feuern, wenn das Ziel vorn liegt (Waffe aus dem Hangar)
+      const S = w.def.size === 40 ? SPRITE_SIZE * 0.86 : w.def.size;
+      if (tgt && w.w.beam) {
+        // Strahl: trifft sofort, solange der Bug auf dem Ziel liegt
+        const d = Math.hypot(tgt.x - w.x, tgt.y - w.y), off = Math.abs(wrapA(Math.atan2(tgt.y - w.y, tgt.x - w.x) - w.a));
+        if (d < w.w.range && off < 0.12) {
+          const nx = w.x + Math.cos(w.a) * S * 0.4, ny = w.y + Math.sin(w.a) * S * 0.4;
+          this.tBeams.push([nx, ny, tgt.x, tgt.y]);
+          this.damageEnemy(tgt, ((this.baseDmg * w.w.dmg) / TIME / this.tempo) * dt * Math.max(1, w.def.guns.length), 0.3);
+        }
+      } else if (tgt && w.cd <= 0) {
         const d = Math.hypot(tgt.x - w.x, tgt.y - w.y), off = Math.abs(wrapA(Math.atan2(tgt.y - w.y, tgt.x - w.x) - w.a));
         if (d < w.w.range && off < 0.25) {
-          const S = w.def.size === 40 ? SPRITE_SIZE * 0.86 : w.def.size;
           for (const gxo of w.def.guns.length ? w.def.guns : [0]) {
             const c = Math.cos(w.a + Math.PI / 2), sn = Math.sin(w.a + Math.PI / 2), fwd = S * (w.def.gunFwd ?? 0.3);
             const ox = w.x + gxo * 0.5 * c + Math.cos(w.a) * fwd, oy = w.y + gxo * 0.5 * sn + Math.sin(w.a) * fwd;
-            const a = w.a + (this.r() - 0.5) * 2 * w.w.jitter;
-            this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.w.speed + w.vx * 0.3, vy: Math.sin(a) * w.w.speed + w.vy * 0.3, dmg: this.baseDmg * w.w.dmg, from: 'p', life: w.w.life, color: w.w.color, w: w.w.w, pierce: 0 });
+            for (let p = 0; p < w.w.pellets; p++) {
+              const a = w.a + (this.r() - 0.5) * 2 * w.w.jitter;
+              if (w.w.rail) { this.fireRail(ox, oy, a, this.baseDmg * w.w.dmg, w.w.range, w.w.color); continue; }
+              this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.w.speed + w.vx * 0.3, vy: Math.sin(a) * w.w.speed + w.vy * 0.3, dmg: this.baseDmg * w.w.dmg, from: 'p', life: w.w.life, color: w.w.color, w: w.w.w, pierce: 0, hullPierce: w.w.hullPierce || undefined });
+            }
           }
           w.cd = w.w.interval * this.tempo;
           if (w.w.mag && --w.mag <= 0) { w.mag = w.w.mag; w.cd = w.w.reload * this.tempo; }
+          sfx.turretShot(w.wType, this.panAt(w.x));
         }
       }
+      this.wingTurrets(w, dt);
+      this.wingMissiles(w, tgt, dt);
     }
+  }
+
+  /** Türme eines Begleitschiffs (M): schwenken frei, schießen auf das nächste Ziel in Reichweite – auch Raketen */
+  private wingTurrets(w: Wing, dt: number): void {
+    const tw = w.tw;
+    if (!tw || !w.tur.length) return;
+    const c = Math.cos(w.a + Math.PI / 2), sn = Math.sin(w.a + Math.PI / 2), turn = (5 * TURRETS[w.tType].turn) / 180;
+    for (const [i, t] of w.tur.entries()) {
+      const [tx0, ty0] = w.def.turrets[i];
+      const x = w.x + tx0 * c - ty0 * sn, y = w.y + tx0 * sn + ty0 * c;
+      t.cd -= dt;
+      let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = tw.range;
+      for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
+      if (!tgt) { tgt = this.pickTarget(x, y, tw.range, 'alle'); if (tgt) bd = Math.hypot(tgt.x - x, tgt.y - y); }
+      if (!tgt) continue;
+      const lt = tw.beam ? 0 : bd / tw.speed;
+      const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
+      t.a = wrapA(turnTo(t.a, want, dt * turn));
+      if (tw.beam) {
+        if (Math.abs(wrapA(want - t.a)) > 0.08) continue;
+        const dps = (this.baseDmg * tw.dmg) / TIME / this.tempo;
+        this.tBeams.push([x, y, tgt.x, tgt.y]);
+        if (this.eMissiles.includes(tgt as EMissile)) {
+          const m = tgt as EMissile;
+          m.hp -= dps * dt;
+          if (m.hp <= 0) { this.explode(m.x, m.y, '#ff8a5c', 0.5, false); this.gain(30, m.x, m.y, 'Raketen abgeschossen'); }
+        } else this.damageEnemy(tgt as Enemy, dps * dt, 0.3);
+        continue;
+      }
+      if (t.cd > 0 || Math.abs(wrapA(want - t.a)) > 0.15) continue;
+      for (let p = 0; p < tw.pellets; p++) {
+        const a = t.a + (this.r() - 0.5) * 2 * tw.jitter;
+        if (tw.rail) { this.fireRail(x, y, a, this.baseDmg * tw.dmg, tw.range, tw.color); continue; }
+        this.bullets.push({ x, y, vx: Math.cos(a) * tw.speed, vy: Math.sin(a) * tw.speed, dmg: this.baseDmg * tw.dmg, from: 'p', life: tw.life, color: tw.color, w: Math.min(tw.w, 3), pierce: 0 });
+      }
+      t.cd = tw.interval * this.tempo;
+      if (tw.mag && --t.mag <= 0) { t.mag = tw.mag; t.cd = tw.reload * this.tempo; }
+      sfx.turretShot(w.tType, this.panAt(x));
+    }
+  }
+
+  /**
+   * Raketen eines Begleitschiffs (nur mit Werfern): Salve auf sein Ziel, sobald es in Reichweite der Rakete ist; das Lager
+   * ist begrenzt (X4-Wert), im Hangar des Trägers wird es wieder aufgefüllt
+   */
+  private wingMissiles(w: Wing, tgt: Enemy | null, dt: number): void {
+    const def = w.mDef;
+    if (!def) return;
+    w.mCd -= dt;
+    if (!tgt || w.mCd > 0 || w.ammo < def.slots) return;
+    const d = Math.hypot(tgt.x - w.x, tgt.y - w.y);
+    if (d > def.v * def.life * 0.8 || d < 120) return;
+    const pos = w.def.launcherPos ?? new Array<number>(w.def.x4.launchers).fill(0);
+    const n = Math.min(pos.length, Math.floor(w.ammo / def.slots));
+    const c = Math.cos(w.a), sn = Math.sin(w.a);
+    const dmg = MISSILE_DMG * ([6, 8, 11][this.gear.weapon - 1] / 6) * def.dmg;
+    for (let k = 0; k < n; k++) {
+      const a = w.a + (k - (n - 1) / 2) * 0.35;
+      this.missiles.push({ x: w.x - sn * pos[k], y: w.y + c * pos[k], vx: Math.cos(a) * 160 + w.vx * 0.5, vy: Math.sin(a) * 160 + w.vy * 0.5, target: tgt, life: def.split ? 0.5 : def.life, def, dmg, split: def.split ? 0.28 : undefined });
+    }
+    w.ammo -= n * def.slots;
+    w.mCd = 8 * (w.def.missileReload ?? 1);
+    sfx.missile();
   }
 
   /** Begleitschiff zeichnen: Bild wie im Hangar, kleine Triebwerksflamme, Hüllenbalken wenn beschädigt, Kennung */

@@ -5,7 +5,7 @@
 // (vier Mod-Sockel). Navigation: höchstens eine Ebene (Hangar → Schublade); Zurück schließt immer zuerst die Schublade.
 import {
   LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
-  WING_IDS, loadout, sustainedDps, turretOf, weaponGun, wingCount, wingRoom, type Loadout, type ShipId, type X4Gun,
+  WING_IDS, loadout, sustainedDps, turretOf, weaponGun, wingCount, wingGearOf, wingOptions, wingRoom, type Loadout, type ShipId, type X4Gun,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
 import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
@@ -225,8 +225,8 @@ export function loadoutView(m: LoModal): string {
     body = `<div class="hgr-groups">${WING_IDS.map((id) => {
       const d = SHIPS[id], n = w[id] ?? 0, isS = d.cls === 'S';
       const full = (isS ? nS >= room.S : nM >= room.M) || nS + nM >= room.total;
-      return `<div class="hgr-grp hgr-wing"><span class="hgr-wing-img">${pic(id) ? `<img src="${pic(id)}" alt="">` : glyph('ship', 26)}</span><div class="hgr-grp-h" style="flex:1;margin:0"><b>${esc(d.name)} · ${d.cls}</b><small>${esc(d.role)} · ${d.x4.weapons} Kanonen</small></div>
-        <div class="hgr-step"><button class="hgr-chip" ${n ? '' : 'disabled'} ${act('loadout-wing', { ship: id, d: -1 })} aria-label="Weniger">−</button><b>${n}</b><button class="hgr-chip" ${full ? 'disabled' : ''} ${act('loadout-wing', { ship: id, d: 1 })} aria-label="Mehr">+</button></div></div>`;
+      return `<div class="hgr-grp hgr-wing-box"><div class="hgr-wing"><span class="hgr-wing-img">${pic(id) ? `<img src="${pic(id)}" alt="">` : glyph('ship', 26)}</span><div class="hgr-grp-h" style="flex:1;margin:0"><b>${esc(d.name)} · ${d.cls}</b><small>${esc(d.role)} · ${d.x4.weapons} Kanonen</small></div>
+        <div class="hgr-step"><button class="hgr-chip" ${n ? '' : 'disabled'} ${act('loadout-wing', { ship: id, d: -1 })} aria-label="Weniger">−</button><b>${n}</b><button class="hgr-chip" ${full ? 'disabled' : ''} ${act('loadout-wing', { ship: id, d: 1 })} aria-label="Mehr">+</button></div></div>${n ? wingGearRows(lo, id) : ''}</div>`;
     }).join('')}</div><div class="hgr-desc">${carrier ? 'Die Staffel startet nach Wellenbeginn nacheinander über die Flugdecks links und rechts. Unter 30 % Hülle oder auf Befehl „Landen“ fliegt ein Schiff zurück, wird im Hangar repariert und startet wieder.' : 'Flügelleute fliegen in Formation neben dir und greifen auf Befehl an.'} Im Kampf steuerst du die Staffel mit dem Knopf „ST“ links: Angriff, Strukturen, Schutz, ${carrier ? 'Landen' : 'Sammeln'}.</div>`;
   } else if (view === 'shield') {
     const cur = SHIELDS[lo.shield];
@@ -334,4 +334,17 @@ export function layoutHangar(root: HTMLElement, onSwipe: (dir: number) => void):
       if (Math.abs(d) > 60) onSwipe(d < 0 ? 1 : -1);
     });
   }
+}
+
+/** Ausrüstung eines Begleitschiff-Typs im Hangar: Bordwaffe, Türme (nur M-Schiffe mit Türmen), Raketen (nur mit Werfern) */
+function wingGearRows(lo: Loadout, id: ShipId): string {
+  const d = SHIPS[id], o = wingOptions(id), g = wingGearOf(lo, id);
+  const short = (name: string) => name.replace(/-?[Tt]urm$/, '').replace(/^Schwerer /, '').replace(/-Beschleuniger$/, '').replace(/-Desintegrator$/, '').replace(/-Gatling$/, '');
+  const row = (label: string, key: 'weapon' | 'turret' | 'missile', ids: string[], name: (x: string) => string, color: (x: string) => string, cur: string) =>
+    `<div class="hgr-wgear"><small>${label}</small><div class="hgr-chips">${ids.map((x) => `<button class="hgr-chip ${x === cur ? 'on' : ''}" style="--c:${color(x)}" ${act('loadout-winggear', { ship: id, key, value: x })}>${esc(short(name(x)))}</button>`).join('')}</div></div>`;
+  return `<div class="hgr-wing-gear">
+    ${row(`${Math.max(1, d.x4.weapons)} × Waffe (${d.gunSize.toUpperCase()})`, 'weapon', o.weapons, (x) => WEAPONS[x as keyof typeof WEAPONS].name, (x) => WEAPONS[x as keyof typeof WEAPONS].color, g.weapon)}
+    ${o.turrets.length ? row(`${d.turrets.length} × Turm`, 'turret', o.turrets, (x) => TURRETS[x as keyof typeof TURRETS].name, (x) => TURRETS[x as keyof typeof TURRETS].color, g.turret) : ''}
+    ${o.missiles.length ? row(`Raketen · ${d.x4.launchers} × Werfer, Lager ${d.x4.missiles}`, 'missile', o.missiles, (x) => MISSILES[x as keyof typeof MISSILES].name, (x) => MISSILE_LOOK[x as keyof typeof MISSILE_LOOK] ?? '#ffb547', g.missile) : ''}
+  </div>`;
 }

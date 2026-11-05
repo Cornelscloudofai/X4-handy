@@ -6,7 +6,7 @@ import { TOP } from '../src/minigames/common';
 setSizeScale('bisher', false);
 const W = 390, H = 780, DT = 1 / 60;
 type E = { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number; r: number; sh: number; shMax: number; cd: number };
-type Wg = { id: number; state: string; x: number; y: number; vx: number; vy: number; a: number; tgt: unknown; phase: string; def: { cls: string }; w: { range: number } };
+type Wg = { id: number; ship: string; state: string; x: number; y: number; vx: number; vy: number; a: number; tgt: unknown; phase: string; def: { cls: string }; w: { range: number } };
 type G = {
   px: number; py: number; wings: Wg[]; enemies: E[]; time: number; wave: number; tac: boolean; wingFocus: unknown;
   camMode: string; camX: number; camY: number; camFollow: unknown; zoom: number; WW: number; WH: number;
@@ -201,5 +201,46 @@ describe('Gehaltener Stick über den Kamerawechsel', () => {
     g.pointerMove(1, 80, 520);
     expect(a.joy?.id).toBe(1);
     expect(a.joy!.ky).toBeLessThan(-0.5);
+  });
+});
+
+describe('Ausrüstung der Begleitschiffe', () => {
+  type B = { from: string; color: string };
+  type M = { def: { name: string } };
+  function setup(wing: Partial<Record<ShipId, number>>, wingGear: Record<string, Record<string, string>>) {
+    const g = new ShooterGame({ level: 1, seed: 4, mutator: null, mode: 'normal', loadout: { ship: 'cobra', weapon: 'puls', turret: 'puls', shield: 'leicht', wing, wingGear: wingGear as never } }, 'pirate');
+    g.resize(W, H);
+    g.setWingOrder('angriff');
+    for (let i = 0; i < 30; i++) g.update(DT);
+    const a = g as unknown as Omit<G, 'wings'> & { bullets: B[]; missiles: M[]; wings: (Wg & { wType: string; tType: string; tur: unknown[]; mDef: { name: string } | null; ammo: number })[] };
+    return { g, a };
+  }
+
+  it('Waffe je Schiffstyp aus dem Hangar; ungültige Angaben fallen auf den Pulslaser zurück', () => {
+    const { a } = setup({ mamba: 1, asp: 1 }, { mamba: { weapon: 'schrot' }, asp: { weapon: 'schnellplasma' } });
+    expect(a.wings.find((w) => w.ship === 'mamba')!.wType).toBe('schrot');
+    // schwere Waffe passt nicht auf ein S-Schiff
+    expect(a.wings.find((w) => w.ship === 'asp')!.wType).toBe('puls');
+  });
+
+  it('Dragon (M) mit Plasmatürmen: die Türme schießen; Wolf (Bomber) feuert Schwarmraketen aus seinem Lager', () => {
+    const { g, a } = setup({ dragon: 1, wolf: 1 }, { dragon: { turret: 'plasma', weapon: 'tau' }, wolf: { missile: 'schwarm' } });
+    const dragon = a.wings.find((w) => w.ship === 'dragon')!, wolf = a.wings.find((w) => w.ship === 'wolf')!;
+    expect(dragon.tur.length).toBeGreaterThan(0);
+    expect(dragon.tType).toBe('plasma');
+    expect(wolf.mDef?.name).toBe('Schwarmrakete');
+    const ammo0 = wolf.ammo;
+    const e = dummy(a);
+    e.cd = 1e9;
+    let plasma = 0, swarm = 0;
+    for (let i = 0; i < 60 * 20; i++) {
+      hold(a, e);
+      g.update(DT);
+      plasma += a.bullets.filter((b) => b.from === 'p' && b.color === '#a6ff6b').length;
+      swarm += a.missiles.filter((m) => m.def.name === 'Schwarmrakete').length;
+    }
+    expect(plasma).toBeGreaterThan(0);
+    expect(swarm).toBeGreaterThan(0);
+    expect(wolf.ammo).toBeLessThan(ammo0);
   });
 });

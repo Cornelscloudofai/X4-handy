@@ -84,6 +84,13 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
 - **Minispiel:** glaubwürdigere Gegner (Piraten fliehen bei hohen Verlusten, Kommandant ruft Verstärkung, kurze
   Funksprüche), Flügelleute mit einfachen Befehlen.
 
+## Merkliste (vom Spieler, nicht vergessen)
+
+- **Linker Stick nach Kamerawechsel:** behoben für taktische Karte (Träger) und gehaltenen Finger. Spieler beobachtet
+  weiter – wenn er in einer anderen Lage wieder hängt, mit Schiff und Ablauf nachstellen (Tests: `tests/wingCam.test.ts`).
+- **Klangauswahl:** Spieler hört die Varianten in Einstellungen → Hörprobe durch („Splitter 1“, „Tau 2“ …) und nennt,
+  welche bleiben sollen; danach in `GUNS`/`VARIANTS`/`BOOMS`/`LOOPS` nur diese behalten.
+
 ## Offene Fragen
 
 - Ob Kampfschiffe Sektorgrenzen frei überschreiten oder an den Heimatsektor gebunden sind.
@@ -146,6 +153,11 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
     Gegner greifen Begleitschiffe an, die ihnen näher sind als du; Treffer mit Schild- bzw. Funkeneffekt; Abschuss =
     für diese Runde verloren. Gegnerzahl berücksichtigt die Staffel (halbe Feuerkraft)
     Offen: Raptor-Bild auf Sektorkarte und in der Werft; echte Kampfschiffe aus der Flotte bei Gefechten aus der Welt
+  - [x] Ausrüstung der Staffel je Schiffstyp (Hangar → Flügelleute/Hangar): Bordwaffe passend zu den Waffenplätzen,
+    Turmart bei M-Schiffen mit Türmen (Dragon, Cobra), Raketenart bei Schiffen mit Werfern (Wolf 3 × 40, Asp, Mamba,
+    Dragon); Raketenlager begrenzt, im Träger-Hangar wieder aufgefüllt. `Loadout.wingGear`, `wingGearOf`, `wingOptions`
+  - [x] Staffel fliegt Anflüge (Anflug – Durchziehen – Ausholen – Wende) statt enger Kreise, Rotten, Korvetten halten
+    Abstand; freie Kamera, Beobachter, taktische Karte (Radar antippen)
   - [ ] Verteidigungstürme als Stationsmodul
   - [ ] Tor-Ereignis in Rhy
   - [ ] Eigene Kampfschiffe als Flügelleute im Minispiel

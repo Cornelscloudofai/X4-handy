@@ -1437,6 +1437,17 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
+      case 'loadout-winggear': {
+        // Staffel: Bordwaffe, Turmart oder Raketen eines Schiffstyps (Gültigkeit prüft setLoadout)
+        const all = { ...(loadout().wingGear ?? {}) } as Record<string, Record<string, string>>;
+        const id = String(d.ship), key = String(d.key);
+        if (all[id]?.[key] === d.value) break;
+        all[id] = { ...(all[id] ?? {}), [key]: String(d.value) };
+        if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, prev: hangarStats(), undo: { wingGear: loadout().wingGear } }; sfx.tap(); }
+        setLoadout({ wingGear: all as Loadout['wingGear'] });
+        refresh();
+        break;
+      }
       case 'loadout-group': {
         // Träger: Turmart einer Turmgruppe (Cluster oder L-Türme)
         const g = Number(d.g), cur = [...(loadout().groups ?? [])];
