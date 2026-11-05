@@ -148,3 +148,58 @@ describe('Kamera: freie Sicht, Beobachter, taktische Karte', () => {
     expect(a.tac).toBe(false);
   });
 });
+
+describe('Linker Stick nach Kamerawechsel und Karte', () => {
+  for (const ship of ['mamba', 'raptor'] as const) for (const ctrl of ['eins', 'zwei'] as const) for (const path of ['Kamera durchschalten', 'eigenes Schiff antippen', 'taktische Karte'] as const) {
+    it(`${ship}, ${ctrl === 'eins' ? 'ein Stick' : 'zwei Sticks'}: ${path} – danach steuert der linke Stick wieder`, () => {
+      const g = new ShooterGame({ level: 1, seed: 1, mutator: null, mode: 'normal', controls: ctrl, loadout: { ship, weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
+      g.resize(W, H);
+      const a = g as unknown as G & { joy: { id: number; ky: number } | null; aimA: number };
+      for (let i = 0; i < 30; i++) g.update(DT);
+      const tap = (id: number, x: number, y: number) => { g.pointerDown(id, x, y); g.pointerUp(id); };
+      // Stick halten (Träger: Kurs), dann Kamera wechseln bzw. Karte öffnen
+      g.pointerDown(1, 80, 600); g.pointerMove(1, 80, 540);
+      const [cx, cy] = a.btnCam;
+      if (path === 'Kamera durchschalten') { tap(2, cx, cy); g.update(DT); tap(2, cx, cy); g.update(DT); tap(2, cx, cy); }
+      if (path === 'eigenes Schiff antippen') { tap(2, cx, cy); for (let i = 0; i < 30; i++) g.update(DT); tap(3, (a.px - a.camX) * a.zoom, (a.py - a.camY) * a.zoom); }
+      if (path === 'taktische Karte') {
+        const [rx, ry] = a.radarRect;
+        tap(2, rx + 20, ry + 20);
+        expect(a.tac).toBe(true);
+        const zu = a.tacLayout.btns.find(([k]) => k === 'zu')!;
+        tap(3, zu[2] + 5, zu[3] + 5);
+        expect(a.tac).toBe(false);
+      }
+      expect(a.camMode).toBe('schiff');
+      g.pointerUp(1);
+      g.update(DT);
+      // neuer Finger links: der Stick nimmt ihn an und lenkt
+      g.pointerDown(4, 80, 600); g.pointerMove(4, 80, 540);
+      expect(a.joy?.id).toBe(4);
+      expect(a.joy!.ky).toBeLessThan(-0.5);
+      g.pointerUp(4);
+      expect(a.joy).toBeNull();
+    });
+  }
+});
+
+describe('Gehaltener Stick über den Kamerawechsel', () => {
+  it('Finger bleibt liegen: zurück am Schiff lenkt er sofort wieder, ohne neu aufzusetzen', () => {
+    const g = new ShooterGame({ level: 1, seed: 1, mutator: null, mode: 'normal', controls: 'zwei', loadout: { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
+    g.resize(W, H);
+    const a = g as unknown as G & { joy: { id: number; ky: number } | null };
+    for (let i = 0; i < 30; i++) g.update(DT);
+    const tap = (id: number, x: number, y: number) => { g.pointerDown(id, x, y); g.pointerUp(id); };
+    g.pointerDown(1, 80, 600); g.pointerMove(1, 80, 560);
+    const [cx, cy] = a.btnCam;
+    tap(2, cx, cy); g.update(DT);
+    expect(a.joy).toBeNull();
+    tap(2, cx, cy); tap(2, cx, cy);
+    expect(a.camMode).toBe('schiff');
+    // derselbe Finger bewegt sich weiter: Stick ist wieder da und lenkt
+    g.pointerMove(1, 80, 570);
+    g.pointerMove(1, 80, 520);
+    expect(a.joy?.id).toBe(1);
+    expect(a.joy!.ky).toBeLessThan(-0.5);
+  });
+});

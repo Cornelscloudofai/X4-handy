@@ -1091,6 +1091,9 @@ export class ShooterGame implements MiniGame {
   private autoT = 0;
   private autoX = 0;
   private autoY = 0;
+  /** Finger, die beim Verlassen der Schiffskamera auf den Sticks lagen */
+  private heldJoy: number | null = null;
+  private heldAim: number | null = null;
   /** Taktische Karte (Radar antippen): ganze Karte in Zeitlupe, Ziel für die Staffel wählen */
   private tac = false;
   /** Taste für die Kamera: links neben den Zoom-Tasten */
@@ -1209,11 +1212,17 @@ export class ShooterGame implements MiniGame {
       }
       return;
     }
-    if (!this.joy) this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 };
+    // ein echter Finger ersetzt den gehaltenen Kurs des Trägers (id 98) aus freier Sicht oder Karte
+    if (!this.joy || this.joy.id === 98) this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 };
   }
 
   pointerMove(id: number, x: number, y: number): void {
     if (this.panId === id) { this.setPan(y); return; }
+    // zurück am Schiff: ein Finger, der schon vorher auf einem Stick lag, übernimmt ihn wieder (an seiner jetzigen Stelle)
+    if (this.camMode === 'schiff' && !this.tac) {
+      if (id === this.heldJoy && (!this.joy || this.joy.id === 98)) { this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 }; this.heldJoy = null; }
+      else if (id === this.heldAim && !this.aim) { this.aim = { id, ox: x, oy: y, kx: 0, ky: 0 }; this.heldAim = null; }
+    }
     const ct = this.camTouch.get(id);
     if (ct) {
       if (this.camTouch.size >= 2) {
@@ -1259,6 +1268,8 @@ export class ShooterGame implements MiniGame {
 
   pointerUp(id: number): void {
     if (this.panId === id) this.panId = null;
+    if (this.heldJoy === id) this.heldJoy = null;
+    if (this.heldAim === id) this.heldAim = null;
     const ct = this.camTouch.get(id);
     if (ct) {
       this.camTouch.delete(id);
@@ -1325,6 +1336,9 @@ export class ShooterGame implements MiniGame {
   /** Sticks loslassen; der Träger fliegt mit dem letzten Schub weiter */
   private releaseSticks(): void {
     const j = this.joy;
+    // gehaltene Finger merken: zurück am Schiff übernehmen sie die Sticks wieder, ohne neu aufzusetzen
+    this.heldJoy = j && j.id < 98 ? j.id : null;
+    this.heldAim = this.aim?.id ?? null;
     this.joy = this.ship.aspect && j && j.id !== 99 ? { id: 98, ox: j.ox, oy: j.oy, kx: j.kx, ky: j.ky } : j?.id === 99 ? j : null;
     this.aim = null;
     if (this.fireId !== 99) this.fireId = null;
@@ -1386,6 +1400,12 @@ export class ShooterGame implements MiniGame {
     sfx.tap();
   }
 
+  /** Karte schließen; zurück am eigenen Schiff steuern wieder die Sticks (kein gehaltener Kurs mehr) */
+  private closeTac(): void {
+    this.tac = false;
+    if (this.camMode === 'schiff' && this.joy?.id === 98) this.joy = null;
+  }
+
   /** Taktische Karte: Lage der Karte im Bild und die Tasten darunter */
   private get tacLayout(): { x0: number; y0: number; sc: number; btns: [string, string, number, number, number, number][] } {
     const btns: [string, string, number, number, number, number][] = [];
@@ -1406,7 +1426,7 @@ export class ShooterGame implements MiniGame {
     const L = this.tacLayout;
     for (const [k, , bx, by, bw, bh] of L.btns) {
       if (x < bx || x > bx + bw || y < by || y > by + bh) continue;
-      if (k === 'zu') { this.tac = false; sfx.tap(); }
+      if (k === 'zu') { this.closeTac(); sfx.tap(); }
       else { this.wingFocus = null; this.setWingOrder(k as WingOrder); }
       return;
     }
@@ -1427,7 +1447,7 @@ export class ShooterGame implements MiniGame {
       }
     }
     // sonst: Karte schließen und dorthin sehen (Begleiter oder Gegner: ihm folgen; eigenes Schiff: normale Kamera)
-    this.tac = false;
+    this.closeTac();
     if (o === 'p') { this.setCamMode('schiff'); return; }
     if (this.camMode === 'schiff') this.setCamMode('frei');
     else if (this.camMode === 'auto') this.camMode = 'frei';
@@ -1574,7 +1594,7 @@ export class ShooterGame implements MiniGame {
     if (code === 'Space') { this.usePc(); this.doSpecial(); return true; }
     if (code === 'KeyR') { this.usePc(); this.fireMissiles(); return true; }
     if (code === 'KeyV') { this.setCamMode(this.camMode === 'schiff' ? 'frei' : this.camMode === 'frei' ? 'auto' : 'schiff'); return true; }
-    if (code === 'KeyM' || code === 'Tab') { if (this.tac) this.tac = false; else this.openTac(); return true; }
+    if (code === 'KeyM' || code === 'Tab') { if (this.tac) this.closeTac(); else this.openTac(); return true; }
     if (code === 'Equal' || code === 'NumpadAdd') { this.setZoom(-1); return true; }
     if (code === 'Minus' || code === 'NumpadSubtract') { this.setZoom(1); return true; }
     return false;
@@ -2796,7 +2816,7 @@ export class ShooterGame implements MiniGame {
   update(dt: number): void {
     if (this.done) return;
     // taktische Karte: Zeitlupe
-    if (this.tac) { if (this.endT >= 0 || this.choosing) this.tac = false; else dt *= 0.25; }
+    if (this.tac) { if (this.endT >= 0 || this.choosing) this.closeTac(); else dt *= 0.25; }
     this.fx.update(dt);
     this.floats.update(dt);
     this.shake = Math.max(0, this.shake - dt);
