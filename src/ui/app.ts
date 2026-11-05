@@ -982,8 +982,8 @@ function onClick(e: MouseEvent): void {
       break;
     }
     case 'sound-toggle': setSound(!soundEnabled()); refresh(); break;
-      // Hörprobe: die großen Aufnahmen (Sonniss) erst laden, dann abspielen
-      case 'sound-demo': { const f = SOUND_DEMO[Number(d.i)]?.[1]; if (f) void preloadSamples(undefined, 'sn-').then(f); break; }
+      // Hörprobe: jede Probe lädt nur ihre eigene Aufnahme nach und spielt dann sofort
+      case 'sound-demo': SOUND_DEMO[Number(d.i)]?.[1](); break;
       case 'music-style': setMusicStyle(audioSettingsRef.style === 'klassisch' ? 'melodisch' : 'klassisch'); refresh(); break;
       case 'music-next': toast(`Stimmung: ${nextMood()}`, 'info'); refresh(); break;
       case 'help': ui.modal = { type: 'help', topic: d.topic || undefined }; refresh(); break;

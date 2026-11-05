@@ -67,13 +67,27 @@ function loadSample(c: BaseAudioContext, name: string): Promise<void> {
 }
 
 /**
- * Aufnahmen laden: ohne Filter alle; beim Start nur die kleinen alten (`es-*`, zusammen unter 1 MB) – die großen Kampf-
- * und Werkzeugklänge (`sn-*`, Sonniss) erst, wenn ein Minispiel geöffnet wird (preloadSamples(undefined, 'sn-'))
+ * Aufnahmen laden: ohne Filter alle auf einmal (Tests); mit Präfix gestaffelt im Hintergrund – höchstens drei Dateien
+ * zugleich, Schüsse vor Explosionen vor dem Rest. Beim Start nur die kleinen alten (`es-*`, zusammen unter 1 MB), die großen
+ * Kampf- und Werkzeugklänge (`sn-*`, Sonniss) erst, wenn ein Minispiel geöffnet wird. Was gerade gebraucht wird, lädt
+ * sample() ohnehin sofort selbst nach.
  */
 export function preloadSamples(ctx?: BaseAudioContext, prefix?: string): Promise<void> {
   const c = ctx ?? live?.ctx;
   if (!c) return Promise.resolve();
-  return Promise.all([...URL_OF.keys()].filter((n) => !prefix || n.startsWith(prefix)).map((n) => loadSample(c, n))).then(() => undefined);
+  const names = [...URL_OF.keys()].filter((n) => !prefix || n.startsWith(prefix));
+  if (!prefix) return Promise.all(names.map((n) => loadSample(c, n))).then(() => undefined);
+  const rank = (n: string) => (/schleife|alarm|boss/.test(n) ? 3 : /expl|huelle|treffer|schild/.test(n) ? 1 : /gestein|kristall|phase|kyon|funke/.test(n) ? 2 : 0);
+  const queue = names.filter((n) => !loading.has(n)).sort((x, y) => rank(x) - rank(y));
+  const worker = async () => { for (let n = queue.shift(); n; n = queue.shift()) await loadSample(c, n); };
+  return Promise.all([worker(), worker(), worker()]).then(() => undefined);
+}
+
+/** Bestimmte Aufnahmen laden (z. B. für die Hörprobe) – fertig, sobald genau diese bereit sind */
+export function ensureSamples(names: string[]): Promise<void> {
+  const g = graph();
+  if (!g) return Promise.resolve();
+  return Promise.all(names.map((n) => loadSample(g.ctx, n))).then(() => undefined);
 }
 
 /**

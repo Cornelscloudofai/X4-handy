@@ -1,6 +1,6 @@
 // Klangbibliothek: jeder Klang aus Oszillatoren, FM-Glocken und gefiltertem Rauschen gebaut, mit Hall, Panorama
 // und leichter Zufallsvariation, damit sich Wiederholungen nicht abnutzen.
-import { bell, duckFor, gate, graph, noise, norm, sample, shaper, tone, variant, vary, voiceOut, withVariant, type Bus } from './engine';
+import { bell, duckFor, ensureSamples, gate, graph, noise, norm, sample, shaper, tone, variant, vary, voiceOut, withVariant, type Bus } from './engine';
 
 import { LOOPS } from './ambience';
 
@@ -550,12 +550,13 @@ export const sfx = {
 
 /** Hörprobe einer Schleife: zwei Sekunden, Lautheit wie im Spiel */
 function demoLoop(name: string): () => void {
-  return () => play('sfx', { gain: 1 }, (g, o, t) => { sample(g, o, name, { t, gain: 0.5 * norm(name), dur: 2 }); });
+  return () => { void ensureSamples([name]).then(() => play('sfx', { gain: 1 }, (g, o, t) => { sample(g, o, name, { t, gain: 0.5 * norm(name), dur: 2 }); })); };
 }
 
 /** Jede Variante einzeln: „Splitter 1“, „Splitter 2“ … (so lässt sich genau sagen, welche bleiben soll) */
 function each(label: string, names: string[], fn: () => void): [string, () => void][] {
-  return names.map((n, i) => [`${label} ${i + 1}`, () => withVariant(n, fn)]);
+  // nur diese eine Aufnahme laden (nicht alle), dann sofort spielen
+  return names.map((n, i) => [`${label} ${i + 1}`, () => { void ensureSamples([n]).then(() => withVariant(n, fn)); }]);
 }
 const loopDemo = (label: string, names: string[]): [string, () => void][] => names.map((n, i) => [`${label} ${i + 1}`, demoLoop(n)]);
 const GUN_DEMO: [string, string][] = [['Puls-Laser', 'puls'], ['Bolzen', 'bolzen'], ['Splitter', 'schrot'], ['Plasma', 'plasma'], ['Neutron', 'neutron'], ['Tau', 'tau'], ['Thermal', 'thermal'], ['Boson', 'boson']];
