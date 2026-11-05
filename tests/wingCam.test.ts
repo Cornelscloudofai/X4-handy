@@ -318,3 +318,55 @@ describe('Raketen suchen ein neues Ziel', () => {
     });
   }
 });
+
+describe('Staffel: eigene Flugrouten, Nachladen im Träger', () => {
+  it('viele Jäger verteilen sich auf mehrere Ziele und fliegen nicht als ein Klumpen', () => {
+    const { g, a } = game({ mamba: 8 });
+    a.enemies.length = 0; a.wave = 99;
+    const foes = [-500, -170, 170, 500].map((dx) => { const e = a.makeEnemy('kanone', a.px + dx, a.py - 900); e.hp = e.max = 1e9; e.sh = e.shMax = 0; e.cd = 1e9; return e; });
+    let spreadSum = 0, n = 0;
+    const used = new Set<unknown>();
+    for (let i = 0; i < 60 * 20; i++) {
+      for (const e of foes) { e.vx = e.vy = 0; e.hp = e.max; e.cd = 1e9; }
+      a.enemies.length = 0; a.enemies.push(...foes);
+      g.update(DT);
+      if (i > 60 * 6) {
+        for (const w of a.wings) used.add(w.tgt);
+        // mittlerer Abstand aller Begleiter untereinander
+        let s = 0, c = 0;
+        for (const p of a.wings) for (const q of a.wings) if (p.id < q.id) { s += Math.hypot(p.x - q.x, p.y - q.y); c++; }
+        spreadSum += s / c; n++;
+      }
+    }
+    expect([...used].filter(Boolean).length).toBeGreaterThanOrEqual(3);
+    expect(spreadSum / n).toBeGreaterThan(220);
+  });
+
+  it('Raketenschiff mit leerem Lager fliegt zum Träger, lädt 5 s nach und startet wieder', () => {
+    const g = new ShooterGame({ level: 1, seed: 4, mutator: null, mode: 'normal', loadout: { ship: 'raptor', weapon: 'puls', turret: 'puls', shield: 'leicht', wing: { wolf: 1 } } }, 'pirate');
+    g.resize(W, H);
+    g.setWingOrder('angriff');
+    const a = g as unknown as G & { wings: (Wg & { ammo: number; mDef: { slots: number } | null; dockT?: number })[] };
+    const w = a.wings[0];
+    let flew = false;
+    for (let i = 0; i < 60 * 20 && !flew; i++) { g.update(DT); flew = w.state === 'fly'; }
+    expect(flew).toBe(true);
+    const full = w.ammo;
+    w.ammo = 0;
+    // weit draußen im Gefecht
+    w.x = a.px + 900; w.y = a.py - 600;
+    const seen: string[] = [];
+    let dockedFor = 0, relaunched = false;
+    for (let i = 0; i < 60 * 40; i++) {
+      g.update(DT);
+      if (seen[seen.length - 1] !== w.state) seen.push(w.state);
+      if (w.state === 'dock') dockedFor += DT;
+      if (dockedFor > 0 && w.state === 'out') { relaunched = true; break; }
+    }
+    expect(seen).toContain('home');
+    expect(seen).toContain('dock');
+    expect(relaunched).toBe(true);
+    expect(dockedFor).toBeGreaterThanOrEqual(5);
+    expect(w.ammo).toBe(full);
+  });
+});
