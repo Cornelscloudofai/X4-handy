@@ -50,8 +50,9 @@ const noiseCache = new WeakMap<BaseAudioContext, AudioBuffer>();
 
 // ---------- Aufnahmen (CC0, src/assets/sounds) ----------
 
-const SAMPLE_URLS = import.meta.glob('../assets/sounds/*.wav', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
-const URL_OF = new Map(Object.entries(SAMPLE_URLS).map(([path, url]) => [path.split('/').pop()!.replace('.wav', ''), url]));
+// WAV (alte Aufnahmen) und Ogg mit FLAC (Sonniss: verlustfrei gepackt, gleiche Qualität bei etwa halber Größe)
+const SAMPLE_URLS = import.meta.glob('../assets/sounds/*.{wav,ogg}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const URL_OF = new Map(Object.entries(SAMPLE_URLS).map(([path, url]) => [path.split('/').pop()!.replace(/\.(wav|ogg)$/, ''), url]));
 const buffers = new Map<string, AudioBuffer>();
 const loading = new Map<string, Promise<void>>();
 

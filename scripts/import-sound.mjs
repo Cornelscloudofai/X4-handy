@@ -1,8 +1,9 @@
 // Klangdatei übernehmen: dekodieren, Stille am Ende abschneiden, Spitze auf −1 dBFS normalisieren,
-// verlustfrei als WAV (16 Bit, Originalrate, Stereo bleibt Stereo) → src/assets/sounds/<name>.wav
+// verlustfrei (16 Bit, Originalrate, Stereo bleibt Stereo), als FLAC (Ogg) gepackt → src/assets/sounds/<name>.ogg
 // node scripts/import-sound.mjs <eingabe.(ogg|wav|mp3)> <name> [loop]   (loop: Schleife – nichts abschneiden, nicht ausblenden)
 import { chromium } from 'playwright';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { launchOpts } from './browser.mjs';
 
 const [input, name, mode] = process.argv.slice(2);
@@ -61,5 +62,10 @@ const h = Buffer.alloc(44);
 h.write('RIFF', 0); h.writeUInt32LE(36 + data.length, 4); h.write('WAVE', 8); h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20);
 h.writeUInt16LE(r.nc, 22); h.writeUInt32LE(r.sr, 24); h.writeUInt32LE(r.sr * r.nc * 2, 28); h.writeUInt16LE(r.nc * 2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(data.length, 40);
 mkdirSync(`${root}src/assets/sounds`, { recursive: true });
-writeFileSync(`${root}src/assets/sounds/${name}.wav`, Buffer.concat([h, data]));
-console.log(`${name}.wav ${r.dur.toFixed(2)} s · ${r.nc} Kanäle · ${r.sr} Hz · Pegel ${r.gainDb >= 0 ? '+' : ''}${r.gainDb.toFixed(1)} dB · ${Math.round((44 + data.length) / 1024)} KB`);
+const wav = `${root}src/assets/sounds/${name}.wav`, flac = `${root}src/assets/sounds/${name}.ogg`;
+writeFileSync(wav, Buffer.concat([h, data]));
+// verlustfrei als FLAC im Ogg-Container packen (gleiche Klangdaten, etwa halbe Größe; .ogg liefern auch Artifacts aus);
+// ohne ffmpeg bleibt die WAV-Datei
+let out = wav;
+try { execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', wav, '-c:a', 'flac', '-compression_level', '12', flac]); unlinkSync(wav); out = flac; } catch { /* kein ffmpeg */ }
+console.log(`${out.split('/').pop()} ${r.dur.toFixed(2)} s · ${r.nc} Kanäle · ${r.sr} Hz · Pegel ${r.gainDb >= 0 ? '+' : ''}${r.gainDb.toFixed(1)} dB · ${Math.round(statSync(out).size / 1024)} KB`);
