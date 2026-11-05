@@ -268,26 +268,30 @@ describe('Sticks in jeder Kamera', () => {
   }
 });
 
-describe('Staffel: Angriff aggressiv, Schutz nah', () => {
-  function far(order: 'angriff' | 'schutz') {
+describe('Staffel: Angriff aggressiv im Gefechtsfeld, Schutz nah', () => {
+  function scene(order: 'angriff' | 'schutz', dist: number) {
     const { g, a } = game({ mamba: 2 });
     g.setWingOrder(order);
     a.enemies.length = 0; a.wave = 99;
-    // Gegner weit draußen (2 500 vom Schiff)
-    const e = a.makeEnemy('kanone', a.px + 2500, a.py - 300);
+    const e = a.makeEnemy('kanone', a.px + dist, a.py - 300);
     e.hp = e.max = 1e9; e.sh = e.shMax = 0; e.cd = 1e9; e.vx = e.vy = 0;
     a.enemies.push(e);
     let maxD = 0;
     for (let i = 0; i < 60 * 15; i++) { hold(a, e); g.update(DT); for (const w of a.wings) maxD = Math.max(maxD, Math.hypot(w.x - a.px, w.y - a.py)); }
     return { a, e, maxD };
   }
-  it('Angriff: fliegt auch zu weit entfernten Gegnern', () => {
-    const { a, e, maxD } = far('angriff');
+  it('Angriff: fliegt weit hinaus zu Gegnern im Gefechtsfeld (1 500 entfernt)', () => {
+    const { a, e, maxD } = scene('angriff', 1500);
     expect(a.wings.every((w) => w.tgt === e)).toBe(true);
-    expect(maxD).toBeGreaterThan(1800);
+    expect(maxD).toBeGreaterThan(1200);
   });
-  it('Schutz: bleibt beim Schiff, solange der Gegner weit weg ist', () => {
-    const { a, maxD } = far('schutz');
+  it('Angriff: lässt sich nicht von Gruppen weit draußen (3 500) vom Gefecht weglocken', () => {
+    const { a, maxD } = scene('angriff', 3500);
+    expect(a.wings.every((w) => !w.tgt)).toBe(true);
+    expect(maxD).toBeLessThan(800);
+  });
+  it('Schutz: bleibt beim Schiff, solange der Gegner nicht nah ist', () => {
+    const { a, maxD } = scene('schutz', 1500);
     expect(a.wings.every((w) => !w.tgt)).toBe(true);
     expect(maxD).toBeLessThan(600);
   });

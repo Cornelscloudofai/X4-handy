@@ -1102,7 +1102,7 @@ export class ShooterGame implements MiniGame {
   /** Taktische Karte (Radar antippen): ganze Karte in Zeitlupe, Ziel für die Staffel wählen */
   private tac = false;
   /** Freie Sicht: über dieser Linie verschieben Finger die Kamera, darunter steuern die Sticks */
-  private get camZoneY(): number { return this.h * 0.55; }
+  private get camZoneY(): number { return this.h * 0.75; }
   /** Taste für die Kamera: links neben den Zoom-Tasten */
   private get btnCam(): [number, number, number] { return [this.w - 126, TOP + 124, 15]; }
   /** Radar oben rechts (antippen öffnet die taktische Karte) */
@@ -1725,9 +1725,9 @@ export class ShooterGame implements MiniGame {
         if (focus && order !== 'landen' && order !== 'schutz') w.tgt = focus;
         else if (lead && lead.state === 'fly' && lead.tgt && order !== 'landen') { w.tgt = lead.tgt; w.side = lead.side; }
         else if (!w.tgt && order !== 'landen') {
-          // Angriff/Strukturen: aggressiv auf der ganzen Karte (das nächste Ziel zum Begleiter); Schutz: nur, was dem
-          // eigenen Schiff nahe kommt – sonst in Formation
-          const pick = this.pickTarget(w.x, w.y, order === 'schutz' ? 520 : Math.max(this.WW, this.WH), order === 'struktur' ? 'struktur' : 'alle');
+          // Angriff/Strukturen: aggressiv im Gefecht um dich und deine Schutzziele (nicht hinter Gruppen her, die gerade
+          // weit draußen auftauchen); Schutz: nur, was dem eigenen Schiff nahe kommt – sonst in Formation
+          const pick = order === 'schutz' ? this.pickTarget(w.x, w.y, 520, 'alle') : this.wingPick(w, order === 'struktur');
           if (pick && (order !== 'schutz' || Math.hypot(pick.x - this.px, pick.y - this.py) < this.ship.size * 0.5 + 420)) { w.tgt = pick; w.tgtT = 0; }
         }
         if (w.tgt !== lt0) { w.phase = 'run'; w.phT = 0; }
@@ -1821,6 +1821,25 @@ export class ShooterGame implements MiniGame {
       this.wingTurrets(w, dt);
       this.wingMissiles(w, tgt, dt);
     }
+  }
+
+  /**
+   * Ziel einer angreifenden Staffel: nur Gegner im Gefechtsfeld – nah an dir (bis gut 1 800 jenseits des Rumpfs) oder an
+   * einem Schutzziel; darunter das, was für den Begleiter nah ist und dir zugleich am nächsten (Abstand zu ihm plus
+   * 70 % des Abstands zu dir). Strukturen-Befehl: Türme, Bauteile und Brutstätten zuerst, sonst alles
+   */
+  private wingPick(w: Wing, struct: boolean): Enemy | null {
+    const reach = 1800 + this.ship.size * 0.5;
+    let best: Enemy | null = null, bs = Infinity, bestS: Enemy | null = null, bss = Infinity;
+    for (const e of this.enemies) {
+      if (e.kind === 'boss' && e.shielded) continue;
+      const home = Math.min(Math.hypot(e.x - this.px, e.y - this.py), this.wardDist(e.x, e.y));
+      if (home > reach) continue;
+      const sc = Math.hypot(e.x - w.x, e.y - w.y) + home * 0.7;
+      if (sc < bs) { bs = sc; best = e; }
+      if (struct && isStructure(e) && sc < bss) { bss = sc; bestS = e; }
+    }
+    return bestS ?? best;
   }
 
   /** Türme eines Begleitschiffs (M): schwenken frei, schießen auf das nächste Ziel in Reichweite – auch Raketen */
