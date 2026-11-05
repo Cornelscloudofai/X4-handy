@@ -28,6 +28,8 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'pirat-raketenboot-s-ki': { xs: [-0.09, 0.096], y: 0.42, color: '#ff7a4a' },
   'pirat-kanonenboot-s-ki': { xs: [-0.207, 0, 0.198], y: 0.43, color: '#ff7a4a' },
   'pirat-schildtraeger-s-ki': { xs: [-0.275, 0.276], y: 0.43, color: '#ff7a4a' },
+  'pirat-traeger-ki': { xs: [-0.113, -0.058, 0, 0.058, 0.113], y: 0.47, color: '#ff9a4a' },
+  'xenon-p-ki': { xs: [-0.03, 0.03], y: 0.47, color: '#ff3b4a' },
   'pirat-fregatte-ki': { xs: [-0.163, -0.056, 0.052, 0.164], y: 0.452, color: '#ff7a4a' },
   // Geschützturm: keine Triebwerke
   'pirat-turm-ki': { xs: [], y: 0, color: '#ff7a4a' },
@@ -35,7 +37,7 @@ const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   'xenon-m-ki': { xs: [0], y: 0.47, color: '#ff3b4a' },
   'xenon-schirmdrohne-ki': { xs: [0], y: 0.33, color: '#ff3b4a' },
   'xenon-turm-laser-ki': { xs: [], y: 0, color: '#ff3b4a' },
-  'xenon-turm-plasma-ki': { xs: [], y: 0, color: '#ff6a3d' },
+  'xenon-turm-plasma-l-ki': { xs: [], y: 0, color: '#ff6a3d' },
   // großer Xenon K (Boss): zwei Triebwerke am Heck
   'xenon-k-gross-ki': { xs: [-0.09, 0.09], y: 0.46, color: '#ff3b4a' },
   'xenon-k-ki': { xs: [-0.217, -0.115, 0, 0.11, 0.218], y: 0.42, color: '#ff3b4a' },
@@ -174,20 +176,27 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   kanone: { name: 'pirat-kanonenboot-s-ki', scale: 3.4 },
   schild: { name: 'pirat-schildtraeger-s-ki', scale: 3.4 },
   // Piratenfregatte: 130 px bei Trefferradius 34; die Türme sitzen auf den Sockeln im Bild (siehe shooter.ts)
-  'pirat:boss': { name: 'pirat-fregatte-ki', scale: 3.82 },
+  'pirat:boss-mini': { name: 'pirat-fregatte-ki', scale: 3.82 },
+  // Piraten-Träger (Boss): Bild 160 px bei Trefferradius 34; sechs Flaktürme auf den Ringsockeln, Startbahn links
+  'pirat:boss': { name: 'pirat-traeger-ki', scale: 4.7 },
+  // Vierlings-Flak: Drehpunkt ist die Mitte des runden Sockels unter der Bildmitte
+  'pirat:turret-flak': { name: 'pirat-turm-flak-ki', scale: 5.3, oy: 0.104 },
   'pirat:turret': { name: 'pirat-turm-ki', scale: 2.4 },
   // Frachter des Piratenkonvois (Einsatz „Überfall“): 110 px bei Trefferradius 22
   cargo: { name: 'frachter-m-ki', scale: 5 },
   n: { name: 'xenon-n-ki', scale: 4.5 },
   m: { name: 'xenon-m-ki', scale: 5 },
+  // Xenon P (Fregatte): Bild 88 px bei Trefferradius 22
+  p: { name: 'xenon-p-ki', scale: 4 },
   xs: { name: 'xenon-schirmdrohne-ki', scale: 4.2 },
   // Xenon K: Bild 160 px bei Trefferradius 34 (im X4-Maßstab 1,7 km); 8 L- und 14 M-Türme auf den Sockeln (siehe shooter.ts)
   'xenon:boss': { name: 'xenon-k-gross-ki', scale: 4.7 },
   // Xenon-Türme: der runde Sockel ist der Drehpunkt; beim Plasmaturm liegt er unter der Bildmitte (oy)
   'xenon:turret-laser': { name: 'xenon-turm-laser-ki', scale: 4.8 },
-  'xenon:turret-plasma': { name: 'xenon-turm-plasma-ki', scale: 2.8, oy: 0.11 },
-  // M-Türme des K: Zwillingskanone, Drehpunkt unter der Bildmitte (wie auf der Turmplattform)
-  'xenon:turret-m': { name: 'xenon-turm-zwilling-ki', scale: 5, oy: 0.2 },
+  // großer L-Plasmaturm des K: Drehpunkt ist der runde Sockel unten im Bild
+  'xenon:turret-plasma': { name: 'xenon-turm-plasma-l-ki', scale: 5.4, oy: 0.138 },
+  // M-Türme von K und P: doppelläufiger Laser-Repeater, Drehpunkt ist der runde Sockel unter der Bildmitte
+  'xenon:turret-m': { name: 'xenon-turm-repeater-ki', scale: 5, oy: 0.13 },
   // Kha'ak: Späher (Schiff ~13 px, ein Drittel der Mamba), Jäger (~24 px), Abfangjäger (lange Raute), Korvette
   ks: { name: 'khaak-spaeher-ki', scale: 2.25 },
   kj: { name: 'khaak-jaeger-ki', scale: 2.6 },

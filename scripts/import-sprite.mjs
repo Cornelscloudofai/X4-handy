@@ -2,13 +2,16 @@
 // transparent: schwarzer bzw. weißer Rand wird von außen her entfernt, dunkle/helle Stellen im Schiff bleiben), auf 512 px
 // in hoher Qualität als WebP nach src/assets/sprites/<name>.webp schreiben – Standard 1024 px (volle Auflösung der
 // KI-Bilder), kleinere Vorlagen bleiben in ihrer Originalgröße.
-// node scripts/import-sprite.mjs <eingabe.png> <name> [vorschau.png|-] [größe]
+// node scripts/import-sprite.mjs <eingabe.png> <name> [vorschau.png|-] [größe] [spalt]
+// spalt (Punkte, z. B. 4): Freistellung dringt nicht durch dunkle Spalten, die schmaler sind als 2 × spalt + 1 – für Schiffe
+// mit vielen fast schwarzen Fugen, die sonst bis ins Innere durchsichtig würden
 import { chromium } from 'playwright';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { launchOpts } from './browser.mjs';
 
-const [input, name, previewArg, sizeArg] = process.argv.slice(2);
+const [input, name, previewArg, sizeArg, gapArg] = process.argv.slice(2);
+const GAP = Number(gapArg) || 0;
 const preview = previewArg && previewArg !== '-' ? previewArg : undefined;
 const SIZE = Number(sizeArg) || 1024;
 if (!input || !name) { console.error('Aufruf: node scripts/import-sprite.mjs <eingabe> <name> [vorschau]'); process.exit(1); }
@@ -16,7 +19,7 @@ const root = new URL('..', import.meta.url).pathname;
 const src = `data:image/png;base64,${(await readFile(input)).toString('base64')}`;
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage();
-const r = await page.evaluate(async ([src, SIZE]) => {
+const r = await page.evaluate(async ([src, SIZE, GAP]) => {
   const img = new Image();
   img.src = src;
   await img.decode();
@@ -38,19 +41,38 @@ const r = await page.evaluate(async ([src, SIZE]) => {
     const lum = white ? (p) => 255 - Math.min(a[p * 4], a[p * 4 + 1], a[p * 4 + 2]) : (p) => Math.max(a[p * 4], a[p * 4 + 1], a[p * 4 + 2]);
     const seen = new Uint8Array(W * H);
     const stack = [];
+    // mit Spalt: nur dort durchlassen, wo die ganze Umgebung (Quadrat ± GAP) dunkel ist
+    let open = null;
+    if (GAP > 0) {
+      const L = new Uint8Array(W * H), R = new Uint8Array(W * H);
+      for (let p = 0; p < W * H; p++) L[p] = lum(p);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let m = 0; for (let k = Math.max(0, x - GAP); k <= Math.min(W - 1, x + GAP); k++) m = Math.max(m, L[y * W + k]); R[y * W + x] = m; }
+      open = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let m = 0; for (let k = Math.max(0, y - GAP); k <= Math.min(H - 1, y + GAP); k++) m = Math.max(m, R[k * W + x]); open[y * W + x] = m <= 22 ? 1 : 0; }
+    }
     for (let x = 0; x < W; x++) stack.push(x, (H - 1) * W + x);
     for (let y = 0; y < H; y++) stack.push(y * W, y * W + W - 1);
     while (stack.length) {
       const p = stack.pop();
       if (seen[p]) continue;
       seen[p] = 1;
-      if (lum(p) > 22) continue;
+      if (lum(p) > 22 || (open && !open[p])) continue;
       a[p * 4 + 3] = 0;
       const x = p % W, y = (p / W) | 0;
       if (x > 0) stack.push(p - 1);
       if (x < W - 1) stack.push(p + 1);
       if (y > 0) stack.push(p - W);
       if (y < H - 1) stack.push(p + W);
+    }
+    // mit Spalt: den Rand um GAP Punkte nachziehen (dunkle Punkte direkt an der freigestellten Fläche)
+    for (let it = 0; it < GAP; it++) {
+      const add = [];
+      for (let p = 0; p < W * H; p++) {
+        if (a[p * 4 + 3] === 0 || lum(p) > 22) continue;
+        const x = p % W, y = (p / W) | 0;
+        if ((x > 0 && a[(p - 1) * 4 + 3] === 0) || (x < W - 1 && a[(p + 1) * 4 + 3] === 0) || (y > 0 && a[(p - W) * 4 + 3] === 0) || (y < H - 1 && a[(p + W) * 4 + 3] === 0)) add.push(p);
+      }
+      for (const p of add) a[p * 4 + 3] = 0;
     }
     // weicher Rand: Punkte neben freigestellten Flächen je nach Helligkeit halb durchsichtig
     for (let p = 0; p < W * H; p++) {
@@ -94,7 +116,7 @@ const r = await page.evaluate(async ([src, SIZE]) => {
   pg.fillRect(0, 0, out.width, out.width);
   pg.drawImage(out, 0, 0);
   return { keyed, corners, sprite: out.toDataURL('image/webp', 0.95), preview: pv.toDataURL('image/png') };
-}, [src, SIZE]);
+}, [src, SIZE, GAP]);
 await browser.close();
 const buf = Buffer.from(r.sprite.split(',')[1], 'base64');
 await writeFile(join(root, 'src/assets/sprites', `${name}.webp`), buf);

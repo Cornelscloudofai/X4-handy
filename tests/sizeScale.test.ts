@@ -71,3 +71,58 @@ describe('Größenverhältnis im Kampf', () => {
     expect(mk('xenon').makeEnemy('m', 0, 0).r).toBe(14);
   });
 });
+
+describe('Neue Großschiffe: Xenon P, Piratenträger', () => {
+  type T = { kind: string; x: number; y: number; r: number; ox?: number; parent?: unknown; weapon?: string; cd: number; ang: number; vx: number; vy: number; hp: number; max: number; salvo?: number; launchT?: number };
+  type A = { enemies: T[]; bullets: { from: string }[]; px: number; py: number; wave: number; makeEnemy(k: string, x: number, y: number): T; spawnBoss(mini?: boolean): void };
+  const mk = (side: 'pirate' | 'xenon', level = 1) => {
+    const g = new ShooterGame({ level: level as 1, seed: 1, mutator: null, mode: 'normal', mission: 'station', loadout: { ...DEFAULT_LOADOUT } }, side);
+    g.resize(390, 780);
+    return { g, a: g as unknown as A };
+  };
+
+  it('Xenon P: Fregattengröße, zwei Repeater-Türme, die in Zweiersalven feuern', () => {
+    setSizeScale('x4', false);
+    const { g, a } = mk('xenon');
+    a.enemies.length = 0; a.wave = 99;
+    const p = a.makeEnemy('p', a.px, a.py - 300);
+    a.enemies.push(p);
+    for (let i = 0; i < 120; i++) { p.hp = p.max; g.update(1 / 60); }
+    const tur = a.enemies.filter((e) => e.parent === p);
+    expect(tur.length).toBe(2);
+    expect(tur.every((t) => t.weapon === 'm')).toBe(true);
+    expect(p.r * 4 * 0.988).toBeCloseTo(137.7 * 38 / 32, -1);
+    // Salve: zwei Schüsse kurz hintereinander
+    for (const t of tur) t.cd = 0;
+    // Schüsse der Türme zählen (abgegebene, nicht nur noch fliegende)
+    const shots: number[] = [];
+    const ga = g as unknown as { enemyShot: (e: T, ...r: unknown[]) => void; time: number };
+    const orig = ga.enemyShot.bind(g);
+    let frame = 0;
+    ga.enemyShot = (e: T, ...r: unknown[]) => { if (tur.includes(e)) shots.push(frame); orig(e, ...r); };
+    for (frame = 0; frame < 40; frame++) { p.hp = p.max; g.update(1 / 60); }
+    expect(shots.length).toBeGreaterThanOrEqual(2);
+    // zwei Schüsse binnen weniger Bilder (Salve), nicht gleichzeitig
+    expect(shots.some((f, i) => i > 0 && f - shots[i - 1] > 0 && f - shots[i - 1] <= 8)).toBe(true);
+  });
+
+  it('Piratenträger: Startbahn breit genug für Jäger, Flaktürme nach Stufe, startet Jäger', () => {
+    setSizeScale('x4', false);
+    const one = mk('pirate', 1).a, three = mk('pirate', 3).a;
+    for (const a of [one, three]) { a.enemies.length = 0; a.spawnBoss(); }
+    const flak = (a: A) => a.enemies.filter((e) => e.weapon === 'flak').length;
+    expect(flak(one)).toBe(4);
+    expect(flak(three)).toBe(6);
+    const boss = one.enemies.find((e) => e.kind === 'boss')!;
+    // Startbahn 95 von 1 254 Bildpunkten breit, Jäger (Kukri) 38 Punkte lang
+    expect((95 / 1254) * boss.r * 4.7).toBeGreaterThan(38 * 2.5);
+    const { g, a } = mk('pirate', 1);
+    a.enemies.length = 0; a.wave = 99;
+    a.spawnBoss();
+    const b = a.enemies.find((e) => e.kind === 'boss')!;
+    b.launchT = 0.05;
+    for (let i = 0; i < 10; i++) g.update(1 / 60);
+    expect(a.enemies.some((e) => e.kind === 'jaeger')).toBe(true);
+    setSizeScale('bisher', false);
+  });
+});

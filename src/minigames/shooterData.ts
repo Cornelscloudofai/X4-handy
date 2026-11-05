@@ -4,7 +4,7 @@ import type { Level } from './common';
 import { enemyTune, scaledLength, sizeScale } from './loadout';
 
 /** cargo: Frachter des Piratenkonvois (Einsatz „Überfall“) */
-export type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk' | 'cargo';
+export type EKind = 'jaeger' | 'kanone' | 'rakete' | 'schild' | 'n' | 'm' | 'xs' | 'p' | 'boss' | 'turret' | 'ks' | 'kj' | 'ka' | 'kk' | 'cargo';
 
 /** Gegner etwas zäher als die Grundwerte (Hülle), dazu ein eigener Schild je Art (sh) */
 export const ENEMY_HULL = 1.1, ENEMY_SHIELD = 0.6;
@@ -16,6 +16,8 @@ export const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: num
   n: { hp: 15, sh: 12, speed: 205, r: 8, color: '#ff3b4a', name: 'Xenon N', pts: 60, cost: 1.5 },
   m: { hp: 75, sh: 55, speed: 150, r: 14, color: '#ff5c6c', name: 'Xenon M', pts: 250, cost: 4 },
   xs: { hp: 70, sh: 70, speed: 85, r: 13, color: '#ff9ab0', name: 'Schirmdrohne', pts: 250, cost: 4 },
+  // Xenon P: Fregatte, zwei M-Türme (Laser-Repeater) auf dem Rückgrat; selbst ohne Bordkanonen
+  p: { hp: 220, sh: 150, speed: 55, r: 22, color: '#ff4a5a', name: 'Xenon P', pts: 500, cost: 6.5 },
   boss: { hp: 450, sh: 300, speed: 45, r: 34, color: '#ffb547', name: 'Boss', pts: 1500, cost: 0 },
   turret: { hp: 90, sh: 30, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
   // Kha'ak: schwache Hülle, kräftige Schilde (Kyon-Kristalle)
@@ -44,10 +46,14 @@ export const ENEMY_X4: Record<string, { m: number; vis: number; model: string }>
   rakete: { m: 97.3, vis: 44, model: 'Korvette (Nemesis-Größe)' },
   kanone: { m: 122.1, vis: 54, model: 'Minotaurus (Räuber)' },
   cargo: { m: 122.5, vis: 110, model: 'Merkur' },
-  'pirate:boss': { m: 149.5, vis: 130, model: 'Fregatte (Astrid-Größe)' },
+  // Piraten-Träger (Boss, Barbarossa-Größe; das Schiff füllt 98,6 % der Bildhöhe), die Fregatte ist das Großziel
+  'pirate:boss': { m: 1164, vis: 157.6, model: 'Träger (Barbarossa-Größe)' },
+  'pirate:boss-mini': { m: 149.5, vis: 130, model: 'Fregatte (Astrid-Größe)' },
   n: { m: 34.7, vis: 36, model: 'Xenon N' },
   m: { m: 31.7, vis: 70, model: 'Xenon M' },
   xs: { m: 30.6, vis: 55, model: 'Xenon T (Größe)' },
+  // Bild 88 Punkte (Trefferradius 22 × 4), Schiff 98,8 % der Bildhöhe
+  p: { m: 137.7, vis: 87, model: 'Xenon P' },
   // das Schiff füllt 97,7 % der Bildhöhe
   'xenon:boss': { m: 1670, vis: 156, model: 'Xenon K' },
   ks: { m: 15, vis: 18, model: 'geschätzt' },
@@ -79,7 +85,7 @@ export function enemyStats(kind: EKind, level: Level, opt: { mini?: boolean; ext
 
 /** Übersicht für das Entwicklungswerkzeug: alle Gegnertypen einer Stufe */
 export function enemyStatTable(level: Level, tune?: { hull: number; shield: number }): { name: string; hp: number; sh: number }[] {
-  const kinds: [EKind, string, boolean?][] = [['n', 'Xenon N'], ['jaeger', 'Piratenjäger'], ['rakete', 'Raketenboot'], ['schild', 'Schildträger'], ['xs', 'Schirmdrohne'], ['m', 'Xenon M'], ['kanone', 'Kanonenboot'], ['ks', 'Kha’ak-Späher'], ['kj', 'Kha’ak-Jäger'], ['ka', 'Kha’ak-Abfangjäger'], ['kk', 'Kha’ak-Korvette'], ['turret', 'Geschützturm'], ['boss', 'Großziel', true], ['boss', 'Boss']];
+  const kinds: [EKind, string, boolean?][] = [['n', 'Xenon N'], ['jaeger', 'Piratenjäger'], ['rakete', 'Raketenboot'], ['schild', 'Schildträger'], ['xs', 'Schirmdrohne'], ['m', 'Xenon M'], ['p', 'Xenon P'], ['kanone', 'Kanonenboot'], ['ks', 'Kha’ak-Späher'], ['kj', 'Kha’ak-Jäger'], ['ka', 'Kha’ak-Abfangjäger'], ['kk', 'Kha’ak-Korvette'], ['turret', 'Geschützturm'], ['boss', 'Großziel', true], ['boss', 'Boss']];
   return kinds.map(([kind, name, mini]) => ({ name, ...enemyStats(kind, level, { mini, tune }) }));
 }
 

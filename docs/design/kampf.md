@@ -96,9 +96,10 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
 - **Gegnergrößen nach X4** (umgesetzt, `ENEMY_X4` in `src/minigames/shooterData.ts`): Jäger wie die Mamba, Xenon M
   als mittlerer Jäger (fliegt Anflüge), Kanonenboot ~ Minotaurus-Räuber (122 m), Raketenboot Korvettengröße (97 m),
   Piratenfregatte 150 m, Xenon K 1 670 m (XL), Kha'ak geschätzt (Brutschiff 600 m, Zerstörer 300 m).
-- **Neue Gegnertypen für die Größenlücken** (Spielerwunsch): Xenon P (Fregatte, 138 m) als schwerer Wellengegner,
-  Piraten-Großkampfschiff (Barbarossa-Größe, 1 164 m) als Piraten-Boss statt der Fregatte, ggf. Xenon I (5 178 m).
-  Bilder fehlen noch – Prompts an den Spieler gegeben.
+- **Neue Gegnertypen (umgesetzt):** Xenon P (Fregatte, 138 m) als schwerer Wellengegner ab Welle 3 mit zwei
+  Laser-Repeatern (Zweiersalven); Piratenträger (Barbarossa-Größe, 1 164 m) als Piraten-Boss mit sechs Vierlings-Flaks
+  (Vierersalven, Stufe 1–2 nur vier) und Startbahn, von der er Jäger startet; die Piratenfregatte ist jetzt das Großziel.
+  Xenon K: großer L-Plasmaturm. Offen: Xenon I (5 178 m) als Großereignis.
 - **Xenon K (neues Bild, umgesetzt):** 8 L-Türme auf den Ringsockeln (Plasma vorn/hinten, Laser mittschiffs), 14 M-Türme
   (Zwillingskanone) an den Plattenenden und auf dem Rückgrat (`XENON_K_MOUNTS`). Bemannt je nach Stufe: Stufe 1 vier L
   und fünf M, ab Stufe 5 bzw. gegen den Raptor alle 22.
