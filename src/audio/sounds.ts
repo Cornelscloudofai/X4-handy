@@ -214,65 +214,114 @@ function filt(g: G, dest: AudioNode, type: BiquadFilterType, f: number, q = 0.7)
   return b;
 }
 
-/** Dezenter Bassschlag unter einem Schuss: gibt Gewicht, ohne die Aufnahme zu verfälschen */
+/** Bassschlag unter einem Schuss: gibt Wucht und Tiefe (Sinus, der nach unten gleitet, unter 260 Hz) */
 function weight(g: G, o: AudioNode, t: number, gain: number, f = 90, len = 0.14): void {
   if (gain <= 0) return;
   const lp = filt(g, o, 'lowpass', 260);
-  tone(g, lp, { f: vary(f * 1.4, 0.04), to: f * 0.6, t, a: 0.002, d: len, gain, glide: len * 0.7 });
+  tone(g, lp, { f: vary(f * 1.4, 0.06), to: f * 0.55, t, a: 0.002, d: len, gain, glide: len * 0.7 });
 }
 
-/** Waffen: Aufnahme, Tonhöhe leicht variiert, Rate < 1 = tiefer; Bassschlag (Stärke, Grundton, Länge) */
-const GUNS: Record<string, { s: string; rate: number; gain: number; w: number; f: number; len: number; dur?: number }> = {
-  puls: { s: 'es-puls', rate: 0.95, gain: 0.55, w: 0.18, f: 100, len: 0.12 },
-  bolzen: { s: 'es-bolzen', rate: 0.88, gain: 0.95, w: 0.22, f: 90, len: 0.12 },
-  schrot: { s: 'es-splitter', rate: 1, gain: 0.6, w: 0.14, f: 85, len: 0.14 },
-  plasma: { s: 'es-plasma', rate: 1, gain: 0.55, w: 0.1, f: 70, len: 0.2, dur: 0.9 },
-  neutron: { s: 'es-neutron', rate: 1, gain: 0.5, w: 0.12, f: 110, len: 0.1 },
-  tau: { s: 'es-tau', rate: 1, gain: 0.55, w: 0.12, f: 75, len: 0.2, dur: 1.1 },
-  thermal: { s: 'es-thermal', rate: 0.96, gain: 0.55, w: 0.12, f: 80, len: 0.16 },
-  boson: { s: 'es-boson', rate: 0.95, gain: 0.6, w: 0.1, f: 60, len: 0.25, dur: 1.3 },
-  // schwere Plasmawaffen der L-Hauptbatterie: tiefer als die normale Plasmakanone
-  schnellplasma: { s: 'es-plasma', rate: 0.8, gain: 0.6, w: 0.16, f: 60, len: 0.22, dur: 0.9 },
-  plasmasalve: { s: 'es-plasma', rate: 0.74, gain: 0.62, w: 0.18, f: 55, len: 0.24, dur: 0.8 },
-};
+/**
+ * Klangfarbe für Waffen: Bässe angehoben, die schrillen Höhen (ab ~5 kHz) gedämpft – gegen blechern und quietschig.
+ * far (0 … 1): weiter weg = dumpfer
+ */
+function weaponEq(g: G, dest: AudioNode, bass = 5, far = 0): AudioNode {
+  const hs = g.ctx.createBiquadFilter();
+  hs.type = 'highshelf'; hs.frequency.value = 5200 - 2400 * far; hs.gain.value = -5 - 7 * far;
+  const ls = g.ctx.createBiquadFilter();
+  ls.type = 'lowshelf'; ls.frequency.value = 140; ls.gain.value = bass;
+  ls.connect(hs).connect(dest);
+  return ls;
+}
 
 /**
- * Schuss je Waffenart: echte Aufnahme (Endless Sky, gemeinfrei), leicht in der Tonhöhe variiert, mit dezentem
- * Bassschlag und wenig Hall. Panorama nach Bildschirmseite.
+ * Lautheit der ersten 0,3 s je Aufnahme (dB RMS, gemessen beim Import): alle Varianten setzen gleich laut ein.
+ * Aufnahmen: Sonniss GDC Game Audio Bundles (lizenzfrei für Spiele), siehe assets/sounds/QUELLEN.md
+ */
+const RMS: Record<string, number> = {
+  'sn-puls-a': -8.5, 'sn-puls-b': -11.5, 'sn-puls-c': -7.7, 'sn-bolzen-a': -13.7, 'sn-bolzen-b': -10.3, 'sn-bolzen-c': -19.8,
+  'sn-schrot-a': -11.2, 'sn-schrot-b': -9.1, 'sn-plasma-a': -9.5, 'sn-plasma-b': -13.3, 'sn-neutron-a': -8.7, 'sn-neutron-b': -6.1,
+  'sn-tau-a': -10.8, 'sn-tau-b': -11.1, 'sn-thermal-a': -9, 'sn-thermal-b': -11.5, 'sn-boson-a': -7.8, 'sn-boson-b': -8.8,
+  'sn-schwer-a': -10.5, 'sn-schwer-b': -14.3, 'sn-gegner-a': -15, 'sn-gegner-b': -14.1, 'sn-gegner-c': -13.6,
+  'sn-expl-s-a': -5.6, 'sn-expl-s-b': -6.5, 'sn-expl-s-c': -7.2, 'sn-expl-m-a': -9.9, 'sn-expl-m-b': -4.6, 'sn-expl-m-c': -5.1,
+  'sn-expl-l-a': -7.6, 'sn-expl-l-b': -9, 'sn-expl-l-c': -6.5, 'sn-expl-boss-a': -7.2, 'sn-expl-boss-b': -9.7,
+  'sn-huelle-a': -17.5, 'sn-huelle-b': -9.8, 'sn-huelle-c': -6.7,
+};
+/** Pegel, der eine Aufnahme auf −10 dB RMS im Anschlag bringt (höchstens +12 dB) */
+const norm = (name: string) => Math.min(4, Math.pow(10, (-10 - (RMS[name] ?? -10)) / 20));
+const lastPick = new Map<string, string>();
+/** Variante wählen – nie zweimal hintereinander dieselbe */
+function variant(key: string, list: string[]): string {
+  const prev = lastPick.get(key);
+  const pool = list.length > 1 ? list.filter((x) => x !== prev) : list;
+  const v = pool[Math.floor(Math.random() * pool.length)];
+  lastPick.set(key, v);
+  return v;
+}
+
+/**
+ * Waffen: Varianten (zufällig, nie zweimal dieselbe), Abspielrate < 1 = tiefer (je Schuss ±6 % gestreut), Pegel, Bassschlag
+ * (Stärke, Grundton, Länge), Länge des Ausklangs (s)
+ */
+const GUNS: Record<string, { s: string[]; rate: number; gain: number; w: number; f: number; len: number; dur: number }> = {
+  puls: { s: ['sn-puls-a', 'sn-puls-b', 'sn-puls-c'], rate: 0.9, gain: 0.42, w: 0.2, f: 75, len: 0.16, dur: 0.8 },
+  bolzen: { s: ['sn-bolzen-a', 'sn-bolzen-b', 'sn-bolzen-c'], rate: 0.88, gain: 0.45, w: 0.22, f: 65, len: 0.15, dur: 0.7 },
+  schrot: { s: ['sn-schrot-a', 'sn-schrot-b'], rate: 0.88, gain: 0.5, w: 0.26, f: 55, len: 0.2, dur: 1 },
+  plasma: { s: ['sn-plasma-a', 'sn-plasma-b'], rate: 0.86, gain: 0.5, w: 0.22, f: 50, len: 0.26, dur: 1.2 },
+  neutron: { s: ['sn-neutron-a', 'sn-neutron-b'], rate: 0.92, gain: 0.4, w: 0.16, f: 70, len: 0.12, dur: 0.6 },
+  tau: { s: ['sn-tau-a', 'sn-tau-b'], rate: 0.9, gain: 0.48, w: 0.2, f: 55, len: 0.24, dur: 1.3 },
+  thermal: { s: ['sn-thermal-a', 'sn-thermal-b'], rate: 0.9, gain: 0.45, w: 0.2, f: 60, len: 0.2, dur: 1 },
+  boson: { s: ['sn-boson-a', 'sn-boson-b'], rate: 0.86, gain: 0.8, w: 0.28, f: 45, len: 0.3, dur: 1.8 },
+  // schwere Plasmawaffen der L-Hauptbatterie: noch tiefer
+  schnellplasma: { s: ['sn-schwer-a', 'sn-schwer-b'], rate: 0.82, gain: 0.55, w: 0.26, f: 45, len: 0.28, dur: 1.2 },
+  plasmasalve: { s: ['sn-schwer-b', 'sn-schwer-a'], rate: 0.76, gain: 0.58, w: 0.28, f: 42, len: 0.3, dur: 1.1 },
+};
+
+/** Ein Schuss: Aufnahme (Variante, Rate gestreut) durch die Waffen-Klangfarbe, darunter der Bassschlag */
+function fire(g: G, o: AudioNode, t: number, d: (typeof GUNS)[string], k: { rate: number; gain: number; w: number; far: number; dur: number }): boolean {
+  const name = variant(d.s[0], d.s);
+  const eq = weaponEq(g, o, 5 - 3 * k.far, k.far);
+  if (!sample(g, eq, name, { t, rate: vary(d.rate * k.rate, 0.06), gain: d.gain * k.gain * norm(name), dur: d.dur * k.dur })) return false;
+  weight(g, o, t, d.w * k.w, d.f, d.len);
+  return true;
+}
+
+/**
+ * Eigener Schuss: Aufnahme aus den Sonniss-Paketen in zwei, drei Varianten, tiefer gestimmt, Höhen gedämpft, mit Bassschlag
+ * und deutlich Raum (Hall). Panorama nach Bildschirmseite.
  */
 function shot(kind: Gun = 'puls', pan = 0): void {
   if (!gate('shot', 55)) return;
   const d = GUNS[kind] ?? GUNS.puls;
-  play('sfx', { pan: pan * 0.6, verb: 0.03, gain: 0.7 }, (g, o, t) => {
-    if (sample(g, o, d.s, { t, rate: vary(d.rate, 0.035), gain: d.gain, dur: d.dur })) weight(g, o, t, d.w, d.f, d.len);
-    else tone(g, o, { f: vary(600), to: 150, t, type: 'triangle', a: 0.001, d: 0.08, gain: 0.1 });
+  play('sfx', { pan: pan * 0.6, verb: 0.13, gain: 0.7 }, (g, o, t) => {
+    if (!fire(g, o, t, d, { rate: 1, gain: 1, w: 1, far: 0, dur: 1 })) tone(g, o, { f: vary(300), to: 80, t, type: 'triangle', a: 0.001, d: 0.08, gain: 0.1 });
   });
 }
 
-/** Turmschuss: eigener Klang und eigener Mindestabstand (sonst verschluckt ihn der Bordkanonenschuss), leiser */
+/** Turmschuss: eigener Mindestabstand (sonst verschluckt ihn der Bordkanonenschuss), etwas entfernter und leiser */
 function turretShot(kind: Gun = 'puls', pan = 0): void {
   if (!gate('turret', 70)) return;
   const d = GUNS[kind] ?? GUNS.puls;
-  play('sfx', { pan: pan * 0.6, verb: 0.04, gain: 0.5 }, (g, o, t) => {
-    if (!sample(g, o, d.s, { t, rate: vary(d.rate * 1.08, 0.04), gain: d.gain * 0.75, dur: d.dur ? Math.min(0.6, d.dur) : undefined })) tone(g, o, { f: vary(800), to: 200, t, type: 'triangle', a: 0.001, d: 0.06, gain: 0.08 });
+  play('sfx', { pan: pan * 0.6, verb: 0.18, gain: 0.5 }, (g, o, t) => {
+    if (!fire(g, o, t, d, { rate: 1.04, gain: 0.75, w: 0.6, far: 0.35, dur: 0.7 })) tone(g, o, { f: vary(400), to: 100, t, type: 'triangle', a: 0.001, d: 0.06, gain: 0.08 });
   });
 }
 
-/** Schwerer L-Turm (Zerstörer): tiefer und wuchtiger als der M-Turm, mit Bassschlag; eigener Mindestabstand */
+/** Schwerer L-Turm (Zerstörer, Träger): deutlich tiefer und wuchtiger, langer Ausklang; eigener Mindestabstand */
 function heavyShot(kind: Gun = 'plasma', pan = 0): void {
   if (!gate('heavy', 90)) return;
   const d = GUNS[kind] ?? GUNS.plasma;
-  play('sfx', { pan: pan * 0.6, verb: 0.06, gain: 0.65 }, (g, o, t) => {
-    if (sample(g, o, d.s, { t, rate: vary(d.rate * 0.72, 0.03), gain: d.gain, dur: d.dur })) weight(g, o, t, d.w * 1.6, d.f * 0.7, d.len * 1.4);
-    else tone(g, o, { f: vary(300), to: 70, t, type: 'triangle', a: 0.001, d: 0.12, gain: 0.12 });
+  play('sfx', { pan: pan * 0.6, verb: 0.2, gain: 0.65 }, (g, o, t) => {
+    if (!fire(g, o, t, d, { rate: 0.78, gain: 1, w: 1.7, far: 0.1, dur: 1.4 })) tone(g, o, { f: vary(200), to: 50, t, type: 'triangle', a: 0.001, d: 0.12, gain: 0.12 });
   });
 }
 
-/** Gegnerischer Schuss: leiser und dumpfer als die eigenen, damit die eigenen im Vordergrund bleiben */
+/** Gegnerischer Schuss: drei Varianten, dumpfer und mit mehr Raum (weiter weg), damit die eigenen im Vordergrund bleiben */
 function enemyShot(pan = 0): void {
   if (!gate('enemyShot', 110)) return;
-  play('sfx', { pan: pan * 0.7, verb: 0.05, gain: 1 }, (g, o, t) => {
-    sample(g, filt(g, o, 'lowpass', 2400), 'es-gegner', { t, rate: vary(0.8, 0.08), gain: 0.22 });
+  play('sfx', { pan: pan * 0.7, verb: 0.2, gain: 1 }, (g, o, t) => {
+    const name = variant('gegner', ['sn-gegner-a', 'sn-gegner-b', 'sn-gegner-c']);
+    if (!sample(g, weaponEq(g, o, 3, 0.6), name, { t, rate: vary(0.85, 0.08), gain: 0.1 * norm(name), dur: 0.9 })) sample(g, filt(g, o, 'lowpass', 2400), 'es-gegner', { t, rate: vary(0.8, 0.08), gain: 0.22 });
   });
 }
 
@@ -329,14 +378,25 @@ function phase(pan = 0): void {
   });
 }
 
-/** Explosion nach Größe: fünf Aufnahmen von klein bis groß, Boss mit langem Nachgrollen */
+/** Explosion nach Größe: je Stufe zwei, drei Aufnahmen (klein, mittel, groß, Großkampfschiff), tiefer Nachschlag, viel Raum */
+const BOOMS = {
+  s: ['sn-expl-s-a', 'sn-expl-s-b', 'sn-expl-s-c'], m: ['sn-expl-m-a', 'sn-expl-m-b', 'sn-expl-m-c'],
+  l: ['sn-expl-l-a', 'sn-expl-l-b', 'sn-expl-l-c'], boss: ['sn-expl-boss-a', 'sn-expl-boss-b'],
+};
 function explosion(size = 1, pan = 0): void {
   const s = Math.max(0.3, Math.min(4, size));
   if (!gate(s >= 2 ? 'boom-big' : 'boom', s >= 2 ? 150 : 70)) return;
-  const name = s >= 3.5 ? 'es-explosion-boss' : s >= 2.4 ? 'es-explosion-5' : s >= 1.6 ? 'es-explosion-4' : s >= 1 ? 'es-explosion-3' : s >= 0.6 ? 'es-explosion-2' : 'es-explosion-1';
-  play('sfx', { pan: pan * 0.7, verb: 0.05 + 0.03 * Math.min(2, s), gain: 1 }, (g, o, t) => {
-    if (!sample(g, o, name, { t, rate: vary(1, 0.06), gain: Math.min(0.75, 0.42 + 0.1 * s) })) noise(g, o, { t, type: 'lowpass', f: 3000, to: 150, a: 0.002, d: 0.5 + 0.3 * s, gain: 0.3 });
-    weight(g, o, t, Math.min(0.35, 0.12 + 0.06 * s), 60, 0.25 + 0.1 * s);
+  const tier = s >= 3.5 ? 'boss' : s >= 1.8 ? 'l' : s >= 0.9 ? 'm' : 's';
+  // kleine Explosionen kürzer und etwas höher, große in voller Länge
+  const dur = tier === 'boss' ? undefined : tier === 'l' ? 3.2 : tier === 'm' ? 2 : 1.2;
+  play('sfx', { pan: pan * 0.7, verb: 0.12 + 0.05 * Math.min(2, s), gain: 1 }, (g, o, t) => {
+    const name = variant('boom-' + tier, BOOMS[tier]);
+    const ok = sample(g, weaponEq(g, o, 4, tier === 's' ? 0.15 : 0), name, { t, rate: vary(tier === 's' ? 0.95 : 0.88, 0.07), gain: Math.min(1.2, 0.7 + 0.13 * s) * norm(name), dur });
+    if (!ok) {
+      const old = s >= 3.5 ? 'es-explosion-boss' : s >= 2.4 ? 'es-explosion-5' : s >= 1.6 ? 'es-explosion-4' : s >= 1 ? 'es-explosion-3' : s >= 0.6 ? 'es-explosion-2' : 'es-explosion-1';
+      if (!sample(g, o, old, { t, rate: vary(1, 0.06), gain: Math.min(0.75, 0.42 + 0.1 * s) })) noise(g, o, { t, type: 'lowpass', f: 3000, to: 150, a: 0.002, d: 0.5 + 0.3 * s, gain: 0.3 });
+    }
+    weight(g, o, t, Math.min(0.4, 0.14 + 0.07 * s), 50, 0.3 + 0.12 * s);
   });
 }
 
@@ -348,12 +408,13 @@ function shield(): void {
   });
 }
 
-/** Hüllentreffer: harter Einschlag */
+/** Hüllentreffer: harter, metallischer Einschlag (drei Varianten) mit Bassschlag */
 function hull(): void {
   if (!gate('hull', 110)) return;
-  play('sfx', { verb: 0.06, gain: 1 }, (g, o, t) => {
-    sample(g, o, 'es-huelle', { t, rate: vary(1.05, 0.06), gain: 0.5, dur: 0.7 });
-    weight(g, o, t, 0.2, 70, 0.18);
+  play('sfx', { verb: 0.12, gain: 1 }, (g, o, t) => {
+    const name = variant('hull', ['sn-huelle-a', 'sn-huelle-b', 'sn-huelle-c']);
+    if (!sample(g, weaponEq(g, o, 4, 0.1), name, { t, rate: vary(0.95, 0.07), gain: 1.5 * norm(name), dur: 0.9 })) sample(g, o, 'es-huelle', { t, rate: vary(1.05, 0.06), gain: 0.5, dur: 0.7 });
+    weight(g, o, t, 0.24, 60, 0.2);
   });
 }
 

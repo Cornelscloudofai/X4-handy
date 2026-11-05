@@ -9,17 +9,39 @@ const [input, name, mode] = process.argv.slice(2);
 const isLoop = mode === 'loop';
 if (!input || !name) { console.error('Aufruf: node scripts/import-sound.mjs <datei> <name>'); process.exit(1); }
 const root = new URL('..', import.meta.url).pathname;
+/** Abtastrate aus dem WAV-Kopf (Abschnitt „fmt “ suchen – davor können JUNK-/bext-Abschnitte liegen); sonst 48 kHz */
+function wavRate(buf) {
+  if (buf.toString('ascii', 0, 4) !== 'RIFF') return 48000;
+  for (let o = 12; o + 8 <= buf.length;) {
+    const id = buf.toString('ascii', o, o + 4), len = buf.readUInt32LE(o + 4);
+    if (id === 'fmt ') return buf.readUInt32LE(o + 12);
+    o += 8 + len + (len % 2);
+  }
+  return 48000;
+}
+const srcRate = wavRate(readFileSync(input));
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage();
 await page.goto('about:blank');
-const r = await page.evaluate(async ([b64, isLoop]) => {
+const r = await page.evaluate(async ([b64, isLoop, rate]) => {
   const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  const ctx = new OfflineAudioContext(2, 44100, 44100);
+  // Originalrate (bei WAV aus dem Kopf gelesen), sonst 48 kHz – keine Umrechnung auf 44,1 kHz
+  const ctx = new OfflineAudioContext(2, rate, rate);
   const buf = await ctx.decodeAudioData(bin.buffer);
   const chs = [...Array(buf.numberOfChannels)].map((_, i) => buf.getChannelData(i));
   let peak = 0, last = 0;
   for (const d of chs) for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; if (v > 0.001 * peak && v > 1e-4) last = Math.max(last, i); }
   const gain = Math.pow(10, -1 / 20) / (peak || 1);
+  // Einzelklänge: Vorlauf abschneiden (alles vor dem ersten Ausschlag über −26 dB unter der Spitze, 4 ms bleiben stehen),
+  // damit der Schuss ohne Verzögerung einsetzt
+  let first = 0;
+  if (!isLoop) {
+    first = chs[0].length;
+    for (const d of chs) for (let i = 0; i < d.length; i++) if (Math.abs(d[i]) > peak * 0.05) { first = Math.min(first, i); break; }
+    first = Math.max(0, first - Math.floor(buf.sampleRate * 0.004));
+    for (const [c, d] of chs.entries()) chs[c] = d.subarray(first);
+    last -= first;
+  }
   const n = isLoop ? chs[0].length : Math.min(chs[0].length, last + Math.floor(buf.sampleRate * 0.02));
   const nc = chs.length;
   const pcm = new Int16Array(n * nc);
@@ -32,7 +54,7 @@ const r = await page.evaluate(async ([b64, isLoop]) => {
   let s = '';
   for (let k = 0; k < bytes.length; k += 0x8000) s += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
   return { pcm: btoa(s), sr: buf.sampleRate, nc, dur: n / buf.sampleRate, gainDb: 20 * Math.log10(gain) };
-}, [readFileSync(input).toString('base64'), isLoop]);
+}, [readFileSync(input).toString('base64'), isLoop, srcRate]);
 await browser.close();
 const data = Buffer.from(r.pcm, 'base64');
 const h = Buffer.alloc(44);
