@@ -86,8 +86,11 @@ Klein, ohne Umbau der Welt. Kämpfe aus Vorfällen und Stationsaufgaben spielen 
 
 ## Merkliste (vom Spieler, nicht vergessen)
 
-- **Linker Stick nach Kamerawechsel:** behoben für taktische Karte (Träger) und gehaltenen Finger. Spieler beobachtet
-  weiter – wenn er in einer anderen Lage wieder hängt, mit Schiff und Ablauf nachstellen (Tests: `tests/wingCam.test.ts`).
+- **Gegner fliegen wie die eigene Staffel** (Idee, vom Spieler ausdrücklich gemerkt): feindliche Jäger mit Anflug –
+  Durchziehen – Ausholen – Wende statt Kreisen bzw. Direktanflug, in Rotten; Korvetten/Kanonenboote halten Abstand und
+  richten den Bug aufs Ziel. Vorlage: `updateWings` in `src/minigames/shooter.ts` (Phasen `run`/`pass`/`extend`).
+- **Linker Stick nach Kamerawechsel:** Sticks wirken jetzt in jeder Kamera (unten steuern, oben Kamera). Wenn der
+  Spieler wieder etwas meldet: mit Schiff und Ablauf nachstellen (Tests: `tests/wingCam.test.ts`).
 - **Klangauswahl:** Spieler hört die Varianten in Einstellungen → Hörprobe durch („Splitter 1“, „Tau 2“ …) und nennt,
   welche bleiben sollen; danach in `GUNS`/`VARIANTS`/`BOOMS`/`LOOPS` nur diese behalten.
 

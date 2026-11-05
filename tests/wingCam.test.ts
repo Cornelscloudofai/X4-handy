@@ -91,7 +91,7 @@ describe('Kamera: freie Sicht, Beobachter, taktische Karte', () => {
     g.pointerDown(1, cx, cy); g.pointerUp(1);
     expect(a.camMode).toBe('frei');
     const x0 = a.camX;
-    g.pointerDown(2, 200, 500); g.pointerMove(2, 100, 500); g.pointerUp(2);
+    g.pointerDown(2, 200, 300); g.pointerMove(2, 100, 300); g.pointerUp(2);
     g.update(DT);
     expect(a.camX - x0).toBeCloseTo(100 / a.zoom, 0);
     // Begleiter antippen: Kamera folgt ihm
@@ -104,8 +104,8 @@ describe('Kamera: freie Sicht, Beobachter, taktische Karte', () => {
     expect(Math.abs(a.camX + W / 2 / a.zoom - w.x)).toBeLessThan(60);
     // zwei Finger: zoomen
     const z0 = a.zoom;
-    g.pointerDown(4, 150, 400); g.pointerDown(5, 250, 400);
-    g.pointerMove(5, 350, 400);
+    g.pointerDown(4, 150, 300); g.pointerDown(5, 250, 300);
+    g.pointerMove(5, 350, 300);
     expect(a.zoom).toBeGreaterThan(z0);
     g.pointerUp(5); g.pointerUp(4);
     // eigenes Schiff antippen: zurück
@@ -243,4 +243,74 @@ describe('Ausrüstung der Begleitschiffe', () => {
     expect(swarm).toBeGreaterThan(0);
     expect(wolf.ammo).toBeLessThan(ammo0);
   });
+});
+
+describe('Sticks in jeder Kamera', () => {
+  for (const mode of ['frei', 'auto'] as const) {
+    it(`${mode}: unten steuert der linke Stick weiter, oben verschiebt der Finger die Kamera`, () => {
+      const g = new ShooterGame({ level: 1, seed: 1, mutator: null, mode: 'normal', controls: 'zwei', loadout: { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
+      g.resize(W, H);
+      const a = g as unknown as G & { joy: { id: number; ky: number } | null; camTouch: Map<number, unknown> };
+      for (let i = 0; i < 30; i++) g.update(DT);
+      const [cx, cy] = a.btnCam;
+      g.pointerDown(1, cx, cy); g.pointerUp(1);
+      if (mode === 'auto') { g.pointerDown(1, cx, cy); g.pointerUp(1); }
+      expect(a.camMode).toBe(mode);
+      g.pointerDown(2, 80, H - 150); g.pointerMove(2, 80, H - 210);
+      expect(a.joy?.id).toBe(2);
+      expect(a.joy!.ky).toBeLessThan(-0.5);
+      g.pointerUp(2);
+      g.pointerDown(3, 200, TOP + 150);
+      expect(a.camTouch.has(3)).toBe(true);
+      expect(a.joy).toBeNull();
+      g.pointerUp(3);
+    });
+  }
+});
+
+describe('Staffel: Angriff aggressiv, Schutz nah', () => {
+  function far(order: 'angriff' | 'schutz') {
+    const { g, a } = game({ mamba: 2 });
+    g.setWingOrder(order);
+    a.enemies.length = 0; a.wave = 99;
+    // Gegner weit draußen (2 500 vom Schiff)
+    const e = a.makeEnemy('kanone', a.px + 2500, a.py - 300);
+    e.hp = e.max = 1e9; e.sh = e.shMax = 0; e.cd = 1e9; e.vx = e.vy = 0;
+    a.enemies.push(e);
+    let maxD = 0;
+    for (let i = 0; i < 60 * 15; i++) { hold(a, e); g.update(DT); for (const w of a.wings) maxD = Math.max(maxD, Math.hypot(w.x - a.px, w.y - a.py)); }
+    return { a, e, maxD };
+  }
+  it('Angriff: fliegt auch zu weit entfernten Gegnern', () => {
+    const { a, e, maxD } = far('angriff');
+    expect(a.wings.every((w) => w.tgt === e)).toBe(true);
+    expect(maxD).toBeGreaterThan(1800);
+  });
+  it('Schutz: bleibt beim Schiff, solange der Gegner weit weg ist', () => {
+    const { a, maxD } = far('schutz');
+    expect(a.wings.every((w) => !w.tgt)).toBe(true);
+    expect(maxD).toBeLessThan(600);
+  });
+});
+
+describe('Raketen suchen ein neues Ziel', () => {
+  for (const kind of ['lenk', 'schwer', 'stoer', 'schwarm'] as const) {
+    it(`${kind}: Ziel zerstört – ${kind === 'schwarm' ? 'fliegt geradeaus weiter (Schwarm sucht nicht neu)' : 'nimmt den nächsten Gegner vor sich'}`, () => {
+      const g = new ShooterGame({ level: 1, seed: 1, mutator: null, mode: 'normal', loadout: { ship: 'mamba', weapon: 'puls', turret: 'puls', shield: 'leicht', missile: kind } }, 'pirate');
+      g.resize(W, H);
+      const a = g as unknown as G & { missiles: { x: number; y: number; vx: number; vy: number; target: unknown; life: number; def: unknown; dmg: number; split?: number }[]; mDef: unknown };
+      for (let i = 0; i < 30; i++) g.update(DT);
+      a.enemies.length = 0; a.wave = 99;
+      const dead = a.makeEnemy('jaeger', a.px, a.py - 300);
+      const next = a.makeEnemy('jaeger', a.px + 60, a.py - 600);
+      next.cd = 1e9; next.vx = next.vy = 0; next.hp = next.max = 1e9;
+      a.enemies.push(next);
+      // Rakete fliegt nach oben, ihr Ziel ist schon weg (nicht mehr in der Liste)
+      a.missiles.push({ x: a.px, y: a.py - 100, vx: 0, vy: -300, target: dead, life: 4, def: a.mDef, dmg: 1 });
+      const m = a.missiles[a.missiles.length - 1];
+      g.update(DT);
+      if (kind === 'schwarm') expect(m.target).toBeNull();
+      else expect(m.target).toBe(next);
+    });
+  }
 });

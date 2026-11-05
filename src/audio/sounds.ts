@@ -1,6 +1,6 @@
 // Klangbibliothek: jeder Klang aus Oszillatoren, FM-Glocken und gefiltertem Rauschen gebaut, mit Hall, Panorama
 // und leichter Zufallsvariation, damit sich Wiederholungen nicht abnutzen.
-import { bell, duckFor, ensureSamples, gate, graph, noise, norm, sample, shaper, tone, variant, vary, voiceOut, withVariant, type Bus } from './engine';
+import { bell, duckFor, gate, graph, noise, norm, sample, shaper, tone, variant, vary, voiceOut, whenLoaded, withVariant, type Bus } from './engine';
 
 import { LOOPS } from './ambience';
 
@@ -550,25 +550,71 @@ export const sfx = {
 
 /** Hörprobe einer Schleife: zwei Sekunden, Lautheit wie im Spiel */
 function demoLoop(name: string): () => void {
-  return () => { void ensureSamples([name]).then(() => play('sfx', { gain: 1 }, (g, o, t) => { sample(g, o, name, { t, gain: 0.5 * norm(name), dur: 2 }); })); };
+  return () => whenLoaded([name], () => play('sfx', { gain: 1 }, (g, o, t) => { sample(g, o, name, { t, gain: 0.5 * norm(name), dur: 2 }); }));
 }
 
+/** Kandidaten zum Probehören (`kd-*`, Sonniss GDC): im Spiel noch nicht eingesetzt – erst, wenn der Spieler sie auswählt */
+const KD: Record<string, string[]> = {
+  tippen: ['kd-tippen-1', 'kd-tippen-2', 'kd-tippen-3', 'kd-tippen-4'],
+  oeffnen: ['kd-oeffnen-1', 'kd-oeffnen-2', 'kd-oeffnen-3', 'kd-oeffnen-4'],
+  schliessen: ['kd-schliessen-1', 'kd-schliessen-2'],
+  ablehnen: ['kd-ablehnen-1', 'kd-ablehnen-2', 'kd-ablehnen-3', 'kd-ablehnen-4'],
+  credits: ['kd-credits-1', 'kd-credits-2', 'kd-credits-3'],
+  baubeginn: ['kd-baubeginn-1', 'kd-baubeginn-2', 'kd-baubeginn-3', 'kd-baubeginn-4'],
+  baufertig: ['kd-baufertig-1', 'kd-baufertig-2', 'kd-baufertig-3'],
+  erledigt: ['kd-erledigt-1', 'kd-erledigt-2', 'kd-erledigt-3'],
+  kapitel: ['kd-kapitel-1', 'kd-kapitel-2', 'kd-kapitel-3'],
+  warnung: ['kd-warnung-1', 'kd-warnung-2', 'kd-warnung-3'],
+  nachricht: ['kd-nachricht-1', 'kd-nachricht-2', 'kd-nachricht-3'],
+  start: ['kd-start-1', 'kd-start-2', 'kd-start-3', 'kd-start-4'],
+  andocken: ['kd-andocken-1', 'kd-andocken-2', 'kd-andocken-3'],
+  angenommen: ['kd-angenommen-1', 'kd-angenommen-2'],
+  boss: ['kd-boss-1', 'kd-boss-2', 'kd-boss-3', 'kd-boss-4'],
+  aufsammeln: ['kd-aufsammeln-1', 'kd-aufsammeln-2', 'kd-aufsammeln-3'],
+  niederlage: ['kd-niederlage-1', 'kd-niederlage-2'],
+  kristall: ['kd-kristall-1', 'kd-kristall-2', 'kd-kristall-3'],
+  ventil: ['kd-ventil-1', 'kd-ventil-2', 'kd-ventil-3'],
+  fluss: ['kd-fluss-1', 'kd-fluss-2', 'kd-fluss-3'],
+  schub: ['kd-schub-1', 'kd-schub-2', 'kd-schub-3'],
+  tor: ['kd-tor-1', 'kd-tor-2', 'kd-tor-3'],
+  steuerduese: ['kd-steuerduese-1', 'kd-steuerduese-2', 'kd-steuerduese-3'],
+  container: ['kd-container-1', 'kd-container-2', 'kd-container-3'],
+  schuss: ['kd-schuss-1', 'kd-schuss-2', 'kd-schuss-3', 'kd-schuss-4', 'kd-schuss-5', 'kd-schuss-6', 'kd-schuss-7', 'kd-schuss-8', 'kd-schuss-9', 'kd-schuss-10', 'kd-schuss-11', 'kd-schuss-12', 'kd-schuss-13', 'kd-schuss-14', 'kd-schuss-15', 'kd-schuss-16', 'kd-schuss-17', 'kd-schuss-18', 'kd-schuss-19', 'kd-schuss-20', 'kd-schuss-21', 'kd-schuss-22', 'kd-schuss-23'],
+  explosion: ['kd-explosion-1', 'kd-explosion-2', 'kd-explosion-3', 'kd-explosion-4', 'kd-explosion-5', 'kd-explosion-6', 'kd-explosion-7', 'kd-explosion-8', 'kd-explosion-9', 'kd-explosion-10', 'kd-explosion-11', 'kd-explosion-12', 'kd-explosion-13'],
+};
+
 /** Jede Variante einzeln: „Splitter 1“, „Splitter 2“ … (so lässt sich genau sagen, welche bleiben soll) */
-function each(label: string, names: string[], fn: () => void): [string, () => void][] {
+function each(label: string, names: string[], fn: () => void, from = 1, sep = ' '): [string, () => void][] {
   // nur diese eine Aufnahme laden (nicht alle), dann sofort spielen
-  return names.map((n, i) => [`${label} ${i + 1}`, () => { void ensureSamples([n]).then(() => withVariant(n, fn)); }]);
+  return names.map((n, i) => [`${label}${sep}${i + from}`, () => whenLoaded([n], () => withVariant(n, fn))]);
 }
 const loopDemo = (label: string, names: string[]): [string, () => void][] => names.map((n, i) => [`${label} ${i + 1}`, demoLoop(n)]);
 const GUN_DEMO: [string, string][] = [['Puls-Laser', 'puls'], ['Bolzen', 'bolzen'], ['Splitter', 'schrot'], ['Plasma', 'plasma'], ['Neutron', 'neutron'], ['Tau', 'tau'], ['Thermal', 'thermal'], ['Boson', 'boson']];
 
+/**
+ * Klang mit Kandidaten: Nummer 1 ist der bisherige (synthetische) Klang, ab 2 die Aufnahmen zum Vergleich – so gleich
+ * laut wie möglich, mit etwas Raum
+ */
+function withCands(label: string, fn: () => void, cat: string, bus: Bus, gain: number, verb = 0.12): [string, () => void][] {
+  const cands = (KD[cat] ?? []).map((n, i): [string, () => void] => [`${label} ${i + 2}`, () => {
+    whenLoaded([n], () => play(bus, { verb, gain: 1 }, (g, o, t) => { sample(g, o, n, { t, gain: gain * norm(n) }); }));
+  }]);
+  return [[`${label} 1`, fn], ...cands];
+}
+
 /** Hörprobe in den Einstellungen: Name → Klang */
 export const SOUND_DEMO: [string, () => void][] = [
-  ['Titelmusik', () => { void import('./music').then((m) => m.playTitle()); }], ['Tippen', tap], ['Öffnen', open], ['Schließen', close], ['Ablehnen', deny],
-  ['Credits', () => coin(500)], ['Credits groß', () => coin(300000)], ['Bau beginnt', build], ['Bau fertig', buildDone],
-  ['Auftrag erledigt', success], ['Neues Kapitel', chapter], ['Warnung', warn], ['Nachricht', ping],
-  ['Schiff startet', launch], ['Andocken', dock], ['Auftrag angenommen', accept],
+  ['Titelmusik', () => { void import('./music').then((m) => m.playTitle()); }],
+  ...withCands('Tippen', tap, 'tippen', 'ui', 0.3, 0.06), ...withCands('Öffnen', open, 'oeffnen', 'ui', 0.07), ...withCands('Schließen', close, 'schliessen', 'ui', 0.035),
+  ...withCands('Ablehnen', deny, 'ablehnen', 'ui', 0.228), ...withCands('Credits', () => coin(500), 'credits', 'ui', 0.147), ['Credits groß', () => coin(300000)],
+  ...withCands('Bau beginnt', build, 'baubeginn', 'sfx', 0.09), ...withCands('Bau fertig', buildDone, 'baufertig', 'sfx', 0.115),
+  ...withCands('Auftrag erledigt', success, 'erledigt', 'sfx', 0.195), ...withCands('Neues Kapitel', chapter, 'kapitel', 'sfx', 0.179, 0.25),
+  ...withCands('Warnung', warn, 'warnung', 'sfx', 0.144), ...withCands('Nachricht', ping, 'nachricht', 'ui', 0.077),
+  ...withCands('Schiff startet', launch, 'start', 'sfx', 0.261), ...withCands('Andocken', dock, 'andocken', 'sfx', 0.444), ...withCands('Auftrag angenommen', accept, 'angenommen', 'ui', 0.054),
   ...GUN_DEMO.flatMap(([label, kind]) => each(label, GUNS[kind].s, () => shot(kind))),
   ...each('L-Plasma', GUNS.schnellplasma.s, () => heavyShot('schnellplasma')),
+  // weitere Schüsse zum Vergleich (gespielt wie der Puls-Laser) – Nummer sagen, für welche Waffe er passen soll
+  ...each('Schuss K', KD.schuss, () => shot('puls'), 1, ''),
   ...each('Gegnerschuss', VARIANTS.gegner, () => enemyShot()),
   ...each('Rakete', VARIANTS.rakete, missile),
   ...each('Treffer', VARIANTS.treffer, () => hit()),
@@ -578,13 +624,16 @@ export const SOUND_DEMO: [string, () => void][] = [
   ...each('Explosion mittel', BOOMS.m, () => explosion(1.2)),
   ...each('Explosion groß', BOOMS.l, () => explosion(2.5)),
   ...each('Explosion Großkampfschiff', BOOMS.boss, () => explosion(4)),
+  ...each('Explosion K', KD.explosion, () => explosion(2.5), 1, ''),
   ...each('Funke', VARIANTS.funke, () => zap(0.5)),
   ...each('Kyon-Strahl', VARIANTS.kyon, () => kyon()),
   ...each('Phasensprung', VARIANTS.phase, () => phase()),
   ...each('Neue Welle', VARIANTS.alarm, alarm),
-  ['Boss', boss], ['Aufsammeln', pickup], ['Niederlage', fail],
+  ...withCands('Boss', boss, 'boss', 'sfx', 0.341, 0.3), ...withCands('Aufsammeln', pickup, 'aufsammeln', 'sfx', 0.113), ...withCands('Niederlage', fail, 'niederlage', 'sfx', 0.137, 0.2),
   ...loopDemo('Strahlwaffe', LOOPS.beam), ...loopDemo('Bergbaulaser', LOOPS.drill), ...loopDemo('Triebwerk', LOOPS.engine), ...loopDemo('Traktorstrahl', LOOPS.tractor),
   ...each('Gestein bricht', VARIANTS.gestein, () => crack('gestein')),
   ...each('Kristall bricht', VARIANTS.kristall, () => crack('kristall')),
-  ['Kristall', crystal], ['Ventil', valve], ['Fluss', flow], ['Schub', boost], ['Tor', chime], ['Steuerdüse', () => thrust()], ['Container', place],
+  ...withCands('Kristall', crystal, 'kristall', 'sfx', 0.052, 0.3), ...withCands('Ventil', valve, 'ventil', 'sfx', 0.021), ...withCands('Fluss', flow, 'fluss', 'sfx', 0.063),
+  ...withCands('Schub', boost, 'schub', 'sfx', 0.27), ...withCands('Tor', chime, 'tor', 'sfx', 0.03, 0.25), ...withCands('Steuerdüse', () => thrust(), 'steuerduese', 'sfx', 0.077),
+  ...withCands('Container', place, 'container', 'sfx', 0.039),
 ];

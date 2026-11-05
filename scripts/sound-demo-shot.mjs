@@ -25,9 +25,9 @@ if (!(await page.locator('[data-act="sound-demo"]').count())) { await page.click
 await page.click('.sound-demo summary');
 await page.waitForTimeout(300);
 const labels = await page.locator('[data-act="sound-demo"]').allInnerTexts();
-for (const want of ['Splitter 1', 'Splitter 2', 'Tau 2', 'Rakete 3', 'Explosion groß 1', 'Strahlwaffe 2', 'Gestein bricht 4']) if (!labels.some((l) => l.replace(/^\d+\s*/, '').trim() === want)) errors.push(`Hörprobe ohne „${want}“`);
+for (const want of ['Splitter 1', 'Splitter 2', 'Tau 2', 'Rakete 3', 'Explosion groß 1', 'Strahlwaffe 2', 'Gestein bricht 4', 'Tippen 2', 'Schuss K5', 'Explosion K3', 'Boss 3', 'Container 2']) if (!labels.some((l) => l.replace(/^\d+\s*/, '').trim() === want)) errors.push(`Hörprobe ohne „${want}“`);
 const res = {};
-for (const label of ['Splitter 1', 'Tau 2', 'Explosion groß 1']) {
+for (const label of ['Splitter 1', 'Tau 2', 'Explosion groß 1', 'Schuss K5', 'Boss 3']) {
   if (!(await page.locator('.sound-demo').evaluate((d) => d.open))) await page.click('.sound-demo summary');
   const sn0 = sn;
   await page.locator('[data-act="sound-demo"]').filter({ hasText: new RegExp(`^\\s*\\d+\\s*${label}$`) }).first().click({ force: true });

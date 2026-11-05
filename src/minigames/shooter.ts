@@ -1096,9 +1096,13 @@ export class ShooterGame implements MiniGame {
   private autoY = 0;
   /** Finger, die beim Verlassen der Schiffskamera auf den Sticks lagen */
   private heldJoy: number | null = null;
+  /** Freie Sicht: Beginn eines Stick-Fingers (kurz angetippt = dem Objekt dort folgen statt steuern) */
+  private stickTap: { id: number; x: number; y: number; t: number } | null = null;
   private heldAim: number | null = null;
   /** Taktische Karte (Radar antippen): ganze Karte in Zeitlupe, Ziel für die Staffel wählen */
   private tac = false;
+  /** Freie Sicht: über dieser Linie verschieben Finger die Kamera, darunter steuern die Sticks */
+  private get camZoneY(): number { return this.h * 0.55; }
   /** Taste für die Kamera: links neben den Zoom-Tasten */
   private get btnCam(): [number, number, number] { return [this.w - 126, TOP + 124, 15]; }
   /** Radar oben rechts (antippen öffnet die taktische Karte) */
@@ -1199,12 +1203,14 @@ export class ShooterGame implements MiniGame {
     for (const [which, ox, oy, orr] of this.orderBtns) {
       if (Math.hypot(x - ox, y - oy) < orr + 8) { this.orderDrag = { id, which, x0: ox, y0: oy, pick: null }; sfx.tap(); return; }
     }
-    // freie Sicht: Finger verschieben die Kamera (zwei Finger zoomen) statt zu steuern
-    if (this.camMode !== 'schiff') {
+    // freie Sicht und Beobachter: oben verschieben Finger die Kamera (zwei Finger zoomen) – unten bleiben die Sticks,
+    // damit man weiter fliegen kann, während man das Geschehen beobachtet
+    if (this.camMode !== 'schiff' && (y < this.camZoneY || this.camTouch.size > 0)) {
       this.camTouch.set(id, { x, y, x0: x, y0: y, t0: performance.now() });
       if (this.camTouch.size === 2) { const [a, b] = [...this.camTouch.values()]; this.pinchD = Math.hypot(a.x - b.x, a.y - b.y); this.pinched = true; }
       return;
     }
+    if (this.camMode !== 'schiff') this.stickTap = { id, x, y, t: performance.now() };
     // zwei Sticks: rechte Hälfte zielt und feuert, linke fliegt
     if (this.ctrl !== 'eins' && x > this.w / 2) {
       if (!this.aim) {
@@ -1272,6 +1278,13 @@ export class ShooterGame implements MiniGame {
   pointerUp(id: number): void {
     if (this.panId === id) this.panId = null;
     if (this.heldJoy === id) this.heldJoy = null;
+    // freie Sicht: Stick-Finger nur kurz angetippt (nicht gezogen) – wie oben: dem Objekt dort folgen
+    const st = this.stickTap;
+    if (st?.id === id) {
+      this.stickTap = null;
+      const j = this.joy?.id === id ? this.joy : this.aim?.id === id ? this.aim : null;
+      if (this.camMode !== 'schiff' && performance.now() - st.t < 350 && (!j || Math.hypot(j.kx, j.ky) < 0.12)) this.followAt(st.x, st.y);
+    }
     if (this.heldAim === id) this.heldAim = null;
     const ct = this.camTouch.get(id);
     if (ct) {
@@ -1332,7 +1345,7 @@ export class ShooterGame implements MiniGame {
     this.autoT = 0;
     if (m === 'schiff' && this.joy?.id === 98) this.joy = null;
     sfx.tap();
-    const text = m === 'frei' ? 'Freie Sicht: ziehen, zwei Finger zoomen, Schiff antippen = folgen' : m === 'auto' ? 'Beobachter: Kamera folgt dem Gefecht' : 'Kamera am eigenen Schiff';
+    const text = m === 'frei' ? 'Freie Sicht: oben ziehen, zwei Finger zoomen, antippen = folgen · unten steuern die Sticks' : m === 'auto' ? 'Beobachter: Kamera folgt dem Gefecht · unten steuern die Sticks' : 'Kamera am eigenen Schiff';
     this.floats.add(this.camFX, this.camFY - 60 / this.zoom, text, '#9fe6ff', 13);
   }
 
@@ -1712,7 +1725,9 @@ export class ShooterGame implements MiniGame {
         if (focus && order !== 'landen' && order !== 'schutz') w.tgt = focus;
         else if (lead && lead.state === 'fly' && lead.tgt && order !== 'landen') { w.tgt = lead.tgt; w.side = lead.side; }
         else if (!w.tgt && order !== 'landen') {
-          const pick = this.pickTarget(w.x, w.y, order === 'schutz' ? 520 : 1100, order === 'struktur' ? 'struktur' : 'alle');
+          // Angriff/Strukturen: aggressiv auf der ganzen Karte (das nächste Ziel zum Begleiter); Schutz: nur, was dem
+          // eigenen Schiff nahe kommt – sonst in Formation
+          const pick = this.pickTarget(w.x, w.y, order === 'schutz' ? 520 : Math.max(this.WW, this.WH), order === 'struktur' ? 'struktur' : 'alle');
           if (pick && (order !== 'schutz' || Math.hypot(pick.x - this.px, pick.y - this.py) < this.ship.size * 0.5 + 420)) { w.tgt = pick; w.tgtT = 0; }
         }
         if (w.tgt !== lt0) { w.phase = 'run'; w.phT = 0; }
@@ -2111,6 +2126,20 @@ export class ShooterGame implements MiniGame {
       return all.filter((e) => d(e) < reach).sort((a, b) => shielded(a) - shielded(b) || byDist(a, b));
     }
     return all.sort(byDist);
+  }
+
+  /** Neues Ziel für eine Rakete: nächster Gegner vor ihr (Kegel ±70°), sonst der nächste überhaupt – in Reichweite */
+  private missileRetarget(m: Missile): Enemy | null {
+    const reach = Math.max(200, Math.hypot(m.vx, m.vy) * m.life + 150), heading = Math.atan2(m.vy, m.vx);
+    let ahead: Enemy | null = null, ad = reach, any: Enemy | null = null, nd = reach;
+    for (const e of this.enemies) {
+      if (e.kind === 'boss' && e.shielded) continue;
+      const d = Math.hypot(e.x - m.x, e.y - m.y);
+      if (d >= reach) continue;
+      if (d < nd) { nd = d; any = e; }
+      if (d < ad && Math.abs(wrapA(Math.atan2(e.y - m.y, e.x - m.x) - heading)) < 1.2) { ad = d; ahead = e; }
+    }
+    return ahead ?? any;
   }
 
   /** Spezialfähigkeit des Schiffs: Ausweichen, Waffenüberladung oder Schildüberladung */
@@ -3954,7 +3983,10 @@ export class ShooterGame implements MiniGame {
     const km: Missile[] = [];
     for (const m of this.missiles) {
       m.life -= dt;
-      if (m.target && !this.enemies.includes(m.target)) m.target = this.enemies.find((e) => !(e.kind === 'boss' && e.shielded)) ?? null;
+      if (m.target && !this.enemies.includes(m.target)) m.target = null;
+      // Ziel verloren (zerstört, ausgewichen oder nie eins gehabt): Lenk-, Schwere und Störrakete suchen sich ein neues –
+      // bevorzugt vor sich, in Reichweite ihres restlichen Treibstoffs. Schwarmraketen (und ihre Lenkköpfe) nicht.
+      if (!m.target && !m.def.split && m.life > 0.3) m.target = this.missileRetarget(m);
       if (m.target) {
         const dx = m.target.x - m.x, dy = m.target.y - m.y, d = Math.hypot(dx, dy) || 1;
         // Flinker Elite-Gegner: weicht kurz vor dem Einschlag zur Seite aus, die Rakete verliert ihr Ziel
@@ -6339,6 +6371,19 @@ export class ShooterGame implements MiniGame {
       ctx.beginPath(); ctx.arc(cx, cy, 2.2, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = on ? '#ffd27a' : 'rgba(169,195,198,0.7)';
       ctx.fillText(this.camMode === 'frei' ? (this.camFollow ? 'FOLGEN' : 'FREI') : this.camMode === 'auto' ? 'AUTO' : 'SICHT', cx, TOP + 152);
+      if (on) {
+        // Grenze: oben Kamera, unten Steuerung – dezent
+        const yz = this.camZoneY;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,210,122,0.16)';
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath(); ctx.moveTo(this.w * 0.25, yz); ctx.lineTo(this.w * 0.75, yz); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255,210,122,0.45)';
+        ctx.font = '600 9px "Chakra Petch", Barlow, sans-serif';
+        ctx.fillText('KAMERA ↑   ↓ STEUERN', this.w / 2, yz - 6);
+        ctx.restore();
+      }
     }
     const [fbx, fby, fbr] = this.btnFire;
     if (this.ctrl === 'eins' && !this.pc && this.fireId !== null && this.fireId !== 99) {

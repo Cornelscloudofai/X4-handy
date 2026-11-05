@@ -83,6 +83,12 @@ export function preloadSamples(ctx?: BaseAudioContext, prefix?: string): Promise
   return Promise.all([worker(), worker(), worker()]).then(() => undefined);
 }
 
+/** fn ausführen, sobald diese Aufnahmen geladen sind – sind sie es schon, sofort (auch beim Offline-Rendern) */
+export function whenLoaded(names: string[], fn: () => void): void {
+  if (names.every((n) => buffers.has(n))) { fn(); return; }
+  void ensureSamples(names).then(fn);
+}
+
 /** Bestimmte Aufnahmen laden (z. B. für die Hörprobe) – fertig, sobald genau diese bereit sind */
 export function ensureSamples(names: string[]): Promise<void> {
   const g = graph();
@@ -110,6 +116,32 @@ const RMS: Record<string, number> = {
   'sn-bergbau-a-schleife': -12.7, 'sn-bergbau-b-schleife': -15.2, 'sn-bergbau-c-schleife': -13.6, 'sn-strahl-a-schleife': -14.1,
   'sn-strahl-b-schleife': -13.2, 'sn-traktor-a-schleife': -23.6, 'sn-traktor-b-schleife': -25, 'sn-traktor-c-schleife': -32.5,
   'sn-triebwerk-a-schleife': -14.1, 'sn-triebwerk-b-schleife': -14.4,
+  // Kandidaten zum Probehören (`kd-*`, nur in der Hörprobe)
+  'kd-ablehnen-1': -21.3, 'kd-ablehnen-2': -15.4, 'kd-ablehnen-3': -18.3, 'kd-ablehnen-4': -15.4,
+  'kd-andocken-1': -15.6, 'kd-andocken-2': -22.0, 'kd-andocken-3': -10.6, 'kd-angenommen-1': -15.3,
+  'kd-angenommen-2': -15.9, 'kd-aufsammeln-1': -11.0, 'kd-aufsammeln-2': -17.3, 'kd-aufsammeln-3': -8.5,
+  'kd-baubeginn-1': -13.6, 'kd-baubeginn-2': -10.2, 'kd-baubeginn-3': -17.1, 'kd-baubeginn-4': -21.1,
+  'kd-baufertig-1': -15.5, 'kd-baufertig-2': -13.4, 'kd-baufertig-3': -8.2, 'kd-boss-1': -28.2, 'kd-boss-2': -15.0,
+  'kd-boss-3': -9.9, 'kd-boss-4': -10.7, 'kd-container-1': -10.1, 'kd-container-2': -18.1, 'kd-container-3': -10.0,
+  'kd-credits-1': -17.6, 'kd-credits-2': -8.5, 'kd-credits-3': -23.4, 'kd-erledigt-1': -18.1, 'kd-erledigt-2': -12.3,
+  'kd-erledigt-3': -3.3, 'kd-explosion-1': -9.2, 'kd-explosion-10': -15.3, 'kd-explosion-11': -26.8,
+  'kd-explosion-12': -7.5, 'kd-explosion-13': -11.8, 'kd-explosion-2': -12.0, 'kd-explosion-3': -7.8,
+  'kd-explosion-4': -14.1, 'kd-explosion-5': -7.7, 'kd-explosion-6': -8.6, 'kd-explosion-7': -11.2,
+  'kd-explosion-8': -10.4, 'kd-explosion-9': -4.8, 'kd-fluss-1': -9.3, 'kd-fluss-2': -37.1, 'kd-fluss-3': -32.7,
+  'kd-kapitel-1': -20.1, 'kd-kapitel-2': -19.9, 'kd-kapitel-3': -31.5, 'kd-kristall-1': -29.5, 'kd-kristall-2': -22.7,
+  'kd-kristall-3': -27.6, 'kd-nachricht-1': -14.7, 'kd-nachricht-2': -9.9, 'kd-nachricht-3': -27.6,
+  'kd-niederlage-1': -12.1, 'kd-niederlage-2': -15.5, 'kd-oeffnen-1': -11.4, 'kd-oeffnen-2': -15.1,
+  'kd-oeffnen-3': -21.8, 'kd-oeffnen-4': -25.9, 'kd-schliessen-1': -22.7, 'kd-schliessen-2': -12.9,
+  'kd-schub-1': -27.4, 'kd-schub-2': -9.2, 'kd-schub-3': -27.2, 'kd-schuss-1': -8.8, 'kd-schuss-10': -8.8,
+  'kd-schuss-11': -9.3, 'kd-schuss-12': -12.0, 'kd-schuss-13': -9.0, 'kd-schuss-14': -19.7, 'kd-schuss-15': -14.0,
+  'kd-schuss-16': -14.5, 'kd-schuss-17': -8.8, 'kd-schuss-18': -14.1, 'kd-schuss-19': -23.1, 'kd-schuss-2': -10.6,
+  'kd-schuss-20': -13.5, 'kd-schuss-21': -7.4, 'kd-schuss-22': -14.2, 'kd-schuss-23': -9.1, 'kd-schuss-3': -9.9,
+  'kd-schuss-4': -14.4, 'kd-schuss-5': -14.5, 'kd-schuss-6': -14.6, 'kd-schuss-7': -10.5, 'kd-schuss-8': -6.7,
+  'kd-schuss-9': -8.9, 'kd-start-1': -23.2, 'kd-start-2': -30.9, 'kd-start-3': -21.5, 'kd-start-4': -20.6,
+  'kd-steuerduese-1': -14.2, 'kd-steuerduese-2': -9.0, 'kd-steuerduese-3': -10.1, 'kd-tippen-1': -23.2,
+  'kd-tippen-2': -17.8, 'kd-tippen-3': -17.3, 'kd-tippen-4': -15.1, 'kd-tor-1': -13.9, 'kd-tor-2': -27.2,
+  'kd-tor-3': -34.8, 'kd-ventil-1': -20.3, 'kd-ventil-2': -11.6, 'kd-ventil-3': -21.0, 'kd-warnung-1': -11.1,
+  'kd-warnung-2': -10.7, 'kd-warnung-3': -10.5,
 };
 /** Pegel, der eine Aufnahme auf −10 dB RMS bringt (höchstens +12 dB) */
 export const norm = (name: string) => Math.min(4, Math.pow(10, (-10 - (RMS[name] ?? -10)) / 20));
@@ -119,7 +151,8 @@ const lastPick = new Map<string, string>();
 let forced: string | null = null;
 /** Variante wählen – nie zweimal hintereinander dieselbe (Hörprobe: die gewünschte) */
 export function variant(key: string, list: string[]): string {
-  if (forced && list.includes(forced)) return forced;
+  // Hörprobe: die gewünschte Aufnahme – auch ein Kandidat, der (noch) nicht in der Liste steht
+  if (forced) return forced;
   const prev = lastPick.get(key);
   const pool = list.length > 1 ? list.filter((x) => x !== prev) : list;
   const v = pool[Math.floor(Math.random() * pool.length)];
