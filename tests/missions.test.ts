@@ -126,11 +126,13 @@ describe('Kampf: Einsätze', () => {
     expect(G.enemies.filter((e) => e.hive).length).toBe(2);
     expect(G.enemies.filter((e) => e.plat).length).toBe(4);
     // Jäger vor eine Plattform setzen: sie dreht sich zu ihm, lädt und trifft
-    const p = G.enemies.find((e) => e.plat) as unknown as { x: number; y: number };
+    const p = G.enemies.find((e) => e.plat) as unknown as { x: number; y: number; hp: number; max: number };
     const S = g as unknown as { shield: number; rails: { color: string }[] };
     let shots = 0;
     for (let i = 0; i < 60 * 12; i++) {
-      G.px = p.x + 150; G.py = p.y + 40; G.hull = Math.max(G.hull, 50);
+      // die eigenen Türme reichen weit: Plattform am Leben halten, sie soll ja feuern
+      // (andere Plattformen reichen jetzt auch bis hierher: Schild auffüllen, damit jeder Kyon-Treffer zu sehen ist)
+      G.px = p.x + 150; G.py = p.y + 40; G.hull = Math.max(G.hull, 50); p.hp = p.max; S.shield = 40;
       const sh0 = S.shield;
       g.update(DT);
       if (S.shield < sh0 && S.rails.some((r) => r.color === '#b45cff')) shots++;

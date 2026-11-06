@@ -1017,14 +1017,14 @@ describe('Wertung: Sterne und Punkte nachvollziehbar', () => {
 });
 
 describe('Schwere Hauptbatterie und Strahlenturm', () => {
-  it('L-Hauptbatterie reicht mindestens doppelt so weit wie M (höchstens 1.500)', async () => {
-    const { WEAPONS: W8, WEAPON_IDS: IDS, weaponGun, gameRange } = await import('../src/minigames/loadout');
+  it('L-Hauptbatterie reicht mindestens doppelt so weit wie M (höchstens 1.500 × Reichweitenfaktor)', async () => {
+    const { WEAPONS: W8, WEAPON_IDS: IDS, weaponGun, gameRange, RANGE_X } = await import('../src/minigames/loadout');
     for (const id of IDS) {
       const w = W8[id];
       if (w.group === 'schwer') continue;
       const m = gameRange(w.m, w.beam), l = gameRange(weaponGun(w, 'l'), w.beam);
-      expect(l).toBeGreaterThanOrEqual(Math.min(2 * m, 1400));
-      expect(l).toBeLessThanOrEqual(1501);
+      expect(l).toBeGreaterThanOrEqual(Math.min(2 * m, 1400 * RANGE_X));
+      expect(l).toBeLessThanOrEqual(1501 * RANGE_X);
     }
   });
 

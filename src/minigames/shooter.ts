@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { DMG_SCALE, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -115,13 +115,13 @@ interface PlatDef {
 }
 const PLATS: Record<'dreifach' | 'zwilling' | 'lanze' | 'strahl' | 'xgatling' | 'xzwilling' | 'xlaser', PlatDef> = {
   // Xenon: Gatling (langer Feuerstoß), Zwillingskanone (schwere Bolzen abwechselnd aus beiden Rohren), schwerer Laser
-  xgatling: { name: 'Xenon-Gatlingturm', head: 'xenon-turm-gatling-ki', base: 'xenon-plattform-klein-ki', py: 0.77, size: 120, baseSize: 150, muzzle: 86, side: [0], fan: 0, dmg: 3, len: 560, charge: 0.45, cd: 2.8, turn: 1.3, fire: 'gun', color: '#ff5c6c', burst: 14, gap: 0.07, v: 470, w: 1.8 },
-  xzwilling: { name: 'Xenon-Zwillingskanone', head: 'xenon-turm-zwilling-ki', base: 'xenon-plattform-klein-ki', py: 0.7, size: 105, baseSize: 150, muzzle: 67, side: [-4.6, 4.6], fan: 0, dmg: 9, len: 580, charge: 0.5, cd: 2.6, turn: 1, fire: 'gun', color: '#ff3b4a', burst: 4, gap: 0.22, v: 330, w: 4 },
-  xlaser: { name: 'Schwerer Xenon-Laser', head: 'xenon-turm-laser-gross-ki', base: 'xenon-plattform-gross-ki', py: 0.68, size: 95, baseSize: 165, muzzle: 62, side: [0], fan: 0, dmg: 20, len: 760, charge: 1.1, cd: 4.2, turn: 0.6, fire: 'beam', color: '#ff3b4a' },
-  dreifach: { name: 'Dreifach-Kyonturm', head: 'khaak-turm-dreifach-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 95, baseSize: 150, muzzle: 50, side: [0], fan: 0.2, dmg: 7, len: KYON_LEN + 140, charge: 0.6, cd: 3.2, turn: 1.1 },
-  zwilling: { name: 'Zwillings-Kyonturm', head: 'khaak-turm-zwilling-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 100, baseSize: 150, muzzle: 48, side: [-4.5, 4.5], fan: 0, dmg: 6, len: KYON_LEN + 140, charge: 0.35, cd: 1.5, turn: 1.4 },
-  lanze: { name: 'Kyon-Lanze', head: 'khaak-turm-lanze-ki', base: 'khaak-plattform-gross-ki', py: 0.68, size: 100, baseSize: 155, muzzle: 62, side: [0], fan: 0, dmg: 14, len: KYON_LEN + 300, charge: 0.8, cd: 2.8, turn: 0.8 },
-  strahl: { name: 'Kyon-Strahler', head: 'khaak-turm-strahl-ki', base: 'khaak-plattform-gross-ki', py: 0.73, size: 165, baseSize: 155, muzzle: 112, side: [0], fan: 0, dmg: 22, len: KYON_LEN + 440, charge: 1.2, cd: 4.5, turn: 0.55 },
+  xgatling: { name: 'Xenon-Gatlingturm', head: 'xenon-turm-gatling-ki', base: 'xenon-plattform-klein-ki', py: 0.77, size: 120, baseSize: 150, muzzle: 86, side: [0], fan: 0, dmg: 3, len: 560 * RANGE_X, charge: 0.45, cd: 2.8, turn: 1.3, fire: 'gun', color: '#ff5c6c', burst: 14, gap: 0.07, v: 470, w: 1.8 },
+  xzwilling: { name: 'Xenon-Zwillingskanone', head: 'xenon-turm-zwilling-ki', base: 'xenon-plattform-klein-ki', py: 0.7, size: 105, baseSize: 150, muzzle: 67, side: [-4.6, 4.6], fan: 0, dmg: 9, len: 580 * RANGE_X, charge: 0.5, cd: 2.6, turn: 1, fire: 'gun', color: '#ff3b4a', burst: 4, gap: 0.22, v: 330, w: 4 },
+  xlaser: { name: 'Schwerer Xenon-Laser', head: 'xenon-turm-laser-gross-ki', base: 'xenon-plattform-gross-ki', py: 0.68, size: 95, baseSize: 165, muzzle: 62, side: [0], fan: 0, dmg: 20, len: 760 * RANGE_X, charge: 1.1, cd: 4.2, turn: 0.6, fire: 'beam', color: '#ff3b4a' },
+  dreifach: { name: 'Dreifach-Kyonturm', head: 'khaak-turm-dreifach-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 95, baseSize: 150, muzzle: 50, side: [0], fan: 0.2, dmg: 7, len: KYON_LEN + 140 * RANGE_X, charge: 0.6, cd: 3.2, turn: 1.1 },
+  zwilling: { name: 'Zwillings-Kyonturm', head: 'khaak-turm-zwilling-ki', base: 'khaak-plattform-klein-ki', py: 0.7, size: 100, baseSize: 150, muzzle: 48, side: [-4.5, 4.5], fan: 0, dmg: 6, len: KYON_LEN + 140 * RANGE_X, charge: 0.35, cd: 1.5, turn: 1.4 },
+  lanze: { name: 'Kyon-Lanze', head: 'khaak-turm-lanze-ki', base: 'khaak-plattform-gross-ki', py: 0.68, size: 100, baseSize: 155, muzzle: 62, side: [0], fan: 0, dmg: 14, len: KYON_LEN + 300 * RANGE_X, charge: 0.8, cd: 2.8, turn: 0.8 },
+  strahl: { name: 'Kyon-Strahler', head: 'khaak-turm-strahl-ki', base: 'khaak-plattform-gross-ki', py: 0.73, size: 165, baseSize: 155, muzzle: 112, side: [0], fan: 0, dmg: 22, len: KYON_LEN + 440 * RANGE_X, charge: 1.2, cd: 4.5, turn: 0.55 },
 };
 
 /** Bergungscontainer im Wrackfeld (Einsatz „Bergung“): treibt, wird geschleppt oder ist abgeliefert/verloren */
@@ -240,7 +240,7 @@ interface Mine { x: number; y: number; vx: number; vy: number; armed: number; hp
 interface Card { id: string; name: string; desc: string; max: number }
 
 /** Laserturm der Xenon: Reichweite, Aufladezeit, Brenndauer, Schaden pro Sekunde */
-const LASER_LEN = 600, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
+const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
 /**
  * Reichweite gegnerischer Geschütztürme (Großkampfschiffe, Nester, Frachter): Kanonen- und Plasmatürme – deutlich
  * weiter als die Bordwaffen der Jäger, damit Großziele nicht gefahrlos aus sicherer Entfernung beschossen werden
@@ -2748,9 +2748,9 @@ export class ShooterGame implements MiniGame {
    */
   private turretRange(e: Enemy): number {
     const len = (e.parent?.r ?? 0) * 4.6;
-    if (e.weapon === 'plasma') return Math.max(PLASMA_RANGE, len * 1.05);
-    if (e.weapon === 'flak') return Math.max(TURRET_RANGE + 60, len * 1.05);
-    return Math.max(TURRET_RANGE, len * 0.4);
+    if (e.weapon === 'plasma') return Math.max(PLASMA_RANGE, len * 1.05 * RANGE_X);
+    if (e.weapon === 'flak') return Math.max(TURRET_RANGE + 60, len * 1.05 * RANGE_X);
+    return Math.max(TURRET_RANGE, len * 0.4 * RANGE_X);
   }
 
   /** nächstgelegene gegnerische Hülle in Reichweite eines Turms: dein Schiff, ein Schutzziel oder ein fliegender Begleiter */
@@ -3226,7 +3226,7 @@ export class ShooterGame implements MiniGame {
       w.flash = Math.max(0, w.flash - dt);
       if (w.dead) continue;
       const st = w.kind === 'station';
-      const range = st ? 270 : 240, cd = st ? 0.8 : 0.9, dmg = st ? 3.2 : 3, x0 = this.wx(w), y0 = this.wy(w);
+      const range = (st ? 270 : 240) * RANGE_X, cd = st ? 0.8 : 0.9, dmg = st ? 3.2 : 3, x0 = this.wx(w), y0 = this.wy(w);
       for (const t of w.tur) {
         if (t.hp <= 0) continue;
         t.cd -= dt;
@@ -3612,7 +3612,7 @@ export class ShooterGame implements MiniGame {
     if (hitMine) { hitMine.hp -= dmg; if (hitMine.hp <= 0) this.detonate(hitMine); }
     if (hitE || hitM || hitMine) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
     // schwere L-Lanze glüht lange nach, M-Lanze blitzt nur kurz auf
-    this.rails.push({ x1: ox, y1: oy, x2, y2, t: heavy ? 0.65 : 0.16, max: heavy ? 0.65 : 0.16, heavy, color });
+    this.rails.push({ x1: ox, y1: oy, x2, y2, t: heavy ? 1.8 : 0.16, max: heavy ? 1.8 : 0.16, heavy, color });
   }
 
   /** Strahler: je feuernde Bordkanone ein Strahl geradeaus; trifft das erste Ziel im Strahl (Schaden pro Sekunde) */
@@ -4901,16 +4901,17 @@ export class ShooterGame implements MiniGame {
         ctx.moveTo(r.x1, r.y1);
         ctx.lineTo(r.x2, r.y2);
         if (r.heavy) {
-          // schwere L-Lanze: weiter Halo, kräftiger Farbkern, gleißende Mitte; glüht langsam aus (Kern verblasst zuerst)
-          const g = k * k;
-          ctx.strokeStyle = rgba(r.color, 0.22 * k);
-          ctx.lineWidth = 10 + 26 * k;
+          // schwere L-Lanze (orange): dicker gleißender Schuss, dann knapp zwei Sekunden langes Nachglühen – der helle Kern
+          // verblasst schnell, der breite orange Glutstreifen bleibt lange stehen
+          const g = Math.max(0, (k - 0.75) / 0.25);
+          ctx.strokeStyle = rgba(r.color, 0.18 + 0.2 * k);
+          ctx.lineWidth = 14 + 34 * g + 6 * k;
           ctx.stroke();
-          ctx.strokeStyle = rgba(r.color, 0.75 * k);
-          ctx.lineWidth = 4 + 9 * k;
+          ctx.strokeStyle = rgba(r.color, 0.35 + 0.55 * k);
+          ctx.lineWidth = 6 + 10 * g + 3 * k;
           ctx.stroke();
-          ctx.strokeStyle = rgba('#ffffff', g);
-          ctx.lineWidth = 2 + 3 * g;
+          ctx.strokeStyle = rgba('#fff2d0', 0.15 * k + 0.85 * g);
+          ctx.lineWidth = 2.5 + 4 * g;
           ctx.stroke();
         } else {
           // M-Lanze: schmaler, blasser Blitz
