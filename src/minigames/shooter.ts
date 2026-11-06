@@ -971,6 +971,11 @@ export class ShooterGame implements MiniGame {
    */
   private get fScale(): number { return 1; }
   private get enemyDmg(): number { return this.level >= 5 ? 1.3 : this.level >= 3 ? 1.15 : 1; }
+  /**
+   * Treffer der Großkampfschiff-Türme (Plasma, Repeater, Flak) je Stufe: die Schiffe sind schon früh voll bewaffnet, auf
+   * den niedrigen Stufen schlagen die einzelnen Treffer aber schwächer ein
+   */
+  private get capTurretDmg(): number { return [0.35, 0.55, 0.8, 0.9, 1][this.level - 1]; }
   /** Einsätze mit fester Zahl von Wellen (der Rest endet über sein eigenes Ziel) */
   private get counted(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi' || this.mission === 'station'; }
   /** Schutzziele fliegen eine Route (Geleit, Konvoi) */
@@ -2730,6 +2735,27 @@ export class ShooterGame implements MiniGame {
     }
   }
 
+  /**
+   * Reichweite eines Turms an einem Schiff: L-Türme (Plasma, Flak) mindestens eine Schiffslänge ihres Trägers – beim
+   * Xenon K also rund 2 000 –, M-Türme gut ein Drittel davon, nie weniger als bisher
+   */
+  private turretRange(e: Enemy): number {
+    const len = (e.parent?.r ?? 0) * 4.6;
+    if (e.weapon === 'plasma') return Math.max(PLASMA_RANGE, len * 1.05);
+    if (e.weapon === 'flak') return Math.max(TURRET_RANGE + 60, len * 1.05);
+    return Math.max(TURRET_RANGE, len * 0.4);
+  }
+
+  /** nächstgelegene gegnerische Hülle in Reichweite eines Turms: dein Schiff, ein Schutzziel oder ein fliegender Begleiter */
+  private turretTarget(e: Enemy, range: number): [number, number] | null {
+    let best: [number, number] | null = null, bd = range;
+    const check = (x: number, y: number, hullR: number) => { const d = Math.hypot(x - e.x, y - e.y) - hullR; if (d < bd) { bd = d; best = [x, y]; } };
+    check(this.px, this.py, this.ship.aspect ? this.ship.size * 0.45 : this.ship.r);
+    for (const w of this.liveWards) check(this.wx(w), this.wy(w), w.kind === 'station' ? STATION_R : 40);
+    for (const w of this.wings) if (w.state === 'fly') check(w.x, w.y, w.def.size * 0.4);
+    return best;
+  }
+
   /** Xenon P: zwei M-Türme (Laser-Repeater) auf den Sockeln des Rückgrats */
   private armP(e: Enemy): void {
     e.armed = true;
@@ -2761,12 +2787,12 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 zwei L- und fünf M-Türme, jede Stufe mehr, ab Stufe 5 (und gegen
+   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 vier L- und acht M-Türme, Stufe 2 sechs und elf, ab Stufe 3 (und gegen
    * den Träger) alle 8 L und 14 M; zuerst die L-Türme mittschiffs, die M-Türme gleichmäßig über das Schiff verteilt
    */
   private kMounts(): typeof XENON_K_MOUNTS {
-    const full = this.level >= 5 || this.big > 1;
-    const nL = full ? 8 : this.level * 2, nM = full ? 14 : Math.min(14, 2 + this.level * 3);
+    const full = this.level >= 3 || this.big > 1;
+    const nL = full ? 8 : 2 + this.level * 2, nM = full ? 14 : 5 + this.level * 3;
     // L: große Plasmatürme, zuerst die mittschiffs (Reihenfolge in XENON_K_MOUNTS)
     const L = XENON_K_MOUNTS.filter((m) => m[2] !== 'm').slice(0, nL);
     const M = XENON_K_MOUNTS.filter((m) => m[2] === 'm');
@@ -3809,13 +3835,16 @@ export class ShooterGame implements MiniGame {
           }
           continue;
         }
-        const tx = this.r() < 0.5 || !pw ? this.px : pfx, ty = tx === this.px ? this.py : pfy;
+        // Ziel: die nächstgelegene gegnerische Hülle in Reichweite (dein Schiff, Schutzziel oder Begleiter) – gemessen bis
+        // zur Hülle, nicht bis zur Schiffsmitte
+        const range = this.turretRange(e), tg = this.turretTarget(e, range);
+        const tx = tg ? tg[0] : this.px, ty = tg ? tg[1] : this.py;
         if (e.weapon === 'plasma') {
-          if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < PLASMA_RANGE) {
+          if (e.cd <= 0 && tg) {
             e.cd = (this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8;
-            // dicke, langsame Plasmakugel: leicht gestreut, gut sichtbar, schwer
-            const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08;
-            this.enemyShot(e, a2, 175, 14, '#ff6a3d', 6, (PLASMA_RANGE + 40) / 175);
+            // dicke Plasmakugel: leicht gestreut, gut sichtbar, schwer; auf große Reichweite entsprechend schneller
+            const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08, v = Math.min(420, 175 * Math.sqrt(range / PLASMA_RANGE));
+            this.enemyShot(e, a2, v, 14 * this.capTurretDmg, '#ff6a3d', 6, (range + 60) / v);
             // aus den Mündungen, nicht aus der Turmmitte
             const pb = this.bullets[this.bullets.length - 1];
             // Mündung des großen L-Plasmaturms: gut die Hälfte der Bildgröße vor dem Drehpunkt
@@ -3832,18 +3861,18 @@ export class ShooterGame implements MiniGame {
               const n = flak ? 4 : 2, i = n - e.salvo!, size = e.r * (flak ? 5.3 : 5);
               const lat = (flak ? [-0.2, -0.07, 0.07, 0.2] : [-0.025, 0.025])[i] * size, fwd = size * 0.55;
               const v = flak ? 320 : 430;
-              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, flak ? 4 : 5, flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (TURRET_RANGE + 60) / v);
+              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 5) * this.capTurretDmg, flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
               const pb = this.bullets[this.bullets.length - 1], c = Math.cos(a2), sn = Math.sin(a2);
               pb.x += c * fwd - sn * lat; pb.y += sn * fwd + c * lat;
               e.salvo!--; e.salvoT = flak ? 0.07 : 0.09;
             }
-          } else if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < TURRET_RANGE + (flak ? 60 : 0)) {
+          } else if (e.cd <= 0 && tg) {
             e.cd = (flak ? 1.4 : 1.1) + this.r() * 0.5;
             e.salvo = flak ? 4 : 2; e.salvoT = 0;
           }
           continue;
         }
-        if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < TURRET_RANGE) {
+        if (e.cd <= 0 && tg) {
           e.cd = 1.5 + this.r() * 0.6;
           const a2 = Math.atan2(ty - e.y, tx - e.x), v = this.side === 'pirate' ? 250 : 280;
           for (let q = 0; q < 2; q++) this.enemyShot(e, a2 + (q - 0.5) * 0.1, v, 5.5, this.side === 'pirate' ? '#ffd27a' : '#ff5c6c', 2, (TURRET_RANGE + 40) / v);

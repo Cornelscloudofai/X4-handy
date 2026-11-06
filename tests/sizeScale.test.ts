@@ -188,5 +188,28 @@ describe('Großkampfschiffe: ruhig, begrenzt, ohne Überlappen', () => {
     for (const e of small.filter((q) => q.kind !== 'm')) expect(Math.hypot(e.x - k.x, e.y - k.y)).toBeGreaterThan(k.r * 1.5);
     setSizeScale('bisher', false);
   });
+
+  it('Xenon K feuert: L-Türme reichen mindestens eine Schiffslänge, gemessen bis zur gegnerischen Hülle', () => {
+    setSizeScale('x4', false);
+    const { g, a } = mk(1);
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    a.spawnBoss(true);
+    const k = a.enemies.find((e) => e.kind === 'boss')!;
+    const len = k.r * 4.6;
+    // in Stellung, dein Schiff gut eine halbe Schiffslänge entfernt
+    k.x = a.px; k.y = a.py - len * 0.7; k.vx = k.vy = 0;
+    const tur = a.enemies.filter((e) => e.parent === k);
+    const ga = g as unknown as { enemyShot: (e: T, ...r: unknown[]) => void; turretRange(e: T): number };
+    expect(Math.min(...tur.filter((t) => (t as unknown as { weapon: string }).weapon === 'plasma').map((t) => ga.turretRange(t)))).toBeGreaterThanOrEqual(len);
+    const orig = ga.enemyShot.bind(g);
+    const shooters = new Set<T>();
+    ga.enemyShot = (e: T, ...r: unknown[]) => { if (tur.includes(e)) shooters.add(e); orig(e, ...r); };
+    for (let i = 0; i < 60 * 8; i++) { for (const e of a.enemies) e.hp = e.max; g.update(1 / 60); }
+    // alle L-Türme kommen zum Schuss (M-Türme nur, wenn das Ziel ihnen nah genug ist)
+    const L = tur.filter((t) => (t as unknown as { weapon: string }).weapon === 'plasma');
+    expect(L.length).toBeGreaterThan(0);
+    expect(L.every((t) => shooters.has(t))).toBe(true);
+    setSizeScale('bisher', false);
+  });
 });
 
