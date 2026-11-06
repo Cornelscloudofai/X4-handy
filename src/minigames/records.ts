@@ -55,10 +55,15 @@ export function dailyBest(kind: string, date = today()): number | null {
   return load().daily[`${date}:${kind}`] ?? null;
 }
 
-/** Summe der besten Sterne über alle Stufen (schaltet Stufe 4 und 5 frei) */
+/**
+ * Summe der besten Sterne über alle Stufen (schaltet Stufe 4 und 5 frei); beim Kampf zählen die Einsätze dieser
+ * Gegnerseite mit („xenon@nest“ usw.), damit Stufe 4 und 5 auch dort erreichbar sind
+ */
 export function totalStars(kind: string): number {
+  const keys = new Set([kind]);
+  if (!kind.includes('@')) for (const k of Object.keys(load().best)) if (k.startsWith(kind + '@')) keys.add(k.split(':')[0]);
   let n = 0;
-  for (let l = 1; l <= 5; l++) n += best(kind, l as Level)?.stars ?? 0;
+  for (const key of keys) for (let l = 1; l <= 5; l++) n += best(key, l as Level)?.stars ?? 0;
   return n;
 }
 

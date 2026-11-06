@@ -160,6 +160,8 @@ interface Enemy {
   salvo?: number; salvoT?: number;
   /** Xenon P: Türme schon montiert; Piratenträger: Zeit bis zum nächsten Jägerstart, gestartete Jäger */
   armed?: boolean; launchT?: number; launched?: number;
+  /** Großkampfschiff im Anflug auf sein Ziel (sonst hält es Stellung und Kurs) */
+  appr?: boolean;
   /** Kha'ak: Cluster (fliegt geschlossen bis kurz vor dem Ziel) und Platz darin */
   cl?: number; slotX?: number; slotY?: number; slotFlip?: boolean;
   /** Kha'ak: Kyon-Strahl lädt (Restzeit) */
@@ -354,8 +356,8 @@ const persRnd = (k: number, f: number) => { const x = Math.sin(k * 127.1 + f * 3
  * (Trefferradius 34 × Bildmaßstab 4,7; im Kampf × Größenfaktor)
  */
 const XENON_K_MOUNTS: [number, number, 'laser' | 'plasma' | 'm'][] = ([
-  [497, 213, 'plasma'], [750, 213, 'plasma'], [439, 380, 'laser'], [801, 380, 'laser'],
-  [440, 707, 'laser'], [802, 708, 'laser'], [462, 896, 'plasma'], [780, 897, 'plasma'],
+  [439, 380, 'plasma'], [801, 380, 'plasma'], [440, 707, 'plasma'], [802, 708, 'plasma'],
+  [497, 213, 'plasma'], [750, 213, 'plasma'], [462, 896, 'plasma'], [780, 897, 'plasma'],
   [400, 247, 'm'], [843, 250, 'm'], [310, 372, 'm'], [938, 372, 'm'], [282, 548, 'm'], [973, 548, 'm'],
   [290, 708, 'm'], [962, 708, 'm'], [355, 890, 'm'], [898, 892, 'm'], [627, 370, 'm'], [627, 525, 'm'], [627, 690, 'm'], [627, 860, 'm'],
 ] as const).map(([x, y, w]) => [(x / 1254 - 0.5) * 159.8, (y / 1254 - 0.5) * 159.8, w]);
@@ -798,6 +800,8 @@ export class ShooterGame implements MiniGame {
   private outcome: 'win' | 'freighter' | 'player' | 'fail' | null = null;
   private choosing: Card[] | null = null;
   private pendingSpawn = -1;
+  /** Pause nach dem Abschuss eines Großkampfschiffs, bis das nächste kommen darf (s) */
+  private bigCd = 0;
   /** Verstärkung einer Welle: kommt einige Sekunden später von anderer Seite */
   private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean }[] = [];
   /** Elite-Gegner, die in dieser Welle noch kommen, und dafür in Frage kommende Gegner */
@@ -2651,7 +2655,12 @@ export class ShooterGame implements MiniGame {
   private spawnBoss(mini = false, from = 0): void {
     // X4-Größe: der Xenon K ist ein XL-Schiff (1,7 km), Fregatte und Brutschiff entsprechend; die Türme wachsen mit
     const k = enemyScale('boss', this.side, mini);
-    const [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120 + 34 * k, this.fY - 1100 - 34 * k * 1.5)];
+    let [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120 + 34 * k, this.fY - 1100 - 34 * k * 1.5)];
+    // Nest: nicht mitten in den Verteidigern am Nest, sondern ein Stück draußen auf einem Ring darum
+    if (this.mission === 'nest') {
+      const a = this.r() * Math.PI * 2, dist = 900 + 34 * k * 2;
+      x = clamp(this.fX + Math.cos(a) * dist, 80 + 34 * k, this.WW - 80 - 34 * k); y = clamp(this.fY + Math.sin(a) * dist, 80 + 34 * k, this.WH - 80 - 34 * k);
+    }
     const b = this.makeEnemy('boss', x, y);
     b.ang = mini ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
     const bs = enemyStats('boss', this.level, { mini, extra: this.mode === 'endless' ? 1 + this.wave * 0.05 : 1, tune: this.tune });
@@ -2668,16 +2677,16 @@ export class ShooterGame implements MiniGame {
       // auf den drei Sockeln im Bild der Fregatte (Flügelenden links/rechts, Heckmitte); ab Stufe 4 ein vierter auf dem Bug
       ? [[-53, 4], [54, 4], [0, 30], ...(this.level >= 4 ? [[0, -40] as [number, number]] : [])]
       : this.side === 'xenon'
-        // Xenon K: 8 L-Türme auf den großen Ringsockeln (vorn und hinten Plasma, mittschiffs Laser) und 14 M-Türme auf den
+        // Xenon K: 8 große L-Plasmatürme auf den Ringsockeln und 14 M-Türme (Laser-Repeater) auf den
         // kleinen Sockeln an den Plattenenden und auf dem Rückgrat
         ? XENON_K_MOUNTS
         // Kha'ak-Brutschiff: Kyon-Türme (Strahl wie der Xenon-Laser) auf den runden Sockeln links und rechts,
         // Brutkästen auf den beiden Brutkammern vorn
         : [[-47, -2, 'laser'], [47, -2, 'laser'], [-25, -27, 'brut'], [25, -27, 'brut']];
     // Großziel: nur die beiden Flügeltürme; Kha'ak-Zerstörer: Kyon-Türme auf den Sockelpaaren an Bug und Heck
-    // Großziel: nur die beiden Flügeltürme (Xenon K: die Laser mittschiffs und vier M-Türme); Kha'ak-Zerstörer: Kyon-Türme
+    // Großziel: nur die beiden Flügeltürme (Xenon K: die beiden L-Türme mittschiffs und fünf M-Türme); Kha'ak-Zerstörer: Kyon-Türme
     // auf den Sockelpaaren an Bug und Heck
-    const offs = mini ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? all.filter((m, i) => m[2] === 'laser' && i < 4 || m[2] === 'm' && i % 3 === 0) : all.slice(0, 2))
+    const offs = mini ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? all.filter((m, i) => m[2] === 'plasma' && i < 2 || m[2] === 'm' && i % 3 === 0) : all.slice(0, 2))
       : this.side === 'xenon' ? this.kMounts() : all;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
@@ -2695,6 +2704,30 @@ export class ShooterGame implements MiniGame {
     if (!mini) this.bossT = 0;
     // Piratenträger: startet von seiner Startbahn Jäger
     if (this.side === 'pirate' && !mini) { b.launchT = 6; b.launched = 0; }
+  }
+
+  /**
+   * Gegner schieben sich auseinander, statt übereinander zu liegen (z. B. wenn ein Großkampfschiff mitten in einer Gruppe
+   * auftaucht): Abstand nach Bildgröße, der Kleinere weicht mehr aus; feste Ziele, Türme und Cluster bleiben, wo sie sind,
+   * Jäger untereinander ebenso
+   */
+  private separateEnemies(dt: number): void {
+    const list = this.enemies.filter((e) => !e.parent && !e.nest && !e.plat && !e.hive && e.cl == null);
+    const k = Math.min(1, dt * 3);
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      // Jäger untereinander nicht: sie fliegen ohnehin eigene Anflüge, Schwärme und Cluster sollen dicht bleiben
+      if (FIGHTERS.has(a.kind) && FIGHTERS.has(b.kind)) continue;
+      const big = a.kind === 'boss' || b.kind === 'boss';
+      const min = big ? Math.max(a.r, b.r) * 1.7 + Math.min(a.r, b.r) : (a.r + b.r) * 1.6;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      if (d >= min) continue;
+      const nx = d > 0.01 ? dx / d : Math.cos(i * 2.4), ny = d > 0.01 ? dy / d : Math.sin(i * 2.4);
+      const ma = a.r * a.r, mb = b.r * b.r, push = (min - d) * k;
+      const sa = mb / (ma + mb), sb = ma / (ma + mb);
+      a.x = clamp(a.x - nx * push * sa, 20, this.WW - 20); a.y = clamp(a.y - ny * push * sa, 20, this.WH - 20);
+      b.x = clamp(b.x + nx * push * sb, 20, this.WW - 20); b.y = clamp(b.y + ny * push * sb, 20, this.WH - 20);
+    }
   }
 
   /** Xenon P: zwei M-Türme (Laser-Repeater) auf den Sockeln des Rückgrats */
@@ -2728,13 +2761,14 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 vier L- und fünf M-Türme, jede Stufe mehr, ab Stufe 5 (und gegen
-   * den Träger) alle 8 L und 14 M; zuerst die Laser mittschiffs, die M-Türme gleichmäßig über das Schiff verteilt
+   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 zwei L- und fünf M-Türme, jede Stufe mehr, ab Stufe 5 (und gegen
+   * den Träger) alle 8 L und 14 M; zuerst die L-Türme mittschiffs, die M-Türme gleichmäßig über das Schiff verteilt
    */
   private kMounts(): typeof XENON_K_MOUNTS {
     const full = this.level >= 5 || this.big > 1;
-    const nL = full ? 8 : 2 + this.level * 2, nM = full ? 14 : Math.min(14, 2 + this.level * 3);
-    const L = XENON_K_MOUNTS.filter((m) => m[2] !== 'm').sort((p, q) => (p[2] === 'laser' ? 0 : 1) - (q[2] === 'laser' ? 0 : 1)).slice(0, nL);
+    const nL = full ? 8 : this.level * 2, nM = full ? 14 : Math.min(14, 2 + this.level * 3);
+    // L: große Plasmatürme, zuerst die mittschiffs (Reihenfolge in XENON_K_MOUNTS)
+    const L = XENON_K_MOUNTS.filter((m) => m[2] !== 'm').slice(0, nL);
     const M = XENON_K_MOUNTS.filter((m) => m[2] === 'm');
     const pick = M.filter((_, i) => Math.floor((i * nM) / M.length) !== Math.floor(((i + 1) * nM) / M.length) || nM >= M.length);
     return [...L, ...pick.slice(0, nM)];
@@ -3084,7 +3118,11 @@ export class ShooterGame implements MiniGame {
     this.updateMission(dt);
     if (this.outcome) return;
     // höchstens rund 60 Gegner zugleich (Großschiff: entsprechend mehr) – weitere Gruppen warten, bis Platz ist
-    const due = this.enemies.length < this.fieldCap + 4 ? this.reinforce.find((g) => this.waveT >= g.t) : undefined;
+    // Großkampfschiffe (Xenon K, Fregatte, Brutschiff): höchstens eines zugleich (ab Stufe 4 zwei), nach einem Abschuss
+    // eine kurze Pause – ein wartendes kommt erst, wenn Platz ist
+    this.bigCd = Math.max(0, this.bigCd - dt);
+    const bigRoom = this.bigCd <= 0 && this.enemies.filter((q) => q.kind === 'boss' && !q.nest && !q.hive).length < this.maxBigs;
+    const due = this.enemies.length < this.fieldCap + 4 ? this.reinforce.find((g) => this.waveT >= g.t && (g.kinds[0] !== 'boss' || bigRoom)) : undefined;
     if (this.pendingSpawn >= 0) {
       this.pendingSpawn -= dt;
       if (this.pendingSpawn < 0) { this.pendingSpawn = -1; this.spawnWave(); }
@@ -3109,8 +3147,10 @@ export class ShooterGame implements MiniGame {
       this.section = 'none';
       this.offerCards();
       return;
-    } else if (this.wave >= 0 && this.waveT > (!this.counted ? 35 : this.isBossWave(this.wave + 1) ? 100 : 75) && !this.isBossWave(this.wave) && this.wave + 1 < this.totalWaves) {
-      // zu langsam: nächste Welle kommt trotzdem (ohne Verbesserung)
+    } else if (this.wave >= 0 && this.waveT > (!this.counted ? 35 : this.isBossWave(this.wave + 1) ? 100 : 75) && !this.isBossWave(this.wave) && this.wave + 1 < this.totalWaves
+      && !this.reinforce.length && this.liveFoes <= Math.max(10, this.fieldCap * 0.35)) {
+      // zu langsam: nächste Welle kommt trotzdem (ohne Verbesserung) – aber erst, wenn die alte ausgedünnt ist und keine
+      // Gruppe mehr wartet; sonst würden sich die Wellen endlos stapeln
       this.spawnWave();
     }
     this.updatePlayer(dt);
@@ -3202,6 +3242,12 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Welle besiegt? (Nest und Piratenfrachter zählen nicht mit – sie bleiben) */
+  /** Großkampfschiffe, die zugleich im Feld sein dürfen */
+  private get maxBigs(): number { return this.level >= 4 ? 2 : 1; }
+
+  /** fliegende Gegner (ohne Türme, Nester, Plattformen) */
+  private get liveFoes(): number { return this.enemies.filter((e) => !e.parent && !e.nest && !e.plat && !e.hive).length; }
+
   private get waveCleared(): boolean {
     return this.enemies.every((e) => e.nest || e.parent?.nest || e.kind === 'cargo' || e.plat || e.hive);
   }
@@ -3930,10 +3976,20 @@ export class ShooterGame implements MiniGame {
           // große Schiffe halten Abstand um ihren Rumpf herum
           const keep = (e.kind === 'boss' ? 240 : e.kind === 'kanone' ? 190 : e.kind === 'rakete' ? 240 : e.kind === 'kk' ? 230 : 170) + Math.max(0, e.r - s.r) * 1.2;
           const radial = clamp((d - keep) / 60, -1, 1);
-          const side = Math.abs(radial) < 0.5 ? 0.45 : 0.15;
+          // Großkampfschiffe (mindestens doppelte Grundgröße, z. B. Xenon K, Piratenträger) kreisen nicht, sondern halten
+          // ihre Stellung und gleiten nur wenig seitwärts; kleinere Bosse umkreisen ihr Ziel wie bisher
+          const capital = e.kind === 'boss' && e.r >= s.r * 2;
+          const side = capital ? (Math.abs(radial) < 0.5 ? 0.12 : 0) : Math.abs(radial) < 0.5 ? 0.45 : 0.15;
           wx = (dx / d) * radial + (-dy / d) * e.dir * side;
           wy = (dy / d) * radial + (dx / d) * e.dir * side;
-          if (e.kind === 'boss') face = Math.atan2(e.vy, e.vx);
+          if (e.kind === 'boss' && !capital) face = Math.atan2(e.vy, e.vx);
+          else if (capital) {
+            // nur drehen, wenn es wirklich auf ein Ziel zufliegt (mit Spielraum, damit es nicht hin und her pendelt);
+            // in Stellung behält es seinen Kurs – die Türme schwenken selbst
+            if (d > keep * 1.4) e.appr = true;
+            else if (d < keep * 1.1) e.appr = false;
+            face = e.appr ? aimAt : e.ang;
+          }
         }
         const wl = Math.hypot(wx, wy);
         want = Math.atan2(wy, wx);
@@ -3946,7 +4002,9 @@ export class ShooterGame implements MiniGame {
         want = Math.atan2(clamp(e.y, 200, this.WH - 200) - e.y, clamp(e.x, 200, this.WW - 200) - e.x);
         if (fighter) face = want;
       }
-      e.ang = wrapA(turnTo(e.ang, face, TURN[e.kind] * (e.elite === 'flink' ? 1.4 : 1) * dt));
+      // große Schiffe drehen langsamer (Xenon K etwa wie der Raptor, gut 4° je Sekunde)
+      const turnK = e.kind === 'boss' ? 1 / Math.max(1, (e.r / s.r) * 0.5) : 1;
+      e.ang = wrapA(turnTo(e.ang, face, TURN[e.kind] * turnK * (e.elite === 'flink' ? 1.4 : 1) * dt));
       // Jäger fliegen dorthin, wohin ihre Nase zeigt; die schweren Schiffe können seitlich versetzen
       const mvA = fighter ? e.ang : want;
       const k = Math.min(1, dt * (fighter ? 3 : 2));
@@ -3988,6 +4046,7 @@ export class ShooterGame implements MiniGame {
         } else e.cd = 0.7;
       }
     }
+    this.separateEnemies(dt);
     // gegnerische Raketen
     for (const m of this.eMissiles) {
       const mw = m.target === 'f' ? this.wardOf(m) : null;
@@ -4321,6 +4380,7 @@ export class ShooterGame implements MiniGame {
   private killEnemy(e: Enemy, byPlayer: boolean): void {
     if (!this.enemies.includes(e)) return;
     this.enemies = this.enemies.filter((q) => q !== e && q.parent !== e);
+    if (e.kind === 'boss' && !e.nest && !e.hive) this.bigCd = 15;
     this.explode(e.x, e.y, SPEC[e.kind].color, e.kind === 'boss' ? 4 : e.r / 10);
     if (e.elite) this.eliteDeath(e);
     if (!byPlayer) return;

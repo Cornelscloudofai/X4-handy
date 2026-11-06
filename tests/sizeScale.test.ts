@@ -126,3 +126,67 @@ describe('Neue Großschiffe: Xenon P, Piratenträger', () => {
     setSizeScale('bisher', false);
   });
 });
+
+describe('Großkampfschiffe: ruhig, begrenzt, ohne Überlappen', () => {
+  type T = { kind: string; x: number; y: number; r: number; ang: number; vx: number; vy: number; hp: number; max: number; parent?: unknown; cd: number };
+  type A = { enemies: T[]; px: number; py: number; wave: number; reinforce: { t: number; kinds: string[]; from: number }[]; waveT: number; makeEnemy(k: string, x: number, y: number): T; spawnBoss(mini?: boolean): void };
+  const mk = (level = 1, mission: 'station' | 'nest' = 'station') => {
+    const g = new ShooterGame({ level: level as 1, seed: 2, mutator: null, mode: 'normal', mission, loadout: { ...DEFAULT_LOADOUT } }, 'xenon');
+    g.resize(390, 780);
+    for (let i = 0; i < 90; i++) g.update(1 / 60);
+    return { g, a: g as unknown as A };
+  };
+
+  it('Xenon K dreht sich nicht im Kreis: in Stellung hält er seinen Kurs, Drehung höchstens gut 4° je Sekunde', () => {
+    setSizeScale('x4', false);
+    const { g, a } = mk();
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    a.spawnBoss(true);
+    const k = a.enemies.find((e) => e.kind === 'boss')!;
+    k.x = a.px; k.y = a.py - 900;
+    let turned = 0, last = k.ang, maxRate = 0;
+    for (let i = 0; i < 60 * 30; i++) {
+      for (const e of a.enemies) { e.hp = e.max; }
+      g.update(1 / 60);
+      let d = k.ang - last; d = Math.atan2(Math.sin(d), Math.cos(d));
+      turned += Math.abs(d); maxRate = Math.max(maxRate, Math.abs(d) * 60); last = k.ang;
+    }
+    expect(maxRate).toBeLessThan(0.08);
+    // in 30 s höchstens eine halbe Drehung (vorher drehte er sich mehrmals ganz herum)
+    expect(turned).toBeLessThan(Math.PI);
+    setSizeScale('bisher', false);
+  });
+
+  it('höchstens ein Xenon K zugleich (Stufe 4 und 5: zwei), weitere warten', () => {
+    setSizeScale('x4', false);
+    for (const [level, max] of [[1, 1], [4, 2]] as const) {
+      const { g, a } = mk(level);
+      a.enemies.length = 0; a.wave = 99;
+      a.reinforce.length = 0;
+      for (let b = 0; b < 5; b++) a.reinforce.push({ t: 0, kinds: ['boss'], from: b });
+      let most = 0;
+      for (let i = 0; i < 60 * 20; i++) {
+        for (const e of a.enemies) e.hp = e.max;
+        g.update(1 / 60);
+        most = Math.max(most, a.enemies.filter((e) => e.kind === 'boss').length);
+      }
+      expect(most).toBe(max);
+      expect(a.reinforce.filter((r) => r.kinds[0] === 'boss').length).toBe(5 - max);
+    }
+    setSizeScale('bisher', false);
+  });
+
+  it('Gegner, die übereinander auftauchen, schieben sich auseinander', () => {
+    setSizeScale('x4', false);
+    const { g, a } = mk();
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    a.spawnBoss(true);
+    const k = a.enemies.find((e) => e.kind === 'boss')!;
+    k.x = a.px + 1500; k.y = a.py - 1500;
+    const small = ['kanone', 'p', 'm'].map((kind) => { const e = a.makeEnemy(kind === 'kanone' ? 'xs' : kind, k.x + 5, k.y + 5); a.enemies.push(e); return e; });
+    for (let i = 0; i < 60 * 4; i++) { for (const e of a.enemies) e.hp = e.max; g.update(1 / 60); }
+    for (const e of small.filter((q) => q.kind !== 'm')) expect(Math.hypot(e.x - k.x, e.y - k.y)).toBeGreaterThan(k.r * 1.5);
+    setSizeScale('bisher', false);
+  });
+});
+

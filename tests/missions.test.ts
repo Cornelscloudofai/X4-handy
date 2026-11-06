@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ShooterGame } from '../src/minigames/shooter';
 import { MISSIONS, MISSION_IDS, recordKey, type Mission } from '../src/minigames/missions';
-import { best, recordResult, resetRecords } from '../src/minigames/records';
+import { best, recordResult, resetRecords, totalStars, unlocked } from '../src/minigames/records';
 import type { GameResult, Level } from '../src/minigames/common';
 
 const DT = 1 / 60;
@@ -200,4 +200,16 @@ describe('Kampf: Einsätze', () => {
     expect(best('pirates', 1)).toBeNull();
     expect(recordKey('pirates', 'geleit')).toBe('pirates');
   }, 120000);
+
+  it('Sterne aus Einsätzen zählen für die Freischaltung von Stufe 4 und 5 mit', () => {
+    resetRecords();
+    const win = { points: 1000, stars: 3, success: true, lines: [], goals: [] } as unknown as Parameters<typeof recordResult>[3];
+    for (const l of [1, 2, 3] as const) recordResult(recordKey('xenon', 'nest'), l, 'normal', win);
+    recordResult(recordKey('xenon', 'station'), 1, 'normal', win);
+    expect(totalStars('xenon')).toBe(12);
+    expect(unlocked('xenon', 5)).toBe(true);
+    // andere Seite bleibt gesperrt
+    expect(unlocked('khaak', 5)).toBe(false);
+    resetRecords();
+  });
 });
