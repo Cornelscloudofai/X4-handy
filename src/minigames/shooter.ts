@@ -2487,7 +2487,9 @@ export class ShooterGame implements MiniGame {
         else this.reinforce.push({ t: this.mission === 'konvoi' ? 1.5 + g * 1.2 : (6 + g * (groups > 3 ? 3.5 : 5)) / (this.big > 1 ? 2 : 1) + this.r() * 3, kinds: part, from });
       }
       // Großziele mitten in der Welle (ab Fregatten-Stärke): eine kleinere Fregatte bzw. ein K-Segment mit Türmen
-      const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : this.power >= 3.5 && this.wave >= 1 ? 1 : 0;
+      // in Einsätzen ab Stufe 2 auch mit kleinem Schiff ab der zweiten Welle eines (sonst sähe man Fregatte, Piratenträger
+      // und Xenon K dort nie)
+      const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : (this.power >= 3.5 || (this.mission !== 'geleit' && this.level >= 2)) && this.wave >= 1 ? 1 : 0;
       // in den Einsätzen gegen Piraten kommt statt der Fregatte manchmal der Piratenträger (ab Stufe 3 öfter)
       for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5), carrier: this.side === 'pirate' && this.mission !== 'geleit' && this.r() < (this.level >= 3 ? 0.5 : 0.3) });
       // Schwärme kleiner Schiffe: kommen fast gleichzeitig (innerhalb von gut einer Sekunde) aus verschiedenen
@@ -2695,10 +2697,9 @@ export class ShooterGame implements MiniGame {
         // Kha'ak-Brutschiff: Kyon-Türme (Strahl wie der Xenon-Laser) auf den runden Sockeln links und rechts,
         // Brutkästen auf den beiden Brutkammern vorn
         : [[-47, -2, 'laser'], [47, -2, 'laser'], [-25, -27, 'brut'], [25, -27, 'brut']];
-    // Großziel: nur die beiden Flügeltürme; Kha'ak-Zerstörer: Kyon-Türme auf den Sockelpaaren an Bug und Heck
-    // Großziel: nur die beiden Flügeltürme (Xenon K: die beiden L-Türme mittschiffs und fünf M-Türme); Kha'ak-Zerstörer: Kyon-Türme
+    // Großziel: nur die beiden Flügeltürme (Xenon K: wie der Boss je nach Stufe bewaffnet); Kha'ak-Zerstörer: Kyon-Türme
     // auf den Sockelpaaren an Bug und Heck
-    const offs = small ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? all.filter((m, i) => m[2] === 'plasma' && i < 2 || m[2] === 'm' && i % 3 === 0) : all.slice(0, 2))
+    const offs = small ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? this.kMounts() : all.slice(0, 2))
       : this.side === 'xenon' ? this.kMounts() : all;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
@@ -3555,7 +3556,7 @@ export class ShooterGame implements MiniGame {
         const ox = this.px - sn * gx + c * fwd, oy = this.py + c * gx + sn * fwd;
         for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < w.pellets; p++) {
           const a = a0 + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter;
-          if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7), w.range, w.color); continue; }
+          if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7), w.range, w.color, this.ship.gunSize === 'l'); continue; }
           this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), hullPierce: w.hullPierce || undefined });
         }
       }
@@ -3690,7 +3691,8 @@ export class ShooterGame implements MiniGame {
       if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < 0.15) {
         for (let p = 0; p < w.pellets; p++) {
           const a = t.a + (this.r() - 0.5) * 2 * w.jitter;
-          if (w.rail) { this.fireRail(x + Math.cos(a) * 8, y + Math.sin(a) * 8, a, this.baseDmg * w.dmg, w.range, w.color); continue; }
+          // L-Türme des Trägers: schwere Lanze (orange, dick, langes Nachglühen)
+          if (w.rail) { this.fireRail(x + Math.cos(a) * 8, y + Math.sin(a) * 8, a, this.baseDmg * w.dmg, w.range, w.color, !!t.L); continue; }
           this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.baseDmg * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 4), pierce: 0 });
         }
         t.cd = w.interval * this.tempo;

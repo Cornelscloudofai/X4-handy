@@ -326,9 +326,12 @@ for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['fl
   if (st.mission !== mission) fail(`Einsatz ${mission}: falscher Einsatz (${st.mission})`);
   if (st.wave < 0) fail(`Einsatz ${mission}: keine Gegner`);
   await page.screenshot({ path: `${out}/mg-17-${mission}-${kind}.png` });
-  await page.click('#minigame [data-mg="pause"]');
-  await page.click('#minigame [data-mg="abort"]');
-  await page.waitForTimeout(200);
+  // Einsatz vorzeitig zu Ende (z. B. Jäger zerstört): gleich über den Ergebnisbildschirm zurück, sonst pausieren und abbrechen
+  if (await page.locator('#minigame [data-mg="pause"]').isVisible()) {
+    await page.click('#minigame [data-mg="pause"]');
+    await page.click('#minigame [data-mg="abort"]');
+    await page.waitForTimeout(200);
+  }
   await page.click('#minigame [data-mg="quit"]');
   await page.waitForTimeout(200);
 }
