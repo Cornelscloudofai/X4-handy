@@ -123,6 +123,15 @@ describe('Neue Großschiffe: Xenon P, Piratenträger', () => {
     b.launchT = 0.05;
     for (let i = 0; i < 10; i++) g.update(1 / 60);
     expect(a.enemies.some((e) => e.kind === 'jaeger')).toBe(true);
+    // als Großziel in Einsätzen: Träger mit Flaks und Startbahn, aber halbe Punkte (mini)
+    const c = mk('pirate', 3).a;
+    c.enemies.length = 0;
+    (c as unknown as { spawnBoss(mini: boolean, from: number, carrier: boolean): void }).spawnBoss(true, 0, true);
+    const cb = c.enemies.find((e) => e.kind === 'boss')! as T & { mini?: boolean };
+    expect(cb.mini).toBe(true);
+    expect(cb.launchT).toBeGreaterThan(0);
+    expect(flak(c)).toBe(6);
+    expect(cb.r).toBeCloseTo(boss.r, 0);
     setSizeScale('bisher', false);
   });
 });

@@ -515,7 +515,8 @@ export const TURRETS: Record<TurretId, TurretDef> = {
     gun: { dmg: 42, rate: 3, amt: 4, mag: 8, reload: 5, v: 2000, life: 1.235, angle: 1.15 } },
   plasma: { name: 'Plasmaturm', desc: 'Zwei schwere Plasmageschosse, dann sieben Sekunden Pause; schwenkt langsam.', turn: 40, color: '#a6ff6b', w: 4,
     gun: { dmg: 750, rate: 1, amt: 1, mag: 2, reload: 7, v: 1000, life: 5.5, angle: 0.8 } },
-  boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, etwa ein Schuss pro Sekunde; schwenkt langsam.', turn: 40, color: '#e0c3ff', w: 3, rail: true,
+  // M-Lanze: blasses Blaulila, kurzer schmaler Blitz (die schwere L-Lanze ist kräftig violett und glüht nach)
+  boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, etwa ein Schuss pro Sekunde; schwenkt langsam.', turn: 40, color: '#c9d6ff', w: 3, rail: true,
     gun: { dmg: 800, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.57, angle: 0.18 } },
 };
 export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
@@ -530,7 +531,7 @@ export const LTURRETS: Record<LTurretId, LTurretDef> = {
     gun: { dmg: 2200, rate: 0.8, amt: 1, mag: 2, reload: 6, v: 1100, life: 6.5, angle: 0.6 } },
   tau: { name: 'Schwerer Tau-Beschleuniger-Turm', desc: 'Vier Geschosse je Schuss in schneller Folge – verheerend auf mittlere Entfernung.', turn: 70, color: '#ff5a5a', w: 2.6, barrel: 'split-lturm-rohr-tau-ki',
     gun: { dmg: 125, rate: 2.4, amt: 4, mag: 8, reload: 4.5, v: 2300, life: 1.6, angle: 1 } },
-  boson: { name: 'Schwerer Bosonenlanzen-Turm', desc: 'Blitzschneller, sehr schwerer Lanzenstrahl, der sofort trifft – schwenkt langsam.', turn: 25, color: '#e0c3ff', w: 4, rail: true, barrel: 'split-lturm-rohr-boson-ki',
+  boson: { name: 'Schwerer Bosonenlanzen-Turm', desc: 'Blitzschneller, sehr schwerer Lanzenstrahl, der sofort trifft – schwenkt langsam.', turn: 25, color: '#b45cff', w: 4, rail: true, barrel: 'split-lturm-rohr-boson-ki',
     gun: { dmg: 2400, rate: 0.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.7, angle: 0.15 } },
   neutron: { name: 'Schwerer Neutronen-Gatling-Turm', desc: 'Langer, dichter Geschossstrom, dann nachladen – viel Druck auf Jäger.', turn: 70, color: '#ff8a3d', w: 2.6, barrel: 'split-lturm-rohr-neutron-ki',
     gun: { dmg: 48, rate: 14, amt: 1, mag: 100, reload: 7, v: 2700, life: 1.7, angle: 0.4 } },

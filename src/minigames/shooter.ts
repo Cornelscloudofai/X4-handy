@@ -162,6 +162,8 @@ interface Enemy {
   armed?: boolean; launchT?: number; launched?: number;
   /** Großkampfschiff im Anflug auf sein Ziel (sonst hält es Stellung und Kurs) */
   appr?: boolean;
+  /** Piratenträger, der als Großziel kommt (Einsätze) */
+  carrier?: boolean;
   /** Kha'ak: Cluster (fliegt geschlossen bis kurz vor dem Ziel) und Platz darin */
   cl?: number; slotX?: number; slotY?: number; slotFlip?: boolean;
   /** Kha'ak: Kyon-Strahl lädt (Restzeit) */
@@ -570,7 +572,7 @@ export class ShooterGame implements MiniGame {
   get rules(): Rules {
     const bounty = this.mutator?.id === 'bounty' ? ' (Kopfgeld: ×1,5)' : '';
     const foes = this.side === 'pirate'
-      ? `Abschüsse: Jäger 100, Raketenboot 200, Kanonenboot und Schildträger 250, Geschützturm 200, Piratenträger 1.500, Fregatte als Großziel mitten in der Welle 750${bounty}`
+      ? `Abschüsse: Jäger 100, Raketenboot 200, Kanonenboot und Schildträger 250, Geschützturm 200, Piratenträger 1.500, als Großziel mitten in der Welle 750 (meist die Fregatte, in Einsätzen auch der Träger)${bounty}`
       : this.side === 'xenon'
         ? `Abschüsse: Xenon N 60, Xenon M und Schirmdrohne 250, Xenon P 500, Geschützturm 200, Xenon K 1.500 (als Großziel 750)${bounty}`
         : `Abschüsse: Kha’ak-Späher 70, Jäger 130, Abfangjäger 220, Korvette 300, Kyon-Turm und Brutkammer 200, Brutschiff 1.500 (als Großziel 750)${bounty}`;
@@ -803,7 +805,7 @@ export class ShooterGame implements MiniGame {
   /** Pause nach dem Abschuss eines Großkampfschiffs, bis das nächste kommen darf (s) */
   private bigCd = 0;
   /** Verstärkung einer Welle: kommt einige Sekunden später von anderer Seite */
-  private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean }[] = [];
+  private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean; carrier?: boolean }[] = [];
   /** Elite-Gegner, die in dieser Welle noch kommen, und dafür in Frage kommende Gegner */
   private eliteLeft = 0;
   private eliteRest = 0;
@@ -821,7 +823,8 @@ export class ShooterGame implements MiniGame {
   private aim: { id: number; ox: number; oy: number; kx: number; ky: number } | null = null;
   private readonly ctrl: ControlMode;
   /** Lanzenblitze: von – bis, Restzeit, Farbe */
-  private rails: { x1: number; y1: number; x2: number; y2: number; t: number; color: string }[] = [];
+  /** Lanzenstrahlen: t läuft von max auf 0; heavy = schwerer L-Turm (breiter, heller, glüht länger nach) */
+  private rails: { x1: number; y1: number; x2: number; y2: number; t: number; max?: number; heavy?: boolean; color: string }[] = [];
   private done: GameResult | null = null;
 
   constructor(cfg: GameCfg, private side: Side) {
@@ -2485,7 +2488,8 @@ export class ShooterGame implements MiniGame {
       }
       // Großziele mitten in der Welle (ab Fregatten-Stärke): eine kleinere Fregatte bzw. ein K-Segment mit Türmen
       const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : this.power >= 3.5 && this.wave >= 1 ? 1 : 0;
-      for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5) });
+      // in den Einsätzen gegen Piraten kommt statt der Fregatte manchmal der Piratenträger (ab Stufe 3 öfter)
+      for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5), carrier: this.side === 'pirate' && this.mission !== 'geleit' && this.r() < (this.level >= 3 ? 0.5 : 0.3) });
       // Schwärme kleiner Schiffe: kommen fast gleichzeitig (innerhalb von gut einer Sekunde) aus verschiedenen
       // Richtungen, kurz nach der ersten Gruppe – so steigt der Druck, statt dass sie nacheinander eintrudeln
       const swarms = this.swarms(this.wave), sw = swarms.reduce((a, b) => a + b, 0), swT = 3 + this.r() * 2;
@@ -2657,9 +2661,11 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Boss weit voraus auf der Route – oder als Großziel (mini) mitten in einer Welle aus einer Anflugrichtung */
-  private spawnBoss(mini = false, from = 0): void {
+  private spawnBoss(mini = false, from = 0, carrier = false): void {
+    // Piratenträger als Großziel (in Einsätzen): sieht aus und kämpft wie der Boss, zählt aber als Großziel
+    const small = mini && !carrier;
     // X4-Größe: der Xenon K ist ein XL-Schiff (1,7 km), Fregatte und Brutschiff entsprechend; die Türme wachsen mit
-    const k = enemyScale('boss', this.side, mini);
+    const k = enemyScale('boss', this.side, small);
     let [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120 + 34 * k, this.fY - 1100 - 34 * k * 1.5)];
     // Nest: nicht mitten in den Verteidigern am Nest, sondern ein Stück draußen auf einem Ring darum
     if (this.mission === 'nest') {
@@ -2673,9 +2679,10 @@ export class ShooterGame implements MiniGame {
     b.sh = b.shMax = bs.sh;
     b.r = 34 * k;
     b.mini = mini;
+    b.carrier = carrier || undefined;
     this.enemies.push(b);
     type Mount = [number, number, ('laser' | 'plasma' | 'brut' | 'm' | 'flak')?];
-    const all: Mount[] = this.side === 'pirate' && !mini
+    const all: Mount[] = this.side === 'pirate' && !small
       // Piratenträger: Vierlings-Flak auf den sechs Ringsockeln, auf Stufe 1 und 2 nur vier davon
       ? PIRATE_CARRIER_MOUNTS.slice(0, this.level >= 3 || this.big > 1 ? 6 : 4)
       : this.side === 'pirate'
@@ -2691,7 +2698,7 @@ export class ShooterGame implements MiniGame {
     // Großziel: nur die beiden Flügeltürme; Kha'ak-Zerstörer: Kyon-Türme auf den Sockelpaaren an Bug und Heck
     // Großziel: nur die beiden Flügeltürme (Xenon K: die beiden L-Türme mittschiffs und fünf M-Türme); Kha'ak-Zerstörer: Kyon-Türme
     // auf den Sockelpaaren an Bug und Heck
-    const offs = mini ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? all.filter((m, i) => m[2] === 'plasma' && i < 2 || m[2] === 'm' && i % 3 === 0) : all.slice(0, 2))
+    const offs = small ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? all.filter((m, i) => m[2] === 'plasma' && i < 2 || m[2] === 'm' && i % 3 === 0) : all.slice(0, 2))
       : this.side === 'xenon' ? this.kMounts() : all;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
@@ -2708,7 +2715,7 @@ export class ShooterGame implements MiniGame {
     }
     if (!mini) this.bossT = 0;
     // Piratenträger: startet von seiner Startbahn Jäger
-    if (this.side === 'pirate' && !mini) { b.launchT = 6; b.launched = 0; }
+    if (this.side === 'pirate' && !small) { b.launchT = 6; b.launched = 0; }
   }
 
   /**
@@ -2787,12 +2794,12 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 vier L- und acht M-Türme, Stufe 2 sechs und elf, ab Stufe 3 (und gegen
+   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 vier L- und vier M-Türme, Stufe 2 sechs und sieben, ab Stufe 3 (und gegen
    * den Träger) alle 8 L und 14 M; zuerst die L-Türme mittschiffs, die M-Türme gleichmäßig über das Schiff verteilt
    */
   private kMounts(): typeof XENON_K_MOUNTS {
     const full = this.level >= 3 || this.big > 1;
-    const nL = full ? 8 : 2 + this.level * 2, nM = full ? 14 : 5 + this.level * 3;
+    const nL = full ? 8 : 2 + this.level * 2, nM = full ? 14 : 1 + this.level * 3;
     // L: große Plasmatürme, zuerst die mittschiffs (Reihenfolge in XENON_K_MOUNTS)
     const L = XENON_K_MOUNTS.filter((m) => m[2] !== 'm').slice(0, nL);
     const M = XENON_K_MOUNTS.filter((m) => m[2] === 'm');
@@ -3153,10 +3160,10 @@ export class ShooterGame implements MiniGame {
       this.pendingSpawn -= dt;
       if (this.pendingSpawn < 0) { this.pendingSpawn = -1; this.spawnWave(); }
     } else if (due) {
-      if (due.kinds[0] === 'boss') this.spawnBoss(true, due.from);
+      if (due.kinds[0] === 'boss') this.spawnBoss(true, due.from, due.carrier);
       else this.spawnGroup(due.kinds, due.from, due.swarm);
       this.reinforce = this.reinforce.filter((g) => g !== due);
-      this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? 'Piratenfregatte im Anflug!' : this.side === 'xenon' ? 'Xenon K im Anflug!' : 'Brutschiff im Anflug!') : due.swarm ? (this.side === 'khaak' ? `Cluster im Anflug! (${due.kinds.length})` : `Schwarm im Anflug! (${due.kinds.length})`) : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
+      this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? (due.carrier ? 'Piratenträger im Anflug!' : 'Piratenfregatte im Anflug!') : this.side === 'xenon' ? 'Xenon K im Anflug!' : 'Brutschiff im Anflug!') : due.swarm ? (this.side === 'khaak' ? `Cluster im Anflug! (${due.kinds.length})` : `Schwarm im Anflug! (${due.kinds.length})`) : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
       sfx.alarm();
     } else if (this.wave >= 0 && this.waveCleared && !this.reinforce.length) {
       // Welle besiegt
@@ -3583,7 +3590,7 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Bosonenlanze: blitzschneller Strahl, trifft sofort das erste Ziel auf der Linie */
-  private fireRail(ox: number, oy: number, a: number, dmg: number, range: number, color: string): void {
+  private fireRail(ox: number, oy: number, a: number, dmg: number, range: number, color: string, heavy = false): void {
     const c = Math.cos(a), sn = Math.sin(a);
     let hitT = range, hitE: Enemy | null = null, hitM: EMissile | null = null, hitMine: (typeof this.mines)[number] | null = null;
     const along = (x: number, y: number, r: number): number | null => {
@@ -3604,7 +3611,8 @@ export class ShooterGame implements MiniGame {
     if (hitM) { hitM.hp -= dmg; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y, 'Raketen abgeschossen'); } }
     if (hitMine) { hitMine.hp -= dmg; if (hitMine.hp <= 0) this.detonate(hitMine); }
     if (hitE || hitM || hitMine) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
-    this.rails.push({ x1: ox, y1: oy, x2, y2, t: 0.22, color });
+    // schwere L-Lanze glüht lange nach, M-Lanze blitzt nur kurz auf
+    this.rails.push({ x1: ox, y1: oy, x2, y2, t: heavy ? 0.65 : 0.16, max: heavy ? 0.65 : 0.16, heavy, color });
   }
 
   /** Strahler: je feuernde Bordkanone ein Strahl geradeaus; trifft das erste Ziel im Strahl (Schaden pro Sekunde) */
@@ -3724,7 +3732,7 @@ export class ShooterGame implements MiniGame {
       const mx = x + Math.cos(a0) * L, my = y + Math.sin(a0) * L;
       for (let p = 0; p < w.pellets; p++) {
         const a = a0 + (this.r() - 0.5) * 2 * w.jitter;
-        if (w.rail) { this.fireRail(mx, my, a, this.baseDmg * w.dmg, w.range, w.color); continue; }
+        if (w.rail) { this.fireRail(mx, my, a, this.baseDmg * w.dmg, w.range, w.color, true); continue; }
         this.bullets.push({ x: mx, y: my, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.baseDmg * w.dmg, from: 'p', life: w.life, color: w.color, w: Math.min(w.w, 5), pierce: 0 });
       }
       t.cd = w.interval * this.tempo;
@@ -3844,7 +3852,9 @@ export class ShooterGame implements MiniGame {
             e.cd = (this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8;
             // dicke Plasmakugel: leicht gestreut, gut sichtbar, schwer; auf große Reichweite entsprechend schneller
             const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08, v = Math.min(420, 175 * Math.sqrt(range / PLASMA_RANGE));
-            this.enemyShot(e, a2, v, 14 * this.capTurretDmg, '#ff6a3d', 6, (range + 60) / v);
+            // großer L-Plasmaturm: ab Stufe 3 90 Schaden je Kugel – zwei Treffer zerstören eine Mamba (100 Hülle, bis
+            // 100 Schild); auf Stufe 2 braucht es vier, auf Stufe 1 gut zwölf Treffer (Einstieg)
+            this.enemyShot(e, a2, v, (90 * [0.15, 0.5, 1, 1, 1][this.level - 1]) / this.enemyDmg, '#ff6a3d', 11, (range + 60) / v);
             // aus den Mündungen, nicht aus der Turmmitte
             const pb = this.bullets[this.bullets.length - 1];
             // Mündung des großen L-Plasmaturms: gut die Hälfte der Bildgröße vor dem Drehpunkt
@@ -3860,14 +3870,15 @@ export class ShooterGame implements MiniGame {
             if (e.salvoT <= 0) {
               const n = flak ? 4 : 2, i = n - e.salvo!, size = e.r * (flak ? 5.3 : 5);
               const lat = (flak ? [-0.2, -0.07, 0.07, 0.2] : [-0.025, 0.025])[i] * size, fwd = size * 0.55;
-              const v = flak ? 320 : 430;
-              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 5) * this.capTurretDmg, flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
+              // Repeater: schnelle, leichte Geschosse (drei Zweierstöße je Sekunde)
+              const v = flak ? 320 : 720;
+              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 1.2) * this.capTurretDmg, flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
               const pb = this.bullets[this.bullets.length - 1], c = Math.cos(a2), sn = Math.sin(a2);
               pb.x += c * fwd - sn * lat; pb.y += sn * fwd + c * lat;
-              e.salvo!--; e.salvoT = flak ? 0.07 : 0.09;
+              e.salvo!--; e.salvoT = flak ? 0.07 : 0.06;
             }
           } else if (e.cd <= 0 && tg) {
-            e.cd = (flak ? 1.4 : 1.1) + this.r() * 0.5;
+            e.cd = flak ? 1.4 + this.r() * 0.5 : 0.31 + this.r() * 0.05;
             e.salvo = flak ? 4 : 2; e.salvoT = 0;
           }
           continue;
@@ -3931,7 +3942,7 @@ export class ShooterGame implements MiniGame {
         }
       }
       // Piratenträger: Jäger von der Startbahn
-      if (e.kind === 'boss' && !e.mini && e.launchT != null) this.carrierLaunch(e, dt);
+      if (e.kind === 'boss' && e.launchT != null) this.carrierLaunch(e, dt);
       // Piratenfrachter (Überfall) fliegen stur zum Tor
       if (e.kind === 'cargo') { this.updateCargo(e, dt); continue; }
       // Nest: steht still; ohne Brutöffnungen feuert der Kern Ringe
@@ -4885,16 +4896,31 @@ export class ShooterGame implements MiniGame {
       ctx.globalCompositeOperation = 'lighter';
       ctx.lineCap = 'round';
       for (const r of this.rails) {
-        const k = r.t / 0.22;
+        const k = r.t / (r.max ?? 0.22);
         ctx.beginPath();
         ctx.moveTo(r.x1, r.y1);
         ctx.lineTo(r.x2, r.y2);
-        ctx.strokeStyle = rgba(r.color, 0.45 * k);
-        ctx.lineWidth = 2 + 7 * k;
-        ctx.stroke();
-        ctx.strokeStyle = rgba('#ffffff', 0.95 * k);
-        ctx.lineWidth = 1.2 + 1.2 * k;
-        ctx.stroke();
+        if (r.heavy) {
+          // schwere L-Lanze: weiter Halo, kräftiger Farbkern, gleißende Mitte; glüht langsam aus (Kern verblasst zuerst)
+          const g = k * k;
+          ctx.strokeStyle = rgba(r.color, 0.22 * k);
+          ctx.lineWidth = 10 + 26 * k;
+          ctx.stroke();
+          ctx.strokeStyle = rgba(r.color, 0.75 * k);
+          ctx.lineWidth = 4 + 9 * k;
+          ctx.stroke();
+          ctx.strokeStyle = rgba('#ffffff', g);
+          ctx.lineWidth = 2 + 3 * g;
+          ctx.stroke();
+        } else {
+          // M-Lanze: schmaler, blasser Blitz
+          ctx.strokeStyle = rgba(r.color, 0.4 * k);
+          ctx.lineWidth = 1.5 + 4 * k;
+          ctx.stroke();
+          ctx.strokeStyle = rgba('#ffffff', 0.8 * k);
+          ctx.lineWidth = 0.8 + 0.8 * k;
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
@@ -5699,7 +5725,7 @@ export class ShooterGame implements MiniGame {
     }
     // Brutkästen drehen nicht, sie sitzen fest auf dem Rumpf
     ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.weapon === 'brut' ? e.parent!.ang + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
-    const spr = enemySprite(e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && (kh || this.side === 'pirate') ? 'boss-mini' : e.kind, this.side === 'pirate' ? 'pirat' : this.side);
+    const spr = enemySprite(e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && !e.carrier && (kh || this.side === 'pirate') ? 'boss-mini' : e.kind, this.side === 'pirate' ? 'pirat' : this.side);
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
       const size = e.r * spr.scale;
