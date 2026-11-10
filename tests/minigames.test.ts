@@ -4,7 +4,7 @@ import { GasGame } from '../src/minigames/gas';
 import { CargoGame } from '../src/minigames/cargo';
 import { HighwayGame } from '../src/minigames/highway';
 import { OrbitGame, elements } from '../src/minigames/orbit';
-import { MODS, QUALITY, START_PARTS, craft, earnParts, modRange, modState, modStats, partsFor, refundOf, remove as removeMod, resetMods } from '../src/minigames/mods';
+import { MODS, QUALITY, START_PARTS, craft, earnParts, modRange, modState, modStats, partsFor, refundOf, remove as removeMod, resetMods, shipMods, slotCount } from '../src/minigames/mods';
 import { OreGame } from '../src/minigames/ore';
 import { PipesGame } from '../src/minigames/pipes';
 import { ShooterGame, clusterLayout, clusterSlots, jaegerClusters, khaakClusters } from '../src/minigames/shooter';
@@ -729,38 +729,80 @@ describe('Schiffsmodifikationen', () => {
     resetMods();
     expect(modState().parts).toBe(START_PARTS);
     const r = rng(7);
-    const m1 = craft('verstaerker', 1, r)!;
+    const m1 = craft('mamba', 'verstaerker', 1, undefined, r)!;
     expect(modState().parts).toBe(START_PARTS - QUALITY[1].cost);
     const [lo1, hi1] = modRange('verstaerker', 1);
     expect(m1.value).toBeGreaterThanOrEqual(lo1);
     expect(m1.value).toBeLessThanOrEqual(hi1);
     expect(m1.bonus.length).toBe(0);
     // zu wenig Teile: nichts passiert
-    expect(craft('zellen', 3, r)).toBeNull();
+    expect(craft('mamba', 'zellen', 3, undefined, r)).toBeNull();
     earnParts(40);
-    const m3 = craft('zellen', 3, r)!;
+    const m3 = craft('mamba', 'zellen', 3, undefined, r)!;
     expect(m3.bonus.length).toBe(2);
     expect(m3.bonus.every((b) => b.stat !== 'shield')).toBe(true);
-    // ein neuer Mod ersetzt den alten im selben Platz – der alte wird zerlegt, seine Modteile kommen zurück
+    // ein neuer Mod ersetzt den alten im selben Sockel – der alte wird zerlegt, seine Modteile kommen zurück
     const pBefore = modState().parts;
-    craft('kuehlung', 2, r);
-    expect(modState().slots.weapon?.id).toBe('kuehlung');
+    craft('mamba', 'kuehlung', 2, 0, r);
+    expect(shipMods('mamba').weapon?.[0]?.id).toBe('kuehlung');
     expect(modState().parts).toBe(pBefore - QUALITY[2].cost + refundOf(1));
     // Rumpfmods haben ihren Preis
-    craft('panzer', 1, r);
-    const st = modStats();
+    craft('mamba', 'panzer', 1, undefined, r);
+    const st = modStats('mamba');
     expect(st.hull).toBeGreaterThan(0.1);
     expect(st.speed).toBeLessThan(0);
+    // Mods gelten nur für ihr Schiff
+    expect(modStats('asp').hull).toBeUndefined();
     // Zerlegen gibt Modteile zurück (Testphase: alle)
     const p0 = modState().parts;
-    expect(removeMod('chassis')).toBe(refundOf(1));
+    expect(removeMod('mamba', 'chassis', 0)).toBe(refundOf(1));
     expect(modState().parts).toBe(p0 + refundOf(1));
-    expect(modState().slots.chassis).toBeUndefined();
+    expect(shipMods('mamba').chassis?.[0]).toBeNull();
     expect(partsFor(3, 'normal')).toBe(3);
     expect(partsFor(2, 'daily')).toBe(4);
     for (const d of Object.values(MODS)) for (const q of [1, 2, 3] as const) expect(d.range[q][0]).toBeLessThan(d.range[q][1]);
     for (const id of Object.keys(MODS)) for (const q of [1, 2] as const) expect(modRange(id, q)[1]).toBeLessThanOrEqual(modRange(id, (q + 1) as 2 | 3)[1]);
     resetMods();
+  });
+
+  it('Sockel je Schiff: nur passende Arten, große Schiffe mehrere', () => {
+    // Jäger ohne Werfer und Türme: kein Raketen- und kein Turmsockel; Mamba mit Werfer: Raketensockel
+    expect(slotCount('jaguar', 'missile')).toBe(0);
+    expect(slotCount('jaguar', 'turret')).toBe(0);
+    expect(slotCount('mamba', 'missile')).toBe(1);
+    expect(slotCount('mamba', 'weapon')).toBe(1);
+    // Fregatte: zwei Waffen-, zwei Turmsockel; Raptor (keine Bordwaffen): drei Turm-, zwei Hangarsockel
+    expect(slotCount('cobra', 'weapon')).toBe(2);
+    expect(slotCount('cobra', 'turret')).toBe(2);
+    expect(slotCount('raptor', 'weapon')).toBe(0);
+    expect(slotCount('raptor', 'turret')).toBe(3);
+    expect(slotCount('raptor', 'hangar')).toBe(2);
+    expect(slotCount('klapperschlange', 'shield')).toBe(2);
+    // ein Raketenmod lässt sich auf einem Schiff ohne Werfer nicht bauen
+    resetMods();
+    earnParts(40);
+    expect(craft('jaguar', 'magazin', 1)).toBeNull();
+    // zweiter Waffensockel der Cobra
+    craft('cobra', 'verstaerker', 1, 0);
+    craft('cobra', 'kuehlung', 1, 1);
+    expect(shipMods('cobra').weapon?.map((x) => x?.id)).toEqual(['verstaerker', 'kuehlung']);
+    expect((modStats('cobra').dmg ?? 0) > 0 && (modStats('cobra').rate ?? 0) > 0).toBe(true);
+    resetMods();
+  });
+
+  it('Umstellung: alte Mods (für alle Schiffe) werden ausgebaut, ihr voller Preis gutgeschrieben', () => {
+    // Speicher wie im Browser (im Arbeitsspeicher)
+    const had = 'localStorage' in globalThis, store = new Map<string, string>();
+    if (!had) (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) };
+    resetMods();
+    localStorage.setItem('x4-sektorbau-mods', JSON.stringify({ parts: 5, earned: 30, slots: { weapon: { id: 'verstaerker', q: 3, value: 0.6, roll: 0.5, bonus: [] }, shield: { id: 'zellen', q: 1, value: 0.2, roll: 0.5, bonus: [] } } }));
+    resetMods(null, false);
+    const s = modState();
+    expect(s.parts).toBe(5 + QUALITY[3].cost + QUALITY[1].cost);
+    expect(s.refunded).toBe(QUALITY[3].cost + QUALITY[1].cost);
+    expect(Object.keys(s.ships)).toEqual([]);
+    resetMods();
+    if (!had) delete (globalThis as { localStorage?: unknown }).localStorage;
   });
 
   it('wirken im Kampf: Tempo, Schild, Hülle, Schaden und Raketen', () => {

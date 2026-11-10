@@ -7,7 +7,7 @@ import {
   LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
   WING_IDS, loadout, sustainedDps, turretOf, weaponGun, wingCount, wingGearOf, wingOptions, wingRoom, type Loadout, type ShipId, type X4Gun,
 } from '../minigames/loadout';
-import { MODS, MOD_IDS, QUALITY, SLOTS, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, type ModSlot, type ModStat } from '../minigames/mods';
+import { MODS, MOD_IDS, QUALITY, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, shipMods, shipSlots, type ModSlot, type ModStat } from '../minigames/mods';
 import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
 import hangarDeck from '../assets/hangar/hangar-deck.jpg';
 import werkstattDeck from '../assets/hangar/werkstatt-deck.jpg';
@@ -19,6 +19,8 @@ export type LoMode = 'gear' | 'mods';
 export interface HangarStats { fire: number; hull: number; shield: number; speed: number; range: number }
 export interface LoModal {
   view?: LoView; slot?: ModSlot; fresh?: ModSlot; rollN?: number;
+  /** Werkstatt: Sockelnummer innerhalb der Art (große Schiffe haben mehrere) */
+  idx?: number;
   /** Ausrüstung oder Werkstatt */
   mode?: LoMode;
   /** Werte vor dem letzten Einbau (für die Vorschau in der Werteleiste) */
@@ -62,11 +64,14 @@ const GLYPH: Record<string, string> = {
   shield: '<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/>',
   turret: '<circle cx="12" cy="14" r="6"/><path d="M12 8V2"/>',
   mod: '<path d="M12 2l3 5h6l-3 5 3 5h-6l-3 5-3-5H3l3-5-3-5h6z"/>',
+  target: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   engine: '<path d="M8 4h8v8l-4 8-4-8z"/>',
   hull: '<path d="M4 8l8-5 8 5v8l-8 5-8-5z"/>',
   ship: '<path d="M12 2l4 9 5 4-9 3-9-3 5-4z"/>',
   wing: '<path d="M7 3l3 6 4 3-7 2-5-2 4-3z"/><path d="M17 10l2 4 3 2-5 1-4-1 3-2z"/>',
 };
+/** Plaketten-Symbol je Mod-Sockel */
+const MOD_GLYPH: Record<ModSlot, string> = { weapon: 'gun', engine: 'engine', shield: 'shield', chassis: 'hull', turret: 'turret', missile: 'rocket', hangar: 'wing', targeting: 'target' };
 const glyph = (k: string, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[k] ?? GLYPH.gun}</svg>`;
 const WEAPON_LOOK: Record<string, [string, string]> = {
   puls: ['gun', '#3fe0c5'], bolzen: ['gun', '#9fe870'], schrot: ['scatter', '#ffb547'], strahl: ['beam', '#5fb4ff'], plasma: ['plasma', '#ff6a3d'],
@@ -77,7 +82,7 @@ const MISSILE_LOOK: Record<string, string> = { lenk: '#ffb070', schwer: '#ff7a3a
 
 /** Werte des Schiffs mit Bewaffnung und Mods (für Werteleiste und Vergleich) */
 export function hangarStats(lo: Loadout = loadout()): HangarStats {
-  const d = SHIPS[lo.ship], mx = modStats();
+  const d = SHIPS[lo.ship], mx = modStats(lo.ship);
   const wd = WEAPONS[lo.weapon], ltd = LTURRETS[lo.lturret ?? 'plasma'];
   const g = weaponGun(wd, d.gunSize);
   const m = (k: ModStat) => 1 + (mx[k] ?? 0);
@@ -112,6 +117,7 @@ function anchors(id: ShipId): Record<string, [number, number]> {
     chassis: [0.64, 0.55],
     // Mod-Sockel der Werkstatt
     'mod-weapon': [0.5, 0.3], 'mod-engine': [0.5, 0.84], 'mod-shield': [0.32, 0.6], 'mod-chassis': [0.68, 0.6],
+    'mod-turret': [0.5 + (t[0] / s) * 0.87, 0.5 + (t[1] / s) * 0.87], 'mod-missile': [0.62, 0.45], 'mod-hangar': [0.7, 0.72], 'mod-targeting': [0.5, 0.14],
   };
 }
 
@@ -122,7 +128,7 @@ export function loadoutView(m: LoModal): string {
   const mode: LoMode = m.mode ?? (m.view === 'mod' ? 'mods' : 'gear');
   const view: LoView = m.view ?? 'home';
   const open = view !== 'home';
-  const ms = modState();
+  const ms = modState(), sm = shipMods(lo.ship);
   const st = hangarStats(lo);
   const pic = (id: ShipId) => spriteUrl(SHIPS[id].sprite + '-ki') ?? spriteUrl(SHIPS[id].fallback + '-ki');
   const wd = WEAPONS[lo.weapon], td = TURRETS[lo.turret], ltd = LTURRETS[lo.lturret ?? 'plasma'];
@@ -141,9 +147,11 @@ export function loadoutView(m: LoModal): string {
       { view: 'wing', key: 'wing', ic: 'wing', label: SHIPS[lo.ship].bays ? 'Hangar · Staffel' : 'Flügelleute', value: wingCount(lo.wing) ? `${wingCount(lo.wing)} Schiffe` : 'keine' },
       { view: 'shield', key: 'shield', ic: 'shield', label: `Schild ${ship.x4.shields}×${ship.cls}${ship.x4.mShields ? `+${ship.x4.mShields}×M` : ''}`, value: SHIELDS[lo.shield].name },
     ]
-    : SLOTS.map((sl) => {
-      const md = ms.slots[sl];
-      return { view: 'mod' as LoView, slot: sl, key: `mod-${sl}`, ic: ({ weapon: 'gun', engine: 'engine', shield: 'shield', chassis: 'hull' } as const)[sl], label: `Sockel ${SLOT_INFO[sl].name}`, value: md ? `${MODS[md.id].name} ${fmtStat(MODS[md.id].stat, md.value).split(' ')[0]}` : 'frei', cls: `mod ${md ? 'set' : 'free'}`, color: md ? QUALITY[md.q].color : '' };
+    : shipSlots(lo.ship).map(({ slot: sl, n }) => {
+      // je Art eine Plakette; große Schiffe haben mehrere Sockel derselben Art
+      const list = sm[sl] ?? [], set = list.filter((x) => !!x), md = set[0], best = set.reduce((q, x) => Math.max(q, x!.q), 0);
+      const value = n === 1 ? (md ? `${MODS[md.id].name} ${fmtStat(MODS[md.id].stat, md.value).split(' ')[0]}` : 'frei') : `${set.length} von ${n} belegt`;
+      return { view: 'mod' as LoView, slot: sl, key: `mod-${sl}`, ic: MOD_GLYPH[sl], label: `Sockel ${SLOT_INFO[sl].name}${n > 1 ? ` · ${n}×` : ''}`, value, cls: `mod ${set.length ? 'set' : 'free'}`, color: best ? QUALITY[best as 1 | 2 | 3].color : '' };
     });
   const curKey = view === 'mod' ? `mod-${m.slot ?? 'weapon'}` : view;
   const anc = anchors(lo.ship);
@@ -236,9 +244,12 @@ export function loadoutView(m: LoModal): string {
       return card({ key: 'shield', value: id, on: lo.shield === id, name: s.name, big: num(cap), sm: `Laden ×${String(s.regen).replace('.', ',')} · Pause ×${String(s.delay).replace('.', ',')}`, ic: 'shield', color: id === 'schwer' ? '#5fb4ff' : '#3fe0c5', ds: `${pct(s.cap, cur.cap)}${pct(s.regen, cur.regen)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(cur.name)}:</b> ${esc(cur.desc)}</div>`;
   } else if (view === 'mod') {
-    const slot: ModSlot = m.slot ?? 'weapon';
-    const cur = ms.slots[slot];
-    title = `Mod-Sockel ${SLOT_INFO[slot].name}`; sub = `${ms.parts} Modteile · der Wert wird beim Bau ausgewürfelt`;
+    const avail = shipSlots(lo.ship), slot: ModSlot = avail.some((x) => x.slot === m.slot) ? m.slot! : avail[0].slot;
+    const list = sm[slot] ?? [], n = list.length, idx = Math.min(n - 1, Math.max(0, m.idx ?? Math.max(0, list.findIndex((x) => !x))));
+    const cur = list[idx] ?? undefined;
+    title = `Mod-Sockel ${SLOT_INFO[slot].name}${n > 1 ? ` ${idx + 1}` : ''}`; sub = `${ms.parts} Modteile · ${esc(ship.name)} · der Wert wird beim Bau ausgewürfelt`;
+    // mehrere Sockel derselben Art: Reiter je Sockel
+    const tabs = n > 1 ? `<div class="segment mod-socks">${list.map((x, i) => `<button class="${i === idx ? 'on' : ''}" ${act('lo-view', { view: 'mod', slot, idx: i })}>${i + 1}${x ? ` · ${esc(MODS[x.id].name.split(' ')[0])}` : ' · frei'}</button>`).join('')}</div>` : '';
     const now = cur ? (() => {
       const d = MODS[cur.id], q = QUALITY[cur.q], [a, b] = modRange(cur.id, cur.q);
       return `<div class="mod-detail hgr-now" style="--q:${q.color}">
@@ -247,16 +258,16 @@ export function loadoutView(m: LoModal): string {
         <div class="mod-roll ${m.fresh === slot ? 'fresh' : ''}" data-key="roll-${slot}-${m.rollN ?? 0}" style="--v:${(cur.roll * 100).toFixed(1)}%"><i class="bar"></i><i class="mk"></i>
           <span class="lo">${esc(fmtStat(d.stat, a))}</span><span class="hi">${esc(fmtStat(d.stat, b))}</span></div>
         ${cur.bonus.length || d.cost ? `<ul class="mod-fx">${cur.bonus.map((x) => `<li class="pos">${esc(fmtStat(x.stat, x.value))}</li>`).join('')}${d.cost ? `<li class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</li>` : ''}</ul>` : ''}
-        <button class="btn small hgr-zerlegen" ${act('mod-remove', { slot })}>${icon('trash', 15)}Zerlegen (+${refundOf(cur.q)})</button></div>`;
+        <button class="btn small hgr-zerlegen" ${act('mod-remove', { slot, idx })}>${icon('trash', 15)}Zerlegen (+${refundOf(cur.q)})</button></div>`;
     })() : `<div class="mod-detail empty hgr-now"><p class="small muted" style="margin:0">Sockel frei. Wähle unten Mod und Güte – der Wert wird beim Bau ausgewürfelt, Spitzenwerte sind selten.</p></div>`;
     const short = { 1: 'Grundl.', 2: 'Fortg.', 3: 'Außerg.' } as const;
     const cards = MOD_IDS.filter((id) => MODS[id].slot === slot).map((id) => {
-      const d = MODS[id], na = d.stat === 'missiles' && !ship.x4.launchers;
+      const d = MODS[id];
       return `<div class="hgr-card mod ${cur?.id === id ? 'on' : ''}"><span class="hgr-art">${glyph('mod', 24)}</span><span class="hgr-nm">${esc(d.name)}</span>
-        <span class="hgr-sm wrap">${esc(d.desc)}${d.cost ? ` <span class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</span>` : ''}${na ? ` <span class="warn-text">Wirkt nicht bei der ${esc(ship.name)}.</span>` : ''}</span>
-        <span class="mod-qrow">${([1, 2, 3] as const).map((qq) => { const Q = QUALITY[qq], ok = ms.parts >= Q.cost; return `<button class="mod-qbtn2" style="--q:${Q.color}" ${ok ? act('mod-craft', { id, q: String(qq) }) : 'disabled'} title="${Q.name}"><b>${short[qq]}</b><span>${esc(fmtRange(id, qq))}</span><em>${Q.cost} ${icon('gift', 12)}</em></button>`; }).join('')}</span></div>`;
+        <span class="hgr-sm wrap">${esc(d.desc)}${d.cost ? ` <span class="neg">${esc(fmtStat(d.cost[0], d.cost[1]))}</span>` : ''}</span>
+        <span class="mod-qrow">${([1, 2, 3] as const).map((qq) => { const Q = QUALITY[qq], ok = ms.parts >= Q.cost; return `<button class="mod-qbtn2" style="--q:${Q.color}" ${ok ? act('mod-craft', { id, q: String(qq), idx }) : 'disabled'} title="${Q.name}"><b>${short[qq]}</b><span>${esc(fmtRange(id, qq))}</span><em>${Q.cost} ${icon('gift', 12)}</em></button>`; }).join('')}</span></div>`;
     }).join('');
-    body = `${now}<div class="hgr-cards">${cards}</div>`;
+    body = `${tabs}${now}<div class="hgr-cards">${cards}</div>`;
   } else if (view === 'art') {
     title = 'Darstellung'; sub = 'wie dein Schiff im Kampf aussieht';
     body = `<div class="segment" style="margin:0 14px">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
@@ -286,6 +297,7 @@ export function loadoutView(m: LoModal): string {
         <button class="hgr-arrow next" ${act('lo-ship', { dir: 1 })} aria-label="Nächstes Schiff">${icon('back', 18)}</button>
       </div>
       <div class="hgr-hots">${hotHtml}</div>
+      ${mode === 'mods' && ms.refunded ? `<div class="mod-refund"><b>Mods gelten jetzt je Schiff.</b> Deine bisherigen Mods wurden ausgebaut, ${ms.refunded} Modteile sind dir gutgeschrieben – bau sie dort ein, wo sie passen. <button class="btn small" ${act('mod-ack')}>Verstanden</button></div>` : ''}
     </div>
     <div class="hgr-stats">${gaugeHtml(false)}</div>
     <div class="hgr-foot"><button class="btn" ${act('mg-back')}>Fertig</button><button class="btn primary" ${act('ship-art-try')}>${icon('play', 16)}Probeflug</button></div>

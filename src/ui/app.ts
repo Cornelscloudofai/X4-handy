@@ -38,7 +38,7 @@ import { dailyOpts, minigameBack, minigameOpen, openMinigame, preloadMinigames, 
 import { unlocked } from '../minigames/records';
 import type { Mission } from '../minigames/missions';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
-import { MODS, QUALITY, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
+import { MODS, QUALITY, ackRefund, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
 import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutView';
 import { tuneFromSlider } from '../minigames/tunePanel';
 import { earnParts } from '../minigames/mods';
@@ -1360,7 +1360,7 @@ function onClick(e: MouseEvent): void {
       case 'lo-view': if (ui.modal?.type === 'loadout') {
         // Schublade öffnen oder schließen; beim Schließen endet die Vorschau in der Werteleiste
         const view = d.view as LoView;
-        ui.modal = { ...ui.modal, view, slot: (d.slot as ModSlot) ?? ui.modal.slot, mode: view === 'mod' ? 'mods' : ui.modal.mode, ...(view === 'home' ? { prev: undefined, undo: undefined } : {}) };
+        ui.modal = { ...ui.modal, view, slot: (d.slot as ModSlot) ?? ui.modal.slot, idx: d.idx != null ? Number(d.idx) : d.slot && d.slot !== ui.modal.slot ? undefined : ui.modal.idx, mode: view === 'mod' ? 'mods' : ui.modal.mode, ...(view === 'home' ? { prev: undefined, undo: undefined } : {}) };
         refresh();
       } break;
       case 'lo-mode': if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, mode: d.mode as LoMode, view: 'home', prev: undefined, undo: undefined }; refresh(); } break;
@@ -1380,10 +1380,10 @@ function onClick(e: MouseEvent): void {
       } break;
       case 'mod-craft': {
         if (ui.modal?.type !== 'loadout') break;
-        const mod = craft(d.id!, Number(d.q) as ModQuality);
+        const mod = craft(loadout().ship, d.id!, Number(d.q) as ModQuality, d.idx != null ? Number(d.idx) : undefined);
         if (!mod) { toast('Zu wenig Modteile', 'warn'); break; }
         const slot = MODS[mod.id].slot;
-        ui.modal = { ...ui.modal, view: 'mod', mode: 'mods', slot, fresh: slot, rollN: (ui.modal.rollN ?? 0) + 1 };
+        ui.modal = { ...ui.modal, view: 'mod', mode: 'mods', slot, idx: d.idx != null ? Number(d.idx) : ui.modal.idx, fresh: slot, rollN: (ui.modal.rollN ?? 0) + 1 };
         sfx.build();
         refresh();
         setTimeout(() => {
@@ -1395,9 +1395,10 @@ function onClick(e: MouseEvent): void {
         }, 1700);
         break;
       }
+      case 'mod-ack': ackRefund(); refresh(); break;
       case 'mod-remove': {
         if (ui.modal?.type !== 'loadout') break;
-        const back = removeMod(d.slot as ModSlot);
+        const back = removeMod(loadout().ship, d.slot as ModSlot, Number(d.idx ?? 0));
         toast(`Mod zerlegt${back ? `: +${back} Modteile` : ''}`, 'info');
         refresh();
         break;

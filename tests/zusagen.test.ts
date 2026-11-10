@@ -132,5 +132,65 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     expect(env(0.05)).toBeLessThan(0.01);
     for (let k = 0.05; k < 1; k += 0.05) expect(env(k + 0.05)).toBeGreaterThan(env(k));
   });
+
+  it('Verbesserungskarten passen zum Schiff: keine Raketenkarten ohne Werfer, keine Bordwaffenkarten ohne Bordwaffen', () => {
+    const offered = (lo: Partial<Loadout>) => {
+      const { a } = mk('pirate', 1, 'station', lo);
+      const g = a as unknown as { offerCards(): void; choosing: { id: string }[] | null; cards: Record<string, number> };
+      const seen = new Set<string>();
+      for (let i = 0; i < 200; i++) { g.offerCards(); for (const c of g.choosing ?? []) seen.add(c.id); }
+      g.choosing = null;
+      return seen;
+    };
+    // Jaguar: Puls, keine Werfer, keine Türme, keine Begleiter
+    const jag = offered({ ship: 'jaguar', weapon: 'puls', wing: {} });
+    for (const id of ['missiles', 'mreload', 'mdmg', 'tdmg', 'trate', 'wdmg', 'whull', 'hangar', 'focus', 'chain', 'overload']) expect(jag.has(id), id).toBe(false);
+    for (const id of ['spread', 'pierce', 'splash', 'heavy']) expect(jag.has(id), id).toBe(true);
+    // Strahler: Strahlkarten, kein Streuschuss; Lanze: Überladung
+    const beam = offered({ ship: 'mamba', weapon: 'strahl', wing: {} });
+    expect(beam.has('focus') && beam.has('chain') && beam.has('pierce') && beam.has('missiles')).toBe(true);
+    expect(beam.has('spread') || beam.has('splash') || beam.has('overload')).toBe(false);
+    const lance = offered({ ship: 'mamba', weapon: 'boson', wing: {} });
+    expect(lance.has('overload') && lance.has('pierce')).toBe(true);
+    expect(lance.has('spread')).toBe(false);
+    // Raptor: keine Bordwaffen, aber Türme und Staffel im Hangar
+    const rap = offered({ ship: 'raptor', wing: { mamba: 4 } });
+    for (const id of ['spread', 'pierce', 'rapid', 'focus', 'overload', 'missiles']) expect(rap.has(id), id).toBe(false);
+    for (const id of ['tdmg', 'tturn', 'wdmg', 'whull', 'hangar']) expect(rap.has(id), id).toBe(true);
+  });
+
+  it('Durchschlag gilt auch für Strahl und Bosonenlanze', () => {
+    for (const weapon of ['strahl', 'boson'] as const) {
+      const { g, a } = mk('xenon', 1, 'station', { ship: 'mamba', weapon, wing: {} });
+      const G = g as unknown as { cards: Record<string, number>; aimA: number; fireId: number | null; makeEnemy(k: string, x: number, y: number): E };
+      a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+      G.aimA = -Math.PI / 2;
+      const e1 = G.makeEnemy('m', a.px, a.py - 140), e2 = G.makeEnemy('m', a.px, a.py - 230);
+      for (const e of [e1, e2]) { e.hp = e.max = 1e6; (e as unknown as { sh: number; shMax: number }).sh = 0; (e as unknown as { shMax: number }).shMax = 0; (e as unknown as { vx: number; vy: number }).vx = 0; e.cd = 1e9; }
+      a.enemies.push(e1, e2);
+      const fire = (n: number) => { for (let i = 0; i < n; i++) { G.fireId = 1; G.aimA = -Math.PI / 2; for (const e of [e1, e2]) { e.x = a.px; } e1.y = a.py - 140; e2.y = a.py - 230; g.update(DT); } };
+      // Schaden am hinteren Ziel ohne und mit Durchschlag (ein Rohr kann knapp vorbei ein wenig treffen)
+      fire(90);
+      const without = e2.max - e2.hp, front = e1.max - e1.hp;
+      G.cards.pierce = 1;
+      e1.hp = e1.max; e2.hp = e2.max;
+      fire(90);
+      const withP = e2.max - e2.hp, front2 = e1.max - e1.hp;
+      expect(front).toBeGreaterThan(0);
+      // das hintere Ziel bekommt jetzt einen guten Teil dessen ab, was das vordere trifft (Strahl 60 %, Lanze 70 %)
+      expect(withP, `${weapon}: Durchschlag trifft das hintere Ziel (${without.toFixed(1)} → ${withP.toFixed(1)}, vorn ${front2.toFixed(1)})`).toBeGreaterThan(Math.max(without * 1.8, front2 * 0.4));
+    }
+  });
+
+  it('Werkstatt-Mods wirken nur auf ihrem Schiff (Turm-Mods auf der Cobra)', async () => {
+    const { resetMods, earnParts, craft } = await import('../src/minigames/mods');
+    resetMods();
+    earnParts(100);
+    craft('cobra', 'turmladung', 3, 0);
+    const { modStats } = await import('../src/minigames/mods');
+    expect(modStats('cobra').tdmg).toBeGreaterThan(0.4);
+    expect(modStats('mamba').tdmg).toBeUndefined();
+    resetMods();
+  });
 });
 

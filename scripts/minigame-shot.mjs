@@ -65,7 +65,10 @@ await loHome();
 // Werkstatt: Sockel „Waffe“ öffnen, einen Schadensverstärker bauen – Wert liegt in der Spanne, Modteile werden abgezogen
 await page.click('#modal [data-act="lo-mode"][data-mode="mods"]');
 await page.waitForTimeout(250);
-if ((await page.locator('#modal .hgr-hot.mod').count()) !== 4) fail('Werkstatt: vier Mod-Sockel fehlen');
+// Klapperschlange (L): Waffe, Triebwerk, Schild, Rumpf, Türme, Hangar (Flügelleute), Zielsystem – keine Raketen (keine Werfer)
+const hotN = await page.locator('#modal .hgr-hot.mod').count();
+if (hotN !== 7) fail(`Werkstatt: ${hotN} statt 7 Sockelarten bei der Klapperschlange`);
+if (await page.locator('#modal .hgr-hot.mod[data-slot="missile"]').count()) fail('Werkstatt: Raketensockel ohne Werfer');
 await loView('mod', 'weapon');
 const parts0 = await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-mods') ?? 'null')?.parts ?? 10);
 await page.click('#modal [data-act="mod-craft"][data-id="verstaerker"][data-q="1"]');
@@ -73,8 +76,11 @@ await page.waitForTimeout(400);
 await page.screenshot({ path: `${out}/mg-0-mods.png` });
 // Spanne grundlegend: regulär 6–12 %, in der Testphase der Mods 12–25 %
 const modSaved = await page.evaluate(() => JSON.parse(localStorage.getItem('x4-sektorbau-mods') ?? 'null'));
-if (!modSaved?.slots?.weapon || modSaved.parts !== parts0 - 3 || modSaved.slots.weapon.value < 0.06 || modSaved.slots.weapon.value > 0.25) fail(`Mod-Bau fehlerhaft: ${JSON.stringify(modSaved)}`);
-await page.click('#modal [data-act="mod-remove"][data-slot="weapon"]');
+const wm = modSaved?.ships?.klapperschlange?.weapon?.[0];
+if (!wm || modSaved.parts !== parts0 - 3 || wm.value < 0.06 || wm.value > 0.25) fail(`Mod-Bau fehlerhaft: ${JSON.stringify(modSaved)}`);
+// zwei Waffensockel: Reiter je Sockel
+if ((await page.locator('#modal .mod-socks button').count()) !== 2) fail('Werkstatt: zwei Waffensockel der Klapperschlange fehlen');
+await page.click('#modal [data-act="mod-remove"][data-slot="weapon"][data-idx="0"]');
 await page.waitForTimeout(200);
 await loHome();
 await page.click('#modal [data-act="lo-mode"][data-mode="gear"]');
