@@ -1233,7 +1233,10 @@ h3 .count { margin-right: auto; display: inline-grid; place-items: center; min-w
 .hgr-dots { display: flex; justify-content: center; gap: 4px; margin-top: 4px; }
 .hgr-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
 .hgr-dots i.on { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
-.hgr-hots { position: absolute; z-index: 4; left: 12px; right: 12px; top: calc(51% + 64px); display: grid; grid-template-columns: 1fr 1fr; gap: 8px; transition: opacity 0.2s; }
+.hgr-hots { position: absolute; z-index: 4; left: 12px; right: 12px; top: calc(51% + 64px); display: grid; grid-template-columns: 1fr 1fr; gap: 8px; transition: opacity 0.2s;
+  /* endet über der Werteleiste; passen nicht alle Plaketten hinein (Werkstatt großer Schiffe), lässt sich der Bereich scrollen */
+  bottom: calc(var(--safe-bottom) + 80px + var(--hgr-stats-h, 140px)); overflow-y: auto; overscroll-behavior: contain; align-content: start;
+  padding: 2px 2px 16px; margin: -2px; scrollbar-width: thin; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 8px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 8px, #000 calc(100% - 16px), transparent); }
 .hgr-hot { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 9px 6px 6px; border-radius: 12px; text-align: left; color: var(--text);
   border: 1px solid rgba(63, 224, 197, 0.4); background: linear-gradient(180deg, rgba(10, 28, 40, 0.92), rgba(5, 14, 22, 0.92)); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); }
 .hgr-hot:active { transform: scale(0.97); }
@@ -1321,8 +1324,8 @@ button.hgr-card:active { transform: scale(0.97); }
 /* Werkstatt: mehrere Sockel derselben Art (große Schiffe) */
 .mod-socks { margin: 0 14px 10px; display: flex; flex-wrap: wrap; }
 .mod-socks button { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Hinweis nach der Umstellung auf Mods je Schiff */
-.mod-refund { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 5; padding: 10px 12px; border-radius: var(--r); background: rgba(10, 20, 30, 0.92); border: 1px solid var(--teal); font-size: 13px; line-height: 1.4; }
+/* Hinweis nach der Umstellung auf Mods je Schiff: erste Zeile im Plakettenbereich (scrollt mit) */
+.mod-refund { grid-column: 1 / -1; padding: 10px 12px; border-radius: var(--r); background: rgba(10, 20, 30, 0.92); border: 1px solid var(--teal); font-size: 13px; line-height: 1.4; }
 .mod-refund .btn { margin-top: 8px; display: block; }
 .lo-d { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; font-variant-numeric: tabular-nums; }
 .lo-d.pos { color: #6be38f; background: rgba(107, 227, 143, 0.12); }

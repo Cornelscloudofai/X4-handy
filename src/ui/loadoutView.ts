@@ -296,8 +296,7 @@ export function loadoutView(m: LoModal): string {
         <button class="hgr-name" ${act('lo-view', { view: 'ship' })}><b>${esc(ship.name)}</b><small>${ship.cls} · ${esc(ship.role)} · ${esc(SPECIALS[ship.special].name)}</small><span class="hgr-dots">${SHIP_IDS.map((id) => `<i class="${id === lo.ship ? 'on' : ''}"></i>`).join('')}</span></button>
         <button class="hgr-arrow next" ${act('lo-ship', { dir: 1 })} aria-label="Nächstes Schiff">${icon('back', 18)}</button>
       </div>
-      <div class="hgr-hots">${hotHtml}</div>
-      ${mode === 'mods' && ms.refunded ? `<div class="mod-refund"><b>Mods gelten jetzt je Schiff.</b> Deine bisherigen Mods wurden ausgebaut, ${ms.refunded} Modteile sind dir gutgeschrieben – bau sie dort ein, wo sie passen. <button class="btn small" ${act('mod-ack')}>Verstanden</button></div>` : ''}
+      <div class="hgr-hots">${mode === 'mods' && ms.refunded ? `<div class="mod-refund"><b>Mods gelten jetzt je Schiff.</b> Deine bisherigen Mods wurden ausgebaut, ${ms.refunded} Modteile sind dir gutgeschrieben – bau sie dort ein, wo sie passen. <button class="btn small" ${act('mod-ack')}>Verstanden</button></div>` : ''}${hotHtml}</div>
     </div>
     <div class="hgr-stats">${gaugeHtml(false)}</div>
     <div class="hgr-foot"><button class="btn" ${act('mg-back')}>Fertig</button><button class="btn primary" ${act('ship-art-try')}>${icon('play', 16)}Probeflug</button></div>
@@ -321,13 +320,18 @@ export function layoutHangar(root: HTMLElement, onSwipe: (dir: number) => void):
   const hgr = root.querySelector<HTMLElement>('.hgr');
   if (!hgr) return;
   const stage = hgr.querySelector<HTMLElement>('.hgr-stage')!, svg = hgr.querySelector<SVGSVGElement>('.hgr-lines')!, ship = hgr.querySelector<HTMLImageElement>('.hgr-ship img');
+  const hots = hgr.querySelector<HTMLElement>('.hgr-hots'), stats = hgr.querySelector<HTMLElement>('.hgr-stats');
+  // Plakettenbereich endet über der Werteleiste (ihre Höhe hängt von Schrift und Gerät ab)
+  if (stats) hgr.style.setProperty('--hgr-stats-h', `${stats.offsetHeight}px`);
   const draw = () => {
     if (!ship || hgr.classList.contains('open')) { svg.innerHTML = ''; return; }
-    const sr = stage.getBoundingClientRect(), ir = ship.getBoundingClientRect();
+    const sr = stage.getBoundingClientRect(), ir = ship.getBoundingClientRect(), hr = hots?.getBoundingClientRect();
     svg.setAttribute('viewBox', `0 0 ${sr.width} ${sr.height}`);
     svg.innerHTML = [...hgr.querySelectorAll<HTMLElement>('.hgr-hot')].map((b) => {
       const [ax, ay] = (b.dataset.anchor ?? '0.5,0.5').split(',').map(Number);
       const r = b.getBoundingClientRect();
+      // weggescrollte Plaketten bekommen keine Leitlinie
+      if (hr && (r.top < hr.top - 1 || r.top > hr.bottom - 12)) return '';
       const px = ir.left - sr.left + ax * ir.width, py = ir.top - sr.top + ay * ir.height;
       const sx = r.left - sr.left + r.width / 2, sy = r.top - sr.top;
       return `<g><polyline points="${sx.toFixed(1)},${sy.toFixed(1)} ${sx.toFixed(1)},${(sy - 10).toFixed(1)} ${px.toFixed(1)},${py.toFixed(1)}"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3"/></g>`;
@@ -335,6 +339,7 @@ export function layoutHangar(root: HTMLElement, onSwipe: (dir: number) => void):
   };
   if (ship && !ship.complete) ship.addEventListener('load', draw, { once: true });
   draw();
+  if (hots && !swiped.has(hots)) { swiped.add(hots); hots.addEventListener('scroll', draw, { passive: true }); }
   if (!swiped.has(stage)) {
     swiped.add(stage);
     let x0: number | null = null;
