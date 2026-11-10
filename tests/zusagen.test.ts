@@ -93,4 +93,44 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     expect(bigs).toBeGreaterThan(0);
     expect(carriers).toBeGreaterThan(0);
   });
+
+  it('Abschuss großer Schiffe: Explosionsfolge über den Rumpf, Feuerbälle in Schiffsgröße, dann Schlussexplosion', () => {
+    const { g, a } = mk('xenon', 3, 'station');
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    a.spawnBoss(true);
+    const k = a.enemies.find((e) => e.kind === 'boss')!;
+    k.x = a.px; k.y = a.py - 1500;
+    const G = g as unknown as { killEnemy(e: E, by: boolean): void; dying: { t: number; max: number; vis: number }[]; fx: { list: { kind: string; size: number }[] }; visualR(e: E): number };
+    const vis = G.visualR(k);
+    // (ohne geladenes Bild, wie hier im Test, mit Ersatzmaßstab)
+    expect(vis).toBeGreaterThan(500);
+    G.killEnemy(k, true);
+    expect(G.dying.length).toBe(1);
+    const max = G.dying[0].max;
+    expect(max).toBeGreaterThan(2.5);
+    let biggestFire = 0, booms = 0;
+    for (let t = 0; t < max + 0.2; t += DT) {
+      const n = G.fx.list.filter((p) => p.kind === 'fire').length;
+      g.update(DT);
+      booms += Math.max(0, G.fx.list.filter((p) => p.kind === 'fire').length - n);
+      for (const p of G.fx.list) if (p.kind === 'fire') biggestFire = Math.max(biggestFire, p.size);
+    }
+    expect(G.dying.length, 'Folge ist durch').toBe(0);
+    // viele Explosionen während des Zerbrechens, der Schlussfeuerball etwa so groß wie das Schiff
+    expect(booms).toBeGreaterThan(20);
+    expect(biggestFire).toBeGreaterThan(vis);
+    // kleine Jäger: sofortige Explosion mit Feuerball in ihrer Größe, keine Folge
+    const n = (g as unknown as { makeEnemy(k: string, x: number, y: number): E }).makeEnemy('n', a.px, a.py - 300);
+    a.enemies.push(n);
+    G.killEnemy(n, true);
+    expect(G.dying.length).toBe(0);
+  });
+
+  it('L-Lanze erlischt sanft: Glut wird stetig schwächer und ist am Ende (fast) unsichtbar', () => {
+    // Hüllkurve wie in drawShots: env = k^1.6
+    const env = (k: number) => Math.pow(k, 1.6);
+    expect(env(0.05)).toBeLessThan(0.01);
+    for (let k = 0.05; k < 1; k += 0.05) expect(env(k + 0.05)).toBeGreaterThan(env(k));
+  });
 });
+

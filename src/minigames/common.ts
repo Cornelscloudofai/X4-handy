@@ -169,7 +169,8 @@ export function neonStroke(ctx: CanvasRenderingContext2D, color: string, lw: num
 export interface Particle {
   x: number; y: number; vx: number; vy: number;
   life: number; max: number; size: number; color: string;
-  kind: 'dot' | 'chunk' | 'spark' | 'ring';
+  /** fire: Feuerball (weißer Kern, farbiger Rand, wächst und verglimmt); smoke: dunkle, sich ausbreitende Rauchwolke */
+  kind: 'dot' | 'chunk' | 'spark' | 'ring' | 'fire' | 'smoke';
   rot: number; vr: number;
   /** Ziel, zu dem der Partikel gezogen wird (z. B. Sammler) */
   tx?: number; ty?: number;
@@ -232,9 +233,29 @@ export class Particles {
     for (const p of this.list) {
       const f = (p.tx != null ? 1 : 1 - p.life / p.max) * (p.alpha ?? 1);
       ctx.globalCompositeOperation = p.solid ? 'source-over' : 'lighter';
+      if (p.kind === 'fire' || p.kind === 'smoke') {
+        // Feuerball bzw. Rauch: weicher Verlauf, wächst schnell und verglimmt sanft
+        const q = p.life / p.max, R = p.size * (0.35 + 0.9 * Math.sqrt(q));
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, Math.max(0.1, R));
+        if (p.kind === 'fire') {
+          const e = f * f;
+          g.addColorStop(0, rgba('#fff4d6', 0.95 * e));
+          g.addColorStop(0.3, rgba(p.color, 0.75 * f));
+          g.addColorStop(1, rgba(p.color, 0));
+        } else {
+          g.addColorStop(0, rgba(p.color, 0.38 * f));
+          g.addColorStop(1, rgba(p.color, 0));
+        }
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, R, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
       if (p.kind === 'ring') {
         ctx.strokeStyle = rgba(p.color, 0.6 * f);
-        ctx.lineWidth = 2;
+        // große Druckwellen mit breiterer Linie
+        ctx.lineWidth = Math.max(2, p.size * 0.12);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size * (1 + (p.life / p.max) * 3), 0, Math.PI * 2);
         ctx.stroke();

@@ -812,7 +812,10 @@ export class ShooterGame implements MiniGame {
   /** Sprengung eines Rächers: zündet nach kurzer Zeit */
   private blasts: { x: number; y: number; t: number; dmg: number }[] = [];
   private shake = 0;
-  private fx = new Particles();
+  // viele Teilchen für große Explosionen (leistungsstarkes Gerät)
+  private fx = Object.assign(new Particles(), { max: 1500 });
+  /** zerbrechende große Schiffe (Abschuss-Folge) */
+  private dying: { e: Enemy; vis: number; t: number; max: number; next: number; key: string }[] = [];
   private floats = new Floaters();
   private stars = new Starfield(170, 31);
   private w = 1;
@@ -824,7 +827,7 @@ export class ShooterGame implements MiniGame {
   private readonly ctrl: ControlMode;
   /** Lanzenblitze: von – bis, Restzeit, Farbe */
   /** Lanzenstrahlen: t läuft von max auf 0; heavy = schwerer L-Turm (breiter, heller, glüht länger nach) */
-  private rails: { x1: number; y1: number; x2: number; y2: number; t: number; max?: number; heavy?: boolean; color: string }[] = [];
+  private rails: { x1: number; y1: number; x2: number; y2: number; t: number; max?: number; heavy?: boolean; seed?: number; color: string }[] = [];
   private done: GameResult | null = null;
 
   constructor(cfg: GameCfg, private side: Side) {
@@ -2764,6 +2767,63 @@ export class ShooterGame implements MiniGame {
     return best;
   }
 
+  /** Bildname eines Gegners (wie beim Zeichnen) */
+  private spriteKey(e: Enemy): string {
+    const kh = this.side === 'khaak';
+    return e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && !e.carrier && (kh || this.side === 'pirate') ? 'boss-mini' : e.kind;
+  }
+
+  /** halbe sichtbare Größe eines Gegners (Bild bzw. Zeichnung) */
+  private visualR(e: Enemy): number {
+    const spr = enemySprite(this.spriteKey(e), this.side === 'pirate' ? 'pirat' : this.side);
+    return e.r * (spr?.scale ?? 3) * 0.5;
+  }
+
+  /** großes Schiff zerbricht: Bild bleibt kurz stehen, Explosionen laufen über den Rumpf, am Ende ein großer Feuerball */
+  private startDying(e: Enemy, vis: number): void {
+    this.dying.push({ e, vis, t: 0, max: 0.9 + Math.min(2.4, vis / 400), next: 0, key: this.spriteKey(e) });
+    this.explode(e.x, e.y, SPEC[e.kind].color, 1, true, vis * 0.35);
+  }
+
+  private updateDying(dt: number): void {
+    for (const d of this.dying) {
+      const e = d.e;
+      d.t += dt;
+      e.vx *= 1 - Math.min(1, dt * 0.8); e.vy *= 1 - Math.min(1, dt * 0.8);
+      e.x += e.vx * dt; e.y += e.vy * dt;
+      d.next -= dt;
+      if (d.next <= 0 && d.t < d.max) {
+        d.next = 0.06 + Math.random() * (d.vis > 400 ? 0.12 : 0.2);
+        // Punkt auf dem Rumpf (längs gestreckt), in Flugrichtung gedreht
+        const u = (Math.random() - 0.5) * 1.6 * d.vis, v = (Math.random() - 0.5) * 0.7 * d.vis, c = Math.cos(e.ang), sn = Math.sin(e.ang);
+        this.explode(e.x + u * c - v * sn, e.y + u * sn + v * c, Math.random() < 0.5 ? '#ffb070' : SPEC[e.kind].color, 0.8, Math.random() < 0.35, d.vis * (0.12 + Math.random() * 0.18));
+      }
+      if (d.t >= d.max) {
+        // Schlussexplosion
+        this.explode(e.x, e.y, SPEC[e.kind].color, 4, true, d.vis * 1.15);
+        this.fx.add({ x: e.x, y: e.y, color: '#fff2c8', size: d.vis * 0.7, kind: 'ring', max: 0.9 });
+        this.shake = Math.max(this.shake, Math.min(0.6, 0.2 + d.vis / 1500));
+      }
+    }
+    this.dying = this.dying.filter((d) => d.t < d.max);
+  }
+
+  private drawDying(ctx: CanvasRenderingContext2D): void {
+    for (const d of this.dying) {
+      const spr = enemySprite(d.key, this.side === 'pirate' ? 'pirat' : this.side);
+      if (!spr) continue;
+      const e = d.e, q = d.t / d.max, size = e.r * spr.scale;
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(e.ang + Math.PI / 2);
+      // dunkelt nach, glüht rötlich und verschwindet im letzten Drittel hinter dem Feuer
+      ctx.globalAlpha = q < 0.65 ? 1 : Math.max(0, 1 - (q - 0.65) / 0.35);
+      ctx.filter = `brightness(${(1 - 0.55 * q).toFixed(2)}) sepia(${(0.5 * q).toFixed(2)})`;
+      ctx.drawImage(spr.img, -size / 2, -size / 2 - spr.oy * size, size, size);
+      ctx.restore();
+    }
+  }
+
   /** Xenon P: zwei M-Türme (Laser-Repeater) auf den Sockeln des Rückgrats */
   private armP(e: Enemy): void {
     e.armed = true;
@@ -3138,7 +3198,9 @@ export class ShooterGame implements MiniGame {
       this.endT += dt;
       if (this.gateT >= 0) this.gateT += dt;
       this.followCam(dt, true);
-      if (this.endT > 2.2) this.done = this.finish();
+      // ein zerbrechendes Großkampfschiff (z. B. der Boss) explodiert auch nach dem Sieg zu Ende
+      this.updateDying(dt);
+      if (this.endT > 2.2 + (this.dying.length ? 1.2 : 0)) this.done = this.finish();
       return;
     }
     if (this.choosing) return;
@@ -3191,6 +3253,7 @@ export class ShooterGame implements MiniGame {
     // freie Sicht oder Karte ohne Eingabe: Jäger bremsen ab und halten die Stelle (der Träger behält seinen Kurs)
     if ((this.camMode !== 'schiff' || this.tac) && !this.joy) { const k = Math.max(0, 1 - dt * 1.2); this.pvx *= k; this.pvy *= k; }
     this.updateEnemies(dt);
+    this.updateDying(dt);
     this.updateBlasts(dt);
     this.updateShots(dt);
     this.updateField(dt);
@@ -3613,7 +3676,7 @@ export class ShooterGame implements MiniGame {
     if (hitMine) { hitMine.hp -= dmg; if (hitMine.hp <= 0) this.detonate(hitMine); }
     if (hitE || hitM || hitMine) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
     // schwere L-Lanze glüht lange nach, M-Lanze blitzt nur kurz auf
-    this.rails.push({ x1: ox, y1: oy, x2, y2, t: heavy ? 1.8 : 0.16, max: heavy ? 1.8 : 0.16, heavy, color });
+    this.rails.push({ x1: ox, y1: oy, x2, y2, t: heavy ? 1.8 : 0.16, max: heavy ? 1.8 : 0.16, heavy, seed: Math.random() * 100, color });
   }
 
   /** Strahler: je feuernde Bordkanone ein Strahl geradeaus; trifft das erste Ziel im Strahl (Schaden pro Sekunde) */
@@ -4421,9 +4484,15 @@ export class ShooterGame implements MiniGame {
 
   private killEnemy(e: Enemy, byPlayer: boolean): void {
     if (!this.enemies.includes(e)) return;
+    // Türme gehen mit dem Schiff unter
+    for (const q of this.enemies) if (q.parent === e) this.explode(q.x, q.y, '#ffb070', 0.6, false, this.visualR(q) * 0.9);
     this.enemies = this.enemies.filter((q) => q !== e && q.parent !== e);
     if (e.kind === 'boss' && !e.nest && !e.hive) this.bigCd = 15;
-    this.explode(e.x, e.y, SPEC[e.kind].color, e.kind === 'boss' ? 4 : e.r / 10);
+    // Explosion in der Größe des Schiffsbilds; große Schiffe (Korvetten aufwärts) brechen in einer Folge von Explosionen
+    // auseinander, bevor sie verglühen – statt sich einfach in Luft aufzulösen
+    const vis = this.visualR(e);
+    if (vis >= 60 && !e.parent && !e.nest && !e.hive && !e.plat) this.startDying(e, vis);
+    else this.explode(e.x, e.y, SPEC[e.kind].color, e.kind === 'boss' ? 4 : Math.max(0.6, e.r / 10), true, vis * 1.1);
     if (e.elite) this.eliteDeath(e);
     if (!byPlayer) return;
     this.kills++;
@@ -4570,11 +4639,23 @@ export class ShooterGame implements MiniGame {
     }
   }
 
-  private explode(x: number, y: number, color: string, size: number, sound = true): void {
-    this.fx.burst(x, y, color, Math.round(14 * size), 220 * Math.sqrt(size), 2.4, 'chunk', 0.8);
-    this.fx.burst(x, y, '#fff2c8', Math.round(12 * size), 300 * Math.sqrt(size), 1.4, 'spark', 0.35);
-    this.fx.add({ x, y, color, size: 6 * size, kind: 'ring', max: 0.45 });
-    this.shake = Math.max(this.shake, Math.min(0.5, 0.12 * size));
+  /**
+   * Explosion: Trümmer, Funken, Feuerball, Rauch und Druckwelle. rad = Größe in Spielpunkten (etwa halbe Schiffslänge);
+   * ohne Angabe aus size abgeleitet
+   */
+  private explode(x: number, y: number, color: string, size: number, sound = true, rad = 9 * size): void {
+    const sp = Math.max(220 * Math.sqrt(size), rad * 2.2);
+    this.fx.burst(x, y, color, Math.round(Math.min(40, 14 * size)), sp, Math.max(2.4, rad * 0.06), 'chunk', 0.8 + Math.min(0.8, rad / 400));
+    this.fx.burst(x, y, '#fff2c8', Math.round(Math.min(36, 12 * size)), sp * 1.3, Math.max(1.4, rad * 0.025), 'spark', 0.35 + Math.min(0.4, rad / 600));
+    // Feuerball (ein Hauptball, bei größeren Schiffen dazu kleinere versetzte) und Rauch, der langsam vergeht
+    this.fx.add({ x, y, color: '#ff8a3a', size: rad * 1.25, kind: 'fire', max: 0.5 + Math.min(1, rad / 300) });
+    for (let k = 0, n = Math.min(5, Math.floor(rad / 35)); k < n; k++) {
+      const a = Math.random() * Math.PI * 2, d = rad * (0.25 + Math.random() * 0.5);
+      this.fx.add({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, vx: Math.cos(a) * rad * 0.3, vy: Math.sin(a) * rad * 0.3, color: Math.random() < 0.5 ? '#ffb24a' : '#ff6a2a', size: rad * (0.45 + Math.random() * 0.35), kind: 'fire', max: 0.45 + Math.random() * 0.5 + Math.min(0.6, rad / 400) });
+    }
+    if (rad > 14) this.fx.add({ x, y, color: '#4a4038', size: rad * 1.7, kind: 'smoke', solid: true, max: 1.2 + Math.min(1.6, rad / 250), drag: 0.6 });
+    this.fx.add({ x, y, color, size: Math.max(6 * size, rad * 0.45), kind: 'ring', max: 0.45 + Math.min(0.5, rad / 600) });
+    this.shake = Math.max(this.shake, Math.min(0.5, 0.12 * size, 0.12 + rad / 1500));
     if (sound) sfx.explosion(size, this.panAt(x));
     else sfx.hit(this.panAt(x));
   }
@@ -4750,6 +4831,7 @@ export class ShooterGame implements MiniGame {
     // Staffel im Flug über dem eigenen Schiff (ohne Träger auch beim Start, den es dann nicht gibt)
     for (const w of this.wings) if (w.state === 'fly' || w.state === 'home' || (!this.ship.hullLayer && (w.state === 'in' || w.state === 'out'))) this.drawWing(ctx, w, t);
     this.drawClusterMass(ctx, t);
+    this.drawDying(ctx);
     for (const e of this.enemies) this.drawEnemy(ctx, e, t);
     this.drawTargetMarks(ctx, t);
     this.drawBlasts(ctx, t);
@@ -4903,17 +4985,18 @@ export class ShooterGame implements MiniGame {
         ctx.moveTo(r.x1, r.y1);
         ctx.lineTo(r.x2, r.y2);
         if (r.heavy) {
-          // schwere L-Lanze (orange): dicker gleißender Schuss, dann knapp zwei Sekunden langes Nachglühen – der helle Kern
-          // verblasst schnell, der breite orange Glutstreifen bleibt lange stehen
-          const g = Math.max(0, (k - 0.75) / 0.25);
-          ctx.strokeStyle = rgba(r.color, 0.18 + 0.2 * k);
-          ctx.lineWidth = 14 + 34 * g + 6 * k;
+          // schwere L-Lanze (orange): dicker gleißender Schuss, dann knapp zwei Sekunden Nachglühen, das sanft erlischt –
+          // der helle Kern verblasst zuerst, die Glut wird stetig schwächer und schmaler und flackert dabei leicht
+          const q = 1 - k, env = Math.pow(k, 1.6), core = Math.max(0, 1 - q / 0.18) ** 2;
+          const seed = r.seed ?? 0, flick = 0.82 + 0.18 * Math.sin(seed + q * 38) * Math.sin(seed * 1.7 + q * 21);
+          ctx.strokeStyle = rgba(r.color, 0.38 * env * flick);
+          ctx.lineWidth = 10 + 30 * core + 12 * env;
           ctx.stroke();
-          ctx.strokeStyle = rgba(r.color, 0.35 + 0.55 * k);
-          ctx.lineWidth = 6 + 10 * g + 3 * k;
+          ctx.strokeStyle = rgba(r.color, 0.85 * env * flick);
+          ctx.lineWidth = 3 + 10 * core + 5 * env;
           ctx.stroke();
-          ctx.strokeStyle = rgba('#fff2d0', 0.15 * k + 0.85 * g);
-          ctx.lineWidth = 2.5 + 4 * g;
+          ctx.strokeStyle = rgba('#fff2d0', 0.95 * core + 0.25 * env * flick);
+          ctx.lineWidth = 1.5 + 4 * core + env;
           ctx.stroke();
         } else {
           // M-Lanze: schmaler, blasser Blitz
@@ -5728,7 +5811,7 @@ export class ShooterGame implements MiniGame {
     }
     // Brutkästen drehen nicht, sie sitzen fest auf dem Rumpf
     ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.weapon === 'brut' ? e.parent!.ang + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
-    const spr = enemySprite(e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && !e.carrier && (kh || this.side === 'pirate') ? 'boss-mini' : e.kind, this.side === 'pirate' ? 'pirat' : this.side);
+    const spr = enemySprite(this.spriteKey(e), this.side === 'pirate' ? 'pirat' : this.side);
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
       const size = e.r * spr.scale;
