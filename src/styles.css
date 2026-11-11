@@ -663,6 +663,12 @@ html.calm #banner.show.still .banner-in { animation-duration: 3.2s !important; }
 .mg-hud .warn b { color: #ff9aa4; }
 .mg-pause { width: 42px; height: 42px; flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
 .mg-pause svg { fill: var(--teal); }
+.mg-rot svg { fill: none; stroke: var(--teal); }
+/* Querformat per Knopf: das ganze Spiel (Feld und Anzeigen) um 90° gedreht, Breite und Höhe vertauscht */
+.mg.rot { inset: auto; left: 0; top: 0; width: 100dvh; height: 100dvw; transform-origin: 0 0; }
+.mg.rot[data-rot="90"] { transform: translate(100dvw, 0) rotate(90deg); }
+.mg.rot[data-rot="-90"] { transform: translate(0, 100dvh) rotate(-90deg); }
+.mg.rot .mg-rot { border-color: var(--teal); }
 .mg:not(.playing) .mg-pause { visibility: hidden; }
 .mg-layer { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(1, 5, 10, 0.62); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
 .mg-card { width: min(380px, 100%); background: var(--panel-solid); border: 1px solid var(--line-2); border-radius: 18px; padding: 18px 18px 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); animation: contentIn 0.25s; }

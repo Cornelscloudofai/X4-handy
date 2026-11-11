@@ -61,6 +61,31 @@ async function combat(page, kind = 'xenon') {
   await page.close();
 }
 
+// --- Handy hochkant, Seite dreht nicht mit (Claude-App, iPhone-App): Drehen-Knopf ---
+{
+  const page = await open({ width: 390, height: 844 }, true);
+  await combat(page);
+  await page.click('#minigame [data-mg="rot"]');
+  await page.waitForTimeout(300);
+  const g = await page.evaluate(() => { const g = window.__mg.game; return { w: g.w, h: g.h, quer: g.quer, zin: g.btnZoomIn, z: g.zoomGoal }; });
+  if (!g.quer || Math.abs(g.w - 844) > 2 || Math.abs(g.h - 390) > 2) fail(`Drehen-Knopf: Feld nicht quer (${g.w}×${g.h})`);
+  // Antippen trifft trotz Drehung die richtige Taste: Spielpunkt (x, y) liegt bei 90° auf dem Bildschirm bei (390 − y, x)
+  await page.touchscreen.tap(390 - g.zin[1], g.zin[0]);
+  await page.waitForTimeout(200);
+  const z = await page.evaluate(() => window.__mg.game.zoomGoal);
+  if (!(z > g.z)) fail(`Drehen-Knopf: Tippen trifft die Zoom-Taste nicht (${g.z} → ${z})`);
+  await page.screenshot({ path: `${out}/quer-gedreht.png` });
+  // gemerkt für den nächsten Kampf, zweimal weiter = wieder hochkant
+  await page.click('#minigame [data-mg="rot"]');
+  await page.waitForTimeout(200);
+  if ((await page.evaluate(() => localStorage.getItem('x4-sektorbau-kampf-dreh'))) !== '-90') fail('Drehen-Knopf: andere Richtung fehlt');
+  await page.click('#minigame [data-mg="rot"]');
+  await page.waitForTimeout(200);
+  const w0 = await page.evaluate(() => window.__mg.game.w);
+  if (Math.abs(w0 - 390) > 2) fail('Drehen-Knopf: zurück auf hochkant geht nicht');
+  await page.close();
+}
+
 // --- PC groß, HUD 150 % ---
 {
   const page = await open({ width: 1440, height: 900 }, false, 1.5);

@@ -187,6 +187,7 @@ export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameRe
   root.className = 'mg';
   root.innerHTML = `<canvas class="mg-canvas"></canvas>
     <div class="mg-top"><div class="mg-title"></div><div class="mg-hud"></div>
+      ${combat(kind) ? `<button class="mg-pause mg-rot" data-mg="rot" aria-label="Querformat: Spielfeld drehen"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="17" rx="2"/><path d="M3.5 13.5a8.5 8.5 0 0 0 7 7.5M8.5 21l2 0 .1-2.3"/></svg></button>` : ''}
       <button class="mg-pause" data-mg="pause" aria-label="Pause"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="5" y="4" width="3.2" height="12" rx="1"/><rect x="11.8" y="4" width="3.2" height="12" rx="1"/></svg></button></div>
     <div class="mg-sub"></div>
     <div class="mg-layer" hidden></div>`;
@@ -194,6 +195,8 @@ export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameRe
   const canvas = root.querySelector('canvas')!;
   const cfg = resolve(kind, opts);
   const game = create(kind, cfg);
+  // gemerkte Drehung nur, solange die Seite selbst hochkant steht (dreht sie mit, braucht es keine)
+  if (combat(kind)) applyRot(root, window.innerWidth < window.innerHeight ? readRot() : 0);
   cur = { kind, opts, cfg, game, phase: 'intro', root, canvas, ctx: canvas.getContext('2d')!, dpr: 1, k: 1, w: 1, h: 1, last: 0, raf: 0, hudKey: '', subKey: '', result: null, outcome: null, onDone, replay };
   (root.querySelector('.mg-title') as HTMLElement).innerHTML = `<small>${esc(game.eyebrow)}</small><b>${esc(game.title)}</b>`;
   resize();
@@ -214,6 +217,34 @@ function allowTurn(on: boolean): void {
   try { o?.lock?.(on ? 'any' : 'portrait')?.catch?.(() => undefined); } catch { /* nicht unterstützt */ }
 }
 
+const combat = (kind: MiniKind) => kind === 'pirates' || kind === 'xenon' || kind === 'khaak';
+
+/**
+ * Querformat per Knopf: Viele Hüllen (Claude-App, installierte App auf dem iPhone, Drehsperre) lassen die Seite
+ * nicht drehen. Dann dreht das Spiel sein Feld selbst um 90° – Handy quer halten, Knopf antippen
+ * (0 = hochkant, 90 = im Uhrzeigersinn, −90 = gegen den Uhrzeigersinn; wird gemerkt)
+ */
+type Rot = 0 | 90 | -90;
+const ROT_KEY = 'x4-sektorbau-kampf-dreh';
+function readRot(): Rot {
+  try { const v = Number(globalThis.localStorage?.getItem(ROT_KEY)); return v === 90 || v === -90 ? v : 0; } catch { return 0; }
+}
+function applyRot(root: HTMLElement, rot: Rot): void {
+  root.dataset.rot = String(rot);
+  root.classList.toggle('rot', rot !== 0);
+}
+function rotOf(s: Session): Rot {
+  const v = Number(s.root.dataset.rot);
+  return v === 90 || v === -90 ? v : 0;
+}
+function cycleRot(s: Session): void {
+  // zuerst die übliche Haltung (Oberkante nach links gekippt), dann andersherum, dann wieder hochkant
+  const next: Rot = rotOf(s) === 0 ? 90 : rotOf(s) === 90 ? -90 : 0;
+  applyRot(s.root, next);
+  try { globalThis.localStorage?.setItem(ROT_KEY, String(next)); } catch { /* Speicher nicht verfügbar */ }
+  resize();
+}
+
 function close(r: GameResult | null): void {
   const s = cur;
   if (!s) return;
@@ -231,8 +262,9 @@ function resize(): void {
   const r = s.root.getBoundingClientRect();
   // volle Bildschirmauflösung (moderne Handys haben 3 Bildpunkte je CSS-Pixel), sonst wirkt alles verwaschen
   s.dpr = Math.min(window.devicePixelRatio || 1, 3);
-  s.w = Math.max(1, r.width);
-  s.h = Math.max(1, r.height);
+  // gedrehtes Feld: Maße ohne Drehung (Breite und Höhe des Bildschirms vertauscht)
+  s.w = Math.max(1, s.root.offsetWidth || r.width);
+  s.h = Math.max(1, s.root.offsetHeight || r.height);
   s.canvas.width = Math.round(s.w * s.dpr);
   s.canvas.height = Math.round(s.h * s.dpr);
   // HUD-Größe: das Spiel rechnet in HUD-Pixeln (größer gestellt = größere Anzeigen und Knöpfe, kleiner = mehr Spielfeld)
@@ -241,7 +273,7 @@ function resize(): void {
   // Bedienelemente am linken Rand bleiben so immer ganz sichtbar
   const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-left')) || 0;
   const g = s.game as { safeL?: number };
-  if ('safeL' in g) g.safeL = Math.max(0, inset - r.left) / s.k;
+  if ('safeL' in g) g.safeL = rotOf(s) ? 0 : Math.max(0, inset - r.left) / s.k;
   s.game.resize(s.w / s.k, s.h / s.k);
 }
 
@@ -258,7 +290,11 @@ window.addEventListener('blur', () => { cur?.game.key?.('*', false, false); });
 function bindInput(s: Session): void {
   const pos = (e: PointerEvent): [number, number] => {
     const r = s.canvas.getBoundingClientRect();
-    return [(e.clientX - r.left) / s.k, (e.clientY - r.top) / s.k];
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    // gedrehtes Feld: Bildschirmpunkt in Spielfeldpunkt zurückdrehen
+    const rot = rotOf(s);
+    const [x, y] = rot === 90 ? [sy, r.width - sx] : rot === -90 ? [r.height - sy, sx] : [sx, sy];
+    return [x / s.k, y / s.k];
   };
   // PC: Spiele mit eigener Maussteuerung bekommen Mausereignisse samt Taste (Bewegung auch ohne gedrückte Taste) –
   // nur bei echter Maus (feiner Hauptzeiger); auf Touch-Geräten bleiben es Sticks, auch wenn ein Browser Berührungen
@@ -299,6 +335,7 @@ function bindInput(s: Session): void {
     switch (b.dataset.mg) {
       case 'start': case 'resume': setPhase('play'); break;
       case 'pause': if (s.phase === 'play') setPhase('pause'); break;
+      case 'rot': cycleRot(s); break;
       case 'quit': close(s.phase === 'end' ? s.result : null); break;
       case 'abort': finish(s, s.game.abort()); break;
       case 'feedback': feedbackHook?.(`Minispiel: ${s.game.eyebrow} · ${s.game.title} · Stufe ${s.cfg.level}${s.cfg.mission && s.cfg.mission !== 'geleit' ? ` · Einsatz ${s.cfg.mission}` : ''}`, s.canvas); break;
