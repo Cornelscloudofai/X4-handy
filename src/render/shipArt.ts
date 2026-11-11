@@ -252,6 +252,10 @@ const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; p
   { name: 'split-turm-plasma-hell-ki', type: 'plasma', rgb: [190, 52, 30], px: 0.5, py: 0.6, d: 0.7 },
   { name: 'split-turm-boson-mittel-ki', type: 'boson', rgb: [142, 63, 48], px: 0.5, py: 0.75, d: 0.35 },
   { name: 'split-turm-boson-hell-ki', type: 'boson', rgb: [194, 44, 26], px: 0.5, py: 0.694, d: 0.51 },
+  // Raketen-Vierling (M): dreht um die Mitte des runden Sockels unter dem Gehäuse; etwas breiter als der Sockel
+  { name: 'split-turm-rakete-ki', type: 'rakete', rgb: [150, 55, 45], px: 0.5, py: 0.61, d: 0.36 },
+  // Raketensilo (L): fest im Rumpf, Mitte des Bilds auf dem Sockel, so breit wie der Sockel
+  { name: 'split-lturm-silo-ki', type: 'silo', rgb: [140, 60, 50], px: 0.5, py: 0.5, d: 0.54 },
 ];
 
 /** Name des Turmbilds, dessen Farbe am besten zum Rumpf des Schiffs passt (ohne Laden – auch für Tests) */

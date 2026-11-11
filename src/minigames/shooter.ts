@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun } from './loadout';
+import { DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -207,6 +207,8 @@ interface GameGun {
   gimbal: number;
   color: string;
   w: number;
+  /** Raketenturm: feuert Lenkraketen statt Geschossen */
+  missile?: TurretMissile;
 }
 
 /** Streuung aus den Daten (Grad) wird verdreifacht, damit sie auf dem kleinen Bildschirm sichtbar bleibt */
@@ -221,7 +223,12 @@ function vibrate(ms: number): void {
   }
 }
 
-function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; gimbal?: number; color: string; w: number }): GameGun {
+function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile }): GameGun {
+  // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
+  if (o.missile) {
+    const md = MISSILES.lenk, range = md.v * md.life * 0.85 * o.missile.range;
+    return { dmg: g.dmg * DMG_SCALE, interval: o.missile.reload, mag: 0, reload: 0, speed: md.v, life: md.life * o.missile.range, range, pellets: o.missile.n, jitter: 0, beam: false, hullPierce: 0, rail: false, gimbal: 1, color: o.color, w: o.w, missile: o.missile };
+  }
   const beam = !!o.beam, range = gameRange(g, beam), speed = beam ? 0 : gameSpeed(g.v);
   return {
     dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME * RELOAD,
@@ -232,7 +239,11 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
 
 interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
-interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean }
+interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
+  /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
+  rise?: number; riseMax?: number; ra?: number }
+/** Senkrechtstart aus dem Silo: Steigen und Überkippen (Sekunden) */
+const SILO_RISE = 1.1;
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
 interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p'; wd?: Ward }
 /** Fundstücke; „ammo“ = Munitionskiste (selten): füllt das Raketenlager ganz */
@@ -774,7 +785,7 @@ export class ShooterGame implements MiniGame {
   private tune = enemyTune();
   private tuneVer = enemyTuneVersion();
   /** Türme des eigenen Schiffs: Pause und Richtung; beim Träger je Turm eigene Art (Waffe, Drehtempo, Bild, L-Turm) */
-  private pTur: ({ cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number } & TurretMem)[] = [];
+  private pTur: ({ cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number; /** Raketenturm: noch zu startende Raketen der Salve und Vorrat */ salvo?: number; ammo?: number } & TurretMem)[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
   private turTurn = 5;
   private turType = 'puls';
@@ -922,10 +933,10 @@ export class ShooterGame implements MiniGame {
     this.mag = this.wpn.mag;
     this.sh = SHIELDS[lo.shield];
     this.pTur = this.ship.turrets.map((_, i) => {
-      if (!this.ship.groups) return { cd: 0, a: -Math.PI / 2, mag: this.tw.mag };
+      if (!this.ship.groups) return { cd: 0, a: -Math.PI / 2, mag: this.tw.mag, ammo: this.tw.missile ? this.tw.missile.salvos * this.tw.missile.n : undefined };
       // Träger: Art je Turmgruppe
       const t = turretOf(lo, this.ship, i), w = gameGun(t.def.gun, t.def);
-      return { cd: 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L, g: this.ship.turretGroup?.[i] };
+      return { cd: 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L, g: this.ship.turretGroup?.[i], ammo: w.missile ? w.missile.salvos * w.missile.n : undefined };
     });
     // Staffel: Begleitschiffe aus dem Hangar (Träger) bzw. Flügelleute in Formation
     this.initWings(lo);
@@ -3957,6 +3968,7 @@ export class ShooterGame implements MiniGame {
       // Raketenabwehr nur bei „alle“ und „S“; wer die Türme auf M- oder L-Schiffe ansetzt, gibt sie auf.
       // Zielbindung: der Turm bleibt bei seinem Ziel (siehe turretAim)
       const order = t.g != null ? this.orderOf(`g${t.g}`) : t.L ? this.orders.l : this.orders.m;
+      if (w.missile) { this.missileTurret(t, x, y, w, range, order, dt); continue; }
       const aim = this.turretAim(t, x, y, range, order, order === 'alle' || order === 'S', dt);
       if (!aim) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
       const tgt = aim.tgt, bd = aim.d;
@@ -3989,6 +4001,95 @@ export class ShooterGame implements MiniGame {
         else sfx.turretShot(t.type ?? this.turType, this.panAt(x));
       }
     }
+  }
+
+  /**
+   * Senkrechtstart aus dem Silo in der Draufsicht: erst kommt die Rakete auf uns zu (man sieht die Spitze, darum den
+   * Feuerring des Triebwerks, sie wird größer), dann kippt sie im Bogen über – der Rumpf wird aus der Verkürzung heraus
+   * länger, bis sie flach Richtung Ziel liegt und wieder normal groß ist
+   */
+  private drawRisingMissile(ctx: CanvasRenderingContext2D, m: Missile, img: HTMLImageElement, size: number): void {
+    const p = 1 - Math.max(0, m.rise ?? 0) / (m.riseMax ?? SILO_RISE);
+    const fl = 0.75 + 0.25 * Math.random();
+    ctx.save();
+    ctx.translate(m.x, m.y);
+    if (p < 0.5) {
+      // Steigen: Spitze von oben, ringsum das Triebwerksfeuer; wächst, weil sie näher kommt
+      const q = p / 0.5, s = 0.8 + 1.7 * Math.sin((q * Math.PI) / 2), r = size * 0.22 * s;
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(0, 0, r * 0.6, 0, 0, r * 2.6 * fl);
+      g.addColorStop(0, rgba('#fff2c8', 0.9));
+      g.addColorStop(0.35, rgba(m.def.color, 0.75));
+      g.addColorStop(1, rgba(m.def.color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r * 2.6 * fl, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      // Rumpf im Querschnitt mit hellerer Spitze (Licht von oben links)
+      const n = ctx.createRadialGradient(-r * 0.35, -r * 0.35, 0, 0, 0, r);
+      n.addColorStop(0, '#d9dcdf'); n.addColorStop(0.45, '#8b8f94'); n.addColorStop(1, '#3a3d42');
+      ctx.fillStyle = n;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Überkippen: in Flugrichtung gedreht, der Rumpf streckt sich aus der Verkürzung, die Größe sinkt zurück
+      const q = (p - 0.5) / 0.5, s = 2.5 - 1.5 * q, f = Math.max(0.18, Math.sin((q * Math.PI) / 2));
+      ctx.rotate((m.ra ?? 0) + Math.PI / 2);
+      ctx.scale(s, s);
+      ctx.fillStyle = rgba(m.def.color, 0.65 + 0.3 * Math.random());
+      const tail = size * 0.46 * f;
+      ctx.beginPath();
+      ctx.moveTo(-2.4, tail); ctx.lineTo(2.4, tail); ctx.lineTo(0, tail + (5 + Math.random() * 6) * (0.6 + q));
+      ctx.closePath(); ctx.fill();
+      ctx.scale(1, f);
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Raketenturm: Vierling (M) schwenkt aufs Ziel und schickt alle Raketen zugleich los, das Silo (L) steht fest im Rumpf
+   * und feuert seine Schächte kurz nacheinander. Raketen kosten kein Lager, Schaden wächst mit den Turm-Verbesserungen.
+   */
+  private missileTurret(t: (typeof this.pTur)[number], x: number, y: number, w: GameGun, range: number, order: TurretOrder, dt: number): void {
+    const m = w.missile!;
+    if (m.fixed) t.a = this.aimA;
+    // gegen Raketen wirkungslos: nur Schiffe und Strukturen als Ziel
+    const aim = this.turretAim(t, x, y, range, order, false, dt);
+    const tgt = aim?.tgt as Enemy | undefined;
+    // Vorrat verschossen (20 Salven je Turm): schweigt bis zum Ende der Runde
+    const empty = t.ammo != null && t.ammo <= 0;
+    if (!tgt || empty) { if (!m.fixed) t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); t.salvo = 0; return; }
+    const want = Math.atan2(tgt.y - y, tgt.x - x);
+    if (!m.fixed) {
+      t.a = wrapA(turnTo(t.a, want, dt * (t.turn ?? this.turTurn) * this.tTurnMul));
+      // Lenkraketen finden ihr Ziel selbst: grob ausgerichtet genügt
+      if (!t.salvo && Math.abs(wrapA(want - t.a)) > 0.35) return;
+    }
+    if (t.cd > 0) return;
+    if (!t.salvo) t.salvo = m.n;
+    // Schächte im Turmbild (Anteile der Bildbreite; quer, längs nach unten): Vierling vier Rohre nebeneinander,
+    // Silo zwei Reihen zu vier
+    const tubes: [number, number][] = m.fixed
+      ? [[-0.142, -0.249], [0.142, -0.249], [-0.142, -0.089], [0.142, -0.089], [-0.142, 0.082], [0.142, 0.082], [-0.142, 0.254], [0.142, 0.254]]
+      : [[-0.21, -0.3], [-0.145, -0.3], [0.145, -0.3], [0.21, -0.3]];
+    const art = m.fixed ? 0.54 : 0.36;
+    const s = (this.ship.size * ((t.L ? this.ship.turretDL : undefined) ?? this.ship.turretD ?? 0.1)) / art;
+    const ux = Math.cos(t.a), uy = Math.sin(t.a), rx = -uy, ry = ux;
+    const dmg = MISSILE_DMG * (this.tDmg / 6) * m.dmg, md = MISSILES.lenk;
+    const n = Math.min(m.gap > 0 ? 1 : t.salvo, t.ammo ?? Infinity);
+    for (let k = 0; k < n; k++) {
+      const [tx, ty] = tubes[(m.n - t.salvo) % tubes.length];
+      const ox = x + (rx * tx - ux * ty) * s, oy = y + (ry * tx - uy * ty) * s;
+      // Silo: senkrechter Start, dann zum Ziel; Vierling: aus den Rohren in Turmrichtung
+      const a = m.fixed ? want + (this.r() - 0.5) * 0.6 : t.a + (this.r() - 0.5) * 0.12;
+      // Silo: steigt erst senkrecht auf (auf die Kamera zu), kippt dann im Bogen zum Ziel über
+      if (m.fixed) this.missiles.push({ x: ox, y: oy, vx: 0, vy: 0, target: tgt, life: md.life * m.range + SILO_RISE, def: md, dmg, rise: SILO_RISE, riseMax: SILO_RISE, ra: a });
+      else this.missiles.push({ x: ox, y: oy, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, target: tgt, life: md.life * m.range, def: md, dmg });
+      t.salvo--;
+      if (t.ammo != null) t.ammo--;
+    }
+    if (t.ammo != null && t.ammo <= 0) t.salvo = 0;
+    t.cd = ((t.salvo > 0 ? m.gap : m.reload) * this.tempo) / this.tRateMul;
+    sfx.missile();
   }
 
   /**
@@ -4531,6 +4632,21 @@ export class ShooterGame implements MiniGame {
     for (const m of this.missiles) {
       m.life -= dt;
       if (m.target && !this.enemies.includes(m.target)) m.target = null;
+      // Senkrechtstart (Silo): erst gerade nach oben (am Ort, mit dem Schiff mitgetragen), dann im Bogen über – die
+      // Abflugrichtung folgt dem Ziel; erst danach lenkt und trifft sie wie jede Lenkrakete
+      if (m.rise != null && m.rise > 0) {
+        m.rise -= dt;
+        const p = 1 - Math.max(0, m.rise) / (m.riseMax ?? SILO_RISE);
+        if (m.target) m.ra = turnTo(m.ra ?? 0, Math.atan2(m.target.y - m.y, m.target.x - m.x), dt * 4);
+        const ra = m.ra ?? 0, v = p < 0.5 ? 0 : 200 * (p - 0.5) * 2;
+        m.vx = Math.cos(ra) * v + this.pvx; m.vy = Math.sin(ra) * v + this.pvy;
+        m.x += m.vx * dt; m.y += m.vy * dt;
+        // Startqualm: dicht und grau am Silo, dann dünner
+        if (Math.random() < (p < 0.5 ? 0.9 : 0.5)) this.fx.add({ x: m.x + (Math.random() - 0.5) * 6, y: m.y + (Math.random() - 0.5) * 6, vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 30, color: '#9a9590', size: 7 + 7 * (1 - p), kind: 'smoke', solid: true, max: 0.9, drag: 2 });
+        if (m.rise <= 0) { m.rise = 0; m.vx = Math.cos(ra) * 220 + this.pvx * 0.3; m.vy = Math.sin(ra) * 220 + this.pvy * 0.3; }
+        km.push(m);
+        continue;
+      }
       // Ziel verloren (zerstört, ausgewichen oder nie eins gehabt): Lenk-, Schwere und Störrakete suchen sich ein neues –
       // bevorzugt vor sich, in Reichweite ihres restlichen Treibstoffs. Schwarmraketen (und ihre Lenkköpfe) nicht.
       if (!m.target && !m.def.split && m.life > 0.3) m.target = this.missileRetarget(m);
@@ -5298,6 +5414,7 @@ export class ShooterGame implements MiniGame {
     if (ownMissile) for (const m of this.missiles) {
       // Größe nach Raketenart: schwere größer, Lenkköpfe der Schwarmrakete klein; Störrakete mit blauem Schein
       const size = m.mini ? 11 : m.def.size;
+      if (m.rise != null && m.rise > 0) { this.drawRisingMissile(ctx, m, ownMissile, size); continue; }
       ctx.save();
       ctx.translate(m.x, m.y);
       if (m.def.stun) {

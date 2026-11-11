@@ -3,9 +3,9 @@
 
 export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'wolf' | 'dragon' | 'cobra' | 'klapperschlange' | 'raptor' | 'argon';
 export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'schnellplasma' | 'plasmasalve';
-export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson';
+export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson' | 'rakete';
 /** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
-export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron';
+export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron' | 'silo';
 export type ShieldId = 'leicht' | 'schwer';
 /** Spezialfähigkeit auf der Taste über der Feuertaste */
 export type SpecialId = 'dash' | 'sprint' | 'overdrive' | 'torpedo' | 'escort' | 'salvo';
@@ -506,7 +506,13 @@ export function weaponFits(w: WeaponDef, size: GunSize): boolean {
 }
 
 /** Split-Türme (M) für Korvette und Fregatte – Werte aus den Spieldaten 9.0 (Drehtempo in Grad pro Sekunde) */
-export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean }
+/**
+ * Raketenturm: feuert Lenkraketen statt Geschossen. n Raketen je Salve, gap Sekunden zwischen zwei Raketen (0 = alle
+ * zugleich), danach reload Sekunden Pause; dmg und range als Vielfaches der Lenkrakete; fixed: dreht sich nicht (Silo);
+ * salvos: Vorrat je Turm in vollen Salven (danach schweigt er bis zum Ende der Runde)
+ */
+export interface TurretMissile { n: number; gap: number; reload: number; dmg: number; range: number; salvos: number; fixed?: boolean }
+export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile }
 export const TURRETS: Record<TurretId, TurretDef> = {
   puls: { name: 'Pulsturm', desc: 'Schnell schwenkend und genau, wenig Schaden – gut gegen Raketen und Jäger.', turn: 180, color: '#7ffff0', w: 2,
     gun: { dmg: 18, rate: 3.8, amt: 1, mag: 8, reload: 2.4, v: 5000, life: 0.7, angle: 0.17 } },
@@ -522,6 +528,10 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   // M-Lanze: blasses Blaulila, kurzer schmaler Blitz (die schwere L-Lanze ist orange, dick und glüht lange nach)
   boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, etwa ein Schuss pro Sekunde; schwenkt langsam.', turn: 40, color: '#c9d6ff', w: 3, rail: true,
     gun: { dmg: 800, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.57, angle: 0.18 } },
+  // Raketen-Vierling (M): vier Lenkraketen auf einmal, dann Pause; Schaden und Takt für die Wertung unten aus der Lenkrakete
+  rakete: { name: 'Raketen-Vierling', desc: 'Schwenkt auf das Ziel und schickt vier Lenkraketen zugleich los, dann fünf Sekunden Pause. Große Reichweite, trifft fast immer – gegen Raketen wirkungslos. Vorrat: 80 Raketen je Turm.', turn: 90, color: '#ffb070', w: 2,
+    missile: { n: 4, gap: 0, reload: 5, dmg: 1, range: 1, salvos: 20 },
+    gun: { dmg: 0, rate: 1, amt: 4, mag: 0, reload: 0, v: 400, life: 6.5, angle: 0 } },
 };
 export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
 
@@ -539,6 +549,10 @@ export const LTURRETS: Record<LTurretId, LTurretDef> = {
     gun: { dmg: 2400, rate: 0.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.7, angle: 0.15 } },
   neutron: { name: 'Schwerer Neutronen-Gatling-Turm', desc: 'Langer, dichter Geschossstrom, dann nachladen – viel Druck auf Jäger.', turn: 70, color: '#ff8a3d', w: 2.6, barrel: 'split-lturm-rohr-neutron-ki',
     gun: { dmg: 48, rate: 14, amt: 1, mag: 100, reload: 7, v: 2700, life: 1.7, angle: 0.4 } },
+  // Raketensilo (L, fest im Rumpf, dreht nicht): acht schwerere Lenkraketen kurz nacheinander, doppelte Reichweite
+  silo: { name: 'Raketensilo', desc: 'Fest im Rumpf verankert: acht Lenkraketen kurz nacheinander (alle 0,3 s), etwas schwerer und mit doppelter Reichweite, dann drei Sekunden Nachladen. Vorrat: 160 Raketen je Silo.', turn: 0, color: '#ff9a4a', w: 2.6, barrel: 'split-lturm-silo-ki',
+    missile: { n: 8, gap: 0.3, reload: 3, dmg: 1.4, range: 2, salvos: 20, fixed: true },
+    gun: { dmg: 0, rate: 1, amt: 8, mag: 0, reload: 0, v: 400, life: 13, angle: 0 } },
 };
 export const LTURRET_IDS = Object.keys(LTURRETS) as LTurretId[];
 
@@ -600,6 +614,14 @@ export const SPECIALS: Record<SpecialId, { name: string; key: string; cd: number
  * Ausrüstungsstufe. Werte zum Ausprobieren.
  */
 export const MISSILE_DMG = 130;
+// Raketentürme: Schaden je Rakete und Salventakt in X4-Werten, damit Wertung und Anzeige (Schaden pro Sekunde) stimmen –
+// eine Lenkrakete richtet bei Grundausstattung (Faktor 6) MISSILE_DMG an, die Pause zählt in X4-Sekunden
+for (const t of [...Object.values(TURRETS), ...Object.values(LTURRETS)]) {
+  const m = t.missile;
+  if (!m) continue;
+  t.gun.dmg = (MISSILE_DMG * m.dmg) / (6 * DMG_SCALE);
+  t.gun.rate = TIME / (m.reload + m.gap * (m.n - 1));
+}
 export interface MissileDef {
   name: string;
   desc: string;
@@ -662,7 +684,8 @@ function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups' | 'wing' | 'wi
     weapon: weapon && weapon in WEAPONS && weaponFits(WEAPONS[weapon as WeaponId], SHIPS[l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship].gunSize) ? (weapon as WeaponId) : DEFAULT_LOADOUT.weapon,
     turret: turret && turret in TURRETS ? (turret as TurretId) : DEFAULT_LOADOUT.turret,
     shield: l?.shield && l.shield in SHIELDS ? (l.shield as ShieldId) : DEFAULT_LOADOUT.shield,
-    lturret: l?.lturret && l.lturret in LTURRETS ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,
+    // das Silo braucht einen Sockel im Rumpf – die Schulterrohre des Zerstörers tragen es nicht
+    lturret: l?.lturret && l.lturret in LTURRETS && l.lturret !== 'silo' ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,
     missile: l?.missile && l.missile in MISSILES ? (l.missile as MissileId) : DEFAULT_LOADOUT.missile,
     groups: validGroups(l?.groups),
     wing: validWing(l?.wing, l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship),
@@ -700,7 +723,8 @@ export function wingOptions(id: ShipId): { weapons: WeaponId[]; turrets: TurretI
   const d = SHIPS[id];
   return {
     weapons: WEAPON_IDS.filter((w) => weaponFits(WEAPONS[w], d.gunSize)),
-    turrets: d.turrets.length ? TURRET_IDS : [],
+    // Raketentürme nur auf dem eigenen Schiff (Begleitschiffe feuern Geschosse)
+    turrets: d.turrets.length ? TURRET_IDS.filter((t) => !TURRETS[t].missile) : [],
     missiles: d.x4.launchers ? MISSILE_IDS : [],
   };
 }
@@ -709,7 +733,7 @@ export function wingGearOf(lo: Loadout, id: ShipId): Required<WingGear> {
   const g = lo.wingGear?.[id] ?? {}, o = wingOptions(id);
   return {
     weapon: g.weapon && o.weapons.includes(g.weapon) ? g.weapon : o.weapons.includes('puls') ? 'puls' : o.weapons[0],
-    turret: g.turret && TURRET_IDS.includes(g.turret) ? g.turret : 'puls',
+    turret: g.turret && o.turrets.includes(g.turret) ? g.turret : 'puls',
     missile: g.missile && MISSILE_IDS.includes(g.missile) ? g.missile : 'lenk',
   };
 }

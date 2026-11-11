@@ -292,5 +292,54 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     expect(G.lock?.e).toBe(side);
     expect(G.convergeDist(R)).toBeCloseTo(R * 0.8);
   });
+  it('Raketentürme: Vierling feuert vier Raketen zugleich, Silo acht nacheinander (0,3 s), schwerer und weiter', () => {
+    // Cobra mit Vierlingen: erste Salve = 4 Raketen je Turm im selben Takt
+    const { g, a } = mk('pirate', 1, 'station', { ship: 'cobra', turret: 'rakete', wing: {} });
+    const G = g as unknown as { missiles: { dmg: number; life: number }[]; pTur: { cd: number; salvo?: number }[]; makeEnemy(k: string, x: number, y: number): E; aimA: number };
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    const e = G.makeEnemy('m', a.px, a.py - 300); e.hp = e.max = 1e9; e.cd = 1e9; a.enemies.push(e);
+    G.missiles.length = 0;
+    for (const t of G.pTur) { t.cd = 0; (t as { salvo?: number }).salvo = 0; }
+    let first = -1;
+    for (let i = 0; i < 120 && first < 0; i++) { G.aimA = -Math.PI / 2; e.x = a.px; e.y = a.py - 300; g.update(DT); if (G.missiles.length) first = G.missiles.length; }
+    expect(first % 4, 'Vierling: immer vier Raketen auf einmal').toBe(0);
+    expect(first).toBeGreaterThanOrEqual(4);
+    // Raptor mit Silos auf den L-Sockeln: acht Raketen je Silo, nicht auf einmal, sondern im Abstand von etwa 0,3 s
+    const groups = SHIPS.raptor.groups!.map((gr) => (gr.kind === 'L' ? 'silo' : 'puls'));
+    const r = mk('pirate', 1, 'station', { ship: 'raptor', groups, wing: {} });
+    const R = r.g as unknown as { missiles: { dmg: number; life: number }[]; pTur: { cd: number; type?: string; a: number }[]; makeEnemy(k: string, x: number, y: number): E; aimA: number };
+    r.a.enemies.length = 0; r.a.wave = 99; r.a.reinforce.length = 0;
+    const silos = R.pTur.filter((t) => t.type === 'silo');
+    expect(silos.length).toBe(8);
+    const t0 = R.makeEnemy('m', r.a.px, r.a.py - 3000); t0.hp = t0.max = 1e9; t0.cd = 1e9; r.a.enemies.push(t0);
+    // (während des Anlaufs hat womöglich schon eine Salve begonnen)
+    for (const t of R.pTur) { t.cd = t.type === 'silo' ? 0 : 1e9; (t as { salvo?: number }).salvo = 0; }
+    R.missiles.length = 0;
+    const counts: number[] = [];
+    for (let i = 0; i < Math.round(2.6 / DT); i++) { R.aimA = -Math.PI / 2; t0.x = r.a.px; t0.y = r.a.py - 3000; r.g.update(DT); counts.push(R.missiles.length); }
+    // gleich nach dem Start nur eine Rakete je Silo, nach gut 2,1 s (7 × 0,3 s) alle acht
+    expect(counts[0]).toBeLessThanOrEqual(8);
+    expect(Math.max(...counts), 'Silo: acht je Silo').toBe(8 * 8);
+    // nach 1 s erst etwa vier je Silo (0,3 s Abstand)
+    expect(counts[Math.round(1 / DT)]).toBeLessThanOrEqual(8 * 4);
+    // fest im Rumpf: Silo dreht nicht mit dem Ziel, sondern liegt in Schiffsrichtung
+    for (const t of silos) expect(t.a).toBeCloseTo(R.aimA, 5);
+    // schwerer (×1,4) und doppelte Flugzeit (Reichweite) gegenüber den Vierling-Raketen
+    expect(R.missiles[0].dmg / G.missiles[0].dmg).toBeCloseTo(1.4, 5);
+    // Vorrat: 20 Salven je Turm – Silo 160, Vierling 80 Raketen; leer feuert er nicht mehr
+    // (im Anlauf kann schon eine Rakete gestartet sein)
+    const sa = (silos[0] as unknown as { ammo: number }).ammo;
+    expect(sa).toBeLessThanOrEqual(160 - 8);
+    expect(sa).toBeGreaterThanOrEqual(160 - 16);
+    const va = G.pTur.map((t) => (t as unknown as { ammo: number }).ammo);
+    expect(va.every((x) => x <= 80 && x % 4 === 0), `Vierlinge: ${va}`).toBe(true);
+    expect(va.reduce((p, q) => p + q, 0)).toBeLessThan(80 * va.length);
+    for (const t of silos) { (t as unknown as { ammo: number }).ammo = 0; t.cd = 0; }
+    const before = R.missiles.length;
+    for (let i = 0; i < 60; i++) r.g.update(DT);
+    expect(R.missiles.length, 'leere Silos feuern nicht').toBeLessThanOrEqual(before);
+    const siloRange = (silos[0] as unknown as { w: { range: number } }).w.range, vierRange = (g as unknown as { tw: { range: number } }).tw.range;
+    expect(siloRange / vierRange).toBeCloseTo(2, 5);
+  });
 });
 

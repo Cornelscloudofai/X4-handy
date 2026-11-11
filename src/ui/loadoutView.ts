@@ -74,7 +74,7 @@ const GLYPH: Record<string, string> = {
 const MOD_GLYPH: Record<ModSlot, string> = { weapon: 'gun', engine: 'engine', shield: 'shield', chassis: 'hull', turret: 'turret', missile: 'rocket', hangar: 'wing', targeting: 'target' };
 const glyph = (k: string, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[k] ?? GLYPH.gun}</svg>`;
 const WEAPON_LOOK: Record<string, [string, string]> = {
-  puls: ['gun', '#3fe0c5'], bolzen: ['gun', '#9fe870'], schrot: ['scatter', '#ffb547'], strahl: ['beam', '#5fb4ff'], plasma: ['plasma', '#ff6a3d'],
+  rakete: ['rocket', '#ffb070'], puls: ['gun', '#3fe0c5'], bolzen: ['gun', '#9fe870'], schrot: ['scatter', '#ffb547'], strahl: ['beam', '#5fb4ff'], plasma: ['plasma', '#ff6a3d'],
   neutron: ['gatling', '#7fd8ff'], tau: ['scatter', '#ffd27a'], thermal: ['gun', '#ff8a5c'], boson: ['lance', '#c58bff'],
   schnellplasma: ['plasma', '#ff8a3d'], plasmasalve: ['plasma', '#ff5c3d'],
 };
@@ -207,12 +207,13 @@ export function loadoutView(m: LoModal): string {
     title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;
     body = `<div class="hgr-cards">${TURRET_IDS.map((id) => {
       const t = TURRETS[id], dps = n * sustainedDps(t.gun, t.beam);
-      return card({ key: 'turret', value: id, on: lo.turret === id, name: t.name, big: `${num(dps)}/s`, sm: `schwenkt ${t.turn}°/s`, ic: 'turret', color: WEAPON_LOOK[id]?.[1], img: spriteUrl(`waffe-${id}-ki`), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}` });
+      return card({ key: 'turret', value: id, on: lo.turret === id, name: t.name, big: `${num(dps)}/s`, sm: `schwenkt ${t.turn}°/s`, ic: 'turret', color: WEAPON_LOOK[id]?.[1], img: spriteUrl(t.missile ? 'split-turm-rakete-ki' : `waffe-${id}-ki`), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(td.name)}:</b> ${esc(td.desc)}<small>${esc(gunData(td.gun, td.beam))}</small></div>`;
   } else if (view === 'lturret') {
     const n = ship.lMounts?.length ?? 0, curDps = n * sustainedDps(ltd.gun);
     title = 'Schwere Türme'; sub = `${n} × L an den Schultern · Werte angenommen`;
-    body = `<div class="hgr-cards">${LTURRET_IDS.map((id) => {
+    // das Silo braucht einen Sockel im Rumpf (Träger), nicht für die Schulterrohre
+    body = `<div class="hgr-cards">${LTURRET_IDS.filter((id) => id !== 'silo').map((id) => {
       const t = LTURRETS[id], dps = n * sustainedDps(t.gun);
       return card({ key: 'lturret', value: id, on: (lo.lturret ?? 'plasma') === id, name: t.name, big: `${num(dps)}/s`, sm: `${num(km(t.gun), 1)} km · ${t.turn}°/s`, img: spriteUrl(t.barrel), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(km(t.gun), km(ltd.gun), (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(ltd.name)}:</b> ${esc(ltd.desc)}<small>${esc(gunData(ltd.gun))}</small></div>`;
