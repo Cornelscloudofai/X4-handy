@@ -1656,11 +1656,14 @@ describe('Kampf: Kha’ak', () => {
     expect(g.enemies.filter((e) => e.kind === 'kj').length).toBeLessThanOrEqual(6);
   });
 
-  it('Zerstörer als Großziel: zwei Kyon-Türme an Bug und Heck', () => {
+  it('Zerstörer als Großziel: vier Kyon-Türme auf den Sockellöchern an Bug und Heck', () => {
     const g = make();
     g.spawnBoss(true);
-    const t = g.enemies.filter((e) => e.parent);
-    expect(t.map((q) => q.weapon)).toEqual(['laser', 'laser']);
+    const t = g.enemies.filter((e) => e.parent) as unknown as { weapon: string; ox: number; oy: number }[];
+    expect(t.map((q) => q.weapon)).toEqual(['laser', 'laser', 'laser', 'laser']);
+    // je zwei links und rechts der Mittellinie, zwei vorn und zwei hinten
+    expect(t.filter((q) => q.ox < 0).length).toBe(2);
+    expect(t.filter((q) => q.oy < 0).length).toBe(2);
   });
 });
 

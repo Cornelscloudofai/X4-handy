@@ -111,8 +111,12 @@ describe('Neue Großschiffe: Xenon P, Piratenträger', () => {
     const one = mk('pirate', 1).a, three = mk('pirate', 3).a;
     for (const a of [one, three]) { a.enemies.length = 0; a.spawnBoss(); }
     const flak = (a: A) => a.enemies.filter((e) => e.weapon === 'flak').length;
-    expect(flak(one)).toBe(4);
+    // alle sechs Sockel besetzt; auf Stufe 1 schwächer (feuern seltener)
+    expect(flak(one)).toBe(6);
     expect(flak(three)).toBe(6);
+    const fk = (a: A) => a.enemies.filter((e) => e.weapon === 'flak').map((e) => (e as unknown as { fireK?: number }).fireK ?? 1);
+    expect(fk(one).every((f) => f < 1)).toBe(true);
+    expect(fk(three).every((f) => f === 1)).toBe(true);
     const boss = one.enemies.find((e) => e.kind === 'boss')!;
     // Startbahn 95 von 1 254 Bildpunkten breit, Jäger (Kukri) 38 Punkte lang
     expect((95 / 1254) * boss.r * 4.7).toBeGreaterThan(38 * 2.5);

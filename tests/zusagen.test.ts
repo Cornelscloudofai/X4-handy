@@ -23,15 +23,27 @@ describe('Zusagen im Spiel nachgeprüft', () => {
   setSizeScale('x4', false);
   afterAll(() => setSizeScale('bisher', false));
 
-  it('Xenon K (auch als Großziel, z. B. im Nest): Stufe 1 4 L + 4 M, Stufe 2 6 + 7, ab Stufe 3 alle 8 + 14', () => {
-    for (const [level, L, M] of [[1, 4, 4], [2, 6, 7], [3, 8, 14], [4, 8, 14], [5, 8, 14]] as const) for (const mini of [false, true]) {
+  it('Xenon K (auch als Großziel, z. B. im Nest): alle 8 L- und 14 M-Sockel besetzt; Stufe 1 und 2 schwächer', () => {
+    // Stärke wie früher 4 L + 4 M (Stufe 1) bzw. 6 L + 7 M (Stufe 2), ab Stufe 3 voll
+    for (const [level, fL, fM] of [[1, 4 / 8, 4 / 14], [2, 6 / 8, 7 / 14], [3, 1, 1], [4, 1, 1], [5, 1, 1]] as const) for (const mini of [false, true]) {
       const { a } = mk('xenon', level, 'nest');
       a.enemies.length = 0;
       a.spawnBoss(mini);
       const k = a.enemies.find((e) => e.kind === 'boss')!;
-      const tur = a.enemies.filter((e) => e.parent === k);
-      expect([tur.filter((t) => t.weapon === 'plasma').length, tur.filter((t) => t.weapon === 'm').length], `Stufe ${level}${mini ? ' Großziel' : ''}`).toEqual([L, M]);
+      const tur = a.enemies.filter((e) => e.parent === k) as (E & { fireK?: number })[];
+      const L = tur.filter((t) => t.weapon === 'plasma'), M = tur.filter((t) => t.weapon === 'm');
+      expect([L.length, M.length], `Stufe ${level}${mini ? ' Großziel' : ''}`).toEqual([8, 14]);
+      expect(L[0].fireK ?? 1).toBeCloseTo(fL);
+      expect(M[0].fireK ?? 1).toBeCloseTo(fM);
     }
+  });
+
+  it('Piratenfregatte als Großziel: alle drei Sockel besetzt (Flügel und Heck)', () => {
+    const { a } = mk('pirate', 1, 'station');
+    a.enemies.length = 0;
+    a.spawnBoss(true);
+    const f = a.enemies.find((e) => e.kind === 'boss')!;
+    expect(a.enemies.filter((e) => e.parent === f).length).toBe(3);
   });
 
   it('Großkampfschiffe zugleich: Stufe 1–3 eines, Stufe 4 und 5 zwei', () => {
@@ -46,6 +58,8 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     a.spawnBoss(true);
     const k = a.enemies.find((e) => e.kind === 'boss')!;
     k.x = a.px; k.y = a.py - 1500;
+    // sehr zäh, damit die vielen Lanzen das Ziel nicht schon im ersten Bild zerstören
+    for (const e of a.enemies) e.hp = e.max = 1e12;
     let heavy: A['rails'][number] | undefined, light: A['rails'][number] | undefined;
     for (let i = 0; i < 60 * 20 && !(heavy && light); i++) {
       for (const e of a.enemies) e.hp = e.max;
@@ -191,6 +205,27 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     expect(modStats('cobra').tdmg).toBeGreaterThan(0.4);
     expect(modStats('mamba').tdmg).toBeUndefined();
     resetMods();
+  });
+
+  it('Türme bleiben bei ihrem Ziel: kein Hin- und Herspringen zwischen gleich weit entfernten Gegnern', () => {
+    const { g, a } = mk('pirate', 1, 'station', { ship: 'cobra', turret: 'puls', wing: {} });
+    const G = g as unknown as { pTur: { tgt?: unknown; a: number }[]; makeEnemy(k: string, x: number, y: number): E; pvx: number; aimA: number };
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    // zwei zähe Gegner links und rechts, gleich weit weg; dein Schiff schwenkt langsam hin und her
+    const e1 = G.makeEnemy('kanone', a.px - 160, a.py - 120), e2 = G.makeEnemy('kanone', a.px + 160, a.py - 120);
+    for (const e of [e1, e2]) { e.hp = e.max = 1e9; e.cd = 1e9; }
+    a.enemies.push(e1, e2);
+    const t = G.pTur[0];
+    let switches = 0, last: unknown = null, t0 = 0;
+    for (let i = 0; i < 60 * 8; i++) {
+      G.aimA = -Math.PI / 2 + Math.sin(i / 60) * 0.6;
+      for (const e of [e1, e2]) { e.hp = e.max; (e as unknown as { vx: number; vy: number }).vx = 0; (e as unknown as { vy: number }).vy = 0; }
+      e1.x = a.px - 160; e1.y = a.py - 120; e2.x = a.px + 160; e2.y = a.py - 120;
+      g.update(DT);
+      if (t.tgt && t.tgt !== last) { if (last) switches++; last = t.tgt; if (!t0) t0 = i; }
+    }
+    expect(last, 'Turm hat ein Ziel').not.toBeNull();
+    expect(switches, 'Zielwechsel').toBe(0);
   });
 });
 

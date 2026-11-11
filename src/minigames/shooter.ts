@@ -160,6 +160,8 @@ interface Enemy {
   salvo?: number; salvoT?: number;
   /** Xenon P: Türme schon montiert; Piratenträger: Zeit bis zum nächsten Jägerstart, gestartete Jäger */
   armed?: boolean; launchT?: number; launched?: number;
+  /** Turm mit verringerter Stärke (niedrige Stufe): feuert entsprechend seltener */
+  fireK?: number;
   /** Großkampfschiff im Anflug auf sein Ziel (sonst hält es Stellung und Kurs) */
   appr?: boolean;
   /** Piratenträger, der als Großziel kommt (Einsätze) */
@@ -238,6 +240,11 @@ interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile' |
 interface Rock { x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches der vier Asteroidenbilder */ v: number }
 interface Mine { x: number; y: number; vx: number; vy: number; armed: number; hp: number }
 interface Card { id: string; name: string; desc: string; max: number }
+/**
+ * Zielbindung eines Turms: gewähltes Ziel, geglättete Zielgeschwindigkeit (für einen ruhigen Vorhalt), Zeit bis zur
+ * nächsten Prüfung, ob ein Ziel passender zum Turmbefehl wäre
+ */
+interface TurretMem { tgt?: Enemy | EMissile | null; lvx?: number; lvy?: number; reT?: number }
 
 /** Laserturm der Xenon: Reichweite, Aufladezeit, Brenndauer, Schaden pro Sekunde */
 const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
@@ -339,7 +346,7 @@ interface Wing {
    */
   phase: 'run' | 'pass' | 'extend'; phT: number; ex: number; ey: number; side: 1 | -1; hitT: number;
   /** Ausrüstung aus dem Hangar: Bordwaffe, Türme (M-Schiffe) samt Turmart, Raketen (Lager, Nachladezeit) */
-  wType: WeaponId; tType: TurretId; tw: GameGun | null; tur: { cd: number; a: number; mag: number }[];
+  wType: WeaponId; tType: TurretId; tw: GameGun | null; tur: ({ cd: number; a: number; mag: number } & TurretMem)[];
   mDef: MissileDef | null; mCd: number; ammo: number;
   /**
    * Eigenart des Piloten (fest je Schiff): Anflugwinkel neben der Ideallinie (rad), wie weit er aushölt, wie lange er
@@ -749,12 +756,12 @@ export class ShooterGame implements MiniGame {
   private tune = enemyTune();
   private tuneVer = enemyTuneVersion();
   /** Türme des eigenen Schiffs: Pause und Richtung; beim Träger je Turm eigene Art (Waffe, Drehtempo, Bild, L-Turm) */
-  private pTur: { cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number }[] = [];
+  private pTur: ({ cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number } & TurretMem)[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
   private turTurn = 5;
   private turType = 'puls';
   /** Schwere L-Türme (Zerstörer): Schwenkwinkel zur Blickrichtung (0 = geradeaus, positiv = nach außen), Pause, Magazin, Rückstoß, Mündungsfeuer */
-  private pL: { rel: number; cd: number; mag: number; recoil: number; flash: number }[] = [];
+  private pL: ({ rel: number; cd: number; mag: number; recoil: number; flash: number } & TurretMem)[] = [];
   private lt: GameGun | null = null;
   private lTurn = 1;
   private lTurType: LTurretId = 'plasma';
@@ -1960,12 +1967,11 @@ export class ShooterGame implements MiniGame {
       const [tx0, ty0] = w.def.turrets[i];
       const x = w.x + tx0 * c - ty0 * sn, y = w.y + tx0 * sn + ty0 * c;
       t.cd -= dt;
-      let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = tw.range;
-      for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
-      if (!tgt) { tgt = this.pickTarget(x, y, tw.range, 'alle'); if (tgt) bd = Math.hypot(tgt.x - x, tgt.y - y); }
-      if (!tgt) continue;
+      const aim = this.turretAim(t, x, y, tw.range, 'alle', true, dt);
+      if (!aim) continue;
+      const tgt = aim.tgt, bd = aim.d;
       const lt = tw.beam ? 0 : bd / tw.speed;
-      const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
+      const want = Math.atan2(tgt.y + aim.vy * lt - y, tgt.x + aim.vx * lt - x);
       t.a = wrapA(turnTo(t.a, want, dt * turn));
       if (tw.beam) {
         if (Math.abs(wrapA(want - t.a)) > 0.08) continue;
@@ -2157,6 +2163,40 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Ziel nach Turmbefehl: bevorzugt die gewählte Klasse (sonst das nächste andere Ziel); ok prüft Winkel o. Ä. */
+  /**
+   * Ziel eines Turms mit Bindung: Ein Turm bleibt bei seinem Ziel, solange es lebt und in Reichweite ist (mit etwas
+   * Spielraum) – statt in jedem Bild neu den nächsten Gegner zu nehmen und hin und her zu springen. Eine Rakete
+   * unterbricht ein Schiffsziel nur, wenn sie schon nah ist (60 % der Reichweite); passt das Ziel nicht zum Turmbefehl,
+   * wird einmal je Sekunde nach einem passenden gesucht. Für den Vorhalt gibt es die geglättete Zielgeschwindigkeit
+   */
+  private turretAim(t: TurretMem, x: number, y: number, range: number, order: TurretOrder, missiles: boolean, dt: number, ok: (e: Enemy, d: number) => boolean = () => true):
+    { tgt: Enemy | EMissile; d: number; vx: number; vy: number } | null {
+    const dist = (q: { x: number; y: number }) => Math.hypot(q.x - x, q.y - y);
+    let cur = t.tgt ?? null;
+    const isM = (q: unknown): q is EMissile => this.eMissiles.includes(q as EMissile);
+    if (cur) {
+      const alive = isM(cur) ? cur.life > 0 && cur.hp > 0 : this.enemies.includes(cur) && !(cur.kind === 'boss' && cur.shielded);
+      const d = dist(cur);
+      if (!alive || d > range * 1.08 || (!isM(cur) && !ok(cur, d))) cur = null;
+    }
+    const nearMissile = (lim: number) => { let m: EMissile | null = null, md = lim; for (const q of this.eMissiles) { const d = dist(q); if (d < md) { md = d; m = q; } } return m; };
+    if (missiles && cur && !isM(cur)) { const m = nearMissile(range * 0.6); if (m) cur = m; }
+    t.reT = (t.reT ?? 0) - dt;
+    if (cur && !isM(cur) && order !== 'alle' && t.reT <= 0) {
+      t.reT = 1;
+      const fits = (e: Enemy) => (order === 'struktur' ? isStructure(e) : ECLASS[e.kind] === order);
+      if (!fits(cur)) { const p = this.pickTarget(x, y, range, order, ok); if (p && fits(p)) cur = p; }
+    }
+    if (!cur) cur = (missiles ? nearMissile(range) : null) ?? this.pickTarget(x, y, range, order, ok);
+    if (cur !== t.tgt) { t.lvx = cur?.vx ?? 0; t.lvy = cur?.vy ?? 0; t.reT = 1; }
+    t.tgt = cur;
+    if (!cur) return null;
+    const k = Math.min(1, dt * 2.5);
+    t.lvx = (t.lvx ?? cur.vx) + (cur.vx - (t.lvx ?? cur.vx)) * k;
+    t.lvy = (t.lvy ?? cur.vy) + (cur.vy - (t.lvy ?? cur.vy)) * k;
+    return { tgt: cur, d: dist(cur), vx: t.lvx, vy: t.lvy };
+  }
+
   private pickTarget(x: number, y: number, range: number, order: TurretOrder, ok: (e: Enemy, d: number) => boolean = () => true): Enemy | null {
     let best: Enemy | null = null, bd = range, pref: Enemy | null = null, pd = range;
     for (const e of this.enemies) {
@@ -2755,8 +2795,8 @@ export class ShooterGame implements MiniGame {
     this.enemies.push(b);
     type Mount = [number, number, ('laser' | 'plasma' | 'brut' | 'm' | 'flak')?];
     const all: Mount[] = this.side === 'pirate' && !small
-      // Piratenträger: Vierlings-Flak auf den sechs Ringsockeln, auf Stufe 1 und 2 nur vier davon
-      ? PIRATE_CARRIER_MOUNTS.slice(0, this.level >= 3 || this.big > 1 ? 6 : 4)
+      // Piratenträger: Vierlings-Flak auf allen sechs Ringsockeln (auf Stufe 1 und 2 schwächer, siehe unten)
+      ? PIRATE_CARRIER_MOUNTS
       : this.side === 'pirate'
       // auf den drei Sockeln im Bild der Fregatte (Flügelenden links/rechts, Heckmitte); ab Stufe 4 ein vierter auf dem Bug
       ? [[-53, 4], [54, 4], [0, 30], ...(this.level >= 4 ? [[0, -40] as [number, number]] : [])]
@@ -2769,17 +2809,28 @@ export class ShooterGame implements MiniGame {
         : [[-47, -2, 'laser'], [47, -2, 'laser'], [-25, -27, 'brut'], [25, -27, 'brut']];
     // Großziel: nur die beiden Flügeltürme (Xenon K: wie der Boss je nach Stufe bewaffnet); Kha'ak-Zerstörer: Kyon-Türme
     // auf den Sockelpaaren an Bug und Heck
-    const offs = small ? (this.side === 'khaak' ? [[0, -37, 'laser'], [0, 37, 'laser']] as typeof all : this.side === 'xenon' ? this.kMounts() : all.slice(0, 2))
-      : this.side === 'xenon' ? this.kMounts() : all;
+    // Alle Sockel sind besetzt – wo früher weniger Türme waren (niedrige Stufen, Großziele), sind sie schwächer: Hülle,
+    // Feuerrate und Treffer je Schuss mal f (Anteil der früheren Turmzahl), damit die Stufe nicht schwerer wird.
+    // Kha'ak-Zerstörer: je ein Kyon-Turm auf den vier Sockellöchern an Bug und Heck
+    const ZERST: Mount[] = [[-7.7, -36.5, 'laser'], [7.7, -36.5, 'laser'], [-7.7, 31, 'laser'], [7.7, 31, 'laser']];
+    const offs: Mount[] = small ? (this.side === 'khaak' ? ZERST : this.side === 'xenon' ? XENON_K_MOUNTS : all) : this.side === 'xenon' ? XENON_K_MOUNTS : all;
+    const kf = this.kStrength();
+    const strength = (weapon?: string): number => this.side === 'xenon' ? (weapon === 'm' ? kf.M : kf.L)
+      : this.side === 'pirate' && !small ? (this.level >= 3 || this.big > 1 ? 1 : 4 / 6)
+        : small && this.side === 'khaak' ? 0.5 : small && this.side === 'pirate' ? 2 / 3 : 1;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
       t.parent = b; t.ox = ox * k; t.oy = oy * k; t.weapon = weapon;
+      const f = strength(weapon);
+      // (Hülle noch etwas schwächer: mehr einzelne Türme kosten Zeit, bis jeder anvisiert und zerstört ist)
+      if (f < 1) { t.hp *= f * 0.6; t.max *= f * 0.6; t.sh *= f * 0.6; t.shMax *= f * 0.6; t.fireK = f; }
       // Xenon K: Turmgröße passend zu den Sockeln im Bild; M-Türme leichter
       if (this.side === 'xenon' || weapon === 'flak') {
         // (im alten Maßstab nicht kleiner als bisher, sonst wären sie kaum zu treffen)
         t.r = Math.max(weapon === 'm' ? 9 : 13, (weapon === 'm' ? 1.6 : 3) * k);
         if (weapon === 'm') { t.hp = t.max = t.max * 0.6; t.sh = t.shMax = t.shMax * 0.6; }
-      } else t.r *= k;
+      } else if (small && this.side === 'khaak') t.r = Math.max(9, 5 * k);
+      else t.r *= k;
       // Xenon-Türme feuern versetzt; ab Stufe 4 schneller (statt eines fünften Turms)
       if (weapon) t.cd = weapon === 'brut' ? 4 + this.r() * 3 : 1.5 + this.r() * 2;
       this.enemies.push(t);
@@ -2922,17 +2973,13 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Bemannte Türme des Xenon K je nach Stufe: Stufe 1 vier L- und vier M-Türme, Stufe 2 sechs und sieben, ab Stufe 3 (und gegen
-   * den Träger) alle 8 L und 14 M; zuerst die L-Türme mittschiffs, die M-Türme gleichmäßig über das Schiff verteilt
+   * Stärke der Türme des Xenon K je nach Stufe: alle 8 L- und 14 M-Sockel sind besetzt; auf Stufe 1 entsprechen sie
+   * zusammen vier L- und vier M-Türmen, auf Stufe 2 sechs und sieben (schwächere Hülle, seltener Feuer), ab Stufe 3 (und
+   * gegen den Träger) voll
    */
-  private kMounts(): typeof XENON_K_MOUNTS {
-    const full = this.level >= 3 || this.big > 1;
-    const nL = full ? 8 : 2 + this.level * 2, nM = full ? 14 : 1 + this.level * 3;
-    // L: große Plasmatürme, zuerst die mittschiffs (Reihenfolge in XENON_K_MOUNTS)
-    const L = XENON_K_MOUNTS.filter((m) => m[2] !== 'm').slice(0, nL);
-    const M = XENON_K_MOUNTS.filter((m) => m[2] === 'm');
-    const pick = M.filter((_, i) => Math.floor((i * nM) / M.length) !== Math.floor(((i + 1) * nM) / M.length) || nM >= M.length);
-    return [...L, ...pick.slice(0, nM)];
+  private kStrength(): { L: number; M: number } {
+    if (this.level >= 3 || this.big > 1) return { L: 1, M: 1 };
+    return { L: (2 + this.level * 2) / 8, M: (1 + this.level * 3) / 14 };
   }
 
   /** Punkt im Abschnitt um die Route voraus, nicht direkt auf Frachter oder Jäger */
@@ -3836,14 +3883,14 @@ export class ShooterGame implements MiniGame {
       t.cd -= dt;
       // Träger: jeder Turm mit eigener Waffe und eigenem Drehtempo
       const w = t.w ?? this.tw, range = w.range * this.tRangeMul, turn = (t.turn ?? this.turTurn) * this.tTurnMul;
-      let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = range;
-      // Raketenabwehr zuerst – nur bei „alle“ und „S“; wer die Türme auf M- oder L-Schiffe ansetzt, gibt sie auf
+      // Raketenabwehr nur bei „alle“ und „S“; wer die Türme auf M- oder L-Schiffe ansetzt, gibt sie auf.
+      // Zielbindung: der Turm bleibt bei seinem Ziel (siehe turretAim)
       const order = t.g != null ? this.orderOf(`g${t.g}`) : t.L ? this.orders.l : this.orders.m;
-      if (order === 'alle' || order === 'S') for (const m of this.eMissiles) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tgt = m; } }
-      if (!tgt) { tgt = this.pickTarget(x, y, range, order); if (tgt) bd = Math.hypot(tgt.x - x, tgt.y - y); }
-      if (!tgt) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
+      const aim = this.turretAim(t, x, y, range, order, order === 'alle' || order === 'S', dt);
+      if (!aim) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
+      const tgt = aim.tgt, bd = aim.d;
       const lt = w.beam ? 0 : bd / w.speed;
-      const want = Math.atan2(tgt.y + tgt.vy * lt - y, tgt.x + tgt.vx * lt - x);
+      const want = Math.atan2(tgt.y + aim.vy * lt - y, tgt.x + aim.vx * lt - x);
       t.a = wrapA(turnTo(t.a, want, dt * turn));
       if (w.beam) {
         // Dauerstrahl: trifft sofort, solange der Turm auf dem Ziel liegt (Schaden pro Sekunde wie die Bordstrahler)
@@ -3895,7 +3942,7 @@ export class ShooterGame implements MiniGame {
         const lead = w.rail ? 0 : d / w.speed;
         return wrapA(Math.atan2(e.y + e.vy * lead - y, e.x + e.vx * lead - x) - this.aimA) * side;
       };
-      const tgt = this.pickTarget(x, y, w.range * this.tRangeMul, this.orders.l, (e, d) => { const r = relTo(e, d); return r >= lo && r <= hi; });
+      const tgt = this.turretAim(t, x, y, w.range * this.tRangeMul, this.orders.l, false, dt, (e, d) => { const r = relTo(e, d); return r >= lo && r <= hi; })?.tgt as Enemy | undefined;
       const want = tgt ? relTo(tgt, Math.hypot(tgt.x - x, tgt.y - y)) : 0;
       t.rel = clamp(turnTo(t.rel, tgt ? want : 0, dt * this.lTurn * this.tTurnMul), lo, hi);
       if (!tgt || t.cd > 0 || Math.abs(want - t.rel) > 0.1) continue;
@@ -4021,12 +4068,12 @@ export class ShooterGame implements MiniGame {
         const tx = tg ? tg[0] : this.px, ty = tg ? tg[1] : this.py;
         if (e.weapon === 'plasma') {
           if (e.cd <= 0 && tg) {
-            e.cd = (this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8;
+            e.cd = ((this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8) / (e.fireK ?? 1);
             // dicke Plasmakugel: leicht gestreut, gut sichtbar, schwer; auf große Reichweite entsprechend schneller
             const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08, v = Math.min(420, 175 * Math.sqrt(range / PLASMA_RANGE));
             // großer L-Plasmaturm: ab Stufe 3 90 Schaden je Kugel – zwei Treffer zerstören eine Mamba (100 Hülle, bis
             // 100 Schild); auf Stufe 2 braucht es vier, auf Stufe 1 gut zwölf Treffer (Einstieg)
-            this.enemyShot(e, a2, v, (90 * [0.15, 0.5, 1, 1, 1][this.level - 1]) / this.enemyDmg, '#ff6a3d', 11, (range + 60) / v);
+            this.enemyShot(e, a2, v, ((90 * [0.15, 0.5, 1, 1, 1][this.level - 1]) / this.enemyDmg) * (e.fireK ?? 1), '#ff6a3d', 11, (range + 60) / v);
             // aus den Mündungen, nicht aus der Turmmitte
             const pb = this.bullets[this.bullets.length - 1];
             // Mündung des großen L-Plasmaturms: gut die Hälfte der Bildgröße vor dem Drehpunkt
@@ -4044,21 +4091,21 @@ export class ShooterGame implements MiniGame {
               const lat = (flak ? [-0.2, -0.07, 0.07, 0.2] : [-0.025, 0.025])[i] * size, fwd = size * 0.55;
               // Repeater: schnelle, leichte Geschosse (drei Zweierstöße je Sekunde)
               const v = flak ? 320 : 720;
-              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 1.2) * this.capTurretDmg, flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
+              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 1.2) * this.capTurretDmg * (e.fireK ?? 1), flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
               const pb = this.bullets[this.bullets.length - 1], c = Math.cos(a2), sn = Math.sin(a2);
               pb.x += c * fwd - sn * lat; pb.y += sn * fwd + c * lat;
               e.salvo!--; e.salvoT = flak ? 0.07 : 0.06;
             }
           } else if (e.cd <= 0 && tg) {
-            e.cd = flak ? 1.4 + this.r() * 0.5 : 0.31 + this.r() * 0.05;
+            e.cd = (flak ? 1.4 + this.r() * 0.5 : 0.31 + this.r() * 0.05) / (e.fireK ?? 1);
             e.salvo = flak ? 4 : 2; e.salvoT = 0;
           }
           continue;
         }
         if (e.cd <= 0 && tg) {
-          e.cd = 1.5 + this.r() * 0.6;
+          e.cd = (1.5 + this.r() * 0.6) / (e.fireK ?? 1);
           const a2 = Math.atan2(ty - e.y, tx - e.x), v = this.side === 'pirate' ? 250 : 280;
-          for (let q = 0; q < 2; q++) this.enemyShot(e, a2 + (q - 0.5) * 0.1, v, 5.5, this.side === 'pirate' ? '#ffd27a' : '#ff5c6c', 2, (TURRET_RANGE + 40) / v);
+          for (let q = 0; q < 2; q++) this.enemyShot(e, a2 + (q - 0.5) * 0.1, v, 5.5 * (e.fireK ?? 1), this.side === 'pirate' ? '#ffd27a' : '#ff5c6c', 2, (TURRET_RANGE + 40) / v);
         }
         continue;
       }
@@ -4355,7 +4402,7 @@ export class ShooterGame implements MiniGame {
     const tx = toP ? this.px : fx, ty = toP ? this.py : fy;
     if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < LASER_LEN - 20) {
       // Kha'ak-Kyon-Türme laden etwas länger nach (das Brutschiff bringt dafür Jäger mit)
-      e.cd = (this.level >= 4 ? 3 : 3.8) + this.r() + (this.side === 'khaak' ? 1.5 : 0);
+      e.cd = ((this.level >= 4 ? 3 : 3.8) + this.r() + (this.side === 'khaak' ? 1.5 : 0)) / (e.fireK ?? 1);
       e.beamT = LASER_CHARGE + LASER_FIRE;
       e.beamA = Math.atan2(ty - e.y, tx - e.x);
       e.beamAcc = 0;
