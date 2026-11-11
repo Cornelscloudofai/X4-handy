@@ -297,6 +297,9 @@ const MAP_SHIPS: Record<string, string> = {
   chimera: 'split-chimera-ki',
   dragon: 'split-dragon-ki',
   cobra: 'split-cobra-ki',
+  // Großkampfschiffe: dieselben Bilder wie im Kampf (der Raptor ist ein schmales Hochformat-Bild)
+  rattlesnake: 'split-klapperschlange-ki',
+  raptor: 'split-raptor-ki',
 };
 
 /** Bild-URL einer Schiffsklasse (für Listen und Kopfbilder), sonst undefined */

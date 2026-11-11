@@ -2080,7 +2080,9 @@ export class SectorRenderer {
           ctx.fill();
         }
       }
-      ctx.drawImage(sprite.img, -L / 2, -L / 2, L, L);
+      // nicht quadratische Bilder (Raptor) im eigenen Seitenverhältnis, Länge = Bildhöhe
+      const ar = sprite.img.naturalHeight ? sprite.img.naturalWidth / sprite.img.naturalHeight : 1;
+      ctx.drawImage(sprite.img, (-L * ar) / 2, -L / 2, L * ar, L);
       ctx.restore();
       return Math.max(4.4, L * 0.4);
     }

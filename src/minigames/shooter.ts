@@ -1014,6 +1014,16 @@ export class ShooterGame implements MiniGame {
   private wingAmmo(w: Wing): number { return Math.round(w.def.x4.missiles * (1 + 0.5 * this.c('wmiss'))); }
   /** Hangar: Reparatur und Aufmunitionieren schneller (Werkstatt und Karte „Hangarcrew“) */
   private get hangarMul(): number { return (1 + this.m('wrepair')) * (1 + 0.5 * this.c('hangar')); }
+  /** Eigenes Schiff ist ein Großkampfschiff (L, XL): liegt in der hintersten Ebene */
+  private get bigPlayer(): boolean { return this.ship.cls === 'L' || this.ship.cls === 'XL'; }
+
+  /** Gegner in der hintersten Ebene: Großkampfschiffe (mindestens doppelte Grundgröße), Nester, Plattformen – samt Türmen */
+  private inBack(e: Enemy): boolean {
+    let r = e;
+    while (r.parent) r = r.parent;
+    return !!(r.nest || r.plat || r.hive) || (r.kind === 'boss' && r.r >= SPEC.boss.r * 2);
+  }
+
   private get aimAssist(): number { return AIM_ASSIST * (1 + this.m('aim')); }
 
   /** Entfernung, in der sich die Frontkanonen treffen: erfasstes Ziel, sonst ein Stück der Reichweite voraus */
@@ -5041,13 +5051,17 @@ export class ShooterGame implements MiniGame {
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
     this.drawWards(ctx, t);
-    // eigenes Schiff unter den Gegnern: sie fliegen scheinbar darüber hinweg (wichtig beim großen Träger)
-    if (this.outcome !== 'player') this.drawPlayer(ctx, t);
+    // Ebenen: ganz hinten die Großkampfschiffe (eigenes L/XL-Schiff, Xenon K, Träger, Nester samt ihren Türmen),
+    // darüber alle kleineren Schiffe und die Staffel, ganz oben alle Schüsse, Strahlen und Explosionen
+    const bigMe = this.bigPlayer;
+    if (bigMe && this.outcome !== 'player') this.drawPlayer(ctx, t);
+    for (const e of this.enemies) if (this.inBack(e)) this.drawEnemy(ctx, e, t);
+    this.drawDying(ctx);
+    if (!bigMe && this.outcome !== 'player') this.drawPlayer(ctx, t);
     // Staffel im Flug über dem eigenen Schiff (ohne Träger auch beim Start, den es dann nicht gibt)
     for (const w of this.wings) if (w.state === 'fly' || w.state === 'home' || (!this.ship.hullLayer && (w.state === 'in' || w.state === 'out'))) this.drawWing(ctx, w, t);
     this.drawClusterMass(ctx, t);
-    this.drawDying(ctx);
-    for (const e of this.enemies) this.drawEnemy(ctx, e, t);
+    for (const e of this.enemies) if (!this.inBack(e)) this.drawEnemy(ctx, e, t);
     this.drawTargetMarks(ctx, t);
     this.drawBlasts(ctx, t);
     this.drawBeams(ctx, t);

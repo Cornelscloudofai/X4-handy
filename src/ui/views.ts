@@ -469,6 +469,8 @@ function exploreBlock(state: GameState, id: string): string {
   const list = scouts(state);
   const here = list.filter((x) => x.task?.target === id);
   const rows: string[] = [];
+  // weitere Späher: jederzeit kaufbar, damit mehrere Sektoren zugleich abgesucht werden können
+  const buy = `<button class="btn small ${state.credits >= SCOUT_PRICE ? '' : 'disabled'}" ${act('scout-buy')}>${icon('plus', 15)}${list.length ? 'Weiteren Späher kaufen' : 'Späher kaufen'} · ${fmtCr(SCOUT_PRICE)}</button>`;
   for (const sp of here) {
     const t = sp.task!;
     const pct = Math.round((t.t / t.dur) * 100);
@@ -493,7 +495,7 @@ function exploreBlock(state: GameState, id: string): string {
       rows.push(`<div class="gx-scout"><span class="gx-radar"></span>Montage am Tor · ${fmtDur(st.left)}<i style="--p:${Math.round(st.p * 100)}%"></i></div>`);
     } else {
       const best = idleAll.map((x) => ({ x, n: scoutPath(state, x.at, id)?.length ?? 99 })).sort((a, b) => a.n - b.n)[0];
-      rows.push(`<div class="gx-gate open"><span>${icon('target', 15)}Das Tor ist offen. Was liegt dahinter?</span>${best ? `<button class="btn small primary" ${act('gate-through', { sc: best.x.id, sig: g })}>${esc(best.x.name)} hindurchschicken</button>` : '<span class="small muted">Kein Späher frei.</span>'}</div>`);
+      rows.push(`<div class="gx-gate open"><span>${icon('target', 15)}Das Tor ist offen. Was liegt dahinter?</span>${best ? `<button class="btn small primary" ${act('gate-through', { sc: best.x.id, sig: g })}>${esc(best.x.name)} hindurchschicken</button>` : `<span class="small muted">Kein Späher frei.</span>${buy}`}</div>`);
     }
   }
   const idle = list.filter((x) => !x.task);
@@ -502,8 +504,8 @@ function exploreBlock(state: GameState, id: string): string {
     if (idle.length) {
       const best = idle.map((x) => ({ x, n: scoutPath(state, x.at, id)?.length ?? 99 })).sort((a, b) => a.n - b.n)[0];
       btn = `<button class="btn primary small" ${act('scout-peil', { sc: best.x.id, sec: id })}>${icon('target', 15)}Peilen und ${esc(best.x.name)} schicken</button><button class="btn small" ${act('scout-send', { sc: best.x.id, sec: id })}>Nur schicken</button>`;
-    } else if (!list.length) btn = `<button class="btn small ${state.credits >= SCOUT_PRICE ? '' : 'disabled'}" ${act('scout-buy')}>${icon('plus', 15)}Späher kaufen · ${fmtCr(SCOUT_PRICE)}</button>`;
-    else btn = '<span class="small muted">Alle Späher sind unterwegs.</span>';
+    } else if (!list.length) btn = buy;
+    else btn = `<span class="small muted">Alle ${list.length} Späher sind unterwegs.</span>${buy}`;
   }
   return `<div class="gx-explore">${rows.join('')}${btn ? `<div class="gx-actions">${btn}</div>` : ''}</div>`;
 }
