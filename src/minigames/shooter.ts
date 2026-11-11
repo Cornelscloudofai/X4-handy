@@ -443,7 +443,10 @@ const AIM_ASSIST = 0.15;
  * bzw. Zielentfernung geradeaus) – sonst fliegen kleine Ziele bei breiten Schiffen zwischen den Kanonen durch.
  * Höchstens so weit seitlich (rad), ohne Ziel trifft sich alles bei diesem Anteil der Reichweite
  */
-const GUN_GIMBAL = 0.26, GUN_CONVERGE = 0.6;
+const GUN_GIMBAL = 0.26, GUN_CONVERGE = 0.8;
+/** Treffpunkt in der Entfernung des Hauptziels nur, wenn es so nah an der Mittelachse liegt (rad); Vorhaltepunkte
+ * werden für Gegner in Feuerreichweite bis so weit seitlich angezeigt */
+const CONVERGE_CONE = 0.52, LEAD_CONE = 1.75, LEAD_MAX = 10;
 
 /** Winkel auf (−π, π] */
 function wrapA(a: number): number {
@@ -720,7 +723,9 @@ export class ShooterGame implements MiniGame {
   /** Reiseantrieb 0…1 */
   private cruise = 0;
   /** Vorhaltepunkt des anvisierten Gegners */
-  private lock: { e: Enemy; x: number; y: number; ok: boolean } | null = null;
+  private lock: { e: Enemy; x: number; y: number; ok: boolean; off: number } | null = null;
+  /** Vorhaltepunkte aller Gegner in Feuerreichweite (das Hauptziel ist lock) */
+  private leads: { e: Enemy; x: number; y: number }[] = [];
   private missileCd = 2;
   private missilesUsed = 0;
   private dashCd = 0;
@@ -1013,8 +1018,10 @@ export class ShooterGame implements MiniGame {
 
   /** Entfernung, in der sich die Frontkanonen treffen: erfasstes Ziel, sonst ein Stück der Reichweite voraus */
   private convergeDist(range: number): number {
-    if (!this.lock) return range * GUN_CONVERGE;
-    return clamp(Math.hypot(this.lock.x - this.px, this.lock.y - this.py), 120, range);
+    // Hauptziel seitlich oder keins: weit voraus treffen (sonst kreuzen sich die Rohre dicht vor dem Bug)
+    if (!this.lock || this.lock.off > CONVERGE_CONE) return range * GUN_CONVERGE;
+    const near = this.ship.size * (this.ship.gunFwd ?? 0.3) + 80;
+    return clamp(Math.hypot(this.lock.x - this.px, this.lock.y - this.py), Math.min(near, range), range);
   }
 
   /** Schusswinkel einer Bordkanone bei (ox, oy): auf den Punkt in Entfernung d längs a0, höchstens GUN_GIMBAL seitlich */
@@ -3732,22 +3739,24 @@ export class ShooterGame implements MiniGame {
     this.sprintT = Math.max(0, this.sprintT - dt);
     this.escortT = Math.max(0, this.escortT - dt);
     if (this.sprintT > 0 && Math.random() < 0.8) this.fx.add({ x: this.px - Math.cos(this.aimA) * this.ship.size * 0.4, y: this.py - Math.sin(this.aimA) * this.ship.size * 0.4, color: '#ffb070', size: 1.8, max: 0.3 });
-    // Vorhaltekreuz: Gegner vor der Nase bevorzugt, sonst der nächste in Reichweite
-    let best: Enemy | null = null, bs = 1e9;
+    // Vorhaltepunkte: für jeden Gegner in Feuerreichweite (nach vorn und zur Seite); Hauptziel ist der, dessen
+    // Vorhaltepunkt der Mittelachse am nächsten liegt – auf ihn schwenken die Bordkanonen
+    const lockR = Math.max(520, this.reach) * (1 + this.m('lock'));
+    const leads: { e: Enemy; x: number; y: number; off: number; d: number }[] = [];
     for (const e of this.enemies) {
       if (e.kind === 'boss' && e.shielded) continue;
       const d = Math.hypot(e.x - this.px, e.y - this.py);
-      if (d > Math.max(520, this.reach + 80) * (1 + this.m('lock'))) continue;
-      const off = Math.abs(wrapA(Math.atan2(e.y - this.py, e.x - this.px) - this.aimA));
-      const score = d * (1 + off * 1.5);
-      if (score < bs) { bs = score; best = e; }
-    }
-    if (best) {
-      const t = this.wpn.beam ? 0 : Math.hypot(best.x - this.px, best.y - this.py) / this.wpn.speed;
-      const lx = best.x + (best.vx - this.pvx * 0.3) * t, ly = best.y + (best.vy - this.pvy * 0.3) * t;
+      if (d > lockR) continue;
+      const t = this.wpn.beam ? 0 : d / this.wpn.speed;
+      const lx = e.x + (e.vx - this.pvx * 0.3) * t, ly = e.y + (e.vy - this.pvy * 0.3) * t;
       const off = Math.abs(wrapA(Math.atan2(ly - this.py, lx - this.px) - this.aimA));
-      this.lock = { e: best, x: lx, y: ly, ok: off < this.aimAssist };
-    } else this.lock = null;
+      if (off <= LEAD_CONE) leads.push({ e, x: lx, y: ly, off, d });
+    }
+    // gleich weit seitlich: der nähere zuerst
+    leads.sort((p, q) => p.off - q.off || p.d - q.d);
+    const best = leads[0];
+    this.lock = best ? { e: best.e, x: best.x, y: best.y, off: best.off, ok: best.off < this.aimAssist } : null;
+    this.leads = leads.sort((p, q) => p.d - q.d).slice(0, LEAD_MAX).filter((l) => l.e !== best?.e);
     // Bordkanonen: grob geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4),
     // und die Kanonen schwenken auf einen gemeinsamen Punkt (siehe gunAngle)
     this.fireCd -= dt;
@@ -6421,26 +6430,41 @@ export class ShooterGame implements MiniGame {
     ctx.lineTo(this.px + Math.cos(this.aimA) * reach, this.py + Math.sin(this.aimA) * reach);
     ctx.stroke();
     ctx.setLineDash([]);
+    // Kreuze auf dem Bildschirm etwa gleich groß, auch weit herausgezoomt
+    const q = clamp(0.8 / this.zoom, 1, 5);
+    // weitere Gegner in Feuerreichweite: kleines, blasses Vorhaltekreuz
+    ctx.strokeStyle = 'rgba(255,224,138,0.5)';
+    ctx.lineWidth = 1.2 * q;
+    for (const o of this.leads) {
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, 4.5 * q, 0, Math.PI * 2);
+      ctx.moveTo(o.x - 8 * q, o.y); ctx.lineTo(o.x - 3 * q, o.y);
+      ctx.moveTo(o.x + 3 * q, o.y); ctx.lineTo(o.x + 8 * q, o.y);
+      ctx.moveTo(o.x, o.y - 8 * q); ctx.lineTo(o.x, o.y - 3 * q);
+      ctx.moveTo(o.x, o.y + 3 * q); ctx.lineTo(o.x, o.y + 8 * q);
+      ctx.stroke();
+    }
     if (L) {
       const col = L.ok ? '#6bffb0' : '#ffe08a';
       ctx.strokeStyle = rgba(col, 0.35);
+      ctx.lineWidth = q;
       ctx.beginPath();
       ctx.moveTo(L.e.x, L.e.y);
       ctx.lineTo(L.x, L.y);
       ctx.stroke();
       ctx.strokeStyle = col;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.6 * q;
       ctx.beginPath();
-      ctx.arc(L.x, L.y, 7, 0, Math.PI * 2);
-      ctx.moveTo(L.x - 11, L.y); ctx.lineTo(L.x - 4, L.y);
-      ctx.moveTo(L.x + 4, L.y); ctx.lineTo(L.x + 11, L.y);
-      ctx.moveTo(L.x, L.y - 11); ctx.lineTo(L.x, L.y - 4);
-      ctx.moveTo(L.x, L.y + 4); ctx.lineTo(L.x, L.y + 11);
+      ctx.arc(L.x, L.y, 7 * q, 0, Math.PI * 2);
+      ctx.moveTo(L.x - 11 * q, L.y); ctx.lineTo(L.x - 4 * q, L.y);
+      ctx.moveTo(L.x + 4 * q, L.y); ctx.lineTo(L.x + 11 * q, L.y);
+      ctx.moveTo(L.x, L.y - 11 * q); ctx.lineTo(L.x, L.y - 4 * q);
+      ctx.moveTo(L.x, L.y + 4 * q); ctx.lineTo(L.x, L.y + 11 * q);
       ctx.stroke();
       // Ziel markieren
       ctx.strokeStyle = rgba(col, 0.6);
-      ctx.lineWidth = 1.2;
-      const r = L.e.r + 8;
+      ctx.lineWidth = 1.2 * q;
+      const r = L.e.r + 8 * q;
       for (let k = 0; k < 4; k++) {
         const a = k * Math.PI / 2 + Math.PI / 4;
         ctx.beginPath();

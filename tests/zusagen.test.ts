@@ -264,5 +264,33 @@ describe('Zusagen im Spiel nachgeprüft', () => {
       expect(miss, `${best}: Kanone verfehlt das kleine Ziel um ${miss.toFixed(1)}`).toBeLessThan(e.r);
     }
   });
+  it('Vorhaltepunkte: alle Gegner in Feuerreichweite, Hauptziel nahe der Mittelachse; ohne Ziel Treffpunkt weit voraus', () => {
+    const { g, a } = mk('xenon', 1, 'station', { ship: 'klapperschlange', weapon: 'strahl', wing: {} });
+    const G = g as unknown as { aimA: number; wpn: { range: number }; lock: { e: E } | null; leads: { e: E }[]; convergeDist(r: number): number; makeEnemy(k: string, x: number, y: number): E };
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    const R = G.wpn.range;
+    const hold = (es: E[], pos: [number, number][]) => { G.aimA = -Math.PI / 2; es.forEach((e, i) => { [e.x, e.y] = [a.px + pos[i][0], a.py + pos[i][1]]; (e as unknown as { vx: number; vy: number }).vx = 0; (e as unknown as { vy: number }).vy = 0; e.hp = e.max = 1e9; e.cd = 1e9; }); g.update(DT); };
+    // kein Gegner in Feuerreichweite (einer weit draußen hält die Runde am Laufen): Treffpunkt bei 80 % der Reichweite
+    const away = G.makeEnemy('m', 0, 0);
+    a.enemies.push(away);
+    hold([away], [[0, -R * 3]]);
+    expect(G.lock).toBeNull();
+    expect(G.convergeDist(R)).toBeCloseTo(R * 0.8);
+    // weit voraus (95 % der Reichweite) und nah, aber seitlich: Hauptziel ist der voraus, beide bekommen Vorhaltepunkte
+    a.enemies.length = 0;
+    const far = G.makeEnemy('m', 0, 0), side = G.makeEnemy('m', 0, 0);
+    a.enemies.push(far, side);
+    const pos: [number, number][] = [[0, -R * 0.95], [R * 0.25, -R * 0.15]];
+    hold([far, side], pos);
+    expect(G.lock?.e, 'Hauptziel = nahe der Mittelachse').toBe(far);
+    expect(G.leads.map((l) => l.e)).toContain(side);
+    expect(G.convergeDist(R), 'Treffpunkt in der Entfernung des Hauptziels').toBeGreaterThan(R * 0.85);
+    // nur ein Gegner weit seitlich: angezeigt und erfasst, aber die Rohre treffen sich trotzdem weit voraus
+    a.enemies.length = 0;
+    a.enemies.push(side);
+    hold([side], [[R * 0.3, R * 0.05]]);
+    expect(G.lock?.e).toBe(side);
+    expect(G.convergeDist(R)).toBeCloseTo(R * 0.8);
+  });
 });
 
