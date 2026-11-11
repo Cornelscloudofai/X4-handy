@@ -23,7 +23,8 @@ const res = await page.evaluate(async ({ base, hull }) => {
   }
   const mc = document.createElement('canvas'); mc.width = W; mc.height = Hh; mc.getContext('2d').putImageData(m, 0, 0);
   // Buchten (aus loadout.ts): je Seite fünf, Anflug außen (x 70) → Deck (x 290) → unter den Rumpf (x 430)
-  const AXIS = 625, YS = [1720, 2250, 2650, 3050, 3420];
+  // wie RP_BAYS in src/minigames/loadout.ts
+  const AXIS = 625, BAYS = [[1660, 323, 479], [2180, 289, 444], [2500, 287, 434], [2820, 234, 385], [3140, 203, 338]];
   const draw = (scale, x0, y0, w, hgt, labels) => {
     const c = document.createElement('canvas'); c.width = Math.round(w * scale); c.height = Math.round(hgt * scale) + (labels ? 150 : 0);
     const g = c.getContext('2d');
@@ -31,16 +32,16 @@ const res = await page.evaluate(async ({ base, hull }) => {
     g.save(); g.beginPath(); g.rect(0, 0, c.width, Math.round(hgt * scale)); g.clip(); g.scale(scale, scale); g.translate(-x0, -y0);
     g.drawImage(A, 0, 0); g.drawImage(mc, 0, 0);
     g.lineWidth = 5 / scale; g.font = `600 ${15 / scale}px sans-serif`;
-    for (const [k, y] of YS.entries()) for (const side of [1, -1]) {
+    for (const [k, [y, dk, inn]] of BAYS.entries()) for (const side of [1, -1]) {
       const X = (p) => (side > 0 ? p : 2 * AXIS - p);
-      const pts = [[X(70), y, '#ffd24a', 'außen'], [X(290), y, '#5dff9a', 'Deck'], [X(430), y, '#ff5cf0', 'innen']];
+      const pts = [[X(18), y, '#ffd24a', 'außen'], [X(dk), y, '#5dff9a', 'Deck'], [X(inn), y, '#ff5cf0', 'innen']];
       g.strokeStyle = '#ffffff'; g.setLineDash([12 / scale, 8 / scale]);
       g.beginPath(); g.moveTo(pts[0][0], y); g.lineTo(pts[2][0], y); g.stroke(); g.setLineDash([]);
       for (const [x, yy, col, name] of pts) {
         g.fillStyle = col; g.beginPath(); g.arc(x, yy, 9 / scale, 0, Math.PI * 2); g.fill();
         if (labels && side > 0) { g.fillStyle = '#fff'; g.fillText(name, x - 18 / scale, yy - 14 / scale); }
       }
-      if (labels && side > 0) { g.fillStyle = '#fff'; g.fillText(`Bucht ${k + 1}`, X(70) - 30 / scale, y + 32 / scale); }
+      if (labels && side > 0) { g.fillStyle = '#fff'; g.fillText(`Bucht ${k + 1}`, X(18), y + 32 / scale); }
     }
     g.restore();
     if (labels) {

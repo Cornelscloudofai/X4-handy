@@ -188,15 +188,19 @@ function raptorTurrets(): { pos: [number, number][]; group: number[]; groups: Tu
 }
 const RP_T = raptorTurrets();
 /**
- * Hangarbuchten: je Seite fünf Stellen am blauen Flugdeck (Bildpunkte, linke Seite; die rechte gespiegelt) – zwischen
- * den Turmclustern, die auf dem Deck stehen. Anflug 90 px außerhalb des Gitters, Deckmitte, dann unter die Panzerplatten.
+ * Hangarbuchten: je Seite fünf Stellen auf der Deckbahn (Bildpunkte, linke Seite; die rechte gespiegelt), frei von der
+ * Turmplatte. Anflug draußen im freien Raum, über das Außengitter (liegt mit dem Deck in der unteren Ebene) zur
+ * Deckmitte, dann unter die Panzerplatten. Deckmitte und Panzerkante aus scripts/raptor-deck.mjs (Vorschlag C).
  */
-const RP_BAYS_Y = [1720, 2250, 2650, 3050, 3420];
+const RP_BAYS: { y: number; deck: number; in: number }[] = [
+  { y: 1660, deck: 323, in: 479 }, { y: 2180, deck: 289, in: 444 }, { y: 2500, deck: 287, in: 434 },
+  { y: 2820, deck: 234, in: 385 }, { y: 3140, deck: 203, in: 338 },
+];
 function raptorBays(): NonNullable<ShipDef['bays']> {
   const out: NonNullable<ShipDef['bays']> = [];
-  for (const y of RP_BAYS_Y) for (const side of [1, -1]) {
+  for (const b of RP_BAYS) for (const side of [1, -1]) {
     const x = (px: number) => (side > 0 ? px : 2 * RP_AXIS - px);
-    out.push({ out: rp(x(70), y), deck: rp(x(290), y), in: rp(x(430), y) });
+    out.push({ out: rp(x(18), b.y), deck: rp(x(b.deck), b.y), in: rp(x(b.in), b.y) });
   }
   return out;
 }
