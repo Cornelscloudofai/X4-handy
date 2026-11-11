@@ -33,8 +33,9 @@ describe('Zusagen im Spiel nachgeprüft', () => {
       const tur = a.enemies.filter((e) => e.parent === k) as (E & { fireK?: number })[];
       const L = tur.filter((t) => t.weapon === 'plasma'), M = tur.filter((t) => t.weapon === 'm');
       expect([L.length, M.length], `Stufe ${level}${mini ? ' Großziel' : ''}`).toEqual([8, 14]);
-      expect(L[0].fireK ?? 1).toBeCloseTo(fL);
-      expect(M[0].fireK ?? 1).toBeCloseTo(fM);
+      // Stärke gut halb so stark abgesenkt wie die frühere Turmzahl: 0,35 + 0,65 × Anteil
+      expect(L[0].fireK ?? 1).toBeCloseTo(fL < 1 ? 0.35 + 0.65 * fL : 1);
+      expect(M[0].fireK ?? 1).toBeCloseTo(fM < 1 ? 0.35 + 0.65 * fM : 1);
     }
   });
 
@@ -80,7 +81,7 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     expect(mk('pirate', 1, 'station', { ship: 'mamba', weapon: 'puls' }).a.wpn.range).toBeCloseTo(416 * 2, -1);
   });
 
-  it('Plasma des K: ab Stufe 3 90 Schaden je Kugel (zwei Treffer zerstören eine Mamba)', () => {
+  it('Plasma des K: ab Stufe 3 gut 100 Schaden je Kugel (zwei Treffer zerstören eine Mamba)', () => {
     const { g, a } = mk('xenon', 3, 'nest');
     a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
     a.spawnBoss(true);
@@ -92,7 +93,8 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     ga.enemyShot = (e, ang, v, d, ...r) => { if (e.weapon === 'plasma') dmg.push(d * ga.enemyDmg); orig(e, ang, v, d, ...r); };
     for (let i = 0; i < 60 * 8 && !dmg.length; i++) { for (const e of a.enemies) e.hp = e.max; g.update(DT); }
     expect(dmg.length).toBeGreaterThan(0);
-    expect(dmg[0]).toBeCloseTo(90);
+    // 90 je Kugel, mit dem Turmzuschlag (× 1,15) gut 100 – zwei Treffer zerstören eine Mamba (100 Hülle + bis 100 Schild)
+    expect(dmg[0]).toBeCloseTo(90 * 1.15);
   });
 
   it('Piratenträger kommt in Einsätzen als Großziel (Stufe 3: etwa jedes zweite Mal)', () => {

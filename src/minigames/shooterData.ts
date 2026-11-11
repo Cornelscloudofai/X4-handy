@@ -19,7 +19,8 @@ export const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: num
   // Xenon P: Fregatte, zwei M-Türme (Laser-Repeater) auf dem Rückgrat; selbst ohne Bordkanonen
   p: { hp: 220, sh: 150, speed: 55, r: 22, color: '#ff4a5a', name: 'Xenon P', pts: 500, cost: 6.5 },
   boss: { hp: 450, sh: 300, speed: 45, r: 34, color: '#ffb547', name: 'Boss', pts: 1500, cost: 0 },
-  turret: { hp: 90, sh: 30, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
+  // Geschütztürme: zäh (Hülle und Schild anderthalbfach gegenüber früher)
+  turret: { hp: 135, sh: 45, speed: 0, r: 13, color: '#ffd27a', name: 'Geschützturm', pts: 200, cost: 0 },
   // Kha'ak: schwache Hülle, kräftige Schilde (Kyon-Kristalle)
   // Bildgrößen im Verhältnis zur Mamba (etwa 34 px): Späher ein Drittel, Jäger gut zwei Drittel (siehe shipArt.ts);
   // die Trefferzone ist etwas größer als das Bild, damit man die Kleinen auch auf dem Handy trifft

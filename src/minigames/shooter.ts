@@ -253,6 +253,11 @@ const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DP
  * weiter als die Bordwaffen der Jäger, damit Großziele nicht gefahrlos aus sicherer Entfernung beschossen werden
  */
 const TURRET_RANGE = 520, PLASMA_RANGE = 560;
+/**
+ * Gegnerische Türme (Großkampfschiffe, Fregatten, Plattformen) stärker: deutlich höhere Feuerrate (mehr zu sehen), etwas
+ * mehr Schaden je Treffer; die Hülle steht in SPEC.turret
+ */
+const TURRET_RATE = 1.6, TURRET_DMG = 1.15;
 
 /** Drehrate je Gegnerart (rad/s): Jäger wendig, Kanonenboote träge – wer sie umkreist, ist vor ihren Kanonen sicher */
 const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 2.2, xs: 1.6, p: 0.55, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
@@ -1031,6 +1036,10 @@ export class ShooterGame implements MiniGame {
    * Treffer der Großkampfschiff-Türme (Plasma, Repeater, Flak) je Stufe: die Schiffe sind schon früh voll bewaffnet, auf
    * den niedrigen Stufen schlagen die einzelnen Treffer aber schwächer ein
    */
+  /** Feuerrate eines gegnerischen Turms (Grundwert × Stufenstärke) */
+  private tRate(e: Enemy): number { return TURRET_RATE * (e.fireK ?? 1); }
+  /** Treffer eines gegnerischen Turms (Grundwert × Stufenstärke) */
+  private tHit(e: Enemy): number { return TURRET_DMG * (e.fireK ?? 1); }
   private get capTurretDmg(): number { return [0.35, 0.55, 0.8, 0.9, 1][this.level - 1]; }
   /** Einsätze mit fester Zahl von Wellen (der Rest endet über sein eigenes Ziel) */
   private get counted(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi' || this.mission === 'station'; }
@@ -2822,8 +2831,9 @@ export class ShooterGame implements MiniGame {
       const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
       t.parent = b; t.ox = ox * k; t.oy = oy * k; t.weapon = weapon;
       const f = strength(weapon);
-      // (Hülle noch etwas schwächer: mehr einzelne Türme kosten Zeit, bis jeder anvisiert und zerstört ist)
-      if (f < 1) { t.hp *= f * 0.6; t.max *= f * 0.6; t.sh *= f * 0.6; t.shMax *= f * 0.6; t.fireK = f; }
+      // auf den niedrigen Stufen etwas schwächer (gut halb so stark abgesenkt wie die frühere Turmzahl)
+      const g = 0.35 + 0.65 * f;
+      if (f < 1) { t.hp *= g; t.max *= g; t.sh *= g; t.shMax *= g; t.fireK = g; }
       // Xenon K: Turmgröße passend zu den Sockeln im Bild; M-Türme leichter
       if (this.side === 'xenon' || weapon === 'flak') {
         // (im alten Maßstab nicht kleiner als bisher, sonst wären sie kaum zu treffen)
@@ -3171,7 +3181,7 @@ export class ShooterGame implements MiniGame {
         e.burstT = d.gap ?? 0.1;
         const sd = d.side[e.burst % d.side.length], [mx, my] = this.platMuzzle(e, sd), v = d.v ?? 400;
         const a = e.ang + (this.r() - 0.5) * 0.06;
-        this.bullets.push({ x: mx, y: my, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: d.dmg * this.enemyDmg, from: 'e', life: d.len / v, color: d.color ?? '#ff5c6c', w: d.w ?? 2, pierce: 0 });
+        this.bullets.push({ x: mx, y: my, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: d.dmg * this.enemyDmg * TURRET_DMG, from: 'e', life: d.len / v, color: d.color ?? '#ff5c6c', w: d.w ?? 2, pierce: 0 });
         e.burst--;
         const sx = (e.x - this.camX) * this.zoom, sy = (e.y - this.camY) * this.zoom;
         if (sx > -40 && sx < this.w + 40 && sy > -40 && sy < this.h + 40) sfx.enemyShot(this.panAt(e.x));
@@ -3186,15 +3196,15 @@ export class ShooterGame implements MiniGame {
         if (d.fire === 'gun') { e.burst = d.burst ?? 8; e.burstT = 0; return; }
         for (const a of d.fan ? [-d.fan, 0, d.fan] : [0]) for (const sd of d.side) {
           const [mx, my] = this.platMuzzle(e, sd);
-          if (d.fire === 'beam') this.fireKyon(e, e.ang + a, d.dmg, d.len, [mx, my], d.color, 1);
-          else this.fireKyon(e, e.ang + a, d.dmg, d.len, [mx, my]);
+          if (d.fire === 'beam') this.fireKyon(e, e.ang + a, d.dmg * TURRET_DMG, d.len, [mx, my], d.color, 1);
+          else this.fireKyon(e, e.ang + a, d.dmg * TURRET_DMG, d.len, [mx, my]);
         }
       }
       return;
     }
     e.cd -= dt;
     if (e.cd <= 0 && dist < d.len + 30 && this.outcome !== 'player' && Math.abs(wrapA(want - e.ang)) < 0.25) {
-      e.cd = d.cd * (this.level >= 4 ? 0.85 : 1) + this.r() * 0.6;
+      e.cd = (d.cd * (this.level >= 4 ? 0.85 : 1) + this.r() * 0.6) / TURRET_RATE;
       e.plT = d.charge;
     }
   }
@@ -4068,12 +4078,12 @@ export class ShooterGame implements MiniGame {
         const tx = tg ? tg[0] : this.px, ty = tg ? tg[1] : this.py;
         if (e.weapon === 'plasma') {
           if (e.cd <= 0 && tg) {
-            e.cd = ((this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8) / (e.fireK ?? 1);
+            e.cd = ((this.level >= 4 ? 2.6 : 3.2) + this.r() * 0.8) / this.tRate(e);
             // dicke Plasmakugel: leicht gestreut, gut sichtbar, schwer; auf große Reichweite entsprechend schneller
             const a2 = Math.atan2(ty - e.y, tx - e.x) + (this.r() - 0.5) * 0.08, v = Math.min(420, 175 * Math.sqrt(range / PLASMA_RANGE));
             // großer L-Plasmaturm: ab Stufe 3 90 Schaden je Kugel – zwei Treffer zerstören eine Mamba (100 Hülle, bis
             // 100 Schild); auf Stufe 2 braucht es vier, auf Stufe 1 gut zwölf Treffer (Einstieg)
-            this.enemyShot(e, a2, v, ((90 * [0.15, 0.5, 1, 1, 1][this.level - 1]) / this.enemyDmg) * (e.fireK ?? 1), '#ff6a3d', 11, (range + 60) / v);
+            this.enemyShot(e, a2, v, ((90 * [0.15, 0.5, 1, 1, 1][this.level - 1]) / this.enemyDmg) * this.tHit(e), '#ff6a3d', 11, (range + 60) / v);
             // aus den Mündungen, nicht aus der Turmmitte
             const pb = this.bullets[this.bullets.length - 1];
             // Mündung des großen L-Plasmaturms: gut die Hälfte der Bildgröße vor dem Drehpunkt
@@ -4091,21 +4101,21 @@ export class ShooterGame implements MiniGame {
               const lat = (flak ? [-0.2, -0.07, 0.07, 0.2] : [-0.025, 0.025])[i] * size, fwd = size * 0.55;
               // Repeater: schnelle, leichte Geschosse (drei Zweierstöße je Sekunde)
               const v = flak ? 320 : 720;
-              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 1.2) * this.capTurretDmg * (e.fireK ?? 1), flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
+              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 1.2) * this.capTurretDmg * this.tHit(e), flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
               const pb = this.bullets[this.bullets.length - 1], c = Math.cos(a2), sn = Math.sin(a2);
               pb.x += c * fwd - sn * lat; pb.y += sn * fwd + c * lat;
               e.salvo!--; e.salvoT = flak ? 0.07 : 0.06;
             }
           } else if (e.cd <= 0 && tg) {
-            e.cd = (flak ? 1.4 + this.r() * 0.5 : 0.31 + this.r() * 0.05) / (e.fireK ?? 1);
+            e.cd = (flak ? 1.4 + this.r() * 0.5 : 0.31 + this.r() * 0.05) / this.tRate(e);
             e.salvo = flak ? 4 : 2; e.salvoT = 0;
           }
           continue;
         }
         if (e.cd <= 0 && tg) {
-          e.cd = (1.5 + this.r() * 0.6) / (e.fireK ?? 1);
+          e.cd = (1.5 + this.r() * 0.6) / this.tRate(e);
           const a2 = Math.atan2(ty - e.y, tx - e.x), v = this.side === 'pirate' ? 250 : 280;
-          for (let q = 0; q < 2; q++) this.enemyShot(e, a2 + (q - 0.5) * 0.1, v, 5.5 * (e.fireK ?? 1), this.side === 'pirate' ? '#ffd27a' : '#ff5c6c', 2, (TURRET_RANGE + 40) / v);
+          for (let q = 0; q < 2; q++) this.enemyShot(e, a2 + (q - 0.5) * 0.1, v, 5.5 * this.tHit(e), this.side === 'pirate' ? '#ffd27a' : '#ff5c6c', 2, (TURRET_RANGE + 40) / v);
         }
         continue;
       }
@@ -4402,7 +4412,7 @@ export class ShooterGame implements MiniGame {
     const tx = toP ? this.px : fx, ty = toP ? this.py : fy;
     if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < LASER_LEN - 20) {
       // Kha'ak-Kyon-Türme laden etwas länger nach (das Brutschiff bringt dafür Jäger mit)
-      e.cd = ((this.level >= 4 ? 3 : 3.8) + this.r() + (this.side === 'khaak' ? 1.5 : 0)) / (e.fireK ?? 1);
+      e.cd = ((this.level >= 4 ? 3 : 3.8) + this.r() + (this.side === 'khaak' ? 1.5 : 0)) / this.tRate(e);
       e.beamT = LASER_CHARGE + LASER_FIRE;
       e.beamA = Math.atan2(ty - e.y, tx - e.x);
       e.beamAcc = 0;
