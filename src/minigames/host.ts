@@ -11,6 +11,7 @@ import { recordKey, type Mission } from './missions';
 import { setEnemyTune } from './loadout';
 import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
+import { hudScale } from '../ui/hudScale';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, totalStars, UNLOCK, type RecordOutcome } from './records';
 
 export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon' | 'khaak';
@@ -136,6 +137,8 @@ interface Session {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   dpr: number;
+  /** HUD-Größe beim letzten Messen */
+  k: number;
   w: number;
   h: number;
   last: number;
@@ -191,14 +194,24 @@ export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameRe
   const canvas = root.querySelector('canvas')!;
   const cfg = resolve(kind, opts);
   const game = create(kind, cfg);
-  cur = { kind, opts, cfg, game, phase: 'intro', root, canvas, ctx: canvas.getContext('2d')!, dpr: 1, w: 1, h: 1, last: 0, raf: 0, hudKey: '', subKey: '', result: null, outcome: null, onDone, replay };
+  cur = { kind, opts, cfg, game, phase: 'intro', root, canvas, ctx: canvas.getContext('2d')!, dpr: 1, k: 1, w: 1, h: 1, last: 0, raf: 0, hudKey: '', subKey: '', result: null, outcome: null, onDone, replay };
   (root.querySelector('.mg-title') as HTMLElement).innerHTML = `<small>${esc(game.eyebrow)}</small><b>${esc(game.title)}</b>`;
   resize();
   bindInput(cur);
   setPhase('intro');
   cur.raf = requestAnimationFrame(loop);
+  if (kind === 'pirates' || kind === 'xenon' || kind === 'khaak') allowTurn(true);
   sfx.open();
   (window as unknown as { __mg: unknown }).__mg = { get game() { return cur?.game; }, get phase() { return cur?.phase; }, get cfg() { return cur?.cfg; }, start: () => setPhase('play') };
+}
+
+/**
+ * Installierte App: sonst fest im Hochformat – im Kampf darf das Handy gedreht werden. Geht nur, wo der Browser
+ * das Sperren erlaubt (installierte App, Vollbild); sonst dreht der Browser ohnehin frei
+ */
+function allowTurn(on: boolean): void {
+  const o = (globalThis.screen as (Screen & { orientation?: { lock?: (m: string) => Promise<void> } }) | undefined)?.orientation;
+  try { o?.lock?.(on ? 'any' : 'portrait')?.catch?.(() => undefined); } catch { /* nicht unterstützt */ }
 }
 
 function close(r: GameResult | null): void {
@@ -206,6 +219,7 @@ function close(r: GameResult | null): void {
   if (!s) return;
   s.game.phase?.('end');
   cancelAnimationFrame(s.raf);
+  if (s.kind === 'pirates' || s.kind === 'xenon' || s.kind === 'khaak') allowTurn(false);
   s.root.remove();
   cur = null;
   s.onDone?.(r);
@@ -221,12 +235,14 @@ function resize(): void {
   s.h = Math.max(1, r.height);
   s.canvas.width = Math.round(s.w * s.dpr);
   s.canvas.height = Math.round(s.h * s.dpr);
+  // HUD-Größe: das Spiel rechnet in HUD-Pixeln (größer gestellt = größere Anzeigen und Knöpfe, kleiner = mehr Spielfeld)
+  s.k = hudScale();
   // linker Sicherheitsrand des Geräts (Kerbe, abgerundete Ecken im Querformat), soweit er ins Spielfeld ragt –
   // Bedienelemente am linken Rand bleiben so immer ganz sichtbar
   const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-left')) || 0;
   const g = s.game as { safeL?: number };
-  if ('safeL' in g) g.safeL = Math.max(0, inset - r.left);
-  s.game.resize(s.w, s.h);
+  if ('safeL' in g) g.safeL = Math.max(0, inset - r.left) / s.k;
+  s.game.resize(s.w / s.k, s.h / s.k);
 }
 
 window.addEventListener('resize', () => resize());
@@ -242,7 +258,7 @@ window.addEventListener('blur', () => { cur?.game.key?.('*', false, false); });
 function bindInput(s: Session): void {
   const pos = (e: PointerEvent): [number, number] => {
     const r = s.canvas.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top];
+    return [(e.clientX - r.left) / s.k, (e.clientY - r.top) / s.k];
   };
   // PC: Spiele mit eigener Maussteuerung bekommen Mausereignisse samt Taste (Bewegung auch ohne gedrückte Taste) –
   // nur bei echter Maus (feiner Hauptzeiger); auf Touch-Geräten bleiben es Sticks, auch wenn ein Browser Berührungen
@@ -403,7 +419,7 @@ function loop(now: number): void {
     if (r) finish(s, r);
   }
   const ctx = s.ctx;
-  ctx.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  ctx.setTransform(s.dpr * s.k, 0, 0, s.dpr * s.k, 0, 0);
   // Bilder beim Verkleinern sauber glätten (sonst flimmern und verschwimmen die Schiffsbilder)
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';

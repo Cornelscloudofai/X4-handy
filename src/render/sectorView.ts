@@ -1,4 +1,5 @@
 // Zeichnet einen Sektor: Sechseck, Felder, Tore, Stationen, Schiffe, Routen.
+import { hudScale } from '../ui/hudScale';
 import { MODULE_MAP } from '../data/modules';
 import { FACTIONS, SECTOR_MAP, SECTOR_RADIUS, gatesOf, hexCorners } from '../data/sectors';
 import { quadrantCovered } from '../engine/intel';
@@ -676,7 +677,9 @@ export class SectorRenderer {
       placed.some((p) => r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y);
     const factor = Math.pow(2, (50 - density) / 25);
     this.labels.sort((a, b) => Number(!!b.force) - Number(!!a.force) || b.prio - a.prio);
-    const shrink = rel < 1.5 ? 0.88 : 1;
+    // HUD-Größe (Einstellungen) gilt auch für die Namen auf der Karte
+    const hk = hudScale();
+    const shrink = (rel < 1.5 ? 0.88 : 1) * hk;
     for (const l of this.labels) {
       const need = l.minRel * factor;
       if (!l.force && rel < need) continue;
@@ -685,7 +688,7 @@ export class SectorRenderer {
       l.size = Math.round(l.size * shrink);
       ctx.font = `${l.weight} ${l.size}px ${FONT}`;
       const w = ctx.measureText(l.text).width + 6;
-      const h = l.size + 4 + (l.sub ? 13 : 0);
+      const h = l.size + 4 + (l.sub ? 13 * hk : 0);
       let chosen: number | null = null;
       for (const y of l.ys) {
         const r = { x: l.x - w / 2, y: y - l.size / 2 - 2, w, h };
@@ -697,7 +700,7 @@ export class SectorRenderer {
       }
       ctx.globalAlpha = alpha;
       this.label(ctx, l.text, l.x, chosen, l.size, l.color, l.weight);
-      if (l.sub) this.label(ctx, l.sub.text, l.x, chosen + 14, 10, l.sub.color, 500);
+      if (l.sub) this.label(ctx, l.sub.text, l.x, chosen + 14 * hk, Math.round(10 * hk), l.sub.color, 500);
       ctx.globalAlpha = 1;
     }
   }

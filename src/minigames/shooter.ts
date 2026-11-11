@@ -564,14 +564,16 @@ const CARDS: (Card & { need?: CardNeed[] })[] = [
 /** Zoomstufen des Kampffelds (kleiner = weiter herausgezoomt, mehr Überblick); per Taste wählbar, wird gemerkt */
 const ZOOMS = [1.2, 0.95, 0.72, 0.58, 0.46, 0.36, 0.27, 0.2, 0.15, 0.11, 0.08, 0.06];
 const ZOOM_KEY = 'x4-sektorbau-kampfzoom';
-function readZoom(): number {
+/** Querformat: eigene gemerkte Zoomstufe, anfangs eine Stufe weiter weg (nach vorn ist weniger Platz) */
+const zoomKey = (quer: boolean) => (quer ? `${ZOOM_KEY}-quer` : ZOOM_KEY);
+function readZoom(quer = false): number {
   try {
-    const v = Number(globalThis.localStorage?.getItem(ZOOM_KEY));
+    const v = Number(globalThis.localStorage?.getItem(zoomKey(quer)));
     if (ZOOMS.includes(v)) return v;
   } catch {
     /* Speicher nicht verfügbar */
   }
-  return 0.58;
+  return quer ? 0.46 : 0.58;
 }
 
 /** Normale Runde: drei Wellen und der Boss */
@@ -1050,8 +1052,11 @@ export class ShooterGame implements MiniGame {
 
   resize(w: number, h: number): void {
     const first = this.w === 1;
+    const wasQuer = this.quer;
     this.w = w;
     this.h = h;
+    // Handy gedreht: Zoomstufe der neuen Lage übernehmen
+    if (first ? this.quer : this.quer !== wasQuer) this.zoom = this.zoomGoal = readZoom(this.quer);
     this.stars.resize(w, h);
     // große Karte, unabhängig vom Bildschirm: der Frachter fliegt von unten nach oben zum Tor
     if (first) {
@@ -1176,17 +1181,28 @@ export class ShooterGame implements MiniGame {
   }
   /** Mitte des Sprungtors (rückt beim Öffnen etwas heran) */
   private get gateCy(): number { return this.gateY + Math.min(1, this.gateT * 0.8) * 60; }
+  /**
+   * Querformat (Handy gedreht): wenig Höhe – Zoom- und Kamerataste wandern links neben das Radar, das Magazin
+   * direkt darunter, die Ausweichtaste schräg über die Raketen, die Befehlsknöpfe tiefer
+   */
+  private get quer(): boolean { return this.w > this.h * 1.2; }
+  /** Zeile der Zoom- und Kamerataste, Grundlinie ihrer Beschriftung */
+  private get zoomRowY(): number { return this.quer ? TOP + 26 : TOP + 124; }
+  private get zoomLabelY(): number { return this.zoomRowY + 28; }
+  /** Rechte Kante der Zeile: hochkant unter dem Radar, quer links daneben */
+  private get zoomRowX(): number { return this.quer ? this.w - 126 : this.w - 38; }
   // Tasten rechts unten: Feuer groß unter dem Daumen, Raketen links daneben, Ausweichen darüber
   private get btnFire(): [number, number, number] { return [this.w - 66, this.h - 80, 40]; }
   private get btnMissile(): [number, number, number] { return [this.w - 160, this.h - 54, 27]; }
   /** Zoom-Tasten unter dem Radar: weiter weg (−) und näher heran (+) */
-  private get btnZoomOut(): [number, number, number] { return [this.w - 82, TOP + 124, 15]; }
-  private get btnZoomIn(): [number, number, number] { return [this.w - 38, TOP + 124, 15]; }
+  private get btnZoomOut(): [number, number, number] { return [this.zoomRowX - 44, this.zoomRowY, 15]; }
+  private get btnZoomIn(): [number, number, number] { return [this.zoomRowX, this.zoomRowY, 15]; }
   /** Träger: Schieber am rechten Rand, der die Kamera längs des Schiffs bewegt (oben Bug, unten Heck) */
   private get panTrack(): { x: number; y0: number; y1: number } {
     // endet mit Abstand über der Ausweichtaste (auf kleinen Bildschirmen kürzer)
     const [, dy, dr] = this.btnDash;
-    return { x: this.w - 24, y0: TOP + 178, y1: Math.max(TOP + 178 + 70, Math.min(TOP + 178 + 190, dy - dr - 30)) };
+    const y0 = this.quer ? TOP + 136 : TOP + 178, end = this.quer ? this.btnFire[1] - this.btnFire[2] - 16 : dy - dr - 30;
+    return { x: this.w - 24, y0, y1: Math.max(y0 + 70, Math.min(y0 + 190, end)) };
   }
   /** Kamera längs des Schiffs: −1 = Bug, 0 = Mitte, 1 = Heck */
   private camPan = 0;
@@ -1214,12 +1230,12 @@ export class ShooterGame implements MiniGame {
   /** Freie Sicht: über dieser Linie verschieben Finger die Kamera, darunter steuern die Sticks */
   private get camZoneY(): number { return this.h * 0.75; }
   /** Taste für die Kamera: links neben den Zoom-Tasten */
-  private get btnCam(): [number, number, number] { return [this.w - 126, TOP + 124, 15]; }
+  private get btnCam(): [number, number, number] { return [this.zoomRowX - 88, this.zoomRowY, 15]; }
   /** Radar oben rechts (antippen öffnet die taktische Karte) */
   private get radarRect(): [number, number, number, number] { return [this.w - 102, TOP + 6, 92, 92]; }
   private panId: number | null = null;
   private panTap = 0;
-  private get btnDash(): [number, number, number] { return [this.w - 60, this.h - 182, 25]; }
+  private get btnDash(): [number, number, number] { return this.quer ? [this.w - 150, this.h - 140, 25] : [this.w - 60, this.h - 182, 25]; }
   /** Befehlsknöpfe der Türme: links über dem Joystick (M oben, L darunter; nur wenn das Schiff solche Türme hat) */
   private get orderBtns(): [OrderKey, number, number, number][] {
     const out: [OrderKey, number, number, number][] = [];
@@ -1232,7 +1248,7 @@ export class ShooterGame implements MiniGame {
       // vom oberen Textbereich (Fortschritt, zwei Zeilen) bis über den Joystick; reicht der Platz nicht für eine
       // Spalte mit gut greifbaren Knöpfen, zwei Spalten nebeneinander
       const keys: OrderKey[] = [...(wing ? ['w' as const] : []), ...gs.map((_, i) => `g${i}` as OrderKey)];
-      const y1 = this.h - 262, top = TOP + 50, gap = wing ? 10 : 0, n = keys.length;
+      const y1 = this.quer ? this.h - 150 : this.h - 262, top = this.quer ? TOP + 10 : TOP + 50, gap = wing ? 10 : 0, n = keys.length;
       const fit = (m: number) => Math.min(31, (y1 - top - 14 - gap) / Math.max(1, m - 1));
       const cols = fit(n) >= 26 ? 1 : 2, per = Math.ceil(n / cols), step = fit(per), r = Math.min(14, step * 0.46);
       keys.forEach((k, i) => {
@@ -1244,9 +1260,11 @@ export class ShooterGame implements MiniGame {
       // Reihenfolge der Liste wie bisher: Feuergruppen, dann die Staffel
       return [...out.filter(([k]) => k !== 'w'), ...out.filter(([k]) => k === 'w')];
     }
-    if (this.pTur.length) out.push(['m', edge + 20, this.h - (this.pL.length ? 330 : 270), 20]);
-    if (this.pL.length) out.push(['l', edge + 20, this.h - 270, 20]);
-    if (wing) out.push(['w', edge + 20, this.h - 270 - (this.pTur.length ? 60 : 0) - (this.pL.length ? 60 : 0), 20]);
+    // Unterkante der Spalte: hochkant über dem Joystick, quer tiefer (sonst ragt sie in die Kopfzeile)
+    const yb = this.quer ? this.h - 150 : this.h - 270;
+    if (this.pTur.length) out.push(['m', edge + 20, yb - (this.pL.length ? 60 : 0), 20]);
+    if (this.pL.length) out.push(['l', edge + 20, yb, 20]);
+    if (wing) out.push(['w', edge + 20, yb - (this.pTur.length ? 60 : 0) - (this.pL.length ? 60 : 0), 20]);
     return out;
   }
 
@@ -2222,14 +2240,15 @@ export class ShooterGame implements MiniGame {
   private setZoom(step: number): void {
     const i = clamp(ZOOMS.indexOf(this.zoomGoal) + step, 0, ZOOMS.length - 1);
     this.zoomGoal = ZOOMS[i];
-    try { globalThis.localStorage?.setItem(ZOOM_KEY, String(this.zoomGoal)); } catch { /* Speicher nicht verfügbar */ }
+    try { globalThis.localStorage?.setItem(zoomKey(this.quer), String(this.zoomGoal)); } catch { /* Speicher nicht verfügbar */ }
     sfx.tap();
   }
 
   private cardRects(): [number, number, number, number][] {
-    const cw = Math.min(this.w - 40, 340), ch = 78, gap = 12;
+    // quer: flachere Karten, an den unteren Rand gerückt, damit alle drei unter die Kopfzeile passen
+    const cw = Math.min(this.w - 40, this.quer ? 420 : 340), ch = this.quer ? 64 : 78, gap = this.quer ? 8 : 12;
     const total = 3 * ch + 2 * gap;
-    const y0 = Math.max(TOP + 60, (this.h - total) / 2);
+    const y0 = this.quer ? Math.max(TOP + 30, this.h - total - 14) : Math.max(TOP + 60, (this.h - total) / 2);
     return [0, 1, 2].map((i) => [(this.w - cw) / 2, y0 + i * (ch + gap), cw, ch]);
   }
 
@@ -5019,13 +5038,14 @@ export class ShooterGame implements MiniGame {
       ctx.textAlign = 'center';
       ctx.font = '700 26px "Chakra Petch", Barlow, sans-serif';
       ctx.fillStyle = this.bannerText === 'BOSS' ? '#ff9aa4' : this.side === 'xenon' ? '#ff8a96' : this.side === 'khaak' ? '#d9a6ff' : '#ffc77a';
-      ctx.fillText(this.bannerText, this.w / 2, TOP + 236);
+      const by = this.quer ? this.h - 84 : TOP + 236;
+      ctx.fillText(this.bannerText, this.w / 2, by);
       ctx.font = '500 14px Barlow, sans-serif';
       // lange Zeilen verkleinern, damit sie aufs Handy passen
       const sw = ctx.measureText(this.bannerSub).width;
       if (sw > this.w - 24) ctx.font = `500 ${Math.max(10, Math.floor((14 * (this.w - 24)) / sw))}px Barlow, sans-serif`;
       ctx.fillStyle = 'rgba(228,243,240,0.85)';
-      ctx.fillText(this.bannerSub, this.w / 2, TOP + 260);
+      ctx.fillText(this.bannerSub, this.w / 2, by + 24);
       ctx.restore();
     }
     if (this.choosing) this.drawCards(ctx);
@@ -6426,7 +6446,9 @@ export class ShooterGame implements MiniGame {
       if (sy > t.y0 - 22 && sy < t.y1 + 22) x = Math.min(x, t.x - 18 - m);
     }
     // oben rechts Radar und Zoom, oben links der Fortschritt
-    const y = clamp(sy, x > this.w - 150 - m ? TOP + 162 : x < this.w * 0.62 ? TOP + 46 : TOP + 12, this.h - 12);
+    // rechts oben liegen Radar und Tasten (quer auch links neben dem Radar): Pfeile darunter halten
+    const right = this.quer ? x > this.w - 240 - m : x > this.w - 150 - m;
+    const y = clamp(sy, right ? (this.quer ? TOP + 148 : TOP + 162) : x < this.w * 0.62 ? TOP + 46 : TOP + 12, this.h - 12);
     return [x, y];
   }
 
@@ -6751,7 +6773,7 @@ export class ShooterGame implements MiniGame {
     if (!w.mag || w.beam || !this.guns.length) return;
     // klein und unaufdringlich unter den Zoom-Knöpfen – frei vom großen Zielstick
     const W = 84, H = 4;
-    const x = this.w - W - 20, y = TOP + 184;
+    const x = this.w - W - 20, y = this.quer ? TOP + 122 : TOP + 184;
     ctx.save();
     ctx.fillStyle = 'rgba(5,14,22,0.72)';
     ctx.strokeStyle = 'rgba(110,220,205,0.25)';
@@ -6880,7 +6902,7 @@ export class ShooterGame implements MiniGame {
     ctx.fillStyle = 'rgba(169,195,198,0.7)';
     ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('ZOOM', this.w - 60, TOP + 152);
+    ctx.fillText('ZOOM', (this.btnZoomOut[0] + this.btnZoomIn[0]) / 2, this.zoomLabelY);
     // Kamerataste: Auge; Beschriftung zeigt den Modus
     {
       const [cx, cy, cr] = this.btnCam, on = this.camMode !== 'schiff';
@@ -6894,7 +6916,7 @@ export class ShooterGame implements MiniGame {
       ctx.fillStyle = on ? '#ffd27a' : '#9ffff0';
       ctx.beginPath(); ctx.arc(cx, cy, 2.2, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = on ? '#ffd27a' : 'rgba(169,195,198,0.7)';
-      ctx.fillText(this.camMode === 'frei' ? (this.camFollow ? 'FOLGEN' : 'FREI') : this.camMode === 'auto' ? 'AUTO' : 'SICHT', cx, TOP + 152);
+      ctx.fillText(this.camMode === 'frei' ? (this.camFollow ? 'FOLGEN' : 'FREI') : this.camMode === 'auto' ? 'AUTO' : 'SICHT', cx, this.zoomLabelY);
       if (on) {
         // Grenze: oben Kamera, unten Steuerung – dezent
         const yz = this.camZoneY;
@@ -6955,16 +6977,17 @@ export class ShooterGame implements MiniGame {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#e4f3f0';
       ctx.font = '600 17px "Chakra Petch", Barlow, sans-serif';
-      ctx.fillText(c.name, x + 16, y + 30);
+      const q = this.quer ? 5 : 0;
+      ctx.fillText(c.name, x + 16, y + 30 - q);
       ctx.fillStyle = 'rgba(169,195,198,0.95)';
       ctx.font = '500 14px Barlow, sans-serif';
-      ctx.fillText(c.desc, x + 16, y + 54);
+      ctx.fillText(c.desc, x + 16, y + 54 - 2 * q);
       // Stufe als Rauten
       const lvl = this.c(c.id);
       if (c.max < 10) for (let k = 0; k < c.max; k++) {
         ctx.fillStyle = k < lvl ? '#ffb547' : k === lvl ? 'rgba(255,181,71,0.5)' : 'rgba(110,220,205,0.2)';
         ctx.save();
-        ctx.translate(x + w - 18 - k * 14, y + 24);
+        ctx.translate(x + w - 18 - k * 14, y + 24 - q);
         ctx.rotate(Math.PI / 4);
         ctx.fillRect(-4, -4, 8, 8);
         ctx.restore();

@@ -1,5 +1,6 @@
 // Sortieren per Ziehen, auch auf dem Handy: Nur der Griff startet das Ziehen (touch-action: none),
 // dadurch scrollt die Seite nicht mit. Nahe am Rand scrollt die Liste kontrolliert weiter.
+import { hudScale } from './hudScale';
 
 let active = false;
 
@@ -32,16 +33,18 @@ export function initDragLists(onDrop: (list: HTMLElement, uid: string, toIndex: 
     navigator.vibrate?.(8);
 
     const layout = () => {
-      const dy = lastY - startY + (scroller.scrollTop - startScroll);
+      // Zeiger und Lagen in Bildschirmpixeln, Verschiebungen in den (mit der HUD-Größe gezoomten) CSS-Pixeln der Liste
+      const k = hudScale();
+      const dy = (lastY - startY) / k + (scroller.scrollTop - startScroll);
       row.style.transform = `translateY(${dy}px)`;
-      const center = mids[from] + dy;
+      const center = mids[from] + dy * k;
       to = from;
       rows.forEach((r, i) => {
         if (i === from) return;
         let shift = 0;
         if (i > from && center > mids[i]) { shift = -height; to = Math.max(to, i); }
         if (i < from && center < mids[i]) { shift = height; to = Math.min(to, i); }
-        r.style.transform = shift ? `translateY(${shift}px)` : '';
+        r.style.transform = shift ? `translateY(${shift / k}px)` : '';
       });
     };
     const tick = () => {

@@ -51,6 +51,7 @@ import { $, morph } from './dom';
 import { fmtClock, fmtCr } from './format';
 import { icon } from './icons';
 import { setSound, sfx, soundEnabled } from './sound';
+import { applyHudScale, hudScale, setHudScale } from './hudScale';
 import { initLifecycle, meterPeak, preloadSamples, renderOffline, setLevel, setMusicStyle, settings as audioSettingsRef, type Bus } from '../audio/engine';
 import { nextMood, renderMood, setNear, setScene, setSectorMood } from '../audio/ambience';
 import { SOUND_DEMO } from '../audio/sounds';
@@ -97,6 +98,7 @@ let pointerInUI = false;
 // ---------- Start ----------
 
 export function start(): void {
+  applyHudScale();
   canvas = $('map') as HTMLCanvasElement;
   ctx = canvas.getContext('2d')!;
   const loaded = loadLocal();
@@ -146,7 +148,7 @@ export function start(): void {
   initLifecycle();
   initEditor();
   // Schieberegler live nachführen
-  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-order-price', 'sell-order-keep', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density', 'enemy-tune'].includes(f)) onChange(e); });
+  document.addEventListener('input', (e) => { const f = (e.target as HTMLElement).dataset?.change ?? ''; if (['sell-amount', 'buy-amount', 'trade-amount', 'trade-margin', 'storage-share', 'storage-reserve', 'buy-price', 'buy-order-price', 'buy-order-fill', 'sell-order-price', 'sell-order-keep', 'sell-reserve', 'search', 'build-move-in', 'build-move-out', 'label-density', 'enemy-tune', 'hud-scale'].includes(f)) onChange(e); });
   initDragLists((list, uid, to) => {
     const st = list.dataset.st;
     if (st) { withUndo(state, () => ui.plan, 'Verschieben', () => A.moveQueued(state, st, Number(uid), to)); sfx.tap(); }
@@ -815,7 +817,9 @@ function placeOrb(): void {
   if (!el) return;
   const p = ui.orbOpen && ui.orbAt ? ui.orbAt : orbPosition();
   el.style.display = p ? '' : 'none';
-  if (p) el.style.transform = `translate(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px)`;
+  // die Ebene ist mit der HUD-Größe gezoomt, die Lage kommt in Bildschirmpixeln
+  const k = hudScale();
+  if (p) el.style.transform = `translate(${(p[0] / k).toFixed(1)}px, ${(p[1] / k).toFixed(1)}px)`;
 }
 
 // ---------- Zoom-Leiste: Tippen = ein Schritt, Halten = stufenlos, Schieber = direkt ----------
@@ -1353,6 +1357,7 @@ function onClick(e: MouseEvent): void {
         break;
       case 'chart-range': if (ui.modal?.type === 'chart') ui.modal = { ...ui.modal, hours: Number(d.hours) || 6 }; refresh(); break;
       case 'icon-style': ui.iconStyle = d.style === 'line' ? 'line' : 'glow'; saveIconStyle(ui.iconStyle); setWareIconStyle(ui.iconStyle); refresh(); break;
+      case 'hud-reset': setHudScale(1); refresh(); break;
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
       case 'ship-art-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
@@ -2013,6 +2018,13 @@ function onChange(e: Event): void {
     const key = el.dataset.key === 'shield' ? 'shield' : 'hull';
     setEnemyTune({ [key]: tuneFromSlider(Number(el.value)) });
     refresh();
+    return;
+  }
+  if (field === 'hud-scale') {
+    // erst beim Loslassen anwenden: sonst wandert der Regler unter dem Finger mit der Oberfläche mit
+    const v = Number(el.value) / 100;
+    if (e.type === 'change') { setHudScale(v); refresh(); }
+    else { const out = el.closest('.row')?.querySelector('.hud-val'); if (out) out.textContent = `${Math.round(v * 100)} %`; }
     return;
   }
   if (field === 'label-density') {

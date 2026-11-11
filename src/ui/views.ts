@@ -1,4 +1,5 @@
 // HTML-Bausteine aller Bildschirme. Aktionen laufen über data-act (siehe app.ts).
+import { HUD_MAX, HUD_MIN, hudScale, hudSetting } from './hudScale';
 import { wareIcon, wareMark } from './wareIcons';
 import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } from '../minigames/host';
 import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
@@ -1807,6 +1808,10 @@ function morePanel(state: GameState, ui: UIState): string {
             <div class="range-row"><span class="small muted">wenig</span><input type="range" min="0" max="100" step="5" value="${ui.labelDensity}" data-change="label-density" aria-label="Beschriftungsdichte"><span class="small muted">viel</span></div></div></div>
         </div></div>
         <div class="section"><h3>Darstellung</h3><div class="box rows">
+          <div class="row"><div class="grow"><div class="title" style="font-weight:500">HUD-Größe <span class="hud-val num muted">${Math.round(hudSetting() * 100)} %</span></div>
+            <div class="sub">Leisten, Knöpfe, Fenster und Anzeigen in den Minispielen – kleiner zeigt dort mehr vom Spielfeld${hudScale() < hudSetting() - 0.001 ? ` · auf diesem Bildschirm höchstens ${Math.round(hudScale() * 100)} %` : ''}</div>
+            <div class="range-row"><span class="small muted">klein</span><input type="range" min="${HUD_MIN * 100}" max="${HUD_MAX * 100}" step="5" value="${Math.round(hudSetting() * 100)}" data-change="hud-scale" aria-label="HUD-Größe"><span class="small muted">groß</span></div></div>
+            ${Math.abs(hudSetting() - 1) > 0.001 ? `<button class="btn small" ${act('hud-reset')}>100 %</button>` : ''}</div>
           ${toggleRow('Sektor-Hintergrund', ui.bgMode === 'image' ? 'Bilder – gemalte Weltraum-Hintergründe mit Tiefenwirkung' : 'Erzeugt – marmorierte Nebel und Galaxien je Sektor', true, ui.bgMode === 'image' ? 'Bilder' : 'Erzeugt', 'bg-toggle')}
           ${ui.bgMode === 'image' ? `<div class="row"><div class="grow"><div class="title" style="font-weight:500">Bild für ${esc(SECTOR_MAP[ui.sector]?.name ?? '')}</div><div class="sub">${info ? `${esc(info.name)} · ${info.index + 1} von ${BG_IMAGES.length}` : '–'}</div></div>
           <div class="stepper"><button class="btn" ${act('bg-prev')} aria-label="Vorheriges Bild">‹</button><button class="btn" ${act('bg-next')} aria-label="Nächstes Bild">›</button></div></div>` : ''}

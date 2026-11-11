@@ -1,5 +1,6 @@
 // Geführte erste Schritte: Ein pulsierender Rahmen und eine Sprechblase zeigen, was als Nächstes anzutippen ist.
 // Die Schritte ergeben sich aus dem Spielstand – wer anders vorgeht, bekommt trotzdem den passenden Hinweis.
+import { hudScale } from './hudScale';
 import { WARES } from '../data/wares';
 import { buildDemand, buildMoveLimits } from '../engine/economy';
 import { currentMission, missionComplete, storyOf } from '../engine/story';
@@ -305,7 +306,9 @@ export function renderCoach(state: GameState, ui: UIState): void {
   const pad = 6;
   const ring = r ? `<div class="coach-ring" style="left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px"></div>` : '';
   const vw = window.innerWidth, vh = window.innerHeight;
-  const w = Math.min(320, vw - 32);
+  // die Blase ist mit der HUD-Größe gezoomt: Lage und Breite hier in Bildschirmpixeln, unten in ihre CSS-Pixel umgerechnet
+  const k = hudScale();
+  const w = Math.min(320 * k, vw - 32);
   let style: string;
   let arrow = '';
   if (r) {
@@ -313,12 +316,12 @@ export function renderCoach(state: GameState, ui: UIState): void {
     const ax = Math.max(18, Math.min(w - 18, r.left + r.width / 2 - left));
     // Höhe der Blase grob nach Textlänge (etwa 40 Zeichen je Zeile): unten nur, wenn sie dort ganz hinpasst,
     // sonst auf die Seite mit mehr Platz
-    const estH = 70 + Math.ceil(step.text.length / 40) * 21;
+    const estH = (70 + Math.ceil(step.text.length / 40) * 21) * k;
     const below = r.bottom + pad + 12 + estH < vh || (r.top - pad - 12 - estH < 0 && vh - r.bottom > r.top);
-    style = below ? `left:${left}px;top:${r.bottom + pad + 12}px;width:${w}px` : `left:${left}px;bottom:${vh - r.top + pad + 12}px;width:${w}px`;
-    arrow = `<i class="coach-arrow ${below ? 'up' : 'down'}" style="left:${ax}px"></i>`;
+    style = below ? `left:${left / k}px;top:${(r.bottom + pad + 12) / k}px;width:${w / k}px` : `left:${left / k}px;bottom:${(vh - r.top + pad + 12) / k}px;width:${w / k}px`;
+    arrow = `<i class="coach-arrow ${below ? 'up' : 'down'}" style="left:${ax / k}px"></i>`;
   } else {
-    style = `left:${(vw - w) / 2}px;top:${Math.max(80, vh / 2 - 110)}px;width:${w}px`;
+    style = `left:${(vw - w) / 2 / k}px;top:${Math.max(80, vh / 2 - 110) / k}px;width:${w / k}px`;
   }
   const buttons = `<div class="coach-actions"><button class="linkish" ${act('coach-off')}>Hilfe ausblenden</button>${step.next ? `<button class="btn small primary" ${act('coach-next', { id: step.id })}>Weiter</button>` : ''}</div>`;
   const html = `${ring}<div class="coach-bubble" role="note" style="${style}">${arrow}<p>${esc(step.text)}</p>${buttons}</div>`;
