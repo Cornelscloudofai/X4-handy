@@ -193,8 +193,9 @@ describe('Zusagen im Spiel nachgeprüft', () => {
       fire(90);
       const withP = e2.max - e2.hp, front2 = e1.max - e1.hp;
       expect(front).toBeGreaterThan(0);
-      // das hintere Ziel bekommt jetzt einen guten Teil dessen ab, was das vordere trifft (Strahl 60 %, Lanze 70 %)
-      expect(withP, `${weapon}: Durchschlag trifft das hintere Ziel (${without.toFixed(1)} → ${withP.toFixed(1)}, vorn ${front2.toFixed(1)})`).toBeGreaterThan(Math.max(without * 1.8, front2 * 0.4));
+      // das hintere Ziel bekommt jetzt einen guten Teil dessen ab, was das vordere trifft (Strahl 60 %, Lanze 70 %; die
+      // Kanonen treffen sich am vorderen Ziel und laufen dahinter leicht auseinander, daher nicht jedes Rohr)
+      expect(withP, `${weapon}: Durchschlag trifft das hintere Ziel (${without.toFixed(1)} → ${withP.toFixed(1)}, vorn ${front2.toFixed(1)})`).toBeGreaterThan(Math.max(without * 1.8, front2 * 0.3));
     }
   });
 
@@ -228,6 +229,40 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     }
     expect(last, 'Turm hat ein Ziel').not.toBeNull();
     expect(switches, 'Zielwechsel').toBe(0);
+  });
+  it('Frontwaffen kardanisch: bei breiten Schiffen treffen alle Kanonen ein kleines Ziel genau voraus', () => {
+    // Schiff mit dem breitesten Abstand zwischen den Bordkanonen
+    let best = '', span = 0;
+    for (const id of Object.keys(SHIPS)) {
+      const { g } = mk('xenon', 1, 'station', { ship: id as Loadout['ship'], wing: {} });
+      const guns = (g as unknown as { guns: number[] }).guns;
+      if (guns.length < 2) continue;
+      const w = Math.max(...guns) - Math.min(...guns);
+      if (w > span) { span = w; best = id; }
+    }
+    expect(span, 'breitestes Schiff hat weit auseinanderliegende Kanonen').toBeGreaterThan(30);
+    const { g, a } = mk('xenon', 1, 'station', { ship: best as Loadout['ship'], weapon: 'puls', wing: {} });
+    const G = g as unknown as { aimA: number; fireId: number | null; fireCd: number; pvx: number; pvy: number; wpn: { jitter: number; range: number }; bullets: { x: number; y: number; vx: number; vy: number; from: string }[]; makeEnemy(k: string, x: number, y: number): E };
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    // kleiner Jäger (Radius 9) genau voraus, in 60 % der Reichweite
+    const d = G.wpn.range * 0.6;
+    const e = G.makeEnemy('m', a.px, a.py - d);
+    e.r = 9; e.hp = e.max = 1e9; e.cd = 1e9;
+    a.enemies.push(e);
+    G.wpn.jitter = 0; G.pvx = 0; G.pvy = 0; G.aimA = -Math.PI / 2; G.fireId = 1; G.fireCd = 0;
+    G.bullets.length = 0;
+    const [ex, ey] = [e.x, e.y];
+    g.update(DT);
+    // nur die Bordkanonen (Türme feuern langsamere Geschosse)
+    const fast = Math.max(...G.bullets.map((b) => Math.hypot(b.vx, b.vy)));
+    const shots = G.bullets.filter((b) => b.from === 'p' && Math.hypot(b.vx, b.vy) > fast * 0.95);
+    expect(shots.length, `${best}: alle Kanonen feuern`).toBeGreaterThanOrEqual(2);
+    for (const b of shots) {
+      // kleinster Abstand der Flugbahn zum Ziel
+      const v = Math.hypot(b.vx, b.vy), ux = b.vx / v, uy = b.vy / v;
+      const miss = Math.abs(-(ex - b.x) * uy + (ey - b.y) * ux);
+      expect(miss, `${best}: Kanone verfehlt das kleine Ziel um ${miss.toFixed(1)}`).toBeLessThan(e.r);
+    }
   });
 });
 

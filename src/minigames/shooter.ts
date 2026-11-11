@@ -438,6 +438,12 @@ const aimStrength = (ad: number): number => clamp((ad - AIM_DEAD) / (AIM_FULL - 
 const SIDE_THRUST = 1 / 4;
 const BACK_THRUST = 1 / 3;
 const AIM_ASSIST = 0.15;
+/**
+ * Kardanische Frontwaffen: jede Bordkanone schwenkt von ihrem Platz aus auf einen gemeinsamen Punkt (Vorhaltepunkt
+ * bzw. Zielentfernung geradeaus) – sonst fliegen kleine Ziele bei breiten Schiffen zwischen den Kanonen durch.
+ * Höchstens so weit seitlich (rad), ohne Ziel trifft sich alles bei diesem Anteil der Reichweite
+ */
+const GUN_GIMBAL = 0.26, GUN_CONVERGE = 0.6;
 
 /** Winkel auf (−π, π] */
 function wrapA(a: number): number {
@@ -1004,6 +1010,18 @@ export class ShooterGame implements MiniGame {
   /** Hangar: Reparatur und Aufmunitionieren schneller (Werkstatt und Karte „Hangarcrew“) */
   private get hangarMul(): number { return (1 + this.m('wrepair')) * (1 + 0.5 * this.c('hangar')); }
   private get aimAssist(): number { return AIM_ASSIST * (1 + this.m('aim')); }
+
+  /** Entfernung, in der sich die Frontkanonen treffen: erfasstes Ziel, sonst ein Stück der Reichweite voraus */
+  private convergeDist(range: number): number {
+    if (!this.lock) return range * GUN_CONVERGE;
+    return clamp(Math.hypot(this.lock.x - this.px, this.lock.y - this.py), 120, range);
+  }
+
+  /** Schusswinkel einer Bordkanone bei (ox, oy): auf den Punkt in Entfernung d längs a0, höchstens GUN_GIMBAL seitlich */
+  private gunAngle(ox: number, oy: number, a0: number, d: number): number {
+    const tx = this.px + Math.cos(a0) * d, ty = this.py + Math.sin(a0) * d;
+    return a0 + clamp(wrapA(Math.atan2(ty - oy, tx - ox) - a0), -GUN_GIMBAL, GUN_GIMBAL);
+  }
   /** Effekt der Schiffsmodifikationen */
   private m(id: keyof ModStats): number { return this.mods[id] ?? 0; }
   private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (1 + this.m('speed')) * (this.sprintT > 0 ? 1.7 : 1) * (this.towing ? 0.82 : 1); }
@@ -3730,7 +3748,8 @@ export class ShooterGame implements MiniGame {
       const off = Math.abs(wrapA(Math.atan2(ly - this.py, lx - this.px) - this.aimA));
       this.lock = { e: best, x: lx, y: ly, ok: off < this.aimAssist };
     } else this.lock = null;
-    // Bordkanonen: nur geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4)
+    // Bordkanonen: grob geradeaus; liegt der Vorhaltepunkt fast genau vorn, hilft eine kleine Zielhilfe (wie in X4),
+    // und die Kanonen schwenken auf einen gemeinsamen Punkt (siehe gunAngle)
     this.fireCd -= dt;
     this.ringFlash = Math.max(0, this.ringFlash - dt);
     this.markT = Math.max(0, this.markT - dt);
@@ -3759,12 +3778,14 @@ export class ShooterGame implements MiniGame {
       this.railN++;
       const over = !!w.rail && this.c('overload') > 0 && this.railN % (this.c('overload') >= 2 ? 2 : 3) === 0;
       const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
+      const conv = this.convergeDist(w.range);
       for (const gx of this.guns) {
-        // alle Bordkanonen feuern; Lage quer zur Flugrichtung
+        // alle Bordkanonen feuern; Lage quer zur Flugrichtung, jede auf den gemeinsamen Punkt geschwenkt
         const fwd = this.ship.size * (this.ship.gunFwd ?? 0.3);
         const ox = this.px - sn * gx + c * fwd, oy = this.py + c * gx + sn * fwd;
+        const ag = this.gunAngle(ox, oy, a0, conv);
         for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < w.pellets; p++) {
-          const a = a0 + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter;
+          const a = ag + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter;
           // Lanze: Durchschlag wie bei Geschossen; Überladung: jeder dritte (zweite) Schuss trifft doppelt
           if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7) * (over ? 2 : 1), w.range, over ? '#ffd27a' : w.color, this.ship.gunSize === 'l' || over, this.c('pierce')); continue; }
           this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), hullPierce: w.hullPierce || undefined, splash: this.c('splash') ? 30 + 25 * this.c('splash') : undefined });
@@ -3852,13 +3873,15 @@ export class ShooterGame implements MiniGame {
       const la = Math.atan2(this.lock.y - this.py, this.lock.x - this.px);
       if (Math.abs(wrapA(la - this.aimA)) < this.aimAssist * this.wpn.gimbal) ba = la;
     }
-    const c = Math.cos(ba), sn = Math.sin(ba);
+    const conv = this.convergeDist(this.wpn.range);
     // Schaden pro Sekunde aus den Daten; Mk-Stufe und Verbesserungen wirken wie auf den Takt; Fokus-Karte: +20 % je Stufe
     const dps = (this.damage / TIME / this.tempo) * (1 + 0.2 * this.c('focus'));
     const range = this.wpn.range * (1 + 0.2 * this.c('focus')), pierce = this.c('pierce');
     for (const gx of this.guns) {
       const fwd = this.ship.size * (this.ship.gunFwd ?? 0.3);
       const ox = this.px - s0 * gx + c0 * fwd, oy = this.py + c0 * gx + s0 * fwd;
+      // jeder Strahl auf den gemeinsamen Punkt geschwenkt
+      const ag = this.gunAngle(ox, oy, ba, conv), c = Math.cos(ag), sn = Math.sin(ag);
       // Hindernisse (Rakete, Fels) und Gegner entlang des Strahls; Durchschlag: der Strahl geht durch weitere Gegner
       let hitT = range, hitM: EMissile | null = null;
       const along = (x: number, y: number, r: number): number | null => {
