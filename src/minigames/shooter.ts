@@ -241,7 +241,10 @@ interface Bullet { x: number; y: number; vx: number; vy: number; dmg: number; fr
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
-  rise?: number; riseMax?: number; ra?: number }
+  rise?: number; riseMax?: number; ra?: number;
+  /** Eigenart der einzelnen Rakete (beim ersten Takt ausgewürfelt): Wendigkeit, Tempo, Pendeln (Phase, Frequenz),
+   * eigener Treffpunkt am Ziel (Anteil des Radius) – so fliegt ein Schwarm nicht wie ein Block */
+  tk?: number; vk?: number; wob?: number; wf?: number; ox?: number; oy?: number }
 /** Senkrechtstart aus dem Silo: Steigen und Überkippen (Sekunden) */
 const SILO_RISE = 1.1;
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
@@ -681,6 +684,8 @@ export class ShooterGame implements MiniGame {
   /** Kampf aus der Spielwelt: Ort, Szene und Umstand (im Kampfmenü leer) */
   private place: Place | null;
   private r: () => number;
+  /** Würfel nur für Raketen-Eigenarten und Turmversatz (eigene Folge, damit der Rundenablauf gleich bleibt) */
+  private rv: () => number;
   private gear: Gear;
   private score: Score;
   private cards: Record<string, number> = {};
@@ -901,6 +906,8 @@ export class ShooterGame implements MiniGame {
     this.mode = cfg.mode === 'endless' ? 'endless' : cfg.mode ?? 'normal';
     this.mission = this.mode === 'endless' ? 'geleit' : cfg.mission ?? 'geleit';
     this.r = rng(cfg.seed);
+    // eigener Würfel für Raketen-Eigenarten und Turmversatz: ändert den Ablauf der Runde (Wellen, Gegner) nicht
+    this.rv = rng(cfg.seed ^ 0x5eed);
     this.gear = cfg.gear ?? { weapon: 1, shield: 1, engine: 1 };
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
     this.place = cfg.place ?? null;
@@ -933,10 +940,11 @@ export class ShooterGame implements MiniGame {
     this.mag = this.wpn.mag;
     this.sh = SHIELDS[lo.shield];
     this.pTur = this.ship.turrets.map((_, i) => {
-      if (!this.ship.groups) return { cd: 0, a: -Math.PI / 2, mag: this.tw.mag, ammo: this.tw.missile ? this.tw.missile.salvos * this.tw.missile.n : undefined };
+      // Raketentürme starten leicht versetzt (bis gut eine halbe Sekunde), statt alle im selben Augenblick
+      if (!this.ship.groups) return { cd: this.tw.missile ? this.rv() * 0.6 : 0, a: -Math.PI / 2, mag: this.tw.mag, ammo: this.tw.missile ? this.tw.missile.salvos * this.tw.missile.n : undefined };
       // Träger: Art je Turmgruppe
       const t = turretOf(lo, this.ship, i), w = gameGun(t.def.gun, t.def);
-      return { cd: 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L, g: this.ship.turretGroup?.[i], ammo: w.missile ? w.missile.salvos * w.missile.n : undefined };
+      return { cd: w.missile ? this.rv() * 0.6 : 0, a: -Math.PI / 2, mag: w.mag, w, turn: (5 * t.def.turn) / 180, type: t.id, L: t.L, g: this.ship.turretGroup?.[i], ammo: w.missile ? w.missile.salvos * w.missile.n : undefined };
     });
     // Staffel: Begleitschiffe aus dem Hangar (Träger) bzw. Flügelleute in Formation
     this.initWings(lo);
@@ -4088,7 +4096,8 @@ export class ShooterGame implements MiniGame {
       if (t.ammo != null) t.ammo--;
     }
     if (t.ammo != null && t.ammo <= 0) t.salvo = 0;
-    t.cd = ((t.salvo > 0 ? m.gap : m.reload) * this.tempo) / this.tRateMul;
+    // Pause leicht schwankend (±12 %): die Türme eines Clusters bleiben gegeneinander versetzt
+    t.cd = ((t.salvo > 0 ? m.gap : m.reload * (0.88 + this.rv() * 0.24)) * this.tempo) / this.tRateMul;
     sfx.missile();
   }
 
@@ -4655,18 +4664,28 @@ export class ShooterGame implements MiniGame {
         // Flinker Elite-Gegner: weicht kurz vor dem Einschlag zur Seite aus, die Rakete verliert ihr Ziel
         if (m.target.elite === 'flink' && d < 150 && !m.target.dodgeCd) { this.dodgeMissile(m.target, m); m.target = null; }
       }
+      if (m.tk == null) {
+        // nie schlechter als die Rakete laut Daten (Reichweite, Lenkung), nur unterschiedlich viel besser
+        m.tk = 1 + this.rv() * 0.3; m.vk = 1 + this.rv() * 0.15;
+        m.wob = this.rv() * Math.PI * 2; m.wf = 3 + this.rv() * 3.5;
+        const oa = this.rv() * Math.PI * 2, orr = Math.sqrt(this.rv()) * 0.6;
+        m.ox = Math.cos(oa) * orr; m.oy = Math.sin(oa) * orr;
+      }
       if (m.target) {
         const dx = m.target.x - m.x, dy = m.target.y - m.y, d = Math.hypot(dx, dy) || 1;
         // Lenkung: die Rakete dreht ihren Flugvektor (begrenzte Drehrate) auf den Abfangpunkt – dort, wo das Ziel
-        // ankommt, wenn sie es erreicht – statt nur dorthin zu beschleunigen (das ließ sie um das Ziel kreisen)
+        // ankommt, wenn sie es erreicht – statt nur dorthin zu beschleunigen (das ließ sie um das Ziel kreisen).
+        // Jede Rakete zielt auf ihren eigenen Punkt am Ziel und pendelt leicht um den Kurs (nah am Ziel kaum noch)
         let v = Math.hypot(m.vx, m.vy) || 1;
         const t = Math.min(2, d / Math.max(200, v));
-        const ix = m.target.x + m.target.vx * t - m.x, iy = m.target.y + m.target.vy * t - m.y;
-        const cur = Math.atan2(m.vy, m.vx), err = wrapA(Math.atan2(iy, ix) - cur);
-        const turn = m.def.turn * (m.mini ? 1.3 : 1) * (1 + this.m('mturn')) * dt;
+        const tr = m.target.r * 0.9;
+        const ix = m.target.x + m.target.vx * t + (m.ox ?? 0) * tr - m.x, iy = m.target.y + m.target.vy * t + (m.oy ?? 0) * tr - m.y;
+        const wob = Math.sin(this.time * (m.wf ?? 4) + (m.wob ?? 0)) * 0.2 * clamp((d - 60) / 360, 0, 1);
+        const cur = Math.atan2(m.vy, m.vx), err = wrapA(Math.atan2(iy, ix) + wob - cur);
+        const turn = m.def.turn * (m.mini ? 1.3 : 1) * (1 + this.m('mturn')) * (m.tk ?? 1) * dt;
         const na = cur + clamp(err, -turn, turn);
         // weit vom Kurs (Ziel seitlich oder hinter ihr): Gas weg, damit der Wendekreis enger wird
-        const want = Math.abs(err) > 1.2 ? m.def.v * 0.55 : m.def.v;
+        const want = (Math.abs(err) > 1.2 ? m.def.v * 0.55 : m.def.v) * (m.vk ?? 1);
         v = v < want ? Math.min(want, v + m.def.acc * dt) : Math.max(want, v - m.def.acc * 1.5 * dt);
         m.vx = Math.cos(na) * v;
         m.vy = Math.sin(na) * v;
