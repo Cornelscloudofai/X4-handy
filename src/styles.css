@@ -730,6 +730,17 @@ html.calm .mg-stars span.on svg { animation: none; }
 .mg-breakdown { margin: 0 0 14px; padding: 2px 12px 10px; border-radius: 12px; background: rgba(5, 14, 22, 0.45); text-align: left; }
 .mg-breakdown > div { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; padding: 3px 0; border-bottom: 1px solid rgba(110, 220, 205, 0.08); }
 .mg-breakdown > div.sum { border-bottom: 0; font-weight: 600; color: var(--amber); }
+/* Kampfprotokoll in der Auswertung */
+.mg-report { margin: 0 0 14px; padding: 4px 12px 8px; border-radius: 12px; background: rgba(5, 14, 22, 0.45); text-align: left; }
+.mg-report summary { cursor: pointer; padding: 6px 0; font-family: var(--font-display); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.mg-rep-row { padding: 6px 0 7px; border-bottom: 1px solid rgba(110, 220, 205, 0.08); }
+.mg-rep-row:last-of-type { border-bottom: 0; }
+.mg-rep-h { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; }
+.mg-rep-h span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-rep-h b { font-weight: 600; color: var(--amber); }
+.mg-rep-row > i { display: block; height: 4px; margin: 5px 0 4px; border-radius: 2px; background: linear-gradient(90deg, var(--amber) var(--p), rgba(255, 181, 71, 0.12) var(--p)); }
+.mg-rep-s { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-2); }
+.mg-rep-note { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
 .mg-goals small { font-family: var(--font-display); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .mg-goals div { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .mg-goals i { flex: none; width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid rgba(255, 181, 71, 0.55); }

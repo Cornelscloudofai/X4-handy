@@ -398,6 +398,24 @@ function resultDetail(r: GameResult): string {
   return stars + hint + pts;
 }
 
+/**
+ * Kampfprotokoll: je Waffe, Turmgruppe, Raketen und Staffel der angerichtete Schaden (Balken und Anteil), Treffer und
+ * Schüsse (Trefferquote, nur wo gezählt) und Abschüsse – zum Vergleichen und Ausprobieren der Ausrüstung
+ */
+function reportBox(r: GameResult): string {
+  const rows = r.report ?? [];
+  if (!rows.length) return '';
+  const total = rows.reduce((a, q) => a + q.dmg, 0) || 1, top = Math.max(...rows.map((q) => q.dmg), 1);
+  const body = rows.map((q) => {
+    const share = Math.round((q.dmg / total) * 100);
+    const acc = q.shots ? `${fmtPts(q.hits)} / ${fmtPts(q.shots)} · ${Math.round((Math.min(q.hits, q.shots) / q.shots) * 100)} %` : q.hits ? `${fmtPts(q.hits)} Treffer` : 'Dauerstrahl';
+    return `<div class="mg-rep-row"><div class="mg-rep-h"><span>${esc(q.name)}</span><b class="num">${fmtPts(q.dmg)}</b></div>
+      <i style="--p:${((q.dmg / top) * 100).toFixed(1)}%"></i>
+      <div class="mg-rep-s"><span>${share} % des Schadens</span><span>${acc}</span><span>${q.kills ? `${q.kills} ${q.kills > 1 ? 'Abschüsse' : 'Abschuss'}` : '–'}</span></div></div>`;
+  }).join('');
+  return `<details class="mg-report" open><summary>Kampfprotokoll</summary>${body}<p class="mg-rep-note">Schaden an Schild und Hülle; Treffer / Schüsse je Geschoss, Lanze oder Rakete.</p></details>`;
+}
+
 function setPhase(p: Phase): void {
   const s = cur;
   if (!s) return;
@@ -439,6 +457,7 @@ function setPhase(p: Phase): void {
       ${s.parts ? `<div class="mg-parts"><i></i>+${s.parts} Modteil${s.parts > 1 ? 'e' : ''} für Schiffsmodifikationen</div>` : ''}
       ${resultDetail(r)}
       <div class="mg-lines">${r.lines.map(([k, v]) => `<div><small>${esc(k)}</small><b class="num">${esc(v)}</b></div>`).join('')}</div>
+      ${reportBox(r)}
       ${r.goals.length ? `<div class="mg-goals">${r.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}${o?.newBadges.includes(q.id) ? '<em>Neues Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
       <div class="mg-actions">${s.replay ? '<button class="btn ghost" data-mg="again">Nochmal</button>' : ''}<button class="btn primary" data-mg="quit">Fertig</button></div></div>`;
     if (r.success) sfx.success(); else sfx.fail();

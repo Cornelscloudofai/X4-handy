@@ -72,7 +72,12 @@ export interface GameResult {
   breakdown?: [string, number][];
   /** Bedingung je Stern (1., 2., 3.) mit erreichtem Wert */
   starRules?: StarRule[];
+  /** Kampfprotokoll: Schaden, Treffer, Schüsse und Abschüsse je Waffe, Turmgruppe, Raketen, Staffel */
+  report?: ReportRow[];
 }
+
+/** Eine Zeile des Kampfprotokolls (shots/hits 0 = nicht gezählt, z. B. Dauerstrahl) */
+export interface ReportRow { name: string; dmg: number; hits: number; shots: number; kills: number }
 
 /** Bedingung für einen Stern: was zu tun ist, ob erreicht, und was du erreicht hast */
 export interface StarRule { text: string; ok: boolean; got?: string }

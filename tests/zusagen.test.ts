@@ -341,5 +341,23 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     const siloRange = (silos[0] as unknown as { w: { range: number } }).w.range, vierRange = (g as unknown as { tw: { range: number } }).tw.range;
     expect(siloRange / vierRange).toBeCloseTo(2, 5);
   });
+  it('Kampfprotokoll: Schaden, Treffer und Schüsse je Waffe und Turmart in der Auswertung', () => {
+    const { g, a } = mk('pirate', 1, 'station', { ship: 'cobra', weapon: 'puls', turret: 'rakete', wing: {} });
+    const G = g as unknown as { aimA: number; fireId: number | null; makeEnemy(k: string, x: number, y: number): E; pTur: { cd: number }[] };
+    a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+    const e = G.makeEnemy('m', a.px, a.py - 260); e.hp = e.max = 1e7; e.cd = 1e9; a.enemies.push(e);
+    for (let i = 0; i < 6 / DT; i++) { G.aimA = -Math.PI / 2; G.fireId = 1; e.x = a.px; e.y = a.py - 260; (e as unknown as { vx: number }).vx = 0; (e as unknown as { vy: number }).vy = 0; g.update(DT); }
+    const rep = g.abort().report!;
+    const gun = rep.find((r) => r.name.startsWith('Bordwaffe'))!, tur = rep.find((r) => r.name.includes('Raketen-Vierling'))!;
+    expect(gun, JSON.stringify(rep)).toBeTruthy();
+    expect(gun.dmg).toBeGreaterThan(0);
+    expect(gun.shots).toBeGreaterThan(gun.hits * 0.5);
+    expect(gun.hits).toBeGreaterThan(0);
+    expect(gun.hits).toBeLessThanOrEqual(gun.shots);
+    expect(tur.shots % 4).toBe(0);
+    expect(tur.dmg).toBeGreaterThan(0);
+    // nach Schaden sortiert
+    for (let i = 1; i < rep.length; i++) expect(rep[i - 1].dmg).toBeGreaterThanOrEqual(rep[i].dmg);
+  });
 });
 
