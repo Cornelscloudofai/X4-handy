@@ -6,9 +6,9 @@ import { preloadSamples } from '../audio/engine';
 import { esc } from '../ui/dom';
 import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, type Level, type MiniGame, type Mode, type Mutator, type Place, type Rules } from './common';
 import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
-import { earnParts, partsFor } from './mods';
+import { earnParts, modStats, partsFor } from './mods';
 import { recordKey, type Mission } from './missions';
-import { setEnemyTune } from './loadout';
+import { controlMode, setEnemyTune, type Loadout } from './loadout';
 import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
 import { hudScale } from '../ui/hudScale';
@@ -30,6 +30,9 @@ export interface MiniOpts {
   mission?: Mission;
   /** Kampf aus der Spielwelt: Schauplatz */
   place?: Place;
+  /** Kampf mit einem bestimmten eigenen Schiff (Großkampfschiff aus dem Sektor) und seiner Hülle beim Start */
+  loadout?: Loadout;
+  startHull?: number;
 }
 
 export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: string; chain?: string; endless?: string }> = {
@@ -68,7 +71,9 @@ function resolve(kind: MiniKind, o: MiniOpts): GameCfg {
     const list = mutatorsOf(kind);
     mutator = Math.random() < 0.5 ? list[Math.floor(Math.random() * list.length)].id : null;
   }
-  return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission, place: o.place };
+  // eigenes Schiff aus dem Sektor: Steuerung und Werkstatt-Mods wie gespeichert
+  const own = o.loadout ? { loadout: o.loadout, controls: controlMode(), mods: modStats(o.loadout.ship), startHull: o.startHull } : {};
+  return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission, place: o.place, ...own };
 }
 
 /** Feedback aus dem Pausenmenü (setzt die App; Ort im Spiel und Leinwand fürs Bildschirmfoto) */

@@ -774,6 +774,12 @@ export function turretOf(lo: Loadout, d: ShipDef, i: number): { id: string; def:
 let current: Loadout | null = null;
 
 /** Gewählte Ausrüstung (gemerkt im Browser) */
+/** Gespeicherte Ausrüstung, aber mit diesem Schiff (z. B. das eigene Großkampfschiff aus dem Sektor) */
+export function loadoutFor(ship: ShipId): Loadout {
+  const l = loadout();
+  return l.ship === ship ? l : valid({ ...l, ship } as Parameters<typeof valid>[0]);
+}
+
 export function loadout(): Loadout {
   if (current) return current;
   try {

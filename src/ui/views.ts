@@ -54,7 +54,7 @@ import { npcSource } from '../engine/npc';
 import { FIELD_REGEN, expectedCargo, fieldCap, fieldLevel, restMode, routeMargin, shipEta } from '../engine/fleet';
 import { combatOrderText } from '../engine/combat';
 import { DEFEND_R, DETER, DETER_ON, hostileState, hostileText, hostilesIn, sectorSecurity } from '../engine/hostiles';
-import { FIGHT_R, fightersAt, hostileHp, hullOf, wrecksOf } from '../engine/battle';
+import { ARTY_R, CARRIER_WING_MAX, FIGHT_R, WING_CLS, artilleryAt, fightersAt, flagshipIn, hostileHp, hullOf, powerOf, wingOf, wrecksOf } from '../engine/battle';
 import { TOW_SPEED, tugFor } from '../engine/tow';
 import { shipColor, shipIcon } from './shipyardView';
 import { endpointName, fieldById, incoming, knownSectors, marketKey, reserveFor, sellableStock, stationById, wanted } from '../engine/logistics';
@@ -588,17 +588,18 @@ function hostileCard(state: GameState, id: number): string {
   if (!h) return '';
   const t = hostileText(state, h);
   const own = h.fighting ? fightersAt(state, h) : [];
-  const ownPower = own.reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power * hullOf(s), 0);
+  const ownPower = own.reduce((a, s) => a + powerOf(s), 0);
+  const arty = artilleryAt(state, h);
   const near = state.ships.filter((s) => SHIP_MAP[s.cls].combat && s.sector === h.sector && Math.hypot(s.x - h.x, s.z - h.z) <= DEFEND_R).reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power, 0);
   const info = h.fighting
-    ? `<b>Gefecht:</b> ${own.map((s) => esc(s.name)).join(', ')} (Kampfwert ${Math.round(ownPower)}) gegen die Rotte (noch ${Math.round(hostileHp(h))} von ${h.power}). Selbst übernommen: ab einem Stern ist die Rotte vernichtet.`
+    ? `<b>Gefecht:</b> ${own.map((s) => esc(s.name) + (wingOf(s) ? ` mit ${wingOf(s)} Mambas` : '')).join(', ')} (Kampfwert ${Math.round(ownPower)}) gegen die Rotte (noch ${Math.round(hostileHp(h))} von ${h.power}).${arty.length ? ` Fernfeuer: ${arty.map((s) => esc(s.name)).join(', ')}.` : ''} Selbst übernommen: ab einem Stern ist die Rotte vernichtet.`
     : h.foe === 'pirates' && DETER_ON
       ? `Kampfschiffe mit mindestens <b>Kampfwert ${Math.ceil(DETER * h.power)}</b> im Umkreis von ${DEFEND_R} km schrecken Piraten ab; schwächere kämpfen (${FIGHT_R} km Gefechtsabstand)${near ? ` – gerade in der Nähe: ${Math.round(near)}` : ''}.`
       : `${h.foe === 'xenon' ? 'Xenon' : h.foe === 'khaak' ? 'Kha’ak' : 'Piraten'} stellen sich jedem Kampf – eigene Kampfschiffe mit etwa <b>Kampfwert ${h.power}</b> gewinnen das Gefecht${near ? `; gerade in der Nähe: ${Math.round(near)}` : ''}.`;
   return cardShell(icon('warn', 24), t.title, esc(t.sub), `
     <p class="small muted" style="margin:0 0 10px">${info}</p>
     <div class="card-actions">
-      ${h.fighting ? `<button class="btn primary" ${act('battle-play', { id: h.id })}>${icon('game', 20)}Selbst übernehmen</button>` : h.phase !== 'leave' ? `<button class="btn primary" ${act('hostile-send', { id: h.id })}>${icon('fighter', 20)}Kampfschiffe schicken</button>` : ''}
+      ${h.fighting ? `<button class="btn primary" ${act('battle-play', { id: h.id })}>${icon('game', 20)}${flagshipIn(state, h) ? `Mit ${esc(flagshipIn(state, h)!.name)} übernehmen` : 'Selbst übernehmen'}</button>` : h.phase !== 'leave' ? `<button class="btn primary" ${act('hostile-send', { id: h.id })}>${icon('fighter', 20)}Kampfschiffe schicken</button>` : ''}
       ${h.target ? `<button class="btn" ${act('focus', { kind: 'ship', id: h.target })}>${icon('target', 20)}Ziel zeigen</button>` : ''}
     </div>`, false);
 }
@@ -762,6 +763,10 @@ function fighterPanel(state: GameState, s: Ship, p: Panel): string {
       <div><small>Schaden/s</small><b>${fmtInt(cb.dps)}</b></div>
       <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${c.size === 'L' || c.size === 'XL' ? c.parts.filter((x) => /Hauptbatterie|turm/.test(x.name)).map((x) => `${x.count} × ${esc(x.name)}`).join(' · ') : `${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}`}</b></div>
     </div></div>
+    ${s.cls === 'raptor' ? `<div class="section"><h3>Hangar</h3><div class="box rows"><div class="row">${icon('fighter', 20)}<div class="grow"><div class="title">${wingOf(s)} von ${CARRIER_WING_MAX} Mambas an Bord</div>
+      <div class="sub wrap">Schwärmen bei Gefechten aus und kämpfen mit (je Mamba Kampfwert ${fmtInt((SHIP_MAP[WING_CLS].combat?.power ?? 0) * 0.8)}). Sie fangen einen Teil des Feuers ab – Verluste ersetzt du hier.</div></div>
+      <button class="btn small ${wingOf(s) < CARRIER_WING_MAX && state.credits >= SHIP_MAP[WING_CLS].price ? '' : 'disabled'}" ${act('wing-buy', { id: s.id })}>+1 · ${fmtCr(SHIP_MAP[WING_CLS].price)}</button></div></div></div>` : ''}
+    ${s.cls === 'rattlesnake' ? `<div class="section"><div class="box rows"><div class="row">${icon('target', 20)}<div class="grow"><div class="title">Fernfeuer der Hauptbatterie</div><div class="sub wrap">Beschießt Rotten im selben Sektor schon aus bis zu ${ARTY_R} km Entfernung, bevor sie herankommen – dort kann sie nicht zurückschießen.</div></div></div></div></div>` : ''}
     <div class="section"><h3>Befehl ${helpBtn('fighters')}</h3>
       <p class="small" style="margin:0 0 6px">Aktiv: <b>${esc(combatOrderText(state, o))}</b></p>
       <p class="small muted" style="margin:0">Befehle gibst du auf der Karte: Schiff antippen oder mehrere mit dem Lasso einkreisen (gedrückt halten, bis sich der Ring füllt, dann ziehen) – dann die Kugel neben der Gruppe antippen. Greift Gegner im Wachbereich selbst an; unter 25 % Hülle fliegt es zur Reparatur heim. S- und M-Schiffe können im Gefecht verloren gehen, L und XL bleiben liegen und werden abgeschleppt.</p>

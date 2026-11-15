@@ -453,10 +453,46 @@ export class SectorRenderer {
       if (sel || rel > 1.6) this.labels.push({ text: `Wrack · ${w.scrap} Hüllenteile`, x: wx, ys: [wy + 18 * shipS, wy - 18 * shipS], size: 10, color: 'rgba(210,214,222,0.9)', weight: 600, prio: 1, minRel: 0, force: sel });
     }
 
+    // Fernfeuer der Zerstörer: dicke orange Lanze, die in gut einer Sekunde sanft verglüht
+    for (const a of this.arty) {
+      if (a.sector !== sec.id) continue;
+      const f = 1 - (now - a.t0) / 1300;
+      if (f <= 0) continue;
+      const [ax, ay] = cam.toScreen(a.x, a.z), [bx, by] = cam.toScreen(a.tx, a.tz);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (const [w, al, col] of [[7, 0.25, '#ff8a2a'], [3.2, 0.6, '#ffb070'], [1.3, 0.95, '#fff2d8']] as const) {
+        ctx.strokeStyle = rgba(col, al * Math.pow(f, 1.6));
+        ctx.lineWidth = w * shipS;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // Gefechte: Feuer zwischen eigenen Kampfschiffen und der Rotte
     for (const h of hostilesIn(state, sec.id)) {
       if (!h.fighting) continue;
       const [hx, hy] = cam.toScreen(h.x, h.z);
+      // Staffeln der Träger: Mambas umschwirren die Rotte und feuern
+      for (const c of state.ships) {
+        if (!(c.wing ?? 0) || c.sector !== sec.id || c.disabled || Math.hypot(c.x - h.x, c.z - h.z) > FIGHT_R) continue;
+        const n = Math.min(12, c.wing ?? 0), k0 = hashStr(c.id) % 97;
+        for (let i = 0; i < n; i++) {
+          const ph = (motion ? now / (900 + (i % 3) * 170) : 0) + (i / n) * Math.PI * 2 + k0;
+          const rr = (16 + (i % 4) * 5) * shipS;
+          const wx = hx + Math.cos(ph) * rr, wy = hy + Math.sin(ph) * rr * 0.8;
+          this.drawShipGlyph(ctx, wx, wy, ph + Math.PI / 2, 2.6 * shipS, '#5ff0d8', true);
+          if (motion && Math.sin(now / 70 + i * 2.3 + k0) > 0.6) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.strokeStyle = 'rgba(159,255,240,0.8)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(hx + (wx - hx) * 0.25, hy + (wy - hy) * 0.25); ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
       for (const f of state.ships) {
         if (!SHIP_MAP[f.cls].combat || f.sector !== sec.id || Math.hypot(f.x - h.x, f.z - h.z) > FIGHT_R) continue;
         const [fx, fy] = cam.toScreen(f.x, f.z);
@@ -659,6 +695,14 @@ export class SectorRenderer {
   }
 
   /** Funkenregen an einer Station (Modul fertig, Schiff vom Stapel) */
+  /** Salven der Zerstörer-Hauptbatterie auf Fernkampfdistanz: kurz glühende orange Lanzen (Sektor, von, nach, Zeit) */
+  private arty: { sector: string; x: number; z: number; tx: number; tz: number; t0: number }[] = [];
+  artyAt(sector: string, x: number, z: number, tx: number, tz: number): void {
+    const now = performance.now();
+    this.arty = this.arty.filter((a) => now - a.t0 < 1500);
+    this.arty.push({ sector, x, z, tx, tz, t0: now });
+  }
+
   burstAt(sector: string, x: number, z: number, color: string, power = 1): void {
     this.fx.burst(sector, x, z, color, power);
   }

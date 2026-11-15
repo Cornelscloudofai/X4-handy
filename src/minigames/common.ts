@@ -39,6 +39,8 @@ export interface GameCfg {
   mission?: Mission;
   /** Kampf aus der Spielwelt: wo er stattfindet (sonst Sternenfeld wie im Kampfmenü) */
   place?: Place;
+  /** Kampf aus der Spielwelt mit eigenem Schiff: Hülle beim Start (Anteil 0–1); Steuerung und Mods wie gespeichert */
+  startHull?: number;
 }
 
 /** Schauplatz eines Kampfs aus der Spielwelt */
@@ -74,6 +76,8 @@ export interface GameResult {
   starRules?: StarRule[];
   /** Kampfprotokoll: Schaden, Treffer, Schüsse und Abschüsse je Waffe, Turmgruppe, Raketen, Staffel */
   report?: ReportRow[];
+  /** Kampf: Hülle des eigenen Schiffs am Ende (Anteil 0–1) – fürs Schiff im Sektor */
+  hullLeft?: number;
 }
 
 /** Eine Zeile des Kampfprotokolls (shots/hits 0 = nicht gezählt, z. B. Dauerstrahl) */

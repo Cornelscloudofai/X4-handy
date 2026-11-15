@@ -59,7 +59,9 @@ export type GameEvent =
   /** Erstsichtung eines neuen Sektors */
   | { type: 'discovery'; id: string }
   /** Schiff im Gefecht zerstört (Explosion auf der Karte) */
-  | { type: 'boom'; sector: string; x: number; z: number; big?: boolean };
+  | { type: 'boom'; sector: string; x: number; z: number; big?: boolean }
+  /** Salve der Hauptbatterie eines Zerstörers auf Fernkampfdistanz (Lanzenschuss auf der Karte) */
+  | { type: 'arty'; sector: string; x: number; z: number; tx: number; tz: number };
 
 const listeners: ((e: GameEvent) => void)[] = [];
 let muted = 0;

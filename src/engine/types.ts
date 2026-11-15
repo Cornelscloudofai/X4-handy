@@ -385,6 +385,12 @@ export interface Ship {
   combat?: CombatOrder;
   /** Kampfschiff: Zustand der Hülle 0 … 1 (fehlt = unbeschädigt) */
   hp?: number;
+  /** Träger (Raptor): Mambas im Hangar, die bei Gefechten ausschwärmen */
+  wing?: number;
+  /** Träger: Schaden, den die Staffel seit dem letzten Verlust eingesteckt hat (Kampfwert-Einheiten) */
+  wingDmg?: number;
+  /** Zerstörer: Zeit bis zur nächsten Salve der Hauptbatterie auf Fernkampfdistanz (s) */
+  artyCd?: number;
   /** L nach einem verlorenen Gefecht oder unbeantworteten Überfall: kann weder fliegen noch eingesetzt werden, bis es
    *  abgeschleppt ist (tow.ts) */
   disabled?: boolean;

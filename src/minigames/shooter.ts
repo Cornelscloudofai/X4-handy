@@ -928,6 +928,8 @@ export class ShooterGame implements MiniGame {
     const wOk = weaponFits(WEAPONS[lo.weapon], SHIPS[lo.ship].gunSize);
     const wd = WEAPONS[wOk ? lo.weapon : 'puls'], td = TURRETS[lo.turret];
     this.mods = cfg.mods ?? (cfg.loadout ? {} : modStats(lo.ship));
+    // eigenes Schiff aus dem Sektor: kommt mit seinen Schäden ins Gefecht
+    if (cfg.startHull != null) this.hull = clamp(cfg.startHull * 100, 5, 100);
     this.wpn = gameGun(weaponGun(wd, this.ship.gunSize), wd);
     this.wpnId = wOk ? lo.weapon : 'puls';
     // Mods: schnellere Geschosse fliegen weiter (gleiche Flugzeit), Fokussierlinse verengt die Streuung
@@ -5113,6 +5115,7 @@ export class ShooterGame implements MiniGame {
   private finish(): GameResult {
     const r = this.finishCore();
     r.report = this.report();
+    r.hullLeft = this.outcome === 'player' ? 0 : this.hull / 100;
     return r;
   }
 

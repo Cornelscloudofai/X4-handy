@@ -32,6 +32,37 @@ export const FOE_SCRAP = 30;
 export const WRECK_TTL = 48 * 3600;
 /** Kopfgeld je zerstörtem Gegnerschiff */
 export const KILL_BOUNTY = 1000;
+/** Träger: so viele Mambas fasst der Hangar für Gefechte auf der Karte; sie kämpfen mit diesem Anteil ihres Kampfwerts */
+export const CARRIER_WING_MAX = 20;
+export const WING_CLS = 'mamba';
+export const WING_EFF = 0.8;
+/**
+ * Zerstörer (Rattlesnake): Hauptbatterie feuert schon auf große Entfernung – bis ARTY_R km auf Rotten im selben Sektor,
+ * eine Salve alle ARTY_CD s mit ARTY_SHARE des Kampfwerts (die Rotte kann so weit nicht zurückschießen)
+ */
+export const ARTY_R = 22;
+export const ARTY_CD = 2.4;
+export const ARTY_SHARE = 0.5;
+
+/** Mambas im Hangar eines Trägers */
+export const wingOf = (s: Ship): number => s.wing ?? 0;
+/** Kampfwert eines Schiffs samt Staffel (Hülle eingerechnet) */
+export function powerOf(s: Ship): number {
+  const own = SHIP_MAP[s.cls].combat?.power ?? 0;
+  return own * hullOf(s) + wingOf(s) * (SHIP_MAP[WING_CLS].combat?.power ?? 0) * WING_EFF;
+}
+
+/** Eine Mamba für den Hangar des Trägers kaufen (zum Preis der Werft) */
+export function buyWingFighter(state: GameState, shipId: string): { ok: boolean; msg: string } {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s || s.cls !== 'raptor') return { ok: false, msg: 'Nur Träger haben einen Hangar.' };
+  if (wingOf(s) >= CARRIER_WING_MAX) return { ok: false, msg: `Der Hangar ist voll (${CARRIER_WING_MAX} Mambas).` };
+  const price = SHIP_MAP[WING_CLS].price;
+  if (state.credits < price) return { ok: false, msg: 'Nicht genug Credits.' };
+  s.wing = wingOf(s) + 1;
+  book(state, -price, 'ships', `Mamba für den Hangar von ${s.name}`);
+  return { ok: true, msg: `Mamba an Bord von ${s.name} (${s.wing} im Hangar).` };
+}
 
 export interface Wreck {
   id: number;
@@ -54,6 +85,17 @@ export const aliveOf = (h: Hostile): number => Math.max(1, Math.ceil((h.n * host
 /** Eigene Kampfschiffe im Gefecht mit dieser Rotte */
 export function fightersAt(state: GameState, h: Hostile): Ship[] {
   return state.ships.filter((s) => SHIP_MAP[s.cls].combat && !s.disabled && hullOf(s) > 0 && s.sector === h.sector && Math.hypot(s.x - h.x, s.z - h.z) <= FIGHT_R);
+}
+
+/**
+ * Großkampfschiffe, die man im Minispiel selbst fliegen kann (Schiffsklasse im Sektor → Schiff im Kampf-Minispiel)
+ */
+export const FLAGSHIP_GAME: Record<string, 'raptor' | 'klapperschlange'> = { raptor: 'raptor', rattlesnake: 'klapperschlange' };
+
+/** Eigenes Großkampfschiff in diesem Gefecht (der Träger vor dem Zerstörer, sonst das stärkste), sonst undefined */
+export function flagshipIn(state: GameState, h: Hostile): Ship | undefined {
+  const caps = fightersAt(state, h).filter((s) => FLAGSHIP_GAME[s.cls]);
+  return caps.sort((a, b) => (SHIP_MAP[b.cls].combat?.power ?? 0) * hullOf(b) - (SHIP_MAP[a.cls].combat?.power ?? 0) * hullOf(a))[0];
 }
 
 /** Zufall ohne Eingriff in den Spielzufall */
@@ -94,17 +136,38 @@ function hostileDown(state: GameState, h: Hostile, by: string): void {
   log(state, `${FOE_NAME[h.foe]} in ${SECTOR_MAP[h.sector].name} vernichtet${by ? ` von ${by}` : ''} – ${bounty.toLocaleString('de-DE')} Cr Kopfgeld${inc ? ` und ${RAID_BOUNTY.toLocaleString('de-DE')} Cr für den abgewehrten Überfall` : ''}. Die Wracks lassen sich bergen.`, 'good', true, { kind: 'sector', id: h.sector });
 }
 
+/** Zerstörer, die diese Rotte aus der Ferne beschießen (im Sektor, in Reichweite der Hauptbatterie, außerhalb des Nahkampfs) */
+export function artilleryAt(state: GameState, h: Hostile): Ship[] {
+  return state.ships.filter((s) => s.cls === 'rattlesnake' && !s.disabled && hullOf(s) > 0 && s.sector === h.sector && Math.hypot(s.x - h.x, s.z - h.z) <= ARTY_R && Math.hypot(s.x - h.x, s.z - h.z) > FIGHT_R);
+}
+
+/** Salven der Hauptbatterie: true, wenn die Rotte dabei vernichtet wurde */
+function artillery(state: GameState, h: Hostile, dt: number): boolean {
+  for (const s of artilleryAt(state, h)) {
+    s.artyCd = (s.artyCd ?? 0) - dt;
+    if (s.artyCd > 0) continue;
+    s.artyCd = ARTY_CD;
+    h.hp = hostileHp(h) - SHIP_MAP[s.cls].combat!.power * hullOf(s) * ARTY_SHARE * K * ARTY_CD * (0.8 + 0.4 * jitter(state.time, h.id + 7));
+    emit({ type: 'arty', sector: h.sector, x: s.x, z: s.z, tx: h.x, tz: h.z });
+    if (hostileHp(h) <= 0) { hostileDown(state, h, s.name); return true; }
+  }
+  return false;
+}
+
 /** Je Simulationsschritt: Gefechte abrechnen, Wracks altern lassen */
 export function stepBattles(state: GameState, dt: number): void {
   const hs = hostileState(state);
   for (const h of [...hs.list]) {
     if (h.phase === 'leave') { h.fighting = false; continue; }
     const own = fightersAt(state, h);
+    // Fernfeuer der Zerstörer: Salven auf große Entfernung, bevor die Rotte herankommt
+    if (artillery(state, h, dt)) continue;
     // Gefecht beginnt: Zeit auf normal, damit man zusehen oder eingreifen kann
     if (own.length && !h.fighting) { normalSpeed(state); log(state, `Gefecht in ${SECTOR_MAP[h.sector].name}: ${own.map((x) => x.name).join(', ')} gegen ${FOE_NAME[h.foe]}.`, 'warn', true, { kind: 'sector', id: h.sector }); }
     h.fighting = own.length > 0;
     if (!own.length) continue;
-    const ownPower = own.reduce((a, s) => a + SHIP_MAP[s.cls].combat!.power * hullOf(s), 0);
+    // Träger kämpfen mit ihrer Staffel
+    const ownPower = own.reduce((a, s) => a + powerOf(s), 0);
     const r1 = 0.75 + 0.5 * jitter(state.time, h.id), r2 = 0.75 + 0.5 * jitter(h.id, state.time);
     // Schaden an der Rotte
     h.hp = hostileHp(h) - ownPower * K * dt * r1;
@@ -112,7 +175,22 @@ export function stepBattles(state: GameState, dt: number): void {
     const dmg = Math.max(0, hostileHp(h)) * K * dt * r2;
     const pick = own[Math.floor(jitter(state.time * 3, h.id) * own.length) % own.length];
     const p = SHIP_MAP[pick.cls].combat!.power;
-    pick.hp = hullOf(pick) - dmg / p;
+    // Träger: die ausgeschwärmte Staffel fängt ihren Anteil ab – je eingestecktem Kampfwert einer Mamba ein Verlust
+    let toHull = dmg;
+    if (wingOf(pick) > 0) {
+      const mp = SHIP_MAP[WING_CLS].combat!.power, wp = wingOf(pick) * mp * WING_EFF;
+      // viele kleine Ziele ziehen mehr Feuer auf sich als ihr Kampfwert allein (Faktor 4)
+      const share = (wp * 4) / (wp * 4 + p * hullOf(pick));
+      pick.wingDmg = (pick.wingDmg ?? 0) + dmg * share;
+      toHull = dmg * (1 - share);
+      while ((pick.wingDmg ?? 0) >= mp && wingOf(pick) > 0) {
+        pick.wingDmg! -= mp;
+        pick.wing = wingOf(pick) - 1;
+        emit({ type: 'boom', sector: h.sector, x: h.x, z: h.z, big: false });
+        log(state, `${pick.name}: eine Mamba im Gefecht mit ${FOE_NAME[h.foe]} verloren – noch ${pick.wing} im Hangar.`, 'bad', false, { kind: 'sector', id: h.sector });
+      }
+    }
+    pick.hp = hullOf(pick) - toHull / p;
     if (pick.hp <= 0) shipDown(state, pick, h);
     if (hostileHp(h) <= 0) { hostileDown(state, h, own.map((s) => s.name).join(', ')); continue; }
     // Rückzug bei hohen Verlusten
@@ -150,14 +228,16 @@ export function repairAtHome(state: GameState, s: Ship, dt: number): boolean {
  * Ergebnis, wenn der Spieler ein Gefecht selbst übernimmt (0–3 Sterne): ab einem Stern ist die Rotte vernichtet,
  * die beteiligten Kampfschiffe nehmen je nach Ergebnis noch Schaden (1 Stern 40 %, 2 Sterne 20 %, 3 Sterne keinen)
  */
-export function resolveBattle(state: GameState, hostileId: number, stars: number): string | null {
+export function resolveBattle(state: GameState, hostileId: number, stars: number, spare?: Ship): string | null {
   const h = hostileState(state).list.find((x) => x.id === hostileId);
   if (!h) return null;
   const k = Math.max(0, Math.min(3, Math.round(stars)));
   if (!k) return 'Nicht geschafft – das Gefecht läuft weiter.';
   const own = fightersAt(state, h);
   const hit = [0, 0.4, 0.2, 0][k];
+  // das selbst geflogene Großkampfschiff hat seinen Schaden schon aus dem Minispiel
   for (const s of own) {
+    if (s === spare) continue;
     s.hp = Math.max(0.05, hullOf(s) - hit);
   }
   hostileDown(state, h, 'dir');

@@ -10,7 +10,9 @@ import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { PATROL_R, PATROL_R_MIN, orderGroup } from '../engine/combat';
 import { hostileState, hostilesIn, sendDefense, spawnHostile } from '../engine/hostiles';
-import { battleLevel, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
+import { FLAGSHIP_GAME, battleLevel, buyWingFighter, flagshipIn, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
+import { disableShip } from '../engine/tow';
+import { loadoutFor } from '../minigames/loadout';
 import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
 import { fieldById, stationById } from '../engine/logistics';
@@ -195,6 +197,7 @@ export function start(): void {
     }
     if (e.type === 'contractDone') sfx.success();
     if (e.type === 'boom') renderer.burstAt(e.sector, e.x, e.z, '#ff9a4a', e.big ? 2.2 : 1.4);
+    if (e.type === 'arty') { renderer.artyAt(e.sector, e.x, e.z, e.tx, e.tz); renderer.burstAt(e.sector, e.tx, e.tz, '#ffb070', 0.9); }
     dirtyUI = true;
   });
   renderUI();
@@ -1270,12 +1273,23 @@ function onClick(e: MouseEvent): void {
         const h = hostileState(state).list.find((x) => x.id === Number(d.id));
         if (!h) { toast('Das Gefecht ist schon vorbei.', 'info'); break; }
         ui.panel = null;
-        openMinigame(h.foe, { level: battleLevel(h), mutator: null, gear: { weapon: 2, shield: 2, engine: 2 }, place: combatPlace(h.sector) }, (r) => {
-          if (r) { const msg = resolveBattle(state, h.id, r.stars); if (msg) toast(msg, r.stars ? 'good' : 'info'); }
+        // eigenes Großkampfschiff im Gefecht: genau dieses Schiff fliegen, mit seiner Hülle – der Ausgang wirkt zurück
+        const flag = flagshipIn(state, h);
+        // der Raptor bringt seine Mambas aus dem Hangar mit ins Gefecht
+        const lo = flag ? loadoutFor(FLAGSHIP_GAME[flag.cls]) : undefined;
+        if (lo && flag?.cls === 'raptor') lo.wing = { mamba: flag.wing ?? 0 };
+        const own = flag && lo ? { loadout: lo, startHull: flag.hp ?? 1 } : {};
+        openMinigame(h.foe, { level: battleLevel(h), mutator: null, gear: { weapon: 2, shield: 2, engine: 2 }, place: combatPlace(h.sector), ...own }, (r) => {
+          if (r && flag && state.ships.includes(flag) && r.hullLeft != null) {
+            if (r.hullLeft <= 0) disableShip(state, flag, `wurde im Gefecht mit ${h.foe === 'xenon' ? 'den Xenon' : h.foe === 'khaak' ? 'den Kha’ak' : 'den Piraten'} niedergekämpft`);
+            else flag.hp = Math.min(flag.hp ?? 1, Math.max(0.05, r.hullLeft));
+          }
+          if (r) { const msg = resolveBattle(state, h.id, r.stars, flag); if (msg) toast(msg, r.stars ? 'good' : 'info'); }
           refresh();
         });
         break;
       }
+      case 'wing-buy': result(buyWingFighter(state, d.id!)); break;
       case 'wreck-salvage': {
         const w = wrecksOf(state).find((x) => x.id === Number(d.id));
         if (!w) break;
