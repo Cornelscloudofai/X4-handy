@@ -5,12 +5,13 @@
 // (vier Mod-Sockel). Navigation: höchstens eine Ebene (Hangar → Schublade); Zurück schließt immer zuerst die Schublade.
 import {
   LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
-  WING_IDS, loadout, sustainedDps, turretOf, weaponGun, wingCount, wingGearOf, wingOptions, wingRoom, type Loadout, type ShipId, type X4Gun,
+  WING_IDS, X4_LENGTH, loadout, sustainedDps, turretOf, weaponGun, wingCount, wingGearOf, wingOptions, wingRoom, type Loadout, type ShipId, type X4Gun,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, shipMods, shipSlots, type ModSlot, type ModStat } from '../minigames/mods';
 import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
 import hangarDeck from '../assets/hangar/hangar-deck.jpg';
 import werkstattDeck from '../assets/hangar/werkstatt-deck.jpg';
+import hangarDeckM from '../assets/hangar/hangar-deck-2.jpg';
 import { esc } from './dom';
 import { icon } from './icons';
 
@@ -120,6 +121,27 @@ function anchors(id: ShipId): Record<string, [number, number]> {
     'mod-turret': [0.5 + (t[0] / s) * 0.87, 0.5 + (t[1] / s) * 0.87], 'mod-missile': [0.62, 0.45], 'mod-hangar': [0.7, 0.72], 'mod-targeting': [0.5, 0.14],
   };
 }
+
+// ---------- Bühne nach Schiffsgröße ----------
+/** Bucht je Klasse: S auf dem kleinen Landeplatz, M auf dem großen Ring, L und XL im Großdock */
+export type Bay = 's' | 'm' | 'xl';
+export function bayOf(id: ShipId): Bay {
+  const c = SHIPS[id].cls;
+  return c === 'S' ? 's' : c === 'M' ? 'm' : 'xl';
+}
+/**
+ * Größe des Schiffsbilds auf der Bühne (1 = bisheriger Rahmen): S-Jäger untereinander nach echter Länge (Mamba 0,8),
+ * M füllt den großen Ring, Zerstörer und Träger deutlich größer – die echten Verhältnisse (Raptor 100 Mambas) zeigt
+ * der Maßstab daneben
+ */
+export function stageScale(id: ShipId): number {
+  const c = SHIPS[id].cls;
+  if (c === 'S') return 0.8 * Math.min(1.1, X4_LENGTH[id] / 32);
+  return c === 'M' ? 1 : c === 'L' ? 1.4 : 1.7;
+}
+const fmtLen = (m: number) => `${(m >= 100 ? Math.round(m) : Math.round(m * 10) / 10).toLocaleString('de-DE')} m`;
+/** zuletzt gezeigte Bucht: beim Wechsel in eine größere Halle zoomt der Hintergrund kurz heraus */
+let lastBay: Bay | null = null;
 
 // ---------- Ansicht ----------
 export function loadoutView(m: LoModal): string {
@@ -276,9 +298,17 @@ export function loadoutView(m: LoModal): string {
   }
   const where = open ? title : mode === 'mods' ? 'Werkstatt' : 'Hangar';
   const crumbs = open ? `Minispiele › Kampf › ${mode === 'mods' ? 'Werkstatt' : 'Hangar'}` : 'Minispiele › Kampf';
-  const bg = mode === 'mods' ? werkstattDeck : hangarDeck;
+  const bay = bayOf(lo.ship), len = X4_LENGTH[lo.ship], k = stageScale(lo.ship);
+  // Großdock: bis das eigene Bild da ist, der große Ring
+  const bg = mode === 'mods' ? werkstattDeck : bay === 's' ? hangarDeck : hangarDeckM;
+  const order: Bay[] = ['s', 'm', 'xl'];
+  const zoom = lastBay && lastBay !== bay ? (order.indexOf(bay) > order.indexOf(lastBay) ? 'zoom-out' : 'zoom-in') : '';
+  lastBay = bay;
+  // Maßstab: Lineal über die Rumpflänge, daneben eine Mamba in echter Größe zum Vergleich
+  const ref = len >= 100 ? `<span class="hgr-ref ${X4_LENGTH.mamba / len < 0.08 ? 'tiny' : ''}">${pic('mamba') ? `<img src="${pic('mamba')}" alt="" style="height:max(3px, calc(var(--hull) * ${(X4_LENGTH.mamba / len).toFixed(4)}))">` : ''}<small>Mamba · ${fmtLen(X4_LENGTH.mamba)}</small></span>` : '';
+  const scale = `<div class="hgr-scale" aria-label="Länge ${fmtLen(len)}"><b>${fmtLen(len)}</b><i class="hgr-ruler"></i>${ref}</div>`;
 
-  return `<div class="modal full hgr ${open ? 'open' : ''} hgr-${mode}" role="dialog" aria-modal="true" aria-label="Hangar" style="--hgr-bg:url('${bg}')">
+  return `<div class="modal full hgr ${open ? 'open' : ''} hgr-${mode} bay-${bay} ${zoom}" role="dialog" aria-modal="true" aria-label="Hangar" style="--hgr-bg:url('${bg}');--k:${k.toFixed(3)}">
     <div class="hgr-top">
       <button class="hgr-back" ${act(open ? 'lo-view' : 'mg-back', open ? { view: 'home' } : {})} aria-label="Zurück">${icon('back', 20)}</button>
       <div class="hgr-crumbs"><small>${esc(crumbs)}</small><b>${esc(where)}</b></div>
@@ -291,6 +321,7 @@ export function loadoutView(m: LoModal): string {
     </div>
     <div class="hgr-stage">
       <div class="hgr-ship" data-key="ship-${lo.ship}">${pic(lo.ship) ? `<img src="${pic(lo.ship)}" alt="${esc(ship.name)}">` : ''}</div>
+      ${scale}
       <svg class="hgr-lines" aria-hidden="true"></svg>
       <div class="hgr-shipbar">
         <button class="hgr-arrow" ${act('lo-ship', { dir: -1 })} aria-label="Vorheriges Schiff">${icon('back', 18)}</button>

@@ -1242,7 +1242,27 @@ h3 .count { margin-right: auto; display: inline-grid; place-items: center; min-w
 .hgr-parts { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--amber); padding: 5px 9px; border-radius: 999px; background: rgba(30, 18, 4, 0.75); border: 1px solid rgba(255, 181, 71, 0.4); }
 .hgr-modes { position: absolute; z-index: 6; top: calc(var(--safe-top) + 58px); left: 12px; right: 12px; background: rgba(6, 16, 24, 0.82); backdrop-filter: blur(4px); }
 .hgr-stage { position: absolute; inset: 0; z-index: 2; }
-.hgr-ship { position: absolute; left: 50%; top: 32%; width: min(30cqh, 70cqw); aspect-ratio: 1; transform: translate(-50%, -50%); transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); z-index: 2; }
+/* Bühne nach Schiffsgröße: --k aus stageScale (S nach Länge, M 1, L 1,4, XL 1,75), Mittelpunkt je Bucht */
+.modal.hgr { --box: min(30cqh, 70cqw); --sy: 32%; --hull: calc(var(--box) * var(--k) * 0.9); }
+.modal.hgr.bay-xl { --sy: 35.5%; }
+.bay-xl .hgr-shipbar { top: calc(58% + 2px); }
+.bay-xl .hgr-hots { top: calc(58% + 64px); }
+.hgr-ship { position: absolute; left: 50%; top: var(--sy); width: calc(var(--box) * var(--k)); aspect-ratio: 1; transform: translate(-50%, -50%); transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); z-index: 2; }
+/* Maßstab rechts neben dem Schiff: Lineal über die Rumpflänge, Mamba in echter Größe am Fuß */
+.hgr-scale { position: absolute; z-index: 3; right: 14px; top: calc(var(--sy) - var(--hull) / 2); height: var(--hull); width: 64px; pointer-events: none; transition: opacity 0.2s; }
+.hgr-ruler { position: absolute; right: 0; top: 0; bottom: 0; width: 7px; border: 1.5px solid rgba(63, 224, 197, 0.75); border-left: 0; filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
+  background: repeating-linear-gradient(180deg, rgba(63, 224, 197, 0.55) 0 1px, transparent 1px 10%) right / 4px 100% no-repeat; }
+.hgr-scale b { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-family: var(--font-display); font-size: 14px; color: var(--teal); white-space: nowrap; text-shadow: 0 1px 6px #000, 0 0 2px #000; }
+.hgr-ref { position: absolute; right: 12px; bottom: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.hgr-ref img { width: auto; filter: drop-shadow(0 0 3px rgba(63, 224, 197, 0.8)); }
+.hgr-ref.tiny img { box-sizing: content-box; padding: 4px; border: 1px solid rgba(63, 224, 197, 0.7); border-radius: 50%; }
+.hgr-ref small { font-size: 10.5px; color: var(--text-2); white-space: nowrap; text-shadow: 0 1px 4px #000; }
+.hgr.open .hgr-scale { opacity: 0; }
+/* Wechsel in eine größere Halle: Hintergrund zoomt kurz heraus (kleinere Halle: herein) */
+.hgr.zoom-out { animation: hgr-zoom-out 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.hgr.zoom-in { animation: hgr-zoom-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes hgr-zoom-out { from { background-size: auto 135%, auto; } }
+@keyframes hgr-zoom-in { from { background-size: auto 75%, auto; } }
 .hgr-ship img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 16px rgba(255, 160, 60, 0.18)); animation: hgr-float 5s ease-in-out infinite; }
 @keyframes hgr-float { 50% { transform: translateY(-4px); } }
 .hgr.open .hgr-ship { transform: translate(-50%, calc(-50% - 9cqh)) scale(0.66); }
@@ -1364,7 +1384,7 @@ button.hgr-card:active { transform: scale(0.97); }
 .mod-qbtn2 em { font-style: normal; font-size: 12px; font-weight: 600; color: var(--amber); display: flex; align-items: center; gap: 3px; }
 .mod-qbtn2:disabled { opacity: 0.38; }
 .mod-qbtn2:not(:disabled):active { transform: scale(0.96); }
-@media (prefers-reduced-motion: reduce) { .hgr-ship img { animation: none; } .hgr-drawer, .hgr-ship { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .hgr-ship img, .hgr.zoom-out, .hgr.zoom-in { animation: none; } .hgr-drawer, .hgr-ship { transition: none; } }
 
 /* Minispiel wird nachgeladen: kleiner Hinweis über der Karte */
 .mg-loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 60; padding: 12px 20px; border-radius: 14px; background: rgba(8, 22, 32, 0.92); border: 1px solid rgba(63, 224, 197, 0.45); color: #bff7ec; font-weight: 600; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); pointer-events: none; }
