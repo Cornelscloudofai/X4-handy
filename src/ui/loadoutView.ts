@@ -139,16 +139,17 @@ const HULL_FRAC: Record<ShipId, number> = {
  * Rumpf auf dem Bildschirm (Anteile der Hallenhöhe, cqh): jedes Schiff erscheint etwa gleich groß – je Halle so, dass
  * das Hallenbild nicht weiter vergrößert wird, als seine Auflösung trägt. Raptor füllt die Bucht des Großdocks.
  */
-const HULL_CQH: Record<Bay | 'l', number> = { s: 23, m: 26, l: 41, xl: 69.2 };
-/** Hallenbilder: Mitte des Rings bzw. der Bucht (Anteil der Bildhöhe), dort liegt die Schiffsmitte */
-const HALL_MID: Record<Bay, number> = { s: 32, m: 32, xl: 40.25 };
+const HULL_CQH: Record<Bay | 'l', number> = { s: 23, m: 26, l: 47, xl: 69.2 };
+/** Hallenbilder: Mitte des Rings bzw. der Bucht (Anteil der Bildhöhe), dort liegt die Schiffsmitte; Großdock (2880 × 5120):
+ * Bucht innen y 190–3852, also 71,5 % der Bildhöhe – der Raptor füllt sie zu 97 % */
+const HALL_MID: Record<Bay, number> = { s: 32, m: 32, xl: 39.5 };
 export function hullCqh(id: ShipId): number {
   const c = SHIPS[id].cls;
   return c === 'L' ? HULL_CQH.l : HULL_CQH[bayOf(id)];
 }
 /** Bildschirmmitte des Schiffs (cqh) */
 function shipY(id: ShipId): number {
-  return id === 'raptor' ? HALL_MID.xl : bayOf(id) === 'xl' ? 35.5 : 32;
+  return id === 'raptor' ? HALL_MID.xl : bayOf(id) === 'xl' ? 36 : 32;
 }
 /**
  * Maßstab der Halle: Meter je Hallenbildhöhe – so gewählt, dass das längste Schiff der Halle sie ohne Zoom füllt
