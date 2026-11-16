@@ -1,5 +1,5 @@
-// Hangar: Schiffe nach Klasse unterschiedlich groß (Jaguar < Mamba < Cobra < Klapperschlange < Raptor), Maßstab mit
-// Länge und Mamba zum Vergleich. node scripts/hangar-size-shot.mjs <outdir> [schiffe]
+// Hangar: Hallen im echten Maßstab, Kamera zoomt je Schiff (Jaguar < Mamba < Cobra < Klapperschlange < Raptor), Maßstab
+// mit Länge und Mamba zum Vergleich. node scripts/hangar-size-shot.mjs <outdir> [schiffe]
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
 import { distUrl } from './serve.mjs';
@@ -28,19 +28,23 @@ for (const id of ships) {
   }
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${out}/${id}.png` });
-  h[id] = await page.evaluate(() => ({ box: document.querySelector('#modal .hgr-ship').getBoundingClientRect().height, len: document.querySelector('#modal .hgr-scale b')?.textContent, ref: !!document.querySelector('#modal .hgr-ref img'), dz: Number(getComputedStyle(document.querySelector('#modal .hgr')).getPropertyValue('--dz')) || 1, hf: Number(getComputedStyle(document.querySelector('#modal .hgr')).getPropertyValue('--hf')) || 0.95 }));
+  h[id] = await page.evaluate(() => ({ box: document.querySelector('#modal .hgr-ship:not(.old)').getBoundingClientRect().height, len: document.querySelector('#modal .hgr-scale b')?.textContent, ref: !!document.querySelector('#modal .hgr-ref img'), dz: Number(getComputedStyle(document.querySelector('#modal .hgr')).getPropertyValue('--dz')) || 1, hf: Number(getComputedStyle(document.querySelector('#modal .hgr')).getPropertyValue('--hf')) || 0.95 }));
 }
 await browser.close();
-// Größenordnung im Hangar: S < M < L < XL, Jaguar kleiner als Mamba, Maßstab mit Länge und Mamba zum Vergleich
+// Hallen im echten Maßstab: Meter je Bildpunkt auf dem Schirm wachsen mit der Schiffsgröße (die Kamera zoomt heraus),
+// innerhalb einer Halle passt der Zoom des Hallenbilds genau dazu (Meter je Bildpunkt des Hallenbilds gleich)
+const LEN = { jaguar: 25.8, mamba: 32, cobra: 147.7, klapperschlange: 906.4, raptor: 3191 };
 const order = ships.filter((id) => h[id]);
-for (let i = 1; i < order.length; i++) if (!(h[order[i]].box > h[order[i - 1]].box)) errors.push(`${order[i]} nicht größer als ${order[i - 1]} (${h[order[i]].box} ≤ ${h[order[i - 1]].box})`);
-if (h.raptor && h.mamba && !(h.raptor.box > h.mamba.box * 1.8)) errors.push('Raptor nicht deutlich größer als die Mamba');
-if (h.raptor && h.raptor.len !== '3.191 m') errors.push(`Raptor-Länge falsch: ${h.raptor.len}`);
-// Großdock: Klapperschlange und Raptor im selben Maßstab (Rumpf in Dock-Einheiten: Bildpunkte geteilt durch den Zoom)
-if (h.raptor && h.klapperschlange) {
-  const r = (h.klapperschlange.box * h.klapperschlange.hf / h.klapperschlange.dz) / (h.raptor.box * h.raptor.hf / h.raptor.dz);
-  if (Math.abs(r - 906.4 / 3191) > 0.01) errors.push(`Großdock nicht maßstabsgetreu: Klapperschlange zu Raptor ${r.toFixed(3)} statt ${(906.4 / 3191).toFixed(3)}`);
+const mpp = (id) => LEN[id] / (h[id].box * h[id].hf);
+for (let i = 1; i < order.length; i++) if (!(mpp(order[i]) > mpp(order[i - 1]))) errors.push(`Kamera: ${order[i]} nicht weiter herausgezoomt als ${order[i - 1]}`);
+for (const [a, b] of [['jaguar', 'mamba'], ['klapperschlange', 'raptor']]) {
+  if (!h[a] || !h[b]) continue;
+  const r = (mpp(a) * h[a].dz) / (mpp(b) * h[b].dz);
+  if (Math.abs(r - 1) > 0.02) errors.push(`Halle nicht maßstabsgetreu: ${a} zu ${b} (${r.toFixed(3)})`);
 }
+// jedes Schiff etwa bildfüllend: S-Jäger nicht winzig
+for (const id of order) if (h[id].box * h[id].hf < 150) errors.push(`${id} zu klein (${Math.round(h[id].box * h[id].hf)} px Rumpf)`);
+if (h.raptor && h.raptor.len !== '3.191 m') errors.push(`Raptor-Länge falsch: ${h.raptor.len}`);
 if (h.cobra && !h.cobra.ref) errors.push('Cobra ohne Mamba zum Vergleich');
 if (h.mamba?.ref) errors.push('Mamba vergleicht sich mit sich selbst');
 if (errors.length) { console.error('Fehler:\n' + errors.join('\n')); process.exit(1); }

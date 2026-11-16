@@ -123,39 +123,53 @@ function anchors(id: ShipId): Record<string, [number, number]> {
   };
 }
 
-// ---------- Bühne nach Schiffsgröße ----------
-/** Bucht je Klasse: S auf dem kleinen Landeplatz, M auf dem großen Ring, L und XL im Großdock */
+// ---------- Bühne: Hallen im echten Maßstab, Kamera zoomt je Schiff ----------
+/** Halle je Klasse: S auf dem kleinen Landeplatz, M auf dem großen Ring, L und XL im über 3 km langen Großdock */
 export type Bay = 's' | 'm' | 'xl';
 export function bayOf(id: ShipId): Bay {
   const c = SHIPS[id].cls;
   return c === 'S' ? 's' : c === 'M' ? 'm' : 'xl';
 }
+/** Rumpflänge im Schiffsbild (Anteil der Bildhöhe, am Alphakanal gemessen) */
+const HULL_FRAC: Record<ShipId, number> = {
+  jaguar: 0.78, mamba: 0.953, asp: 0.746, balaur: 0.866, chimera: 0.793, wolf: 0.897, argon: 0.929,
+  dragon: 0.858, cobra: 0.876, klapperschlange: 0.976, raptor: 0.988,
+};
 /**
- * Größe des Schiffsbilds auf der Bühne (1 = bisheriger Rahmen): S-Jäger untereinander nach echter Länge (Mamba 0,8),
- * M füllt den großen Ring, Zerstörer und Träger deutlich größer – die echten Verhältnisse (Raptor 100 Mambas) zeigt
- * der Maßstab daneben
+ * Rumpf auf dem Bildschirm (Anteile der Hallenhöhe, cqh): jedes Schiff erscheint etwa gleich groß – je Halle so, dass
+ * das Hallenbild nicht weiter vergrößert wird, als seine Auflösung trägt. Raptor füllt die Bucht des Großdocks.
  */
-export function stageScale(id: ShipId): number {
+const HULL_CQH: Record<Bay | 'l', number> = { s: 23, m: 26, l: 41, xl: 69.2 };
+/** Hallenbilder: Mitte des Rings bzw. der Bucht (Anteil der Bildhöhe), dort liegt die Schiffsmitte */
+const HALL_MID: Record<Bay, number> = { s: 32, m: 32, xl: 40.25 };
+export function hullCqh(id: ShipId): number {
   const c = SHIPS[id].cls;
-  if (c === 'S') return 0.8 * Math.min(1.1, X4_LENGTH[id] / 32);
-  // Raptor füllt die Bucht des Großdocks (Bild: Innenkante 72 % der Höhe)
-  return c === 'M' ? 1 : c === 'L' ? 1.4 : DOCK.raptorBox / 30;
+  return c === 'L' ? HULL_CQH.l : HULL_CQH[bayOf(id)];
+}
+/** Bildschirmmitte des Schiffs (cqh) */
+function shipY(id: ShipId): number {
+  return id === 'raptor' ? HALL_MID.xl : bayOf(id) === 'xl' ? 35.5 : 32;
 }
 /**
- * Großdock (Bild 941 × 1672): Bucht innen 4,2–76,3 % der Bildhöhe, Mitte 40,25 %. Der Raptor füllt sie zu 96 %;
- * kleinere Schiffe liegen im selben Maßstab im Dock – dafür zoomt das Bild heran (Klapperschlange: 906 m zu 3.191 m)
+ * Maßstab der Halle: Meter je Hallenbildhöhe – so gewählt, dass das längste Schiff der Halle sie ohne Zoom füllt
+ * (Mamba auf dem Landeplatz, Dragon auf dem Ring, Raptor im Großdock); kürzere Schiffe zoomen heran
  */
-const DOCK = { mid: 40.25, raptorBox: 70 };
-/** Rumpflänge im Schiffsbild (Anteil der Bildhöhe, gemessen am Alphakanal) */
-const HULL_FRAC: Partial<Record<ShipId, number>> = { klapperschlange: 0.976, raptor: 0.988 };
-/** Zoom des Großdocks für dieses Schiff (1 = ganzes Bild, Raptor) */
-export function dockZoom(id: ShipId): number {
-  const hull = (id: ShipId) => 30 * stageScale(id) * (HULL_FRAC[id] ?? 0.95);
-  return (X4_LENGTH[id] / hull(id)) > 0 ? (X4_LENGTH.raptor / hull('raptor')) / (X4_LENGTH[id] / hull(id)) : 1;
+function hallMeters(b: Bay): number {
+  return Math.max(...SHIP_IDS.filter((id) => bayOf(id) === b).map((id) => (X4_LENGTH[id] * 100) / hullCqh(id)));
+}
+/** Zoom des Hallenbilds für dieses Schiff (1 = ganze Bildhöhe) */
+export function hallZoom(id: ShipId): number {
+  return (hallMeters(bayOf(id)) * hullCqh(id)) / (100 * X4_LENGTH[id]);
+}
+/** Meter je Bildschirmhöhe in dieser Ansicht (für die Kamerafahrt beim Schiffswechsel) */
+function viewMeters(id: ShipId): number {
+  return (100 * X4_LENGTH[id]) / hullCqh(id);
 }
 const fmtLen = (m: number) => `${(m >= 100 ? Math.round(m) : Math.round(m * 10) / 10).toLocaleString('de-DE')} m`;
-/** zuletzt gezeigte Bucht: beim Wechsel in eine größere Halle zoomt der Hintergrund kurz heraus */
-let lastBay: Bay | null = null;
+/** zuletzt gezeigtes Schiff und Hallenbild: beim Wechsel fährt die Kamera vom alten Maßstab in den neuen */
+let lastCam: { id: ShipId; from: ShipId | null; at: number } | null = null;
+/** Dauer der Kamerafahrt (ms, wie im CSS) */
+const CAM_MS = 800;
 
 // ---------- Ansicht ----------
 export function loadoutView(m: LoModal): string {
@@ -312,18 +326,26 @@ export function loadoutView(m: LoModal): string {
   }
   const where = open ? title : mode === 'mods' ? 'Werkstatt' : 'Hangar';
   const crumbs = open ? `Minispiele › Kampf › ${mode === 'mods' ? 'Werkstatt' : 'Hangar'}` : 'Minispiele › Kampf';
-  const bay = bayOf(lo.ship), len = X4_LENGTH[lo.ship], k = stageScale(lo.ship);
+  const bay = bayOf(lo.ship), len = X4_LENGTH[lo.ship];
   // Großdock (über 3 km lange Bucht) für Zerstörer und Träger, auch in der Werkstatt
-  const bg = bay === 'xl' ? grossDock : mode === 'mods' ? werkstattDeck : bay === 's' ? hangarDeck : hangarDeckM;
-  const order: Bay[] = ['s', 'm', 'xl'];
-  const zoom = lastBay && lastBay !== bay ? (order.indexOf(bay) > order.indexOf(lastBay) ? 'zoom-out' : 'zoom-in') : '';
-  lastBay = bay;
+  const bgOf = (b: Bay) => (b === 'xl' ? grossDock : mode === 'mods' ? werkstattDeck : b === 's' ? hangarDeck : hangarDeckM);
+  /** Ebene eines Schiffs: Hallenbild im Zoom, Schiff in Bildschirmgröße (CSS-Variablen) */
+  const camVars = (id: ShipId) => `--hgr-bg:url('${bgOf(bayOf(id))}');--dz:${hallZoom(id).toFixed(4)};--dmid:${HALL_MID[bayOf(id)]}cqh;--sy:${shipY(id)}cqh;--k:${(hullCqh(id) / 30 / HULL_FRAC[id]).toFixed(4)};--hf:${HULL_FRAC[id]}`;
+  // Kamerafahrt: neue Ansicht startet im alten Maßstab (Faktor f) und fährt in den eigenen; die alte blendet aus
+  // (bis zum Ende der Fahrt gleich gezeichnet, damit ein Neuzeichnen sie nicht abbricht)
+  const now = Date.now();
+  if (!lastCam || lastCam.id !== lo.ship) lastCam = { id: lo.ship, from: lastCam?.id ?? null, at: now };
+  const prev = lastCam.from && now - lastCam.at < CAM_MS + 100 ? lastCam.from : null;
+  const f = prev ? Math.max(1 / 40, Math.min(40, viewMeters(lo.ship) / viewMeters(prev))) : 1;
+  const cam = !!prev && Math.abs(f - 1) > 0.01;
+  const old = cam && prev ? `<div class="hgr-bgl old" data-key="bgold-${prev}" style="${camVars(prev)};--f:${f.toFixed(4)}"></div>` : '';
+  const oldShip = cam && prev && pic(prev) ? `<div class="hgr-ship old" data-key="shipold-${prev}" style="${camVars(prev)};--f:${f.toFixed(4)}"><img src="${pic(prev)}" alt=""></div>` : '';
   // Maßstab: Lineal über die Rumpflänge, daneben eine Mamba in echter Größe zum Vergleich
   const ref = len >= 100 ? `<span class="hgr-ref ${X4_LENGTH.mamba / len < 0.08 ? 'tiny' : ''}">${pic('mamba') ? `<img src="${pic('mamba')}" alt="" style="height:max(3px, calc(var(--hull) * ${(X4_LENGTH.mamba / len).toFixed(4)}))">` : ''}<small>Mamba · ${fmtLen(X4_LENGTH.mamba)}</small></span>` : '';
   const scale = `<div class="hgr-scale" aria-label="Länge ${fmtLen(len)}"><b>${fmtLen(len)}</b><i class="hgr-ruler"></i>${ref}</div>`;
 
-  return `<div class="modal full hgr ${open ? 'open' : ''} hgr-${mode} bay-${bay} ship-${lo.ship}" role="dialog" aria-modal="true" aria-label="Hangar" style="--hgr-bg:url('${bg}');--k:${k.toFixed(3)};--hf:${HULL_FRAC[lo.ship] ?? 0.95}${bay === 'xl' ? `;--dz:${dockZoom(lo.ship).toFixed(4)};--dmid:${DOCK.mid}cqh` : ''}">
-    <div class="hgr-bgl ${zoom}"></div>
+  return `<div class="modal full hgr ${open ? 'open' : ''} hgr-${mode} bay-${bay} ship-${lo.ship} ${cam ? 'cam' : ''}" role="dialog" aria-modal="true" aria-label="Hangar" style="${camVars(lo.ship)};--f:${f.toFixed(4)}">
+    ${old}<div class="hgr-bgl" data-key="bg-${lo.ship}"></div>
     <div class="hgr-top">
       <button class="hgr-back" ${act(open ? 'lo-view' : 'mg-back', open ? { view: 'home' } : {})} aria-label="Zurück">${icon('back', 20)}</button>
       <div class="hgr-crumbs"><small>${esc(crumbs)}</small><b>${esc(where)}</b></div>
@@ -335,7 +357,7 @@ export function loadoutView(m: LoModal): string {
       <button class="${mode === 'mods' ? 'on' : ''}" ${act('lo-mode', { mode: 'mods' })}>Werkstatt</button>
     </div>
     <div class="hgr-stage">
-      <div class="hgr-ship" data-key="ship-${lo.ship}">${pic(lo.ship) ? `<img src="${pic(lo.ship)}" alt="${esc(ship.name)}">` : ''}</div>
+      ${oldShip}<div class="hgr-ship" data-key="ship-${lo.ship}">${pic(lo.ship) ? `<img src="${pic(lo.ship)}" alt="${esc(ship.name)}">` : ''}</div>
       ${scale}
       <svg class="hgr-lines" aria-hidden="true"></svg>
       <div class="hgr-shipbar">
@@ -366,7 +388,7 @@ const swiped = new WeakSet<HTMLElement>();
 export function layoutHangar(root: HTMLElement, onSwipe: (dir: number) => void): void {
   const hgr = root.querySelector<HTMLElement>('.hgr');
   if (!hgr) return;
-  const stage = hgr.querySelector<HTMLElement>('.hgr-stage')!, svg = hgr.querySelector<SVGSVGElement>('.hgr-lines')!, ship = hgr.querySelector<HTMLImageElement>('.hgr-ship img');
+  const stage = hgr.querySelector<HTMLElement>('.hgr-stage')!, svg = hgr.querySelector<SVGSVGElement>('.hgr-lines')!, ship = hgr.querySelector<HTMLImageElement>('.hgr-ship:not(.old) img');
   const hots = hgr.querySelector<HTMLElement>('.hgr-hots'), stats = hgr.querySelector<HTMLElement>('.hgr-stats');
   // Plakettenbereich endet über der Werteleiste (ihre Höhe hängt von Schrift und Gerät ab)
   if (stats) hgr.style.setProperty('--hgr-stats-h', `${stats.offsetHeight}px`);
@@ -385,6 +407,7 @@ export function layoutHangar(root: HTMLElement, onSwipe: (dir: number) => void):
     }).join('');
   };
   if (ship && !ship.complete) ship.addEventListener('load', draw, { once: true });
+  if (hgr.classList.contains('cam')) hgr.querySelector('.hgr-ship:not(.old)')?.addEventListener('animationend', draw, { once: true });
   draw();
   if (hots && !swiped.has(hots)) { swiped.add(hots); hots.addEventListener('scroll', draw, { passive: true }); }
   if (!swiped.has(stage)) {
