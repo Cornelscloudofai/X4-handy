@@ -56,12 +56,55 @@ const URL_OF = new Map(Object.entries(SAMPLE_URLS).map(([path, url]) => [path.sp
 const buffers = new Map<string, AudioBuffer>();
 const loading = new Map<string, Promise<void>>();
 
+/**
+ * Claude-Artifact (höchstens 511 Dateien): dort liegen die Klänge in wenigen Paketen (scripts/artifact-pack.mjs), die
+ * Seite bringt das Verzeichnis mit – Dateiname → [Paket, Anfang, Länge]. Ein Paket wird einmal geladen, jeder Klang
+ * byte-genau herausgeschnitten; sind alle seine Klänge entnommen, gibt es den Speicher frei. Ohne Verzeichnis
+ * (Netlify, App, Tests) lädt jeder Klang wie gewohnt als eigene Datei.
+ */
+type PackEntry = [pack: string, at: number, len: number];
+const PACKS = (globalThis as { __SOUND_PACKS?: Record<string, PackEntry> }).__SOUND_PACKS;
+const packData = new Map<string, Promise<ArrayBuffer>>();
+const packLeft = new Map<string, number>();
+if (PACKS) for (const [pack] of Object.values(PACKS)) packLeft.set(pack, (packLeft.get(pack) ?? 0) + 1);
+
+function packOf(pack: string): Promise<ArrayBuffer> {
+  let p = packData.get(pack);
+  if (!p) {
+    p = fetch(pack).then((r) => { if (!r.ok) throw new Error(`${pack}: ${r.status}`); return r.arrayBuffer(); });
+    // Fehlschlag (Netz weg): beim nächsten Klang erneut versuchen
+    p.catch(() => packData.delete(pack));
+    packData.set(pack, p);
+  }
+  return p;
+}
+
+/** Rohdaten einer Aufnahme: aus dem Paket (Artifact) oder als eigene Datei */
+function fetchSound(url: string): Promise<ArrayBuffer> {
+  const e = PACKS?.[url.split('/').pop() ?? ''];
+  if (!e) return fetch(url).then((r) => r.arrayBuffer());
+  const [pack, at, len] = e;
+  return packOf(pack).then((all) => {
+    const part = all.slice(at, at + len);
+    const left = (packLeft.get(pack) ?? 1) - 1;
+    packLeft.set(pack, left);
+    if (left <= 0) packData.delete(pack);
+    return part;
+  });
+}
+
+/** Artifact: Pakete mit diesen Klängen schon im Hintergrund holen (Bedienklänge gleich beim Start) */
+function prefetchPacks(match: RegExp): void {
+  if (!PACKS) return;
+  for (const pack of new Set(Object.values(PACKS).map((e) => e[0]))) if (match.test(pack)) void packOf(pack).catch(() => {});
+}
+
 /** Eine Aufnahme laden und dekodieren (einmal je Kontext-Sitzung) */
 function loadSample(c: BaseAudioContext, name: string): Promise<void> {
   let p = loading.get(name);
   if (!p) {
     const url = URL_OF.get(name);
-    p = url ? fetch(url).then((r) => r.arrayBuffer()).then((d) => c.decodeAudioData(d)).then((b) => { buffers.set(name, b); }).catch(() => { /* fehlt die Aufnahme, bleibt der synthetische Anteil */ }) : Promise.resolve();
+    p = url ? fetchSound(url).then((d) => c.decodeAudioData(d)).then((b) => { buffers.set(name, b); }).catch(() => { /* fehlt die Aufnahme, bleibt der synthetische Anteil */ }) : Promise.resolve();
     loading.set(name, p);
   }
   return p;
@@ -288,6 +331,7 @@ export function ensure(): Graph | null {
       const ctx = new Ctx({ latencyHint: 'interactive' });
       live = build(ctx, true);
       void preloadSamples(undefined, 'es-');
+      prefetchPacks(/klaenge-kd-bedienung/);
       onChange.forEach((f) => f());
     }
     const c = live.ctx as AudioContext;
