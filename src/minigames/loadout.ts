@@ -280,14 +280,14 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     r: 46, size: RS_SIZE, special: 'overdrive', sprite: 'split-klapperschlange', fallback: 'split-jaeger-s',
   }),
   raptor: ship('XL', {
-    name: 'Raptor', role: 'Träger', desc: 'Träger der Split, 1,2 km lang: 114 M-Türme in Clustern entlang des Rumpfs und acht schwere L-Türme – je Cluster wählst du die Turmart. Keine Bordkanonen, keine Raketen; sehr langsam, aber kaum zu knacken. Waffenüberladung: kurz doppelte Feuerrate aller Türme.',
+    name: 'Raptor', role: 'Träger', desc: 'Träger der Split, 3,2 km lang: 114 M-Türme in Clustern entlang des Rumpfs und acht schwere L-Türme – je Cluster wählst du die Turmart. Keine Bordkanonen, keine Raketen; sehr langsam, aber kaum zu knacken. Waffenüberladung: kurz doppelte Feuerrate aller Türme.',
     // X4 9.0: 1 XL-Triebwerk, 1 XL- und 49 M-Schilde, keine Bordwaffen, 8 L- und 93 M-Türme; Tempo aus Schub
     // 13 715 / Luftwiderstand 120,6. Türme hier nach den Sockeln im Bild: 114 M und 8 L.
     x4: { hull: 590000, engines: 1, shields: 1, mShields: 49, weapons: 0, launchers: 0, turrets: 122, missiles: 0, v: 114, dragYaw: 867 },
     gunWidth: 0, gunPos: [], aspect: RP_W / RP_H,
     turrets: RP_T.pos, turretGroup: RP_T.group, groups: RP_T.groups,
     turretD: 22 / RP_H, turretDL: 66 / RP_H,
-    // 1,2 km Rumpf: deutlich träger, als die Datenwerte allein ergeben (Spieltest: zu wendig und etwas zu schnell)
+    // 3,2 km Rumpf: deutlich träger, als die Datenwerte allein ergeben (Spieltest: zu wendig und etwas zu schnell)
     handling: { speed: 0.7, turn: 0.15, accel: 0.5 },
     bays: raptorBays(), hullLayer: 'split-raptor-rumpf', hangar: { S: 40, M: 4 },
     r: 150, size: RP_LEN, special: 'overdrive', sprite: 'split-raptor', fallback: 'split-jaeger-s',

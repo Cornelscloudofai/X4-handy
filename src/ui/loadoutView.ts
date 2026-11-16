@@ -12,6 +12,7 @@ import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
 import hangarDeck from '../assets/hangar/hangar-deck.jpg';
 import werkstattDeck from '../assets/hangar/werkstatt-deck.jpg';
 import hangarDeckM from '../assets/hangar/hangar-deck-2.jpg';
+import grossDock from '../assets/hangar/grossdock.jpg';
 import { esc } from './dom';
 import { icon } from './icons';
 
@@ -137,7 +138,20 @@ export function bayOf(id: ShipId): Bay {
 export function stageScale(id: ShipId): number {
   const c = SHIPS[id].cls;
   if (c === 'S') return 0.8 * Math.min(1.1, X4_LENGTH[id] / 32);
-  return c === 'M' ? 1 : c === 'L' ? 1.4 : 1.7;
+  // Raptor füllt die Bucht des Großdocks (Bild: Innenkante 72 % der Höhe)
+  return c === 'M' ? 1 : c === 'L' ? 1.4 : DOCK.raptorBox / 30;
+}
+/**
+ * Großdock (Bild 941 × 1672): Bucht innen 4,2–76,3 % der Bildhöhe, Mitte 40,25 %. Der Raptor füllt sie zu 96 %;
+ * kleinere Schiffe liegen im selben Maßstab im Dock – dafür zoomt das Bild heran (Klapperschlange: 906 m zu 3.191 m)
+ */
+const DOCK = { mid: 40.25, raptorBox: 70 };
+/** Rumpflänge im Schiffsbild (Anteil der Bildhöhe, gemessen am Alphakanal) */
+const HULL_FRAC: Partial<Record<ShipId, number>> = { klapperschlange: 0.976, raptor: 0.988 };
+/** Zoom des Großdocks für dieses Schiff (1 = ganzes Bild, Raptor) */
+export function dockZoom(id: ShipId): number {
+  const hull = (id: ShipId) => 30 * stageScale(id) * (HULL_FRAC[id] ?? 0.95);
+  return (X4_LENGTH[id] / hull(id)) > 0 ? (X4_LENGTH.raptor / hull('raptor')) / (X4_LENGTH[id] / hull(id)) : 1;
 }
 const fmtLen = (m: number) => `${(m >= 100 ? Math.round(m) : Math.round(m * 10) / 10).toLocaleString('de-DE')} m`;
 /** zuletzt gezeigte Bucht: beim Wechsel in eine größere Halle zoomt der Hintergrund kurz heraus */
@@ -299,8 +313,8 @@ export function loadoutView(m: LoModal): string {
   const where = open ? title : mode === 'mods' ? 'Werkstatt' : 'Hangar';
   const crumbs = open ? `Minispiele › Kampf › ${mode === 'mods' ? 'Werkstatt' : 'Hangar'}` : 'Minispiele › Kampf';
   const bay = bayOf(lo.ship), len = X4_LENGTH[lo.ship], k = stageScale(lo.ship);
-  // Großdock: bis das eigene Bild da ist, der große Ring
-  const bg = mode === 'mods' ? werkstattDeck : bay === 's' ? hangarDeck : hangarDeckM;
+  // Großdock (über 3 km lange Bucht) für Zerstörer und Träger, auch in der Werkstatt
+  const bg = bay === 'xl' ? grossDock : mode === 'mods' ? werkstattDeck : bay === 's' ? hangarDeck : hangarDeckM;
   const order: Bay[] = ['s', 'm', 'xl'];
   const zoom = lastBay && lastBay !== bay ? (order.indexOf(bay) > order.indexOf(lastBay) ? 'zoom-out' : 'zoom-in') : '';
   lastBay = bay;
@@ -308,7 +322,8 @@ export function loadoutView(m: LoModal): string {
   const ref = len >= 100 ? `<span class="hgr-ref ${X4_LENGTH.mamba / len < 0.08 ? 'tiny' : ''}">${pic('mamba') ? `<img src="${pic('mamba')}" alt="" style="height:max(3px, calc(var(--hull) * ${(X4_LENGTH.mamba / len).toFixed(4)}))">` : ''}<small>Mamba · ${fmtLen(X4_LENGTH.mamba)}</small></span>` : '';
   const scale = `<div class="hgr-scale" aria-label="Länge ${fmtLen(len)}"><b>${fmtLen(len)}</b><i class="hgr-ruler"></i>${ref}</div>`;
 
-  return `<div class="modal full hgr ${open ? 'open' : ''} hgr-${mode} bay-${bay} ${zoom}" role="dialog" aria-modal="true" aria-label="Hangar" style="--hgr-bg:url('${bg}');--k:${k.toFixed(3)}">
+  return `<div class="modal full hgr ${open ? 'open' : ''} hgr-${mode} bay-${bay} ship-${lo.ship}" role="dialog" aria-modal="true" aria-label="Hangar" style="--hgr-bg:url('${bg}');--k:${k.toFixed(3)};--hf:${HULL_FRAC[lo.ship] ?? 0.95}${bay === 'xl' ? `;--dz:${dockZoom(lo.ship).toFixed(4)};--dmid:${DOCK.mid}cqh` : ''}">
+    <div class="hgr-bgl ${zoom}"></div>
     <div class="hgr-top">
       <button class="hgr-back" ${act(open ? 'lo-view' : 'mg-back', open ? { view: 'home' } : {})} aria-label="Zurück">${icon('back', 20)}</button>
       <div class="hgr-crumbs"><small>${esc(crumbs)}</small><b>${esc(where)}</b></div>

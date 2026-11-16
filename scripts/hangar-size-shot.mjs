@@ -28,14 +28,19 @@ for (const id of ships) {
   }
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${out}/${id}.png` });
-  h[id] = await page.evaluate(() => ({ box: document.querySelector('#modal .hgr-ship').getBoundingClientRect().height, len: document.querySelector('#modal .hgr-scale b')?.textContent, ref: !!document.querySelector('#modal .hgr-ref img') }));
+  h[id] = await page.evaluate(() => ({ box: document.querySelector('#modal .hgr-ship').getBoundingClientRect().height, len: document.querySelector('#modal .hgr-scale b')?.textContent, ref: !!document.querySelector('#modal .hgr-ref img'), dz: Number(getComputedStyle(document.querySelector('#modal .hgr')).getPropertyValue('--dz')) || 1, hf: Number(getComputedStyle(document.querySelector('#modal .hgr')).getPropertyValue('--hf')) || 0.95 }));
 }
 await browser.close();
 // Größenordnung im Hangar: S < M < L < XL, Jaguar kleiner als Mamba, Maßstab mit Länge und Mamba zum Vergleich
 const order = ships.filter((id) => h[id]);
 for (let i = 1; i < order.length; i++) if (!(h[order[i]].box > h[order[i - 1]].box)) errors.push(`${order[i]} nicht größer als ${order[i - 1]} (${h[order[i]].box} ≤ ${h[order[i - 1]].box})`);
-if (h.raptor && !(h.raptor.box > (h.mamba?.box ?? 1e9) * 1.8)) errors.push('Raptor nicht deutlich größer als die Mamba');
+if (h.raptor && h.mamba && !(h.raptor.box > h.mamba.box * 1.8)) errors.push('Raptor nicht deutlich größer als die Mamba');
 if (h.raptor && h.raptor.len !== '3.191 m') errors.push(`Raptor-Länge falsch: ${h.raptor.len}`);
+// Großdock: Klapperschlange und Raptor im selben Maßstab (Rumpf in Dock-Einheiten: Bildpunkte geteilt durch den Zoom)
+if (h.raptor && h.klapperschlange) {
+  const r = (h.klapperschlange.box * h.klapperschlange.hf / h.klapperschlange.dz) / (h.raptor.box * h.raptor.hf / h.raptor.dz);
+  if (Math.abs(r - 906.4 / 3191) > 0.01) errors.push(`Großdock nicht maßstabsgetreu: Klapperschlange zu Raptor ${r.toFixed(3)} statt ${(906.4 / 3191).toFixed(3)}`);
+}
 if (h.cobra && !h.cobra.ref) errors.push('Cobra ohne Mamba zum Vergleich');
 if (h.mamba?.ref) errors.push('Mamba vergleicht sich mit sich selbst');
 if (errors.length) { console.error('Fehler:\n' + errors.join('\n')); process.exit(1); }
