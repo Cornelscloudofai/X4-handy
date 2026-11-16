@@ -32,7 +32,7 @@ export async function open() {
   await page.goto(await distUrl());
   await page.clock.runFor(1200);
   // Uhr anhalten: ab jetzt rückt die Spielzeit nur noch mit runFor vor (sonst läuft sie in Echtzeit weiter)
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.evaluate(() => document.fonts.ready);
   return { browser, page };
 }
