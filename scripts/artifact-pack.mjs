@@ -2,6 +2,7 @@
 // Klangdateien in wenige Pakete gepackt sind. Inhalt unverändert (Bytes 1:1), das Spiel schneidet jeden Klang beim
 // Laden wieder heraus (src/audio/engine.ts, window.__SOUND_PACKS). Weggelassen wird nur, was eingebettet nie lädt:
 // Service Worker, App-Manifest, großes App-Symbol, Intro-Ordner, Formularseite. Netlify und App bleiben unverändert.
+// Pakete heißen .wasm: das Artifact liefert nur bekannte Dateiarten aus, die Bytes liest das Spiel roh (kein WebAssembly).
 //
 //   node scripts/artifact-pack.mjs [dist] [ausgabe]      → Ausgabe neu aufbauen, Übersicht ausgeben
 //   node scripts/artifact-pack.mjs [dist] [ausgabe] --check  → zusätzlich jedes Paket gegen die Einzeldateien prüfen
@@ -59,7 +60,7 @@ for (const [i, p] of packs.entries()) {
   const bufs = p.items.map((s) => fs.readFileSync(path.join(dist, 'assets', s.file)));
   const data = Buffer.concat(bufs);
   const hash = crypto.createHash('sha256').update(data).digest('base64url').slice(0, 8);
-  p.name = `assets/klaenge-${p.group}-${i + 1}-${hash}.bin`;
+  p.name = `assets/klaenge-${p.group}-${i + 1}-${hash}.wasm`;
   fs.writeFileSync(path.join(out, p.name), data);
   let at = 0;
   for (const [k, s] of p.items.entries()) { index[s.file] = [`./${p.name}`, at, bufs[k].length]; at += bufs[k].length; }

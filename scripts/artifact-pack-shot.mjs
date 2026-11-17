@@ -22,7 +22,7 @@ const packs = new Map();
 page.on('requestfinished', async (r) => {
   const u = r.url();
   if (/\/(es|kd|sn)-[^/]+\.(ogg|wav)$/.test(u)) single++;
-  if (/\/klaenge-[^/]+\.bin$/.test(u)) packs.set(u.split('/').pop(), (await r.response())?.status());
+  if (/\/klaenge-[^/]+\.wasm$/.test(u)) packs.set(u.split('/').pop(), (await r.response())?.status());
 });
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(await distUrl(path.resolve(out) + '/'));
