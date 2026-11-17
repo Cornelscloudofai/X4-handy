@@ -204,7 +204,7 @@ export function start(): void {
   fitSector();
   // Zugriff für automatisierte Tests
   (window as unknown as { __audio: unknown }).__audio = { names: SOUND_DEMO.map((x) => x[0]), render: (i: number, sec: number) => renderOffline(SOUND_DEMO[i][1], sec), meterPeak, ready: () => preloadSamples(new OfflineAudioContext(2, 1, 44100)), mood: (i: number, sec: number) => renderMood(i, sec) };
-  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), discover: (id: string) => discover(state, id), openPanel, gotoSector, renderer };
+  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, galaxyCam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), discover: (id: string) => discover(state, id), openPanel, gotoSector, renderer };
   requestAnimationFrame(frame);
   // Intro beim echten Start (App-Version): Startschirm und Trailer, danach Karrierewahl bzw. Karte mit Titelmusik
   if (startScreenDue()) {
