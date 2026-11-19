@@ -21,6 +21,7 @@ import {
 } from './common';
 import { MISSION_GOALS, SHOOTER_ENDLESS_GOALS as ENDLESS_GOALS, SHOOTER_GOALS, SHOOTER_MUTATORS, SHOOTER_NORMAL_GOALS as NORMAL_GOALS } from './menuInfo';
 import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './shooterData';
+import { BattleBackdrop } from './battleBg';
 export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
 export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
@@ -891,6 +892,9 @@ export class ShooterGame implements MiniGame {
   private dying: { e: Enemy; vis: number; t: number; max: number; next: number; key: string }[] = [];
   private floats = new Floaters();
   private stars = new Starfield(170, 31);
+  /** Kampf-Schauplatz (wenn der Kampf nicht aus einem Sektor mit eigener Szene kommt) */
+  private backdrop: BattleBackdrop | null = null;
+  private bgSeed = 1;
   private w = 1;
   private h = 1;
   // Eingabe
@@ -910,6 +914,7 @@ export class ShooterGame implements MiniGame {
     this.r = rng(cfg.seed);
     // eigener Würfel für Raketen-Eigenarten und Turmversatz: ändert den Ablauf der Runde (Wellen, Gegner) nicht
     this.rv = rng(cfg.seed ^ 0x5eed);
+    this.bgSeed = cfg.seed & 0xffff;
     this.gear = cfg.gear ?? { weapon: 1, shield: 1, engine: 1 };
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
     this.place = cfg.place ?? null;
@@ -5261,9 +5266,13 @@ export class ShooterGame implements MiniGame {
       ctx.fillStyle = 'rgba(2,4,8,0.42)';
       ctx.fillRect(0, 0, this.w, this.h);
       ctx.globalAlpha = 0.55;
+      this.stars.draw(ctx, -this.camY * 0.3, this.side === 'xenon' ? '#ffd0d0' : this.side === 'khaak' ? '#e6d4ff' : '#cfe4ff', -this.camX * 0.3);
+      ctx.globalAlpha = 1;
+    } else {
+      // eigener Schauplatz je Gegner: Himmel, fernes Objekt, Tiefenebenen und Staub
+      this.backdrop ??= new BattleBackdrop(this.side, this.bgSeed);
+      this.backdrop.draw(ctx, this.w, this.h, this.camX + this.w / 2 / this.zoom, this.camY + this.h / 2 / this.zoom, this.zoom, t);
     }
-    this.stars.draw(ctx, -this.camY * 0.3, this.side === 'xenon' ? '#ffd0d0' : this.side === 'khaak' ? '#e6d4ff' : '#cfe4ff', -this.camX * 0.3);
-    ctx.globalAlpha = 1;
     ctx.save();
     if (this.shake > 0 && !document.documentElement.classList.contains('calm')) ctx.translate((Math.random() - 0.5) * 12 * this.shake, (Math.random() - 0.5) * 12 * this.shake);
     ctx.scale(this.zoom, this.zoom);
