@@ -31,6 +31,8 @@ describe('Großkampfschiffe', () => {
     g.spawnBoss(true, 0);
     const k = g.enemies.find((e) => e.kind === 'boss' && !e.parent)!;
     const w = g.wards[0];
+    // taucht weit draußen auf, nicht neben dem Frachter
+    expect(Math.hypot(k.x - g.wx(w), k.y - g.wy(w))).toBeGreaterThan(k.r * 2.3 + 1000);
     for (let i = 0; i < 60 * 40; i++) { g.px = g.wx(w) + 900; g.update(1 / 60); }
     const d = Math.hypot(k.x - g.wx(w), k.y - g.wy(w));
     // zwischen Rumpfende (halbe Länge ≈ 2,3 r) und Frachter bleibt deutlich Platz

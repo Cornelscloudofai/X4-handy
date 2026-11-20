@@ -3026,6 +3026,12 @@ export class ShooterGame implements MiniGame {
       const a = this.r() * Math.PI * 2, dist = 900 + 34 * k * 2;
       x = clamp(this.fX + Math.cos(a) * dist, 80 + 34 * k, this.WW - 80 - 34 * k); y = clamp(this.fY + Math.sin(a) * dist, 80 + 34 * k, this.WH - 80 - 34 * k);
     }
+    // Großkampfschiff (Xenon K, Träger, Brutschiff): weit draußen auftauchen – das Rumpfende gut 1 500 vom Frachter –
+    // und von dort auf Waffenreichweite heranfliegen
+    if (34 * k >= SPEC.boss.r * 2 && this.mission !== 'nest') {
+      const a = Math.atan2(y - this.fY, x - this.fX), dist = 34 * k * 2.3 + 1500, m = 80 + 34 * k;
+      x = clamp(this.fX + Math.cos(a) * dist, m, this.WW - m); y = clamp(this.fY + Math.sin(a) * dist, m, this.WH - m);
+    }
     const b = this.makeEnemy('boss', x, y);
     b.ang = mini ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
     const bs = enemyStats('boss', this.level, { mini, extra: this.mode === 'endless' ? 1 + this.wave * 0.05 : 1, tune: this.tune });
