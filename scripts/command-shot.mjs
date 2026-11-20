@@ -46,7 +46,7 @@ if (!(await page.locator('#cmd .grp-chip').count())) fail('Gruppenabzeichen fehl
 if (!(await page.locator('#cmd .orb').count())) fail('Befehlskugel fehlt');
 await page.click('#cmd .orb', { force: true });
 await page.waitForTimeout(500);
-if ((await page.locator('#cmd .orb-item').count()) !== 5) fail('Kugel zeigt nicht fünf Befehle');
+if ((await page.locator('#cmd .orb-item').count()) !== 5) fail("Kugel zeigt nicht fünf Befehle (ohne Mambas kein „Landen“)");
 if ((await page.locator('#cmd .orb-ray').count()) !== 5) fail('Strahlen fehlen');
 await page.screenshot({ path: `${out}/cmd-3-kugel.png` });
 // Patrouille: Mitte drücken und Radius aufziehen

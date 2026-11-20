@@ -70,7 +70,7 @@ export interface UIState {
   /** Seite, zu der die Befehle aus der Kugel strahlen (1 rechts, −1 links), und eingefrorene Lage der offenen Kugel */
   orbSide: 1 | -1;
   orbAt: [number, number] | null;
-  order: { kind: 'move' | 'patrol' | 'guard' | 'escort' | 'attack'; x?: number; z?: number; r?: number } | null;
+  order: { kind: 'move' | 'patrol' | 'guard' | 'escort' | 'attack' | 'dock'; x?: number; z?: number; r?: number } | null;
   gesture: { kind: 'hold'; x: number; y: number; t0: number } | { kind: 'lasso'; pts: [number, number][] } | null;
   /** Kartenebene Handelsrouten: Flugwege und feste Versorgungsrouten der eigenen Schiffe (Standard an) */
   routes: boolean;

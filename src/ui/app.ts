@@ -8,9 +8,9 @@ import { acceptShipOrder, cancelShipBuild, queueShipBuild } from '../engine/yard
 import { NPC_MAP, SECTOR_MAP, SECTOR_RADIUS, marketInfo } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
-import { PATROL_R, PATROL_R_MIN, orderGroup } from '../engine/combat';
+import { PATROL_R, PATROL_R_MIN, orderGroup, setCombatOrder } from '../engine/combat';
 import { hostileState, hostilesIn, sendDefense, spawnHostile } from '../engine/hostiles';
-import { FLAGSHIP_GAME, applyWingLosses, battleLevel, buyWingFighter, flagshipIn, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
+import { FLAGSHIP_GAME, applyWingLosses, battleLevel, buyWingFighter, launchWingFighter, restockWing, setWingAuto, flagshipIn, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
 import { disableShip } from '../engine/tow';
 import { loadoutFor } from '../minigames/loadout';
 import { acceptContract } from '../engine/contracts';
@@ -799,6 +799,12 @@ function orderTap(sx: number, sy: number): void {
     else toast('Einen eigenen Frachter oder Miner antippen.', 'info');
     return;
   }
+  if (o.kind === 'dock') {
+    const t = sel?.kind === 'ship' ? state.ships.find((s) => s.id === sel.id) : undefined;
+    if (t?.cls === 'raptor') giveOrder({ kind: 'dock', carrier: t.id });
+    else toast('Einen eigenen Raptor antippen.', 'info');
+    return;
+  }
   if (o.kind === 'attack') {
     if (sel?.kind === 'hostile') giveOrder({ kind: 'attack', hostile: Number(sel.id) });
     else toast('Eine Gegnerrotte antippen.', 'info');
@@ -1292,6 +1298,10 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'wing-buy': result(buyWingFighter(state, d.id!)); break;
+      case 'wing-fill': result(restockWing(state, d.id!)); break;
+      case 'wing-auto': { const sh = state.ships.find((x) => x.id === d.id); if (sh) result(setWingAuto(state, sh.id, !sh.wingAuto)); break; }
+      case 'wing-launch': result(launchWingFighter(state, d.id!)); break;
+      case 'wing-dock': result(setCombatOrder(state, d.id!, { kind: 'dock', carrier: d.carrier! })); break;
       case 'wreck-salvage': {
         const w = wrecksOf(state).find((x) => x.id === Number(d.id));
         if (!w) break;

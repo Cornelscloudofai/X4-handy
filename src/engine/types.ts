@@ -327,6 +327,8 @@ export type CombatOrder =
   | { kind: 'patrol'; sector: string; x: number; z: number; r: number }
   | { kind: 'escort'; ship: string }
   | { kind: 'move'; sector: string; x: number; z: number }
+  /** Mamba: zum Träger fliegen und in seinem Hangar landen (wird Teil der Staffel) */
+  | { kind: 'dock'; carrier: string }
   /** gezielter Angriff auf eine Gegnerrotte, auch außerhalb des eigenen Wachbereichs */
   | { kind: 'attack'; hostile: number };
 
@@ -389,6 +391,10 @@ export interface Ship {
   wing?: number;
   /** Träger: Schaden, den die Staffel seit dem letzten Verlust eingesteckt hat (Kampfwert-Einheiten) */
   wingDmg?: number;
+  /** Träger: verlorene Mambas außerhalb von Gefechten selbst nachkaufen */
+  wingAuto?: boolean;
+  /** Träger: im Gefecht verlorene Mambas, die der automatische Nachkauf noch ersetzen soll */
+  wingLost?: number;
   /** Zerstörer: Zeit bis zur nächsten Salve der Hauptbatterie auf Fernkampfdistanz (s) */
   artyCd?: number;
   /** L nach einem verlorenen Gefecht oder unbeantworteten Überfall: kann weder fliegen noch eingesetzt werden, bis es

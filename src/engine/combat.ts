@@ -4,7 +4,7 @@
 import { SECTOR_MAP, SECTOR_RADIUS, insideHex } from '../data/sectors';
 import { SHIP_MAP } from '../data/ships';
 import { moveAlong, planPath, stationById } from './logistics';
-import { FIGHT_R, RETREAT_AT, hullOf, repairAtHome } from './battle';
+import { CARRIER_WING_MAX, FIGHT_R, RETREAT_AT, WING_CLS, autoRestockWing, dockInCarrier, hullOf, repairAtHome, wingOf } from './battle';
 import { FOE_NAME, hostileState, hostilesIn, type Hostile } from './hostiles';
 import type { CombatOrder, GameState, Ship } from './types';
 import { rand } from './util';
@@ -20,6 +20,8 @@ const PATROL_PAUSE = 20;
 /** Geleit: Abstand hinter dem Schützling (km) und Neuplanung, wenn er sich so weit bewegt hat */
 const ESCORT_GAP = 5;
 const ESCORT_REPLAN = 8;
+/** Landen im Träger: so nah muss die Mamba heran (km) */
+const DOCK_R = 2;
 
 type Result = { ok: boolean; msg: string };
 const ok = (msg: string): Result => ({ ok: true, msg });
@@ -45,7 +47,7 @@ function watchArea(state: GameState, s: Ship, o: CombatOrder): { sector: string;
   if (o.kind === 'guard') { const st = stationById(state, o.station); return st ? { sector: st.sector, x: st.x, z: st.z, r: 30 } : null; }
   if (o.kind === 'patrol') return { sector: o.sector, x: o.x, z: o.z, r: o.r + 15 };
   if (o.kind === 'escort') { const t = state.ships.find((x) => x.id === o.ship); return t ? { sector: t.sector, x: t.x, z: t.z, r: 30 } : null; }
-  if (o.kind === 'attack') return null;
+  if (o.kind === 'attack' || o.kind === 'dock') return null;
   return { sector: s.sector, x: s.x, z: s.z, r: 20 };
 }
 
@@ -83,6 +85,22 @@ export function stepFighter(state: GameState, s: Ship, dt: number): void {
       return;
     }
   }
+  // Landen im Träger: hinfliegen (er kann unterwegs sein), nah genug → in den Hangar
+  if (o.kind === 'dock') {
+    const c = state.ships.find((x) => x.id === o.carrier);
+    if (!c || c.cls !== 'raptor' || wingOf(c) >= CARRIER_WING_MAX) {
+      s.combat = { kind: 'move', sector: s.sector, x: s.x, z: s.z }; s.path = [];
+      s.status = c ? `Hangar von ${c.name} ist voll` : 'Träger nicht mehr da';
+      return;
+    }
+    s.engage = undefined;
+    if (c.sector === s.sector && Math.hypot(c.x - s.x, c.z - s.z) < DOCK_R) { dockInCarrier(state, s, c); return; }
+    const last = s.path[s.path.length - 1];
+    if ((s.timer <= 0 || !s.path.length) && (!last || last.sector !== c.sector || Math.hypot(last.x - c.x, last.z - c.z) > DOCK_R)) { flyTo(s, c.sector, c.x, c.z); s.timer = 2; }
+    moveAlong(s, cls.speed * 1.15, dt);
+    s.status = `Fliegt zum Landen in ${c.name}`;
+    return;
+  }
   // Gezielter Angriff: hinfliegen, wo immer die Rotte ist; ist sie weg, Position halten
   if (o.kind === 'attack') {
     const h = hostileState(state).list.find((x) => x.id === o.hostile);
@@ -109,6 +127,8 @@ export function stepFighter(state: GameState, s: Ship, dt: number): void {
     return;
   }
   if (s.engage != null) { s.engage = undefined; s.path = []; s.timer = 0; }
+  // Träger außerhalb des Gefechts: verlorene Mambas nachkaufen (wenn eingeschaltet)
+  autoRestockWing(state, s);
   // leicht beschädigt und an der Heimat: nebenbei reparieren
   if (hullOf(s) < 1 && o.kind === 'guard') repairAtHome(state, s, dt);
   if (o.kind === 'escort') {
@@ -169,6 +189,16 @@ export function setCombatOrder(state: GameState, shipId: string, order: CombatOr
     s.path = []; s.timer = 0;
     return ok(`${s.name} greift ${FOE_NAME[h.foe]} an.`);
   }
+  if (order.kind === 'dock') {
+    const c = state.ships.find((x) => x.id === order.carrier);
+    if (s.cls !== WING_CLS) return fail('Nur Mambas landen im Hangar des Trägers.');
+    if (!c || c.cls !== 'raptor') return fail('Träger nicht gefunden.');
+    if (c.disabled) return fail(`${c.name} ist kampfunfähig.`);
+    if (wingOf(c) >= CARRIER_WING_MAX) return fail(`Der Hangar von ${c.name} ist voll (${CARRIER_WING_MAX} Mambas).`);
+    s.combat = order;
+    s.path = []; s.timer = 0; s.repair = false;
+    return ok(`${s.name} fliegt zum Landen in ${c.name}.`);
+  }
   if (order.kind === 'escort') {
     const t = state.ships.find((x) => x.id === order.ship);
     if (!t || t.id === s.id) return fail('Schützling nicht gefunden.');
@@ -225,6 +255,7 @@ export function combatOrderText(state: GameState, o: CombatOrder | undefined): s
   if (o.kind === 'guard') return `Wache bei ${stationById(state, o.station)?.name ?? 'Station'}`;
   if (o.kind === 'escort') return `Geleit für ${state.ships.find((x) => x.id === o.ship)?.name ?? 'Schiff'}`;
   if (o.kind === 'attack') { const h = hostileState(state).list.find((x) => x.id === o.hostile); return h ? `Angriff auf ${FOE_NAME[h.foe]}` : 'Angriff'; }
+  if (o.kind === 'dock') return `Landet in ${state.ships.find((x) => x.id === o.carrier)?.name ?? 'Träger'}`;
   if (o.kind === 'patrol') return `Patrouille in ${SECTOR_MAP[o.sector]?.name ?? o.sector} (${Math.round(o.r)} km)`;
   return `Flug nach ${SECTOR_MAP[o.sector]?.name ?? o.sector}`;
 }

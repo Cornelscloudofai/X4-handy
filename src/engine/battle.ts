@@ -10,6 +10,7 @@ import { RAID_BOUNTY, incidentById, repelRaid } from './incidents';
 import { book } from './ledger';
 import type { GameState, Ship } from './types';
 import { disableShip } from './tow';
+import { newShip } from './state';
 import { emit, log, normalSpeed } from './util';
 
 /** Gefechtsabstand (km): so nah müssen eigene Kampfschiffe an der Rotte sein */
@@ -62,6 +63,75 @@ export function buyWingFighter(state: GameState, shipId: string): { ok: boolean;
   s.wing = wingOf(s) + 1;
   book(state, -price, 'ships', `Mamba für den Hangar von ${s.name}`);
   return { ok: true, msg: `Mamba an Bord von ${s.name} (${s.wing} im Hangar).` };
+}
+
+/** Hangar auffüllen: so viele Mambas wie fehlen (bis CARRIER_WING_MAX) und bezahlbar sind */
+export function restockWing(state: GameState, shipId: string): { ok: boolean; msg: string } {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s || s.cls !== 'raptor') return { ok: false, msg: 'Nur Träger haben einen Hangar.' };
+  const miss = CARRIER_WING_MAX - wingOf(s);
+  if (miss <= 0) return { ok: false, msg: `Der Hangar ist voll (${CARRIER_WING_MAX} Mambas).` };
+  const price = SHIP_MAP[WING_CLS].price;
+  const n = Math.min(miss, Math.floor(state.credits / price));
+  if (n <= 0) return { ok: false, msg: 'Nicht genug Credits.' };
+  s.wing = wingOf(s) + n;
+  s.wingLost = Math.max(0, (s.wingLost ?? 0) - n) || undefined;
+  book(state, -price * n, 'ships', `${n} Mamba${n === 1 ? '' : 's'} für den Hangar von ${s.name}`);
+  return { ok: true, msg: `${n} Mamba${n === 1 ? '' : 's'} an Bord von ${s.name} (${s.wing} im Hangar)${n < miss ? ` – für ${miss - n} weitere reicht das Geld nicht` : ''}.` };
+}
+
+/** Nachkauf automatisch: der Träger ersetzt verlorene Mambas, sobald er nicht mehr im Gefecht steht */
+export function setWingAuto(state: GameState, shipId: string, on: boolean): { ok: boolean; msg: string } {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s || s.cls !== 'raptor') return { ok: false, msg: 'Nur Träger haben einen Hangar.' };
+  s.wingAuto = on || undefined;
+  return { ok: true, msg: on ? `${s.name} kauft verlorene Mambas künftig selbst nach.` : `${s.name}: Nachkauf nur noch von Hand.` };
+}
+
+/**
+ * Im Takt des Trägers (außerhalb von Gefechten): im Gefecht verlorene Mambas nachkaufen, solange das Geld reicht.
+ * Gestartete Mambas zählen nicht als Verlust – die kauft er nicht nach.
+ */
+export function autoRestockWing(state: GameState, s: Ship): void {
+  if (!s.wingLost || s.cls !== 'raptor') return;
+  if (!s.wingAuto || s.disabled || s.engage != null) return;
+  const price = SHIP_MAP[WING_CLS].price;
+  const n = Math.min(s.wingLost, CARRIER_WING_MAX - wingOf(s), Math.floor(state.credits / price));
+  if (CARRIER_WING_MAX - wingOf(s) <= 0) { s.wingLost = undefined; return; }
+  if (n <= 0) return;
+  s.wing = wingOf(s) + n;
+  s.wingLost = s.wingLost - n || undefined;
+  book(state, -price * n, 'ships', `${n} Mamba${n === 1 ? '' : 's'} für den Hangar von ${s.name}`);
+  log(state, `${s.name}: ${n === 1 ? 'eine Mamba' : `${n} Mambas`} nachgekauft (${(price * n).toLocaleString('de-DE')} Cr) – ${wingOf(s)} von ${CARRIER_WING_MAX} im Hangar.`, 'info', false, { kind: 'ship', id: s.id });
+}
+
+/** Eine Mamba aus dem Hangar als eigenes Schiff starten: fliegt danach selbständig (hält Position beim Träger) */
+export function launchWingFighter(state: GameState, shipId: string): { ok: boolean; msg: string } {
+  const s = state.ships.find((x) => x.id === shipId);
+  if (!s || s.cls !== 'raptor') return { ok: false, msg: 'Nur Träger haben einen Hangar.' };
+  if (wingOf(s) <= 0) return { ok: false, msg: 'Keine Mamba im Hangar.' };
+  if (s.engage != null) return { ok: false, msg: `${s.name} steht im Gefecht – die Staffel ist schon draußen.` };
+  const home = state.stations.find((x) => x.id === s.home) ?? state.stations[0];
+  if (!home) return { ok: false, msg: 'Ohne eigene Station kann die Mamba keine Heimat bekommen.' };
+  const a = state.nextId * 2.4;
+  const m = newShip(state, WING_CLS, home, { sector: s.sector, x: s.x + Math.cos(a) * 2, z: s.z + Math.sin(a) * 2 });
+  m.combat = { kind: 'move', sector: s.sector, x: m.x, z: m.z };
+  m.status = `Gestartet von ${s.name}`;
+  state.ships.push(m);
+  s.wing = wingOf(s) - 1;
+  log(state, `${m.name} aus dem Hangar von ${s.name} gestartet – noch ${s.wing} an Bord.`, 'info', false, { kind: 'ship', id: m.id });
+  return { ok: true, msg: `${m.name} gestartet.` };
+}
+
+/** Eigene Mamba landet im Träger: wird Teil der Staffel (das Schiff verschwindet aus der Flottenliste) */
+export function dockInCarrier(state: GameState, m: Ship, carrier: Ship): boolean {
+  if (m.cls !== WING_CLS || carrier.cls !== 'raptor' || wingOf(carrier) >= CARRIER_WING_MAX) return false;
+  const i = state.ships.indexOf(m);
+  if (i < 0) return false;
+  state.ships.splice(i, 1);
+  carrier.wing = wingOf(carrier) + 1;
+  log(state, `${m.name} im Hangar von ${carrier.name} gelandet – ${carrier.wing} von ${CARRIER_WING_MAX} an Bord.`, 'good', false, { kind: 'ship', id: carrier.id });
+  return true;
 }
 
 export interface Wreck {
@@ -186,6 +256,7 @@ export function stepBattles(state: GameState, dt: number): void {
       while ((pick.wingDmg ?? 0) >= mp && wingOf(pick) > 0) {
         pick.wingDmg! -= mp;
         pick.wing = wingOf(pick) - 1;
+        pick.wingLost = (pick.wingLost ?? 0) + 1;
         emit({ type: 'boom', sector: h.sector, x: h.x, z: h.z, big: false });
         log(state, `${pick.name}: eine Mamba im Gefecht mit ${FOE_NAME[h.foe]} verloren – noch ${pick.wing} im Hangar.`, 'bad', false, { kind: 'sector', id: h.sector });
       }
@@ -252,6 +323,7 @@ export function applyWingLosses(state: GameState, ship: Ship, lost: Partial<Reco
   const n = Math.min(wingOf(ship), Math.max(0, Math.round(lost?.mamba ?? 0)));
   if (!n) return 0;
   ship.wing = wingOf(ship) - n;
+  ship.wingLost = (ship.wingLost ?? 0) + n;
   log(state, `${ship.name}: ${n === 1 ? 'eine Mamba' : `${n} Mambas`} im Gefecht mit ${FOE_NAME[foe]} verloren – noch ${ship.wing} im Hangar.`, 'bad', false, { kind: 'ship', id: ship.id });
   return n;
 }

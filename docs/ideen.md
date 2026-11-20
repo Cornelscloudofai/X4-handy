@@ -2,6 +2,14 @@
 
 Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 
+## Raptor-Staffel: Nachschub über die eigene Werft (vorgemerkt)
+
+- Heute: Mambas für den Hangar werden sofort und überall gekauft (Knopf „+1“, „Auffüllen“, auf Wunsch automatisch).
+- Idee, näher an X4: neue Mambas werden in einer eigenen Werft gebaut (Bauzeit, Waren wie bei anderen Schiffen),
+  fliegen dann selbst zum Raptor und landen im Hangar. Ohne eigene Werft: Kauf bei einer fremden Werft, Abholung dort.
+- Offen: ob der Raptor dazu zur Werft fliegen muss oder die Mambas zu ihm; was passiert, wenn der Raptor unterwegs
+  oder im Gefecht ist (Mambas warten an der Werft oder folgen ihm).
+
 ## Kha’ak (umgesetzt als eigenes Minispiel „Kha’ak-Invasion“)
 
 - Umgesetzt: Späher-Cluster, Kyon-Strahl (Schilde ×1,5), Phasensprung der Abfangjäger, Korvette mit Brut, Brutschiff als Boss.

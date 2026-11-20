@@ -262,7 +262,17 @@ const SILO_RISE = 1.1;
 interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p'; wd?: Ward }
 /** Fundstücke; „ammo“ = Munitionskiste (selten): füllt das Raketenlager ganz */
 interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile' | 'ammo'; life: number }
-interface Rock { x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches der vier Asteroidenbilder */ v: number }
+interface Rock {
+  x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches der vier Asteroidenbilder */ v: number;
+  /** Festigkeit (eigene Waffen tragen sie ab), Aufblitzen bei Treffern, Stöße eines M-Schiffs, Sperre nach einem Stoß */
+  hp: number; max: number; flash: number; bumps: number; bumpCd: number;
+}
+/**
+ * Festigkeit eines mittelgroßen Asteroiden (r 29): etwa eine Sekunde Dauerfeuer aus der Neutronen-Gatling einer Mamba
+ * (zwei Rohre, Grundausstattung) – kleinere halten weniger, größere mehr
+ */
+const ROCK_HP = 2 * (WEAPONS.neutron.s.rate / TIME) * 6 * WEAPONS.neutron.s.dmg * DMG_SCALE;
+const ROCK_R = 29;
 interface Mine { x: number; y: number; vx: number; vy: number; armed: number; hp: number }
 interface Card { id: string; name: string; desc: string; max: number }
 /**
@@ -3194,7 +3204,8 @@ export class ShooterGame implements MiniGame {
       const pts: number[] = [];
       for (let k = 0; k < 9; k++) pts.push(0.75 + this.r() * 0.35);
       const [x, y] = this.fieldPoint();
-      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts, v: Math.floor(r * 7) % 4 });
+      const hp = ROCK_HP * (r / ROCK_R);
+      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts, v: Math.floor(r * 7) % 4, hp, max: hp, flash: 0, bumps: 0, bumpCd: 0 });
     }
   }
 
@@ -3987,7 +3998,8 @@ export class ShooterGame implements MiniGame {
     // Hindernisse (Rakete, Mine, Fels) halten die Lanze auf
     for (const m of this.eMissiles) { const t = along(m.x, m.y, 8); if (t != null) { hitT = t; hitM = m; hitMine = null; } }
     for (const m of this.mines) { const t = along(m.x, m.y, 10); if (t != null) { hitT = t; hitMine = m; hitM = null; } }
-    for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitM = null; hitMine = null; } }
+    let hitRock: Rock | null = null;
+    for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitM = null; hitMine = null; hitRock = k; } }
     // Gegner davor, von vorn nach hinten: das erste und pierce weitere
     const hits: [number, Enemy][] = [];
     for (const e of this.enemies) {
@@ -3999,7 +4011,7 @@ export class ShooterGame implements MiniGame {
     const hitList = hits.slice(0, 1 + pierce);
     const hitE = hitList[0]?.[1] ?? null;
     if (hitList.length) {
-      if (hitList.length === 1 + pierce) { hitT = hitList[hitList.length - 1][0]; hitM = null; hitMine = null; }
+      if (hitList.length === 1 + pierce) { hitT = hitList[hitList.length - 1][0]; hitM = null; hitMine = null; hitRock = null; }
       else if (hitList.length) { /* Lanze geht durch alle hindurch bis zum Hindernis bzw. ans Ende */ }
     }
     const x2 = ox + c * hitT, y2 = oy + sn * hitT;
@@ -4010,7 +4022,9 @@ export class ShooterGame implements MiniGame {
     }
     if (hitM) { hitM.hp -= dmg; if (hitM.hp <= 0) { this.explode(hitM.x, hitM.y, '#ff8a5c', 0.5, false); this.gain(30, hitM.x, hitM.y, 'Raketen abgeschossen'); } }
     if (hitMine) { hitMine.hp -= dmg; if (hitMine.hp <= 0) this.detonate(hitMine); }
-    if (hitE || hitM || hitMine) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
+    // Fels im Weg: die Lanze trägt ihn ab
+    if (hitRock) this.damageRock(hitRock, dmg);
+    if (hitE || hitM || hitMine || hitRock) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
     // schwere L-Lanze glüht lange nach, M-Lanze blitzt nur kurz auf
     this.rails.push({ x1: ox, y1: oy, x2, y2, t: heavy ? 1.8 : 0.16, max: heavy ? 1.8 : 0.16, heavy, seed: Math.random() * 100, color });
   }
@@ -4042,7 +4056,8 @@ export class ShooterGame implements MiniGame {
         return Math.abs(-(x - ox) * sn + (y - oy) * c) < r ? t : null;
       };
       for (const m of this.eMissiles) { const t = along(m.x, m.y, 8); if (t != null) { hitT = t; hitM = m; } }
-      for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitM = null; } }
+      let hitRock: Rock | null = null;
+      for (const k of this.rocks) { const t = along(k.x, k.y, k.r * 0.8); if (t != null) { hitT = t; hitM = null; hitRock = k; } }
       const hits: [number, Enemy][] = [];
       for (const e of this.enemies) {
         if (e.kind === 'boss' && e.shielded) continue;
@@ -4051,7 +4066,9 @@ export class ShooterGame implements MiniGame {
       }
       hits.sort((p, q) => p[0] - q[0]);
       const hitList = hits.slice(0, 1 + pierce), hitE = hitList[0]?.[1] ?? null;
-      if (hitList.length === 1 + pierce) { hitT = hitList[hitList.length - 1][0]; hitM = null; }
+      if (hitList.length === 1 + pierce) { hitT = hitList[hitList.length - 1][0]; hitM = null; hitRock = null; }
+      // Fels im Strahl: wird abgetragen
+      if (hitRock) this.damageRock(hitRock, dps * dt);
       // auf Schilde ausgelegt: fremde Schutzschilde halten den Strahl nicht ab; durchschlagene Gegner bekommen 60 %
       for (const [k, [t, e]] of hitList.entries()) {
         this.damageEnemy(e, dps * dt * (k ? 0.6 : 1), 1);
@@ -4714,6 +4731,23 @@ export class ShooterGame implements MiniGame {
     }
   }
 
+  /** Schaden an einem Asteroiden; zerplatzt, wenn seine Festigkeit verbraucht ist */
+  private damageRock(k: Rock, dmg: number): void {
+    if (k.r <= 0) return;
+    k.hp -= dmg;
+    k.flash = 0.08;
+    if (k.hp <= 0) this.breakRock(k);
+  }
+
+  /** Asteroid zerplatzt: Brocken, Staub, kleine Explosion; verschwindet beim nächsten Aufräumen */
+  private breakRock(k: Rock): void {
+    if (k.r <= 0) return;
+    this.fx.burst(k.x, k.y, '#a89a8a', 10, 160, 2.2, 'chunk', 0.9);
+    this.fx.burst(k.x, k.y, '#d8c8b4', 6, 90, 1.4, 'spark', 0.5);
+    this.explode(k.x, k.y, '#c8a080', 0.5, true, k.r * 0.9);
+    k.r = 0;
+  }
+
   private rockAt(x: number, y: number): Rock | undefined {
     return this.rocks.find((k) => Math.hypot(k.x - x, k.y - y) < k.r);
   }
@@ -4725,9 +4759,9 @@ export class ShooterGame implements MiniGame {
       b.y += b.vy * dt;
       b.life -= dt;
       if (b.life <= 0) continue;
-      // Asteroiden bieten Deckung
+      // Asteroiden bieten Deckung vor gegnerischem Feuer; eigene Waffen tragen sie ab
       const rock = this.rocks.length ? this.rockAt(b.x, b.y) : undefined;
-      if (rock) { this.fx.burst(b.x, b.y, '#a89a8a', 3, 90, 1.4, 'chunk', 0.3); continue; }
+      if (rock) { this.fx.burst(b.x, b.y, '#a89a8a', 3, 90, 1.4, 'chunk', 0.3); if (b.from === 'p') this.damageRock(rock, b.dmg); continue; }
       if (b.from === 'p') {
         const em = this.eMissiles.find((m) => Math.hypot(m.x - b.x, m.y - b.y) < 9);
         if (em) { em.hp -= b.dmg; if (em.hp <= 0) { this.explode(em.x, em.y, '#ff8a5c', 0.5, false); this.gain(30, em.x, em.y, 'Raketen abgeschossen'); } continue; }
@@ -4844,15 +4878,25 @@ export class ShooterGame implements MiniGame {
       k.x += k.vx * dt;
       k.y += k.vy * dt;
       k.rot += k.vr * dt;
-      // Jäger prallt ab
+      k.flash = Math.max(0, k.flash - dt);
+      k.bumpCd = Math.max(0, k.bumpCd - dt);
+      // Zusammenstoß mit dem eigenen Schiff, je nach Klasse: S prallt ab und nimmt Schaden (der Fels bleibt heil),
+      // M prallt ab und nimmt Schaden, beim zweiten Stoß zerplatzt der Fels; L zerplatzt ihn ohne Schaden und wird
+      // leicht gebremst, XL zerplatzt ihn einfach
       const d = Math.hypot(this.px - k.x, this.py - k.y);
       const pr = k.r + this.ship.r - 2;
-      if (d < pr && d > 0) {
+      if (k.r > 0 && d < pr && d > 0) {
+        const cls = this.ship.cls;
+        if (cls === 'XL') { this.breakRock(k); continue; }
+        if (cls === 'L') { this.breakRock(k); this.pvx *= 0.82; this.pvy *= 0.82; continue; }
         const nx = (this.px - k.x) / d, ny = (this.py - k.y) / d;
         this.px = k.x + nx * pr;
         this.py = k.y + ny * pr;
         this.pvx = nx * 120; this.pvy = ny * 120;
-        if (this.dashT <= 0) this.damagePlayer(3);
+        if (k.bumpCd > 0) continue;
+        k.bumpCd = 0.5;
+        if (this.dashT <= 0) this.damagePlayer(8, 1, [k.x + nx * k.r, k.y + ny * k.r]);
+        if (cls === 'M' && ++k.bumps >= 2) this.breakRock(k);
       }
     }
     // Felsen weit hinter dem Frachter: solange der Abschnitt dauert, voraus neu; danach verschwinden sie
@@ -5649,6 +5693,8 @@ export class ShooterGame implements MiniGame {
       // Bild-Grafik: der Brocken füllt rund 70 % des Bildes – so passt er zum Kollisionsradius
       const size = k.r * 2.9;
       ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      // Treffer: der Fels leuchtet kurz auf
+      if (k.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, k.flash / 0.08) * 0.45; ctx.drawImage(img, -size / 2, -size / 2, size, size); }
       ctx.restore();
       return;
     }

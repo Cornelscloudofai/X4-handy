@@ -673,6 +673,7 @@ export const ORB_ORDERS = [
   { kind: 'guard', label: 'Wache', icon: 'station' },
   { kind: 'escort', label: 'Geleit', icon: 'trader' },
   { kind: 'attack', label: 'Angreifen', icon: 'warn' },
+  { kind: 'dock', label: 'Landen', icon: 'fighter' },
 ] as const;
 const ORDER_HINT: Record<string, string> = {
   move: 'Flieg zu: Zielpunkt antippen',
@@ -680,6 +681,7 @@ const ORDER_HINT: Record<string, string> = {
   guard: 'Wache: eigene Station antippen',
   escort: 'Geleit: Frachter oder Miner antippen',
   attack: 'Angreifen: Gegnerrotte antippen',
+  dock: 'Landen: Träger (Raptor) antippen – die Mambas werden Teil seiner Staffel',
 };
 
 /**
@@ -696,14 +698,16 @@ export function commandHtml(state: GameState, ui: UIState): string {
   const top = ui.order
     ? `<div class="cmd-hint">${icon('fighter', 16)}<span>${esc(ORDER_HINT[ui.order.kind])}${ships.length > 1 ? ` · ${ships.length} Schiffe` : ''}</span><button class="btn small" ${act('cmd-cancel')}>Abbrechen</button></div>`
     : `<div class="grp-chip">${icon('fighter', 15)}<span>${esc(label)} · Kampfwert ${fmtInt(power)}</span><button ${act('group-clear')} aria-label="Auswahl aufheben">${icon('close', 15)}</button></div>`;
-  const n = ORB_ORDERS.length, side = ui.orbSide;
+  // „Landen“ nur, wenn Mambas in der Gruppe sind und es einen Träger gibt
+  const orders = ORB_ORDERS.filter((o) => o.kind !== 'dock' || (ships.some((x) => x.cls === WING_CLS) && state.ships.some((x) => x.cls === 'raptor')));
+  const n = orders.length, side = ui.orbSide;
   // Strahlen: von der Kugelmitte zum inneren Rand jedes Befehls (64 px zur Seite, untereinander im Abstand von 48 px)
-  const rays = ORB_ORDERS.map((_, i) => {
+  const rays = orders.map((_, i) => {
     const dy = (i - (n - 1) / 2) * 48, dx = side * 64;
     return `<i class="orb-ray" style="--i:${i};width:${Math.hypot(dx, dy).toFixed(1)}px;transform:rotate(${Math.atan2(dy, dx).toFixed(4)}rad)"></i>`;
   }).join('');
   const menu = ui.orbOpen && !ui.order ? `<div class="orb-menu ${side > 0 ? 'right' : 'left'}">${rays}
-      ${ORB_ORDERS.map((o, i) => `<button class="orb-item" style="--i:${i};--y:${(i - (n - 1) / 2) * 48}px" ${act('orb-order', { kind: o.kind })}>${icon(o.icon, 17)}<span>${o.label}</span></button>`).join('')}
+      ${orders.map((o, i) => `<button class="orb-item" style="--i:${i};--y:${(i - (n - 1) / 2) * 48}px" ${act('orb-order', { kind: o.kind })}>${icon(o.icon, 17)}<span>${o.label}</span></button>`).join('')}
     </div>` : '';
   return `${top}${ui.order ? '' : `<div class="orb-wrap ${ui.orbOpen ? 'open' : ''}"><button class="orb" ${act('orb-toggle')} aria-label="Befehle">${icon(ui.orbOpen ? 'close' : 'fighter', 20)}</button>${menu}</div>`}`;
 }
@@ -745,6 +749,34 @@ function tugPanel(state: GameState, s: Ship, p: Panel): string {
   { back: !!p.back });
 }
 
+/** Raptor: Hangar mit Staffel – einzeln kaufen, auffüllen, automatischer Nachkauf, eine Mamba starten */
+function hangarBox(state: GameState, s: Ship): string {
+  const w = wingOf(s), price = SHIP_MAP[WING_CLS].price, miss = CARRIER_WING_MAX - w;
+  const fill = Math.min(miss, Math.floor(state.credits / price));
+  const fleet = state.ships.filter((x) => x.cls === WING_CLS && !x.disabled);
+  const coming = fleet.filter((x) => x.combat?.kind === 'dock' && x.combat.carrier === s.id).length;
+  return `<div class="section"><h3>Hangar</h3><div class="box rows">
+    <div class="row">${icon('fighter', 20)}<div class="grow"><div class="title">${w} von ${CARRIER_WING_MAX} Mambas an Bord${coming ? ` <span class="small muted">· ${coming} im Anflug</span>` : ''}</div>
+      <div class="sub wrap">Schwärmen bei Gefechten aus und kämpfen mit (je Mamba Kampfwert ${fmtInt((SHIP_MAP[WING_CLS].combat?.power ?? 0) * 0.8)}). Sie fangen einen Teil des Feuers ab.</div></div>
+      <button class="btn small ${miss > 0 && state.credits >= price ? '' : 'disabled'}" ${act('wing-buy', { id: s.id })}>+1 · ${fmtCr(price)}</button></div>
+    ${miss > 0 ? `<div class="row">${icon('plus', 20)}<div class="grow"><div class="title">Auffüllen</div><div class="sub wrap">${miss} fehlen · zusammen ${fmtCr(miss * price)}${fill < miss ? ` – das Geld reicht für ${fill}` : ''}</div></div>
+      <button class="btn small amber ${fill > 0 ? '' : 'disabled'}" ${act('wing-fill', { id: s.id })}>${fill} kaufen · ${fmtCr(fill * price)}</button></div>` : ''}
+    ${toggleRow('Verluste selbst nachkaufen', 'Nach dem Gefecht ersetzt der Träger verlorene Mambas zum Werftpreis, solange das Geld reicht. Steht im Protokoll.', !!s.wingAuto, s.wingAuto ? 'An' : 'Aus', 'wing-auto', { id: s.id })}
+    <div class="row">${icon('arrowRight', 20)}<div class="grow"><div class="title">Mamba starten</div><div class="sub wrap">Eine Mamba verlässt den Hangar und fliegt als eigenes Schiff. Eigene Mambas landen über die Befehlskugel („Landen“) oder ihr Fenster.</div></div>
+      <button class="btn small ${w > 0 && s.engage == null ? '' : 'disabled'}" ${act('wing-launch', { id: s.id })}>Starten</button></div>
+  </div></div>`;
+}
+
+/** Mamba: im Hangar eines Trägers landen */
+function dockBox(state: GameState, s: Ship): string {
+  const carriers = state.ships.filter((x) => x.cls === 'raptor' && !x.disabled);
+  if (!carriers.length) return '';
+  const going = s.combat?.kind === 'dock' ? s.combat.carrier : '';
+  return `<div class="section"><h3>Im Träger landen</h3><div class="box rows">${carriers.map((c) => `<div class="row">${icon('fighter', 20)}<div class="grow"><div class="title">${esc(c.name)}</div><div class="sub">${esc(sector(c.sector).name)} · ${wingOf(c)} von ${CARRIER_WING_MAX} an Bord</div></div>
+    <button class="btn small ${going === c.id || wingOf(c) >= CARRIER_WING_MAX ? 'disabled' : ''}" ${act('wing-dock', { id: s.id, carrier: c.id })}>${going === c.id ? 'Im Anflug' : 'Landen'}</button></div>`).join('')}</div>
+    <p class="small muted" style="margin:6px 0 0">Die Mamba fliegt zum Träger, landet und kämpft danach als Teil seiner Staffel.</p></div>`;
+}
+
 /** Fenster eines Kampfschiffs: Werte, Befehl (Wache, Patrouille, Geleit, Flieg zu), Heimatstation */
 function fighterPanel(state: GameState, s: Ship, p: Panel): string {
   const c = SHIP_MAP[s.cls], cb = c.combat!;
@@ -763,9 +795,8 @@ function fighterPanel(state: GameState, s: Ship, p: Panel): string {
       <div><small>Schaden/s</small><b>${fmtInt(cb.dps)}</b></div>
       <div class="wide"><small>Bewaffnung</small><b style="font-size:15px">${c.size === 'L' || c.size === 'XL' ? c.parts.filter((x) => /Hauptbatterie|turm/.test(x.name)).map((x) => `${x.count} × ${esc(x.name)}`).join(' · ') : `${cb.guns} Pulslaser ${c.size}${cb.turrets ? ` · ${cb.turrets} Puls-Lasertürme M` : ''}`}</b></div>
     </div></div>
-    ${s.cls === 'raptor' ? `<div class="section"><h3>Hangar</h3><div class="box rows"><div class="row">${icon('fighter', 20)}<div class="grow"><div class="title">${wingOf(s)} von ${CARRIER_WING_MAX} Mambas an Bord</div>
-      <div class="sub wrap">Schwärmen bei Gefechten aus und kämpfen mit (je Mamba Kampfwert ${fmtInt((SHIP_MAP[WING_CLS].combat?.power ?? 0) * 0.8)}). Sie fangen einen Teil des Feuers ab – Verluste ersetzt du hier.</div></div>
-      <button class="btn small ${wingOf(s) < CARRIER_WING_MAX && state.credits >= SHIP_MAP[WING_CLS].price ? '' : 'disabled'}" ${act('wing-buy', { id: s.id })}>+1 · ${fmtCr(SHIP_MAP[WING_CLS].price)}</button></div></div></div>` : ''}
+    ${s.cls === 'raptor' ? hangarBox(state, s) : ''}
+    ${s.cls === WING_CLS ? dockBox(state, s) : ''}
     ${s.cls === 'rattlesnake' ? `<div class="section"><div class="box rows"><div class="row">${icon('target', 20)}<div class="grow"><div class="title">Fernfeuer der Hauptbatterie</div><div class="sub wrap">Beschießt Rotten im selben Sektor schon aus bis zu ${ARTY_R} km Entfernung, bevor sie herankommen – dort kann sie nicht zurückschießen.</div></div></div></div></div>` : ''}
     <div class="section"><h3>Befehl ${helpBtn('fighters')}</h3>
       <p class="small" style="margin:0 0 6px">Aktiv: <b>${esc(combatOrderText(state, o))}</b></p>
