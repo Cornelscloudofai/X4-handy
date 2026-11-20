@@ -799,6 +799,11 @@ export class ShooterGame implements MiniGame {
   private dashT = 0;
   // Ausrüstung: Schiff, Bordwaffe, Turmwaffe, Schild
   private readonly ship: ShipDef;
+  /**
+   * Größe des Frachters (M-Klasse) im gewählten Maßstab: so groß, dass seine Gatling-Türme so groß sind wie die Türme
+   * der Cobra (Bild, Turmplätze, Trefferzone und Anzeigen wachsen mit)
+   */
+  private readonly fk: number;
   private readonly wpn: GameGun;
   /** Waffenart (für den Schussklang) */
   private readonly wpnId: string;
@@ -975,6 +980,7 @@ export class ShooterGame implements MiniGame {
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
     ];
     this.ship = SHIPS[lo.ship];
+    this.fk = Math.max(1, (SHIPS.cobra.size * (SHIPS.cobra.turretD ?? 0.1)) / F_GAT.size);
     this.controls = [...this.controls, 'Auge-Taste neben dem Zoom: freie Sicht (ziehen verschiebt, zwei Finger zoomen, Schiff antippen = folgen), nochmal: Beobachter, der dem Gefecht folgt. Radar antippen: taktische Karte in Zeitlupe – dort einen Gegner antippen, und die Staffel greift ihn an'];
     if (this.ship.turrets.length) this.controls = [...this.controls, `Turmbefehle: Knopf ${this.ship.lMounts?.length ? '„M“ bzw. „L“' : '„M“'} links halten und wischen – nach oben alle Ziele, links zuerst S-Schiffe (Jäger), rechts M-Schiffe (Boote), unten L-Schiffe (Fregatte, K-Segment); antippen schaltet weiter. Raketen schießen die M-Türme nur bei „alle“ und „S“ ab`];
     // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
@@ -1213,7 +1219,7 @@ export class ShooterGame implements MiniGame {
     const m = this.mission;
     const frachter = (ox: number, oy = 0, ph = 0, name = 'Frachter'): Ward => ({
       kind: 'frachter', name, ox, oy, hull: F_MAX, max: F_MAX, flash: 0, dead: false, ph,
-      tur: [{ ox: 0, oy: -30, cd: 0, a: -Math.PI / 2, hp: 1, max: 1 }, { ox: 0, oy: 34, cd: 0.3, a: Math.PI / 2, hp: 1, max: 1 }],
+      tur: [{ ox: 0, oy: -30 * this.fk, cd: 0, a: -Math.PI / 2, hp: 1, max: 1 }, { ox: 0, oy: 34 * this.fk, cd: 0.3, a: Math.PI / 2, hp: 1, max: 1 }],
     });
     this.WW = Math.max(MAP_W, Math.round(this.ship.size * 2.2));
     // Rand oben und unten: mit großer Karte entsprechend mehr Platz (lange Schiffe ragen sonst über den Rand)
@@ -1291,7 +1297,7 @@ export class ShooterGame implements MiniGame {
   /** Liegt der Punkt im Schutzziel? (Frachter: längliche Box, Station: Kreis) */
   private wardHit(w: Ward, x: number, y: number, pad = 0): boolean {
     const dx = x - this.wx(w), dy = y - this.wy(w);
-    return w.kind === 'station' ? Math.hypot(dx, dy) < STATION_R + pad : Math.abs(dx) < 20 + pad && Math.abs(dy) < 46 + pad;
+    return w.kind === 'station' ? Math.hypot(dx, dy) < STATION_R + pad : Math.abs(dx) < 20 * this.fk + pad && Math.abs(dy) < 46 * this.fk + pad;
   }
   private wardAt(x: number, y: number, pad = 0): Ward | undefined {
     return this.wards.find((w) => !w.dead && this.wardHit(w, x, y, pad));
@@ -1300,7 +1306,7 @@ export class ShooterGame implements MiniGame {
   private beamOnWard(w: Ward, dist: (x: number, y: number) => number): boolean {
     const x = this.wx(w), y = this.wy(w);
     if (w.kind === 'station') return dist(x, y) < STATION_R * 0.8;
-    for (let k = -40; k <= 40; k += 10) if (dist(x, y + k) < 16) return true;
+    for (let k = -40; k <= 40; k += 10) if (dist(x, y + k * this.fk) < 16 * this.fk) return true;
     return false;
   }
   /** Ziel eines Gegners (bzw. einer Rakete): sein Schutzziel, sonst das nächste, das noch steht (null = keins mehr) */
@@ -4578,7 +4584,7 @@ export class ShooterGame implements MiniGame {
               // Kyon-Jäger: zwei Strahlen je Anflug
               const salvo = e.kind === 'kj' || e.kind === 'ka' ? 3 : 5;
               // Anflug vorbei: Salve abgegeben, zu nah dran oder zu lange
-              if ((e.shots ?? 0) >= salvo || d < (onP ? 90 : 95) || e.runT > 5) {
+              if ((e.shots ?? 0) >= salvo || d < (onP ? 90 : 50 + 46 * this.fk) || e.runT > 5) {
                 e.dir = this.r() < 0.5 ? 1 : -1;
                 e.brk = 0.9 + this.r() * 0.8;
                 e.brkA = e.ang + e.dir * (0.9 + this.r() * 0.6);
@@ -6006,7 +6012,7 @@ export class ShooterGame implements MiniGame {
     }
     ctx.save();
     ctx.translate(x, y);
-    ctx.scale(shrink, shrink);
+    ctx.scale(shrink * this.fk, shrink * this.fk);
     const spr = projectileSprite('frachter-m-ki');
     if (spr) {
       // Bild-Grafik: Containerschiff, gut 105 px lang; vier flackernde Triebwerke; Treffer blitzen hell auf
@@ -6067,13 +6073,13 @@ export class ShooterGame implements MiniGame {
     }
     ctx.restore();
     if (!jump) this.drawWardTurrets(ctx, w);
-    this.drawWardHull(ctx, w, x, y + 62, 60);
+    this.drawWardHull(ctx, w, x, y + 62 * this.fk, 60 * Math.min(this.fk, 1.6));
     if (this.wards.length > 1 || w.kind === 'berger') {
       ctx.save();
       ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(228,243,240,0.75)';
-      ctx.fillText(w.kind === 'berger' ? 'Bergungsschiff' : w.name, x, y + 80);
+      ctx.fillText(w.kind === 'berger' ? 'Bergungsschiff' : w.name, x, y + 62 * this.fk + 18);
       ctx.restore();
     }
   }
@@ -6132,11 +6138,11 @@ export class ShooterGame implements MiniGame {
         continue;
       }
       if (ts) {
-        const W = (st ? 30 : F_GAT.size) / ts.d;
+        const W = (st ? 30 : F_GAT.size * this.fk) / ts.d;
         ctx.rotate(tur.a + Math.PI / 2);
         ctx.drawImage(ts.img, -ts.px * W, -ts.py * W, W, W);
       } else {
-        const r = st ? 8 : 4.5;
+        const r = st ? 8 : 4.5 * this.fk;
         ctx.fillStyle = '#0a1a24';
         ctx.strokeStyle = st ? '#ffb070' : '#9fe6ff';
         ctx.lineWidth = 1.3;
