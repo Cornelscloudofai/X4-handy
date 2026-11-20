@@ -315,6 +315,29 @@ const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schil
  * nachladen – im Mittel so viel Wirkung wie die früheren Einzelschüsse; Sockeldurchmesser size
  */
 const F_GAT = { cd: 0.1, dmg: 0.55, mag: 30, reload: 2, size: 10 };
+/** Nebel: Sichtweite um dein Schiff und um jedes Schutzziel (Spielpunkte) */
+const FOG_SEE = 520, FOG_WARD = 300;
+/** Wolkenstruktur des Nebels (einmal erzeugt, als Muster wiederholt) */
+let fogTex: HTMLCanvasElement | null = null;
+function fogTexture(): HTMLCanvasElement | null {
+  if (fogTex || typeof document === 'undefined') return fogTex;
+  const S = 512, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  const r = rng(0x4e45);
+  // weiche Ballen, an den Rändern umlaufend gezeichnet, damit das Muster nahtlos kachelt
+  for (let i = 0; i < 70; i++) {
+    const x = r() * S, y = r() * S, rad = 40 + r() * 120, a = 0.05 + r() * 0.1;
+    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+      const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
+      gr.addColorStop(0, `rgba(200,200,205,${a})`);
+      gr.addColorStop(1, 'rgba(200,200,205,0)');
+      g.fillStyle = gr;
+      g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
+    }
+  }
+  return (fogTex = c);
+}
 const RB_SALVO = 6, RB_DMG = 6, RB_LOCK = 2.2, RB_LOCK_P = 0.9, RB_CD = 5.5;
 /** Vereinzelte Lenkraketen anderer Gegner (wie die eigenen Kampfschiffe): Abstand zwischen zwei Abschüssen, Raketen je Abschuss */
 const SIDE_MSL: Partial<Record<EKind, { cd: number; n: number }>> = { jaeger: { cd: 17, n: 1 }, kanone: { cd: 11, n: 2 }, m: { cd: 14, n: 1 }, p: { cd: 10, n: 2 } };
@@ -908,8 +931,11 @@ export class ShooterGame implements MiniGame {
   private pickups: Pickup[] = [];
   private rocks: Rock[] = [];
   private mines: Mine[] = [];
-  private section: 'none' | 'rocks' | 'mines' = 'none';
-  private sectionPlan: ('none' | 'rocks' | 'mines')[] = [];
+  private section: 'none' | 'rocks' | 'mines' | 'nebel' = 'none';
+  private sectionPlan: ('none' | 'rocks' | 'mines' | 'nebel')[] = [];
+  /** Nebel: Dichte 0–1 (blendet beim Abschnittswechsel weich ein und aus) und Zeichenfläche für den Schleier */
+  private fog = 0;
+  private fogCv: HTMLCanvasElement | null = null;
   // Ablauf
   private wave = -1;
   private waveT = 0;
@@ -1079,6 +1105,9 @@ export class ShooterGame implements MiniGame {
     if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
     for (let i = 0; i < 40; i++) this.sectionPlan.push(this.mutator?.id === 'mines' ? 'mines' : i === 0 ? 'none' : this.r() < 0.45 ? (this.r() < 0.5 ? 'rocks' : 'mines') : 'none');
+    // Nebelfelder ab der dritten Welle (eigener Zufall, damit sich die übrige Abfolge nicht verschiebt)
+    const fr = rng(cfg.seed ^ 0x4e45);
+    for (let i = 2; i < 40; i++) if (this.sectionPlan[i] === 'none' && fr() < 0.4) this.sectionPlan[i] = 'nebel';
   }
 
   // ---------- abgeleitete Werte ----------
@@ -2823,7 +2852,7 @@ export class ShooterGame implements MiniGame {
       if (this.wave === 0 && this.place) this.bannerSub = `${this.place.name} · ${this.bannerSub}`;
       if (this.wave === 0 && this.mission === 'ueberfall') this.bannerText = 'PIRATENKONVOI';
       if (this.wave === 0 && this.mission === 'nest') this.bannerText = this.side === 'khaak' ? 'KHA’AK-NEST' : 'XENON-NEST';
-      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
+      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : this.section === 'nebel' ? ' · Nebelfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
     // Nachschub vom Frachter nach jeder überstandenen Welle: ein Viertel des Raketenlagers
@@ -3588,6 +3617,8 @@ export class ShooterGame implements MiniGame {
     if (this.choosing) return;
     this.time += dt;
     this.score.update(dt);
+    // Nebel zieht weich auf bzw. lichtet sich
+    this.fog += ((this.section === 'nebel' ? 1 : 0) - this.fog) * Math.min(1, dt * 0.7);
     this.shieldHit = Math.max(0, this.shieldHit - dt);
     if (this.wave < 0 && this.time > 0.8) this.spawnWave();
     this.waveT += dt;
@@ -3972,7 +4003,8 @@ export class ShooterGame implements MiniGame {
     if (this.sprintT > 0 && Math.random() < 0.8) this.fx.add({ x: this.px - Math.cos(this.aimA) * this.ship.size * 0.4, y: this.py - Math.sin(this.aimA) * this.ship.size * 0.4, color: '#ffb070', size: 1.8, max: 0.3 });
     // Vorhaltepunkte: für jeden Gegner in Feuerreichweite (nach vorn und zur Seite); Hauptziel ist der, dessen
     // Vorhaltepunkt der Mittelachse am nächsten liegt – auf ihn schwenken die Bordkanonen
-    const lockR = Math.max(520, this.reach) * (1 + this.m('lock'));
+    // im Nebel reicht die Zielerfassung nur so weit, wie man sieht
+    const lockR = Math.min(Math.max(520, this.reach) * (1 + this.m('lock')), this.fogSee);
     const leads: { e: Enemy; x: number; y: number; off: number; d: number }[] = [];
     for (const e of this.enemies) {
       if (e.kind === 'boss' && e.shielded) continue;
@@ -5549,6 +5581,7 @@ export class ShooterGame implements MiniGame {
     this.fx.draw(ctx);
     this.floats.draw(ctx);
     ctx.restore();
+    this.drawFog(ctx, t);
     this.drawIndicators(ctx);
     this.drawRadar(ctx);
     this.drawHullBars(ctx);
@@ -7060,7 +7093,7 @@ export class ShooterGame implements MiniGame {
     // Gruppen im Anflug auf den Frachter: Restzeit am Pfeil des vordersten Schiffs
     const lead = new Map<number, { e: Enemy; d: number }>();
     for (const e of this.enemies) {
-      if (e.parent || e.target !== 'f' || e.grp == null) continue;
+      if (e.parent || e.target !== 'f' || e.grp == null || !this.seen(e.x, e.y, e.r)) continue;
       const d = this.wardDist(e.x, e.y);
       const cur = lead.get(e.grp);
       if (!cur || d < cur.d) lead.set(e.grp, { e, d });
@@ -7070,7 +7103,7 @@ export class ShooterGame implements MiniGame {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const e of this.enemies) {
-      if (e.parent) continue;
+      if (e.parent || !this.seen(e.x, e.y, e.r)) continue;
       const pos = arrow(e.x, e.y, rgba(e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, 0.85), e.kind === 'boss' || e.kind === 'cargo' ? 9 : 6);
       const L = e.grp != null ? lead.get(e.grp) : undefined;
       if (pos && L && L.e === e && L.d > 220) {
@@ -7176,6 +7209,64 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Radar um den eigenen Jäger (±RADAR Welteinheiten); Gegner außerhalb erscheinen am Rand */
+  /** Sichtweite im Nebel (Spielpunkte um dein Schiff); ohne Nebel unbegrenzt */
+  private get fogSee(): number { return this.fog > 0.05 ? FOG_SEE + (1 - this.fog) * 3000 : Infinity; }
+  /** im Nebel sichtbar? Nah an dir, nah an einem Schutzziel (dessen Sensoren) oder ein Großkampfschiff im Umriss */
+  private seen(x: number, y: number, r = 0): boolean {
+    if (this.fog <= 0.05) return true;
+    if (Math.hypot(x - this.px, y - this.py) < this.fogSee + r) return true;
+    return this.liveWards.some((w) => Math.hypot(x - this.wx(w), y - this.wy(w)) < FOG_WARD + r);
+  }
+
+  /**
+   * Nebelschleier über dem Kampfgeschehen: dichte, langsam ziehende Schwaden in der Farbe des Schauplatzes, mit einem
+   * klaren Sichtkreis um dein Schiff und einem kleineren um jedes Schutzziel (dessen Sensoren). Gezeichnet in voller
+   * Bildschirmauflösung.
+   */
+  private drawFog(ctx: CanvasRenderingContext2D, t: number): void {
+    if (this.fog <= 0.01 || typeof document === 'undefined') return;
+    const cw = ctx.canvas.width, ch = ctx.canvas.height, k = cw / this.w;
+    const cv = this.fogCv ?? (this.fogCv = document.createElement('canvas'));
+    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+    const f = cv.getContext('2d')!;
+    f.setTransform(1, 0, 0, 1, 0, 0);
+    f.globalCompositeOperation = 'source-over';
+    f.clearRect(0, 0, cw, ch);
+    const tint = this.side === 'pirate' ? [58, 48, 42] : this.side === 'xenon' ? [62, 36, 40] : [46, 36, 62];
+    f.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${0.9 * this.fog})`;
+    f.fillRect(0, 0, cw, ch);
+    // Schwaden: zwei Lagen weicher Wolken, ziehen langsam und mit der Kamera (Tiefe)
+    const tex = fogTexture();
+    if (tex) {
+      for (const [par, sp, a, sc] of [[0.35, 9, 0.55, 1.6], [0.6, -14, 0.4, 1]] as const) {
+        const pat = f.createPattern(tex, 'repeat')!;
+        const z = this.zoom * k * sc;
+        pat.setTransform(new DOMMatrix().translate(-(this.camX * par + t * sp) * this.zoom * k, -(this.camY * par + t * sp * 0.4) * this.zoom * k).scale(z, z));
+        f.globalAlpha = a * this.fog;
+        f.globalCompositeOperation = 'lighter';
+        f.fillStyle = pat;
+        f.fillRect(0, 0, cw, ch);
+      }
+      f.globalAlpha = 1;
+    }
+    // Sichtkreise ausschneiden: weicher Rand
+    f.globalCompositeOperation = 'destination-out';
+    const hole = (wx: number, wy: number, r: number) => {
+      const sx = (wx - this.camX) * this.zoom * k, sy = (wy - this.camY) * this.zoom * k, R = r * this.zoom * k;
+      const g = f.createRadialGradient(sx, sy, R * 0.55, sx, sy, R);
+      g.addColorStop(0, 'rgba(0,0,0,1)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      f.fillStyle = g;
+      f.beginPath(); f.arc(sx, sy, R, 0, Math.PI * 2); f.fill();
+    };
+    hole(this.px, this.py, this.fogSee * 1.1);
+    for (const w of this.liveWards) hole(this.wx(w), this.wy(w), FOG_WARD * 1.1);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(cv, 0, 0);
+    ctx.restore();
+  }
+
   private drawRadar(ctx: CanvasRenderingContext2D): void {
     const RADAR = 1500, rw = 92, rh = 92;
     const x0 = this.w - rw - 10, y0 = TOP + 6;
@@ -7215,7 +7306,16 @@ export class ShooterGame implements MiniGame {
     for (const k of this.rocks) dot(pos(k.x, k.y), 'rgba(168,154,138,0.6)', 1.2);
     for (const m of this.mines) dot(pos(m.x, m.y), 'rgba(255,181,71,0.7)', 1);
     for (const p of this.pickups) dot(pos(p.x, p.y), '#6be38f', 1.4);
-    for (const e of this.enemies) if (!e.parent) dot(pos(e.x, e.y, true), e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, e.kind === 'boss' || e.kind === 'cargo' ? 3 : 1.7);
+    for (const e of this.enemies) if (!e.parent && this.seen(e.x, e.y, e.r)) dot(pos(e.x, e.y, true), e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, e.kind === 'boss' || e.kind === 'cargo' ? 3 : 1.7);
+    // Nebel: Radar rauscht, Sichtkreis eingezeichnet
+    if (this.fog > 0.05) {
+      ctx.fillStyle = `rgba(160,170,180,${0.08 * this.fog})`;
+      for (let i = 0; i < 40; i++) ctx.fillRect(x0 + Math.random() * rw, y0 + Math.random() * rh, 1, 1);
+      ctx.strokeStyle = `rgba(228,243,240,${0.3 * this.fog})`;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(cx, cy, this.fogSee * sc, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
     for (const fp of wps) dot(fp, '#5ff0d8', 2.8);
     // eigener Jäger als kleiner Pfeil
     ctx.translate(cx, cy);
