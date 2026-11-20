@@ -10,7 +10,7 @@ import { SHIP_MAP } from '../data/ships';
 import * as A from '../engine/actions';
 import { PATROL_R, PATROL_R_MIN, orderGroup } from '../engine/combat';
 import { hostileState, hostilesIn, sendDefense, spawnHostile } from '../engine/hostiles';
-import { FLAGSHIP_GAME, battleLevel, buyWingFighter, flagshipIn, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
+import { FLAGSHIP_GAME, applyWingLosses, battleLevel, buyWingFighter, flagshipIn, resolveBattle, salvageWreck, wrecksOf } from '../engine/battle';
 import { disableShip } from '../engine/tow';
 import { loadoutFor } from '../minigames/loadout';
 import { acceptContract } from '../engine/contracts';
@@ -1284,6 +1284,8 @@ function onClick(e: MouseEvent): void {
             if (r.hullLeft <= 0) disableShip(state, flag, `wurde im Gefecht mit ${h.foe === 'xenon' ? 'den Xenon' : h.foe === 'khaak' ? 'den Kha’ak' : 'den Piraten'} niedergekämpft`);
             else flag.hp = Math.min(flag.hp ?? 1, Math.max(0.05, r.hullLeft));
           }
+          // gefallene Mambas fehlen danach auch im Hangar des Raptors
+          if (r && flag && state.ships.includes(flag) && flag.cls === 'raptor') applyWingLosses(state, flag, r.wingLost, h.foe);
           if (r) { const msg = resolveBattle(state, h.id, r.stars, flag); if (msg) toast(msg, r.stars ? 'good' : 'info'); }
           refresh();
         });

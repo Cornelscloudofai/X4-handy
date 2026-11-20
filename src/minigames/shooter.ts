@@ -150,6 +150,8 @@ interface Enemy {
   brk?: number; brkA?: number; shots?: number; runT?: number;
   /** Gruppe, mit der der Gegner angeflogen kam */
   grp?: number;
+  /** Formationsflug der Jägergruppe: Platz (0 = Führer); entfällt, sobald die Formation aufbricht; formT: Zeit darin */
+  form?: number; formT?: number;
   /** gehört zu einem Schwarm kleiner Schiffe: greift mit mehr Schiffen zugleich an */
   swarm?: boolean;
   /** Boss-Teile: Eltern und Versatz */
@@ -2830,6 +2832,30 @@ export class ShooterGame implements MiniGame {
     return { kind, x, y, vx: 0, vy: 0, hp, max: hp, sh, shMax: sh, shT: 9, shFlash: 0, cd: 1 + this.r() * 1.5, r: kind === 'turret' || kind === 'boss' ? s.r : s.r * enemyScale(kind, this.side), target: 'f', orbit: this.r() * Math.PI * 2, flash: 0, dir: this.r() < 0.5 ? 1 : -1, shielded: false, ang: -Math.PI / 2, inside: true };
   }
 
+  /**
+   * Formationsflug einer Jägergruppe (Keil): Führer (kleinster Platz) fliegt aufs Ziel, die anderen links und rechts
+   * versetzt dahinter. Bricht auf bei 1000 Abstand zum Ziel, bei einem Treffer in der Gruppe oder nach 8 s – dann null
+   * (geschlossen und geradlinig wären sie sonst zu leicht zu treffen).
+   */
+  private formationStep(e: Enemy, dt: number, d: number, dx: number, dy: number, speed: number): { want: number; sp: number; face: number } | null {
+    const mates = this.enemies.filter((q) => q.grp === e.grp && q.form != null);
+    e.formT = (e.formT ?? 0) + dt;
+    const hit = mates.some((q) => q.hp < q.max || q.sh < q.shMax * 0.98);
+    if (mates.length < 2 || d < 1000 || hit || e.formT > 8) { for (const q of mates) q.form = undefined; return null; }
+    const lead = mates.reduce((a, q) => (q.form! < a.form! ? q : a));
+    if (lead === e) { const a = Math.atan2(dy, dx); return { want: a, sp: speed, face: a }; }
+    // Platz im Keil: 1 links, 2 rechts, 3 weiter links …; Abstand 60 seitlich, 55 nach hinten je Reihe
+    const k = mates.filter((q) => q !== lead && q.form! < e.form!).length + 1;
+    const row = Math.ceil(k / 2), side = k % 2 ? -1 : 1, f = lead.ang;
+    const sx = lead.x - Math.sin(f) * side * row * 60 - Math.cos(f) * row * 55;
+    const sy = lead.y + Math.cos(f) * side * row * 60 - Math.sin(f) * row * 55;
+    const gx = sx - e.x, gy = sy - e.y, gd = Math.hypot(gx, gy);
+    // Soll: Tempo und Kurs des Führers, dazu eine Korrektur zum Platz – so schießt keiner über seinen Platz hinaus
+    const vx = Math.cos(f) * speed + gx * 1.6, vy = Math.sin(f) * speed + gy * 1.6;
+    const want = Math.atan2(vy, vx);
+    return { want, sp: clamp(Math.hypot(vx, vy), speed * 0.5, speed * 1.35), face: gd < 40 ? f : want };
+  }
+
   private spawnGroup(list: EKind[], from: number, swarm = false): void {
     const [x0, y0] = this.farPoint(from);
     // Kha'ak-Schwärme fliegen als geschlossener Cluster
@@ -2850,6 +2876,9 @@ export class ShooterGame implements MiniGame {
         this.eliteRest--;
       }
       if (swarm) e.swarm = true;
+      // Jägergruppen der Piraten und Xenon kommen in Keilformation (Platz in der Reihenfolge des Anflugs); die Kha'ak
+      // fliegen ohnehin in ihren eigenen Clustern
+      else if (this.side !== 'khaak' && FIGHTERS.has(kind) && list.filter((k) => FIGHTERS.has(k)).length >= 2) e.form = list.slice(0, i).filter((k) => FIGHTERS.has(k)).length;
       // ohne Schutzziel (Überfall, Nest) geht es gleich auf dich
       if (!this.wards.length) e.target = 'p';
       e.ang = Math.atan2(this.fY - e.y, this.fX - e.x);
@@ -4458,37 +4487,42 @@ export class ShooterGame implements MiniGame {
       const fighter = FIGHTERS.has(e.kind);
       let want: number, sp = s.speed, face = aimAt;
       if (fighter) {
-        // Angriff in Anflügen: anfliegen, Salve abgeben, abdrehen und in einem Bogen weg, dann neuer Anflug.
-        // Auf den Jäger greifen höchstens zwei zugleich an – die anderen kreisen solange in Abstand.
-        if (e.brk && e.brk > 0) {
-          e.brk -= dt;
-          want = e.brkA!;
-          sp = s.speed * 1.15;
-        } else {
-          const attackers = onP ? this.enemies.filter((q) => q !== e && q.target === 'p' && FIGHTERS.has(q.kind) && (q.runT ?? 0) > 0).length : 0;
-          // je Gruppe höchstens zwei zugleich, insgesamt je nach Stärke deines Schiffs mehr (mehr Gruppen = mehr Druck)
-          const mates = onP && e.grp != null ? this.enemies.filter((q) => q !== e && q.grp === e.grp && q.target === 'p' && (q.runT ?? 0) > 0).length : 0;
-          // Schwärme greifen breiter an: bis zu fünf aus dem Schwarm zugleich, dazu drei über der Gesamtgrenze
-          if (onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) || mates >= (e.swarm ? 6 : 3)) && d < 420) {
-            // warten: seitlich um den Jäger kreisen
-            want = Math.atan2(dy, dx) + e.dir * (d < 260 ? 2.1 : 1.4);
-            sp = s.speed * 0.8;
+        // Formation: der Führer fliegt geradewegs aufs Ziel, die anderen halten ihren Platz im Keil – bis sie nah dran
+        // sind, einer getroffen wird oder die Zeit um ist; dann einzelne Anflüge wie sonst
+        const formed = e.form != null ? this.formationStep(e, dt, d, dx, dy, s.speed) : null;
+        if (formed) { want = formed.want; sp = formed.sp; face = formed.face; } else {
+          // Angriff in Anflügen: anfliegen, Salve abgeben, abdrehen und in einem Bogen weg, dann neuer Anflug.
+          // Auf den Jäger greifen höchstens zwei zugleich an – die anderen kreisen solange in Abstand.
+          if (e.brk && e.brk > 0) {
+            e.brk -= dt;
+            want = e.brkA!;
+            sp = s.speed * 1.15;
           } else {
-            want = aimAt;
-            e.runT = (e.runT ?? 0) + dt;
-            // Kyon-Jäger: zwei Strahlen je Anflug
-            const salvo = e.kind === 'kj' || e.kind === 'ka' ? 3 : 5;
-            // Anflug vorbei: Salve abgegeben, zu nah dran oder zu lange
-            if ((e.shots ?? 0) >= salvo || d < (onP ? 90 : 95) || e.runT > 5) {
-              e.dir = this.r() < 0.5 ? 1 : -1;
-              e.brk = 0.9 + this.r() * 0.8;
-              e.brkA = e.ang + e.dir * (0.9 + this.r() * 0.6);
-              e.shots = 0;
-              e.runT = 0;
+            const attackers = onP ? this.enemies.filter((q) => q !== e && q.target === 'p' && FIGHTERS.has(q.kind) && (q.runT ?? 0) > 0).length : 0;
+            // je Gruppe höchstens zwei zugleich, insgesamt je nach Stärke deines Schiffs mehr (mehr Gruppen = mehr Druck)
+            const mates = onP && e.grp != null ? this.enemies.filter((q) => q !== e && q.grp === e.grp && q.target === 'p' && (q.runT ?? 0) > 0).length : 0;
+            // Schwärme greifen breiter an: bis zu fünf aus dem Schwarm zugleich, dazu drei über der Gesamtgrenze
+            if (onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) || mates >= (e.swarm ? 6 : 3)) && d < 420) {
+              // warten: seitlich um den Jäger kreisen
+              want = Math.atan2(dy, dx) + e.dir * (d < 260 ? 2.1 : 1.4);
+              sp = s.speed * 0.8;
+            } else {
+              want = aimAt;
+              e.runT = (e.runT ?? 0) + dt;
+              // Kyon-Jäger: zwei Strahlen je Anflug
+              const salvo = e.kind === 'kj' || e.kind === 'ka' ? 3 : 5;
+              // Anflug vorbei: Salve abgegeben, zu nah dran oder zu lange
+              if ((e.shots ?? 0) >= salvo || d < (onP ? 90 : 95) || e.runT > 5) {
+                e.dir = this.r() < 0.5 ? 1 : -1;
+                e.brk = 0.9 + this.r() * 0.8;
+                e.brkA = e.ang + e.dir * (0.9 + this.r() * 0.6);
+                e.shots = 0;
+                e.runT = 0;
+              }
             }
           }
+          face = want;
         }
-        face = want;
       } else {
         let wx: number, wy: number;
         if (e.kind === 'schild' || e.kind === 'xs') {
@@ -5129,6 +5163,9 @@ export class ShooterGame implements MiniGame {
     const r = this.finishCore();
     r.report = this.report();
     r.hullLeft = this.outcome === 'player' ? 0 : this.hull / 100;
+    const lost: Partial<Record<string, number>> = {};
+    for (const w of this.wings) if (w.state === 'dead') lost[w.ship] = (lost[w.ship] ?? 0) + 1;
+    if (Object.keys(lost).length) r.wingLost = lost;
     return r;
   }
 

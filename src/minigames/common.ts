@@ -78,6 +78,8 @@ export interface GameResult {
   report?: ReportRow[];
   /** Kampf: Hülle des eigenen Schiffs am Ende (Anteil 0–1) – fürs Schiff im Sektor */
   hullLeft?: number;
+  /** Kampf: gefallene Begleitschiffe je Schiffstyp – fehlen danach auch dem Träger im Sektor */
+  wingLost?: Partial<Record<string, number>>;
 }
 
 /** Eine Zeile des Kampfprotokolls (shots/hits 0 = nicht gezählt, z. B. Dauerstrahl) */

@@ -54,6 +54,29 @@ describe('Großkampfschiff im Gefecht', () => {
   });
 });
 
+describe('Staffelverluste aus dem Minispiel', () => {
+  it('gefallene Mambas meldet das Minispiel – sie fehlen danach im Hangar des Raptors', async () => {
+    const { applyWingLosses, wingOf } = await import('../src/engine/battle');
+    const g = new ShooterGame({ level: 1, seed: 3, mutator: null, mode: 'normal', loadout: { ...loadoutFor('raptor'), wing: { mamba: 6 } } }, 'pirate');
+    g.resize(390, 780);
+    const wings = (g as unknown as { wings: { state: string; ship: string }[] }).wings;
+    expect(wings.length).toBe(6);
+    wings[0].state = 'dead'; wings[3].state = 'dead';
+    const r = g.abort();
+    expect(r.wingLost).toEqual({ mamba: 2 });
+    const s = setup();
+    const rp = ship(s, 'raptor', 20);
+    rp.wing = 6;
+    expect(applyWingLosses(s, rp, r.wingLost, 'pirates')).toBe(2);
+    expect(wingOf(rp)).toBe(4);
+    expect(s.log.some((l) => /2 Mambas im Gefecht/.test(l.text))).toBe(true);
+    // nie unter null, ohne Verluste keine Meldung
+    expect(applyWingLosses(s, rp, { mamba: 9 }, 'pirates')).toBe(4);
+    expect(wingOf(rp)).toBe(0);
+    expect(applyWingLosses(s, rp, undefined, 'pirates')).toBe(0);
+  });
+});
+
 describe('Träger und Zerstörer im Sektor', () => {
   it('Raptor: Mambas für den Hangar kaufen, sie kämpfen mit und fangen Feuer ab – Verluste kosten Mambas', async () => {
     const { buyWingFighter, wingOf, powerOf, stepBattles, CARRIER_WING_MAX } = await import('../src/engine/battle');

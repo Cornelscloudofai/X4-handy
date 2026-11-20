@@ -244,6 +244,18 @@ export function resolveBattle(state: GameState, hostileId: number, stars: number
   return `${FOE_NAME[h.foe]} vernichtet${hit ? ` – deine Kampfschiffe haben ${Math.round(hit * 100)} % Hülle verloren` : ' – ohne eigenen Schaden'}.`;
 }
 
+/**
+ * Selbst geflogenes Gefecht: Mambas, die im Minispiel gefallen sind, fehlen danach auch im Hangar des Trägers.
+ * Gibt die Zahl der verlorenen Mambas zurück.
+ */
+export function applyWingLosses(state: GameState, ship: Ship, lost: Partial<Record<string, number>> | undefined, foe: Hostile['foe']): number {
+  const n = Math.min(wingOf(ship), Math.max(0, Math.round(lost?.mamba ?? 0)));
+  if (!n) return 0;
+  ship.wing = wingOf(ship) - n;
+  log(state, `${ship.name}: ${n === 1 ? 'eine Mamba' : `${n} Mambas`} im Gefecht mit ${FOE_NAME[foe]} verloren – noch ${ship.wing} im Hangar.`, 'bad', false, { kind: 'ship', id: ship.id });
+  return n;
+}
+
 /** Schwierigkeit des Minispiels für ein Gefecht (nach Stärke der Rotte) */
 export const battleLevel = (h: Hostile): 1 | 2 | 3 => (h.power < 200 ? 1 : h.power < 400 ? 2 : 3);
 
