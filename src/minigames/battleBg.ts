@@ -1,7 +1,7 @@
 // Kampf-Schauplätze: Hintergrund der Kampf-Minispiele, wenn der Kampf nicht aus einem Sektor mit eigener Szene kommt.
 // Nichts davon ist ein großes Bild über dem ganzen Feld (das würde beim Heranzoomen unscharf):
 //   – Himmel am Bildschirm: Farbverlauf, gestochen scharfe Sterne (gezeichnet), weiche Nebelbilder (Unschärfe stört dort nicht)
-//   – fernes Objekt am Bildschirm (Mond, Tor …), gleitet kaum
+//   – fernes Objekt am Bildschirm (Mond, Tor …), gleitet kaum – links oder mittig, rechts oben liegt die Übersichtskarte
 //   – Tiefenebenen hinter der Spielebene: Wracks, Asteroiden, Kristalle, Nebelschwaden, Staub – mit festem Zufallswert in
 //     Zellen verteilt (beliebig großes Feld, nichts wird vorab erzeugt), jedes Teil nur so groß gezeichnet wie auf dem Schirm.
 // Tiefe: eine Ebene liegt um E hinter der Spielebene; ihr Maßstab ist 1 / (1/zoom + E). Ferne Ebenen gleiten dadurch
@@ -33,7 +33,15 @@ import ast4 from '../assets/sprites/asteroid-4-ki.webp';
 import astEis1 from '../assets/sprites/asteroid-eis-1-ki.webp';
 import astEis2 from '../assets/sprites/asteroid-eis-2-ki.webp';
 import astSil1 from '../assets/sprites/asteroid-silizium-1-ki.webp';
+import gasriese from '../assets/szenen/f-rhak/gasriese.webp';
+import handelsstation from '../assets/szenen/f-rhak/station.webp';
+import verkehr from '../assets/szenen/zyarth/verkehr.webp';
+import sonneGlut from '../assets/szenen/f-glut1/sonne.webp';
+import zwerg from '../assets/szenen/f-asche/sonne.webp';
+import ringTruemmer from '../assets/szenen/f-schmiede/ring.webp';
+import bastion from '../assets/szenen/ravine/bastion.webp';
 import { rgba } from './common';
+import type { Mission } from './missions';
 
 export type BattleSide = 'pirate' | 'xenon' | 'khaak';
 
@@ -56,7 +64,7 @@ interface Theme {
   sky: [string, string]; star: string;
   haze: { src: string; a: number; rot: number; x: number; y: number; s: number }[];
   /** fernes Objekt am Bildschirm: Lage (Anteile), Breite relativ zur kürzeren Seite, Helligkeit */
-  far?: { src: string; x: number; y: number; w: number; light: number; tint: string };
+  far?: { src: string; x: number; y: number; w: number; light: number; tint: string; glow?: { rgb: string; r: number; a: number } };
   layers: Layer[];
   /** Staub nah an der Spielebene (gezeichnet): Farbe, Dichte */
   motes: { rgb: string; n: number };
@@ -67,7 +75,7 @@ const THEMES: Record<BattleSide, Theme> = {
   pirate: {
     sky: ['#1a120d', '#050304'], star: '#ffe2c4',
     haze: [{ src: staubAsche, a: 0.5, rot: -0.35, x: 0.5, y: 0.35, s: 1.5 }, { src: nebelRhak, a: 0.22, rot: 2.6, x: 0.35, y: 0.85, s: 1.4 }],
-    far: { src: mondAsche, x: 0.84, y: 0.16, w: 0.62, light: 0.55, tint: '#2a1408' },
+    far: { src: mondAsche, x: 0.2, y: 0.17, w: 0.62, light: 0.55, tint: '#2a1408' },
     layers: [
       { E: 24, cell: 9000, fill: 0.5, light: 0.32, tint: '#1a0d06', pieces: [{ src: astErz1, size: 3800, spin: true }, { src: ast3, size: 3200, spin: true }, { src: container, size: 4200 }] },
       { E: 10, cell: 5200, fill: 0.55, light: 0.45, tint: '#1a0d06', pieces: [{ src: wrackBruecke, size: 3000 }, { src: wrackHeck, size: 3200 }, { src: wrackMitte, size: 3000 }, { src: ast2, size: 1800, spin: true }, { src: astErz3, size: 1700, spin: true }] },
@@ -93,7 +101,7 @@ const THEMES: Record<BattleSide, Theme> = {
   khaak: {
     sky: ['#120a1c', '#030208'], star: '#e6d4ff',
     haze: [{ src: nebelZhin, a: 0.3, rot: 0.5, x: 0.5, y: 0.3, s: 1.5 }, { src: nebelRhy, a: 0.3, rot: 3.6, x: 0.45, y: 0.85, s: 1.4 }],
-    far: { src: eisGross, x: 0.82, y: 0.18, w: 0.6, light: 0.55, tint: '#1a0b2a' },
+    far: { src: eisGross, x: 0.22, y: 0.19, w: 0.6, light: 0.55, tint: '#1a0b2a' },
     layers: [
       { E: 24, cell: 9000, fill: 0.55, light: 0.35, tint: '#140a24', pieces: [{ src: scholle, size: 4200, spin: true }, { src: astEis1, size: 3400, spin: true }, { src: astSil1, size: 3000, spin: true }] },
       { E: 13, cell: 15000, fill: 0.45, light: 0.4, tint: '#1c0a34', blend: 'screen', pieces: [{ src: nebelZhin, size: 17000 }, { src: nebelRhy, size: 15000 }] },
@@ -103,6 +111,29 @@ const THEMES: Record<BattleSide, Theme> = {
     motes: { rgb: '190,160,255', n: 3 },
   },
 };
+
+/**
+ * Einsätze: eigenes Motiv in der Ferne (und wo es passt, mehr vom Passenden) über dem Schauplatz des Gegners.
+ * Geleitschutz bleibt beim Grund-Schauplatz.
+ */
+function themeFor(side: BattleSide, mission: Mission | undefined): Theme {
+  const t = THEMES[side];
+  switch (mission) {
+    // Stationsverteidigung: die Station kreist über einem Gasriesen
+    case 'station': return { ...t, far: { src: gasriese, x: 0.3, y: 0.2, w: 0.95, light: 0.6, tint: '#140806' } };
+    // Konvoi: die Handelsstation, zu der er unterwegs ist, mit Verkehrslichtern davor
+    case 'konvoi': return { ...t, far: { src: handelsstation, x: 0.33, y: 0.17, w: 0.85, light: 0.6, tint: '#140806' }, haze: [...t.haze, { src: verkehr, a: 0.45, rot: -0.25, x: 0.35, y: 0.22, s: 1.1 }] };
+    // Flucht: vor einer Sonne im Ausbruch, deren Hof den Himmel färbt
+    case 'flucht': return { ...t, far: { src: sonneGlut, x: 0.42, y: 0.3, w: 0.42, light: 0.72, tint: '#401000', glow: { rgb: '255,140,60', r: 1.8, a: 0.22 } }, haze: [...t.haze, { src: nebelRhak, a: 0.25, rot: 0.6, x: 0.3, y: 0.2, s: 1.2 }] };
+    // Bergung: ein zerbrochener Stationsring, ringsum mehr Wrackteile
+    case 'bergung': return { ...t, far: { src: ringTruemmer, x: 0.5, y: 0.18, w: 1.1, light: 0.5, tint: '#120806' }, layers: [...t.layers, { E: 6, cell: 3800, fill: 0.55, light: 0.45, tint: '#1a0d06', pieces: [{ src: wrackBruecke, size: 2200 }, { src: wrackHeck, size: 2400 }, { src: wrackMitte, size: 2200 }, { src: container, size: 1600 }] }] };
+    // Überfall: die Bastion der Piraten, deren Frachter hier verkehren
+    case 'ueberfall': return { ...t, far: { src: bastion, x: 0.25, y: 0.21, w: 0.7, light: 0.55, tint: '#140806' } };
+    // Nest: am Rand eines roten Zwergs, dunkler und dichter
+    case 'nest': return { ...t, far: { src: zwerg, x: 0.25, y: 0.16, w: 0.7, light: 0.85, tint: '#300404', glow: { rgb: '255,70,50', r: 1.4, a: 0.2 } }, layers: t.layers.map((l) => ({ ...l, fill: Math.min(0.8, l.fill * 1.25), light: l.light * 0.85 })) };
+    default: return t;
+  }
+}
 
 /** Bilder einmal laden und je Färbung abgedunkelt vorbereiten (volle Auflösung) */
 const IMGS = new Map<string, HTMLImageElement>();
@@ -168,8 +199,8 @@ export class BattleBackdrop {
   private theme: Theme;
   private stars: { x: number; y: number; z: number; b: number }[] = [];
 
-  constructor(side: BattleSide, private seed: number) {
-    this.theme = THEMES[side];
+  constructor(side: BattleSide, private seed: number, mission?: Mission) {
+    this.theme = themeFor(side, mission);
     const r = (k: number) => hash(seed, k, 7, 1);
     for (let i = 0; i < 260; i++) this.stars.push({ x: r(i * 4), y: r(i * 4 + 1), z: 0.15 + r(i * 4 + 2) * 0.85, b: 0.3 + r(i * 4 + 3) * 0.7 });
     // Bilder schon jetzt anfordern
@@ -218,7 +249,19 @@ export class BattleBackdrop {
       const f = th.far, c = tinted(f.src, f.light, f.tint);
       if (c) {
         const fw = m * f.w * (1 + (zoom - 0.3) * 0.04), fh = (fw * c.height) / c.width;
-        ctx.drawImage(c, w * f.x - cx * 0.004 - fw / 2, h * f.y - cy * 0.004 - fh / 2, fw, fh);
+        const fx = w * f.x - cx * 0.004, fy = h * f.y - cy * 0.004;
+        // Lichthof (Sonne): färbt den Himmel ringsum
+        if (f.glow) {
+          const R = fw * f.glow.r, gr = ctx.createRadialGradient(fx, fy, fw * 0.2, fx, fy, R);
+          gr.addColorStop(0, `rgba(${f.glow.rgb},${f.glow.a})`);
+          gr.addColorStop(1, `rgba(${f.glow.rgb},0)`);
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+          ctx.fillStyle = gr;
+          ctx.fillRect(fx - R, fy - R, R * 2, R * 2);
+          ctx.restore();
+        }
+        ctx.drawImage(c, fx - fw / 2, fy - fh / 2, fw, fh);
       }
     }
     // Tiefenebenen, von fern nach nah

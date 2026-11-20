@@ -5278,7 +5278,7 @@ export class ShooterGame implements MiniGame {
       ctx.globalAlpha = 1;
     } else {
       // eigener Schauplatz je Gegner: Himmel, fernes Objekt, Tiefenebenen und Staub
-      this.backdrop ??= new BattleBackdrop(this.side, this.bgSeed);
+      this.backdrop ??= new BattleBackdrop(this.side, this.bgSeed, this.mission);
       this.backdrop.draw(ctx, this.w, this.h, this.camX + this.w / 2 / this.zoom, this.camY + this.h / 2 / this.zoom, this.zoom, t);
     }
     ctx.save();

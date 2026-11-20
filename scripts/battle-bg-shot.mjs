@@ -1,4 +1,4 @@
-// Kampf-Schauplätze: je Gegner (Piraten, Xenon, Kha'ak) ein Kampf aus dem Menü – Hintergrund mit Tiefenebenen statt
+// Kampf-Schauplätze: je Gegner (Piraten, Xenon, Kha'ak) und je Einsatz ein Kampf aus dem Menü – Hintergrund mit Tiefenebenen statt
 // leerem Sternhimmel, bei normalem und weitem Zoom, während des Flugs (Ebenen gleiten verschieden schnell).
 // node scripts/battle-bg-shot.mjs <outdir>
 import { chromium } from 'playwright';
@@ -22,23 +22,30 @@ const spread = () => page.evaluate(() => {
   const m = s / n; return Math.sqrt(s2 / n - m * m);
 });
 const res = {};
-for (const kind of ['pirates', 'xenon', 'khaak']) {
+// Grund-Schauplätze je Gegner, dazu die Einsätze mit eigenem Motiv in der Ferne
+const runs = [['pirates'], ['xenon'], ['khaak'], ['pirates', 'station'], ['xenon', 'konvoi'], ['khaak', 'flucht'], ['pirates', 'bergung'], ['pirates', 'ueberfall'], ['xenon', 'nest']];
+for (const [kind, mission] of runs) {
+  const name = mission ? `${kind}-${mission}` : kind;
   await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
   await page.waitForTimeout(300);
-  await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
+  if (mission) {
+    await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+    await page.waitForTimeout(250);
+    await page.click(`#modal [data-act="mg-mission"][data-mission="${mission}"][data-kind="${kind}"]`);
+  } else await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
   await page.waitForTimeout(400);
   await page.click('#minigame [data-mg="start"]');
   await page.waitForTimeout(2500);
   // Gegner aus dem Weg, damit der Hintergrund zu sehen ist
   await page.evaluate(() => { const g = window.__mg.game; g.enemies = g.enemies.filter((e) => e.kind === 'cargo'); });
   await page.waitForTimeout(800);
-  await page.screenshot({ path: `${out}/schauplatz-${kind}-1.png` });
+  await page.screenshot({ path: `${out}/schauplatz-${name}-1.png` });
   const a = await spread();
   await page.evaluate(() => { const g = window.__mg.game; g.zoom = g.zoomGoal = 0.12; });
   await page.waitForTimeout(800);
-  await page.screenshot({ path: `${out}/schauplatz-${kind}-weit.png` });
-  res[kind] = { nah: +a.toFixed(1), weit: +(await spread()).toFixed(1) };
-  if (a < 6) errors.push(`${kind}: Hintergrund fast leer (Streuung ${a.toFixed(1)})`);
+  await page.screenshot({ path: `${out}/schauplatz-${name}-weit.png` });
+  res[name] = { nah: +a.toFixed(1), weit: +(await spread()).toFixed(1) };
+  if (a < 6) errors.push(`${name}: Hintergrund fast leer (Streuung ${a.toFixed(1)})`);
   for (const sel of ['[data-mg="pause"]', '[data-mg="abort"]', '[data-mg="quit"]']) { if (await page.locator(`#minigame ${sel}`).count()) { await page.click(`#minigame ${sel}`).catch(() => {}); await page.waitForTimeout(200); } }
   await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.refresh(); });
   await page.waitForTimeout(300);
