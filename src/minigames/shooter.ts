@@ -224,6 +224,14 @@ function vibrate(ms: number): void {
   }
 }
 
+/**
+ * Vorhaltezeit bis zum Treffer: Strahlen und Lanzen treffen sofort (kein Vorhalt – sonst gingen sie am bewegten Ziel
+ * vorbei), Geschosse brauchen Entfernung durch Geschwindigkeit
+ */
+export function leadTime(w: { beam?: boolean; rail?: boolean; speed: number }, d: number): number {
+  return w.beam || w.rail ? 0 : d / Math.max(1, w.speed);
+}
+
 function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
@@ -1991,7 +1999,7 @@ export class ShooterGame implements MiniGame {
         if (w.tgt !== lt0) { w.phase = 'run'; w.phT = 0; }
         tgt = w.tgt;
         if (tgt) {
-          const d = Math.hypot(tgt.x - w.x, tgt.y - w.y), lt = d / Math.max(1, w.w.speed);
+          const d = Math.hypot(tgt.x - w.x, tgt.y - w.y), lt = leadTime(w.w, d);
           const lx = tgt.x + tgt.vx * lt, ly = tgt.y + tgt.vy * lt;
           if (w.def.cls !== 'S') {
             // Korvette/Fregatte: Abstand halten (zwei Drittel der Reichweite), seitwärts weitergleiten, Bug zum Ziel
@@ -2123,7 +2131,7 @@ export class ShooterGame implements MiniGame {
       const aim = this.turretAim(t, x, y, tw.range, 'alle', true, dt);
       if (!aim) continue;
       const tgt = aim.tgt, bd = aim.d;
-      const lt = tw.beam ? 0 : bd / tw.speed;
+      const lt = leadTime(tw, bd);
       const want = Math.atan2(tgt.y + aim.vy * lt - y, tgt.x + aim.vx * lt - x);
       t.a = wrapA(turnTo(t.a, want, dt * turn));
       if (tw.beam) {
@@ -2572,7 +2580,7 @@ export class ShooterGame implements MiniGame {
     }
     if (near && !best) { tx = near.x; ty = near.y; }
     if (best) {
-      const d = Math.hypot(best.x - this.px, best.y - this.py), t = this.wpn.beam ? 0 : d / this.wpn.speed;
+      const d = Math.hypot(best.x - this.px, best.y - this.py), t = leadTime(this.wpn, d);
       tx = best.x + best.vx * t; ty = best.y + best.vy * t;
     }
     const dx = tx - this.px, dy = ty - this.py, d = Math.hypot(dx, dy) || 1;
@@ -3850,7 +3858,7 @@ export class ShooterGame implements MiniGame {
       if (e.kind === 'boss' && e.shielded) continue;
       const d = Math.hypot(e.x - this.px, e.y - this.py);
       if (d > lockR) continue;
-      const t = this.wpn.beam ? 0 : d / this.wpn.speed;
+      const t = leadTime(this.wpn, d);
       const lx = e.x + (e.vx - this.pvx * 0.3) * t, ly = e.y + (e.vy - this.pvy * 0.3) * t;
       const off = Math.abs(wrapA(Math.atan2(ly - this.py, lx - this.px) - this.aimA));
       if (off <= LEAD_CONE) leads.push({ e, x: lx, y: ly, off, d });
@@ -4059,7 +4067,7 @@ export class ShooterGame implements MiniGame {
       const aim = this.turretAim(t, x, y, range, order, order === 'alle' || order === 'S', dt);
       if (!aim) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
       const tgt = aim.tgt, bd = aim.d;
-      const lt = w.beam ? 0 : bd / w.speed;
+      const lt = leadTime(w, bd);
       const want = Math.atan2(tgt.y + aim.vy * lt - y, tgt.x + aim.vx * lt - x);
       t.a = wrapA(turnTo(t.a, want, dt * turn));
       if (w.beam) {
