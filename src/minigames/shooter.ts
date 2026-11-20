@@ -314,7 +314,7 @@ const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schil
  * Neutronen-Gatling auf dem Frachter: dichter Strom (cd s je Schuss, dmg Schaden), nach mag Schuss reload s
  * nachladen – im Mittel so viel Wirkung wie die früheren Einzelschüsse; Sockeldurchmesser size
  */
-const F_GAT = { cd: 0.1, dmg: 0.55, mag: 30, reload: 2, size: 17 };
+const F_GAT = { cd: 0.1, dmg: 0.55, mag: 30, reload: 2, size: 10 };
 const RB_SALVO = 6, RB_DMG = 6, RB_LOCK = 2.2, RB_LOCK_P = 0.9, RB_CD = 5.5;
 /** Vereinzelte Lenkraketen anderer Gegner (wie die eigenen Kampfschiffe): Abstand zwischen zwei Abschüssen, Raketen je Abschuss */
 const SIDE_MSL: Partial<Record<EKind, { cd: number; n: number }>> = { jaeger: { cd: 17, n: 1 }, kanone: { cd: 11, n: 2 }, m: { cd: 14, n: 1 }, p: { cd: 10, n: 2 } };
