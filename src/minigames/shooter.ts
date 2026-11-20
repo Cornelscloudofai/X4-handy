@@ -21,7 +21,7 @@ import {
 } from './common';
 import { MISSION_GOALS, SHOOTER_ENDLESS_GOALS as ENDLESS_GOALS, SHOOTER_GOALS, SHOOTER_MUTATORS, SHOOTER_NORMAL_GOALS as NORMAL_GOALS } from './menuInfo';
 import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './shooterData';
-import { BattleBackdrop } from './battleBg';
+import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
 export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
@@ -316,28 +316,7 @@ const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schil
  */
 const F_GAT = { cd: 0.1, dmg: 0.55, mag: 30, reload: 2, size: 10 };
 /** Nebel: Sichtweite um dein Schiff und um jedes Schutzziel (Spielpunkte) */
-const FOG_SEE = 520, FOG_WARD = 300;
-/** Wolkenstruktur des Nebels (einmal erzeugt, als Muster wiederholt) */
-let fogTex: HTMLCanvasElement | null = null;
-function fogTexture(): HTMLCanvasElement | null {
-  if (fogTex || typeof document === 'undefined') return fogTex;
-  const S = 512, c = document.createElement('canvas');
-  c.width = c.height = S;
-  const g = c.getContext('2d')!;
-  const r = rng(0x4e45);
-  // weiche Ballen, an den Rändern umlaufend gezeichnet, damit das Muster nahtlos kachelt
-  for (let i = 0; i < 70; i++) {
-    const x = r() * S, y = r() * S, rad = 40 + r() * 120, a = 0.05 + r() * 0.1;
-    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
-      const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
-      gr.addColorStop(0, `rgba(200,200,205,${a})`);
-      gr.addColorStop(1, 'rgba(200,200,205,0)');
-      g.fillStyle = gr;
-      g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
-    }
-  }
-  return (fogTex = c);
-}
+const FOG_SEE = 460, FOG_WARD = 280;
 const RB_SALVO = 6, RB_DMG = 6, RB_LOCK = 2.2, RB_LOCK_P = 0.9, RB_CD = 5.5;
 /** Vereinzelte Lenkraketen anderer Gegner (wie die eigenen Kampfschiffe): Abstand zwischen zwei Abschüssen, Raketen je Abschuss */
 const SIDE_MSL: Partial<Record<EKind, { cd: number; n: number }>> = { jaeger: { cd: 17, n: 1 }, kanone: { cd: 11, n: 2 }, m: { cd: 14, n: 1 }, p: { cd: 10, n: 2 } };
@@ -936,6 +915,7 @@ export class ShooterGame implements MiniGame {
   /** Nebel: Dichte 0–1 (blendet beim Abschnittswechsel weich ein und aus) und Zeichenfläche für den Schleier */
   private fog = 0;
   private fogCv: HTMLCanvasElement | null = null;
+  private fogWarm = 0;
   // Ablauf
   private wave = -1;
   private waveT = 0;
@@ -3617,6 +3597,8 @@ export class ShooterGame implements MiniGame {
     if (this.choosing) return;
     this.time += dt;
     this.score.update(dt);
+    // Nebelschwaden vorab berechnen (eines je Sekunde, solange ein Nebelfeld ansteht), damit es beim Aufziehen nicht ruckelt
+    if (this.fogWarm < FOG_VEILS && this.time > 2 + this.fogWarm && this.sectionPlan.includes('nebel') && fogVeil(this.side, this.fogWarm, this.veilRgb)) this.fogWarm++;
     // Nebel zieht weich auf bzw. lichtet sich
     this.fog += ((this.section === 'nebel' ? 1 : 0) - this.fog) * Math.min(1, dt * 0.7);
     this.shieldHit = Math.max(0, this.shieldHit - dt);
@@ -7209,6 +7191,8 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Radar um den eigenen Jäger (±RADAR Welteinheiten); Gegner außerhalb erscheinen am Rand */
+  /** Farbe der Nebelschwaden je Gegner */
+  private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [178, 150, 128] : this.side === 'xenon' ? [196, 112, 118] : [150, 124, 205]; }
   /** Sichtweite im Nebel (Spielpunkte um dein Schiff); ohne Nebel unbegrenzt */
   private get fogSee(): number { return this.fog > 0.05 ? FOG_SEE + (1 - this.fog) * 3000 : Infinity; }
   /** im Nebel sichtbar? Nah an dir, nah an einem Schutzziel (dessen Sensoren) oder ein Großkampfschiff im Umriss */
@@ -7233,28 +7217,43 @@ export class ShooterGame implements MiniGame {
     f.globalCompositeOperation = 'source-over';
     f.clearRect(0, 0, cw, ch);
     const tint = this.side === 'pirate' ? [58, 48, 42] : this.side === 'xenon' ? [62, 36, 40] : [46, 36, 62];
-    f.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${0.9 * this.fog})`;
+    // dünner Grundschleier überall, darin die eigentlichen Schwaden
+    f.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${0.55 * this.fog})`;
     f.fillRect(0, 0, cw, ch);
-    // Schwaden: zwei Lagen weicher Wolken, ziehen langsam und mit der Kamera (Tiefe)
-    const tex = fogTexture();
-    if (tex) {
-      for (const [par, sp, a, sc] of [[0.35, 9, 0.55, 1.6], [0.6, -14, 0.4, 1]] as const) {
-        const pat = f.createPattern(tex, 'repeat')!;
-        const z = this.zoom * k * sc;
-        pat.setTransform(new DOMMatrix().translate(-(this.camX * par + t * sp) * this.zoom * k, -(this.camY * par + t * sp * 0.4) * this.zoom * k).scale(z, z));
-        f.globalAlpha = a * this.fog;
-        f.globalCompositeOperation = 'lighter';
-        f.fillStyle = pat;
-        f.fillRect(0, 0, cw, ch);
+    // Schwaden aus Gasnebel- und Staubbildern, in der Spielwelt verteilt (je Zelle fest gewürfelt): zwei Lagen, die
+    // hintere zieht etwas langsamer mit (Tiefe), beide driften langsam
+    const veilRgb = this.veilRgb, side = this.side;
+    const vw = this.w / this.zoom, vh = this.h / this.zoom;
+    // drei Lagen: weite Schwaden hinten, mittlere, dazu feine Fetzen dicht vor der Spielebene (ziehen am schnellsten)
+    for (const [lay, par, CELL, a0, sz] of [[0, 0.85, 1500, 0.75, 1], [1, 1, 1150, 0.9, 0.8], [2, 1.08, 650, 0.7, 0.42]] as const) {
+      const ox = this.camX * par + t * (lay === 2 ? 16 : lay ? 7 : -4), oy = this.camY * par + t * (lay === 2 ? -5 : lay ? 3 : 2);
+      const i0 = Math.floor((ox - 1800) / CELL), i1 = Math.floor((ox + vw + 1800) / CELL);
+      const j0 = Math.floor((oy - 1800) / CELL), j1 = Math.floor((oy + vh + 1800) / CELL);
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        const h1 = cellHash(i, j, lay, 11), h2 = cellHash(i, j, lay, 12), h3 = cellHash(i, j, lay, 13);
+        const v = fogVeil(side, Math.floor(h1 * FOG_VEILS), veilRgb);
+        if (!v) continue;
+        const size = (1700 + h2 * 1800) * sz;
+        const wx = (i + 0.2 + h2 * 0.6) * CELL, wy = (j + 0.2 + h3 * 0.6) * CELL;
+        const sx = (wx - ox) * this.zoom * k, sy = (wy - oy) * this.zoom * k;
+        const W = size * this.zoom * k, H = W * (v.height / v.width);
+        f.save();
+        f.translate(sx, sy);
+        f.rotate(h3 * Math.PI * 2);
+        f.globalAlpha = (a0 - h1 * 0.25) * this.fog;
+        f.drawImage(v, -W / 2, -H / 2, W, H);
+        f.restore();
       }
-      f.globalAlpha = 1;
     }
+    f.globalAlpha = 1;
     // Sichtkreise ausschneiden: weicher Rand
     f.globalCompositeOperation = 'destination-out';
     const hole = (wx: number, wy: number, r: number) => {
       const sx = (wx - this.camX) * this.zoom * k, sy = (wy - this.camY) * this.zoom * k, R = r * this.zoom * k;
-      const g = f.createRadialGradient(sx, sy, R * 0.55, sx, sy, R);
-      g.addColorStop(0, 'rgba(0,0,0,1)');
+      // auch im Sichtkreis bleibt ein Hauch Schleier – man sieht, dass man im Nebel fliegt
+      const g = f.createRadialGradient(sx, sy, R * 0.3, sx, sy, R);
+      g.addColorStop(0, 'rgba(0,0,0,0.78)');
+      g.addColorStop(0.5, 'rgba(0,0,0,0.6)');
       g.addColorStop(1, 'rgba(0,0,0,0)');
       f.fillStyle = g;
       f.beginPath(); f.arc(sx, sy, R, 0, Math.PI * 2); f.fill();

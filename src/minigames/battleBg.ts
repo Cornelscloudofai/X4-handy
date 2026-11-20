@@ -40,6 +40,10 @@ import sonneGlut from '../assets/szenen/f-glut1/sonne.webp';
 import zwerg from '../assets/szenen/f-asche/sonne.webp';
 import ringTruemmer from '../assets/szenen/f-schmiede/ring.webp';
 import bastion from '../assets/szenen/ravine/bastion.webp';
+import helium from '../assets/szenen/cascade/helium.webp';
+import methan from '../assets/szenen/cascade/methan.webp';
+import wasserstoff from '../assets/szenen/cascade/wasserstoff.webp';
+import nebelGlut from '../assets/szenen/f-glut1/nebel.webp';
 import { rgba } from './common';
 import type { Mission } from './missions';
 
@@ -187,7 +191,49 @@ function soft(src: string): HTMLCanvasElement | null {
   return c;
 }
 
+/**
+ * Nebelschleier für Nebelfelder im Kampf: aus den Gasnebel- und Staubbildern der Schauplätze. Die Helligkeit des Bildes
+ * wird zur Dichte des Schleiers, die Farbe zum Nebelton des Gegners hin gezogen (ein Rest der Bildfarbe bleibt); zum Rand
+ * weich auslaufend. Einmal je Bild und Gegner berechnet, in voller Bildauflösung.
+ */
+const FOG_SRC: Record<BattleSide, string[]> = {
+  pirate: [nebelRhak, staubAsche, helium, methan, staubTkr, nebelGlut],
+  xenon: [nebelRhy, nebelAusblick, wasserstoff, staubAsche, helium, nebelRhak],
+  khaak: [nebelZhin, nebelRhy, methan, wasserstoff, helium, nebelAusblick],
+};
+const VEILS = new Map<string, HTMLCanvasElement | null>();
+export const FOG_VEILS = 6;
+export function fogVeil(side: BattleSide, i: number, rgb: [number, number, number]): HTMLCanvasElement | null {
+  const src = FOG_SRC[side][i % FOG_SRC[side].length], key = `${src}|${side}`;
+  if (VEILS.has(key)) return VEILS.get(key)!;
+  const im = img(src);
+  if (!im || typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  const w = (c.width = im.naturalWidth), h = (c.height = im.naturalHeight);
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, w, h), px = d.data;
+  for (let y = 0; y < h; y++) {
+    const ny = (y / h) * 2 - 1;
+    for (let x = 0; x < w; x++) {
+      const k = (y * w + x) * 4, nx = (x / w) * 2 - 1;
+      const r = px[k], gg = px[k + 1], b = px[k + 2];
+      const lum = Math.max(r, gg, b) / 255;
+      // Rand: elliptisch weich ausblenden, damit keine Bildkanten zu sehen sind
+      const e = Math.min(1, Math.max(0, (1 - Math.hypot(nx, ny)) / 0.45));
+      px[k + 3] = Math.round(255 * Math.min(1, Math.pow(lum * 1.7, 0.75)) * e);
+      px[k] = Math.round(rgb[0] * 0.7 + r * 0.3);
+      px[k + 1] = Math.round(rgb[1] * 0.7 + gg * 0.3);
+      px[k + 2] = Math.round(rgb[2] * 0.7 + b * 0.3);
+    }
+  }
+  g.putImageData(d, 0, 0);
+  VEILS.set(key, c);
+  return c;
+}
+
 /** fester Zufallswert je Zelle (0…1), unabhängig von der Reihenfolge */
+export function cellHash(a: number, b: number, c: number, k: number): number { return hash(a, b, c, k); }
 function hash(a: number, b: number, c: number, k: number): number {
   let h = (a * 374761393 + b * 668265263 + c * 2147483647 + k * 1274126177) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
