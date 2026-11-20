@@ -2811,7 +2811,8 @@ export class ShooterGame implements MiniGame {
       // Großziele mitten in der Welle (ab Fregatten-Stärke): eine kleinere Fregatte bzw. ein K-Segment mit Türmen
       // in Einsätzen ab Stufe 2 auch mit kleinem Schiff ab der zweiten Welle eines (sonst sähe man Fregatte, Piratenträger
       // und Xenon K dort nie)
-      const bigs = this.power >= 10 ? (this.wave >= 1 ? 2 : 1) : (this.power >= 3.5 || (this.mission !== 'geleit' && this.level >= 2)) && this.wave >= 1 ? 1 : 0;
+      // – nie schon in der ersten Welle, die gehört dem Aufwärmen
+      const bigs = this.wave < 1 ? 0 : this.power >= 10 ? (this.wave >= 2 ? 2 : 1) : this.power >= 3.5 || (this.mission !== 'geleit' && this.level >= 2) ? 1 : 0;
       // in den Einsätzen gegen Piraten kommt statt der Fregatte manchmal der Piratenträger (ab Stufe 3 öfter)
       for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5), carrier: this.side === 'pirate' && this.mission !== 'geleit' && this.r() < (this.level >= 3 ? 0.5 : 0.3) });
       // Schwärme kleiner Schiffe: kommen fast gleichzeitig (innerhalb von gut einer Sekunde) aus verschiedenen
@@ -3104,6 +3105,24 @@ export class ShooterGame implements MiniGame {
       a.x = clamp(a.x - nx * push * sa, 20, this.WW - 20); a.y = clamp(a.y - ny * push * sa, 20, this.WH - 20);
       b.x = clamp(b.x + nx * push * sb, 20, this.WW - 20); b.y = clamp(b.y + ny * push * sb, 20, this.WH - 20);
     }
+  }
+
+  /** Reichweite der Bordwaffen eines Gegners (Bug), größere Schiffe etwas weiter */
+  private gunRange(e: Enemy): number {
+    return (e.kind === 'n' || e.kind === 'ks' ? 210 : e.kind === 'boss' ? 480 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320) + Math.max(0, e.r - SPEC[e.kind].r);
+  }
+
+  /**
+   * Abstand, den ein schweres Schiff (Kanonen-, Raketenboot, Korvette, Xenon P, Fregatte, Xenon K, Träger) zu seinem Ziel
+   * hält: am Rand seiner Waffenreichweite – mit Türmen die der meisten Türme, sonst die Bordwaffen. Großkampfschiffe
+   * bleiben so weit draußen, statt sich auf den Frachter zu schieben.
+   */
+  private standoff(e: Enemy): number {
+    const rs = this.enemies.filter((q) => q.parent === e && q.weapon !== 'brut').map((q) => this.turretRange(q)).sort((a, b) => a - b);
+    if (!rs.length) return this.gunRange(e) * 0.85;
+    // Reichweite der meisten Türme (Median) – die wenigen weit reichenden L-Türme würden das Schiff sonst ganz aus dem Bild
+    // treiben; mindestens so weit, dass zwischen Rumpf und Ziel deutlich Platz bleibt
+    return Math.max(rs[Math.floor(rs.length / 2)] * 0.85, e.r * 2.3 + 400);
   }
 
   /**
@@ -4610,7 +4629,8 @@ export class ShooterGame implements MiniGame {
         } else {
           // Kanonen-, Raketenboote, Xenon M und Boss: Abstand halten, langsam kreisen, Bug zum Ziel drehen
           // große Schiffe halten Abstand um ihren Rumpf herum
-          const keep = (e.kind === 'boss' ? 240 : e.kind === 'kanone' ? 190 : e.kind === 'rakete' ? 240 : e.kind === 'kk' ? 230 : 170) + Math.max(0, e.r - s.r) * 1.2;
+          // schwere Schiffe halten Abstand am Rand ihrer Waffenreichweite (dazu der halbe Frachter, wenn er das Ziel ist)
+          const keep = this.standoff(e) + (onP ? 0 : 46 * this.fk);
           const radial = clamp((d - keep) / 60, -1, 1);
           // Großkampfschiffe (mindestens doppelte Grundgröße, z. B. Xenon K, Piratenträger) kreisen nicht, sondern halten
           // ihre Stellung und gleiten nur wenig seitwärts; kleinere Bosse umkreisen ihr Ziel wie bisher
@@ -4651,7 +4671,7 @@ export class ShooterGame implements MiniGame {
       // Bordkanonen: nur wenn das Ziel genau vor dem Bug liegt
       e.cd -= dt;
       const off = Math.abs(wrapA(aimAt - e.ang));
-      const range = (e.kind === 'n' || e.kind === 'ks' ? 210 : e.kind === 'boss' ? 480 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320) + Math.max(0, e.r - s.r);
+      const range = this.gunRange(e);
       const cone = e.kind === 'kanone' ? 0.3 : e.kind === 'rakete' ? 0.6 : e.kind === 'kk' ? 0.35 : 0.16;
       // Jäger feuern nur im Anflug, nicht beim Abdrehen
       const breaking = fighter && !!e.brk && e.brk > 0;
@@ -5500,12 +5520,13 @@ export class ShooterGame implements MiniGame {
     for (const m of this.mines) this.drawMine(ctx, m, t);
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
+    // ganz unten die Großkampfschiffe der Gegner (Xenon K, Träger, Nester samt Türmen) – auch unter dem Frachter
+    for (const e of this.enemies) if (this.inBack(e)) this.drawEnemy(ctx, e, t);
     this.drawWards(ctx, t);
     // Ebenen: ganz hinten die Großkampfschiffe (eigenes L/XL-Schiff, Xenon K, Träger, Nester samt ihren Türmen),
     // darüber alle kleineren Schiffe und die Staffel, ganz oben alle Schüsse, Strahlen und Explosionen
     const bigMe = this.bigPlayer;
     if (bigMe && this.outcome !== 'player') this.drawPlayer(ctx, t);
-    for (const e of this.enemies) if (this.inBack(e)) this.drawEnemy(ctx, e, t);
     this.drawDying(ctx);
     if (!bigMe && this.outcome !== 'player') this.drawPlayer(ctx, t);
     // Staffel im Flug über dem eigenen Schiff (ohne Träger auch beim Start, den es dann nicht gibt)
