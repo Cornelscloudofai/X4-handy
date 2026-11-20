@@ -2,6 +2,18 @@
 
 Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 
+## Nächste Schritte Kampf (vorgemerkt, der Reihe nach)
+
+Nach Gegnerrollen und Raketenwarnung angehen:
+1. Umgebung als Mitspieler: Nebel (Radar und Zielhilfe kürzer, Gegner erst nah sichtbar), Wracks als Deckung (nur
+   Raketen kommen herum), Schwerkraftquellen (alles driftet, Raketen werden abgelenkt).
+2. Gegnerstärke an X4 angleichen: je Gegnertyp ein X4-Schiff als Vorbild (siehe „Kampf-Minispiel: offene Punkte“),
+   dann Wellen und Rundendauer prüfen.
+3. Takt-Effekte zur Kampfmusik „Invasion“ (Taktkarte liegt bereit): Bosswelle auf den kräftigen Abschnitt,
+   Mündungsfeuer und Sterne im Takt.
+4. Raptor-Nachschub über die eigene Werft (Abschnitt unten).
+5. Radio auf der Sektorkarte (Abschnitt unten; Lieder liefert der Spieler).
+
 ## Raptor-Staffel: Nachschub über die eigene Werft (vorgemerkt)
 
 - Heute: Mambas für den Hangar werden sofort und überall gekauft (Knopf „+1“, „Auffüllen“, auf Wunsch automatisch).

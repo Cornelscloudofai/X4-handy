@@ -161,6 +161,18 @@ function warn(): void {
   });
 }
 
+/** Raketenwarnung: kurzer heller Doppelpiep (gedämpft), wiederholt sich schneller, je näher die Rakete */
+function missileWarn(): void {
+  if (!gate('missileWarn', 150)) return;
+  play('sfx', { verb: 0.04, gain: 1 }, (g, o, t) => {
+    const lp = g.ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 3200;
+    lp.connect(o);
+    tone(g, lp, { f: hz(86), t, type: 'square', a: 0.002, d: 0.045, sus: 0.5, r: 0.02, gain: 0.03 });
+    tone(g, lp, { f: hz(86), t: t + 0.07, type: 'square', a: 0.002, d: 0.045, sus: 0.5, r: 0.02, gain: 0.03 });
+  });
+}
+
 /** Nachricht: Sonar-Ping mit langem Nachhall */
 function ping(): void {
   if (!gate('ping', 900)) return;
@@ -544,7 +556,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, turretShot, heavyShot, enemyShot, missile, hit, zap, kyon, phase, explosion, shield, hull, alarm, boss, pickup, fail,
+  shot, turretShot, heavyShot, enemyShot, missile, missileWarn, hit, zap, kyon, phase, explosion, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 

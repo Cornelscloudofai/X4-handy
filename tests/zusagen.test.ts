@@ -216,7 +216,7 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
     // zwei zähe Gegner links und rechts, gleich weit weg; dein Schiff schwenkt langsam hin und her
     const e1 = G.makeEnemy('kanone', a.px - 160, a.py - 120), e2 = G.makeEnemy('kanone', a.px + 160, a.py - 120);
-    for (const e of [e1, e2]) { e.hp = e.max = 1e9; e.cd = 1e9; }
+    for (const e of [e1, e2]) { e.hp = e.max = 1e9; e.cd = 1e9; (e as unknown as { mslCd: number }).mslCd = 1e9; }
     a.enemies.push(e1, e2);
     const t = G.pTur[0];
     let switches = 0, last: unknown = null, t0 = 0;

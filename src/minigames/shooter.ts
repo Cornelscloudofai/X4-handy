@@ -96,6 +96,8 @@ interface Ward {
   name: string;
   ox: number; oy: number;
   hull: number; max: number; flash: number;
+  /** Schadensbremse: Hülle, die er gerade noch voll verlieren darf (füllt sich mit der Zeit), Zeitpunkt der letzten Rechnung */
+  budget?: number; budgetT?: number;
   tur: { ox: number; oy: number; cd: number; a: number; hp: number; max: number }[];
   dead: boolean;
   /** Phase des Pendelns */
@@ -150,6 +152,12 @@ interface Enemy {
   brk?: number; brkA?: number; shots?: number; runT?: number;
   /** Gruppe, mit der der Gegner angeflogen kam */
   grp?: number;
+  /** Raketenboot: Zielerfassung läuft (Sekunden), gestört durch Treffer (Restzeit); laufende Salve (Raketen übrig, Takt) */
+  lockT?: number; jam?: number; mslQ?: number; mslT?: number;
+  /** vereinzelte Lenkraketen anderer Gegner: Zeit bis zum nächsten Abschuss */
+  mslCd?: number;
+  /** Abfangjäger-Rolle: Begleitschutz der Raketenboote, jagt immer dich statt den Frachter */
+  role?: 'abfang';
   /** Formationsflug der Jägergruppe: Platz (0 = Führer); entfällt, sobald die Formation aufbricht; formT: Zeit darin */
   form?: number; formT?: number;
   /** gehört zu einem Schwarm kleiner Schiffe: greift mit mehr Schiffen zugleich an */
@@ -259,7 +267,7 @@ interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: nu
 /** Senkrechtstart aus dem Silo: Steigen und Überkippen (Sekunden) */
 const SILO_RISE = 1.1;
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
-interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p'; wd?: Ward }
+interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; life: number; target: 'f' | 'p'; wd?: Ward; /** Schaden beim Einschlag */ dmg: number; /** leichte Rakete aus der Salve eines Raketenboots: kleiner, schneller, schwächer */ small?: boolean }
 /** Fundstücke; „ammo“ = Munitionskiste (selten): füllt das Raketenlager ganz */
 interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile' | 'ammo'; life: number }
 interface Rock {
@@ -297,6 +305,20 @@ const TURRET_RATE = 1.6, TURRET_DMG = 1.15;
 /** Drehrate je Gegnerart (rad/s): Jäger wendig, Kanonenboote träge – wer sie umkreist, ist vor ihren Kanonen sicher */
 const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 2.2, xs: 1.6, p: 0.55, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
 /** Geschossgeschwindigkeit der Bordkanonen je Gegnerart (für den Vorhalt) */
+/**
+ * Raketenboot: zielt erst sichtbar (Ziellinie, auf Schutzziele RB_LOCK s, auf dich RB_LOCK_P s), dann Salve aus RB_SALVO
+ * leichten Raketen mit je RB_DMG Schaden; Treffer am Boot stören die Zielerfassung. Nachladen RB_CD s.
+ */
+const RB_SALVO = 6, RB_DMG = 6, RB_LOCK = 2.2, RB_LOCK_P = 0.9, RB_CD = 5.5;
+/** Vereinzelte Lenkraketen anderer Gegner (wie die eigenen Kampfschiffe): Abstand zwischen zwei Abschüssen, Raketen je Abschuss */
+const SIDE_MSL: Partial<Record<EKind, { cd: number; n: number }>> = { jaeger: { cd: 17, n: 1 }, kanone: { cd: 11, n: 2 }, m: { cd: 14, n: 1 }, p: { cd: 10, n: 2 } };
+/** Raketenwarnung: ab dieser Entfernung meldet sich eine anfliegende Rakete */
+const MSL_WARN_R = 650;
+/**
+ * Schadensbremse für Schutzziele: je Sekunde füllt sich ein Vorrat von WARD_RATE der Hülle (höchstens WARD_CAP); was
+ * darüber hinaus einschlägt, wirkt nur zu WARD_OVER. Gebündelte Angriffe bleiben gefährlich, lassen aber Zeit zum Eingreifen.
+ */
+const WARD_RATE = 0.03, WARD_CAP = 0.1, WARD_OVER = 0.35;
 const SHOT_V: Partial<Record<EKind, number>> = { jaeger: 300, kanone: 240, n: 340, m: 430, rakete: 150, ks: 360, kj: 2000, ka: 2000, kk: 2000 };
 /** Bis zu dieser Entfernung lassen sich Gegner vom Jäger abfangen (danach kämpfen sie mit ihm statt mit dem Frachter) */
 const AGGRO = 380;
@@ -2444,6 +2466,8 @@ export class ShooterGame implements MiniGame {
     const pool = CARDS.filter((c) => this.c(c.id) < c.max && this.cardFits(c));
     const pick: Card[] = [];
     while (pick.length < 3 && pool.length) pick.push(pool.splice(Math.floor(this.r() * pool.length), 1)[0]);
+    // alle Verbesserungen ausgeschöpft (lange Endlos-Runden): ohne Auswahl gleich weiter
+    if (!pick.length) { this.choosing = null; this.pendingSpawn = 1.2; return; }
     this.choosing = pick;
     this.joy = null;
     this.fireId = null;
@@ -2889,6 +2913,8 @@ export class ShooterGame implements MiniGame {
       // Jägergruppen der Piraten und Xenon kommen in Keilformation (Platz in der Reihenfolge des Anflugs); die Kha'ak
       // fliegen ohnehin in ihren eigenen Clustern
       else if (this.side !== 'khaak' && FIGHTERS.has(kind) && list.filter((k) => FIGHTERS.has(k)).length >= 2) e.form = list.slice(0, i).filter((k) => FIGHTERS.has(k)).length;
+      // Begleitschutz: kommt eine Gruppe mit Raketenboot, jagen bis zu zwei ihrer Jäger dich statt den Frachter
+      if (this.wards.length && FIGHTERS.has(kind) && list.includes('rakete') && list.slice(0, i).filter((k) => FIGHTERS.has(k)).length < 2) { e.role = 'abfang'; e.target = 'p'; }
       // ohne Schutzziel (Überfall, Nest) geht es gleich auf dich
       if (!this.wards.length) e.target = 'p';
       e.ang = Math.atan2(this.fY - e.y, this.fX - e.x);
@@ -3647,8 +3673,20 @@ export class ShooterGame implements MiniGame {
         dmg *= 0.3;
       }
     }
+    // Schadensbremse: Vorrat füllt sich mit der Zeit; was darüber einschlägt, wirkt nur abgeschwächt
+    w.budget = Math.min(w.max * WARD_CAP, (w.budget ?? w.max * WARD_CAP) + (this.time - (w.budgetT ?? this.time)) * w.max * WARD_RATE);
+    w.budgetT = this.time;
+    const full = Math.min(dmg, w.budget);
+    w.budget -= full;
+    dmg = full + (dmg - full) * WARD_OVER;
+    const was = w.hull / w.max;
     w.hull = Math.max(0, w.hull - dmg);
     w.flash = 0.12;
+    // Meldung, wenn er unter die Hälfte bzw. ein Viertel fällt
+    for (const q of [0.5, 0.25]) if (was > q && w.hull / w.max <= q && w.hull > 0) {
+      this.floats.add(this.wx(w), this.wy(w) - 60, `${w.kind === 'station' ? 'Station' : `Frachter ${w.name}`}: Hülle ${q * 100} %`, '#ff9aa4', 14);
+      sfx.warn();
+    }
     this.fx.burst(x, y, '#ffb070', 4, 120, 1.2, 'spark', 0.25);
     if (w.hull <= 0) {
       w.dead = true;
@@ -4486,7 +4524,7 @@ export class ShooterGame implements MiniGame {
       // Abfangen: wer dem Jäger nahe kommt, kämpft mit ihm; Raketen- und Kanonenboote bleiben stur am Frachter
       const toP = Math.hypot(this.px - e.x, this.py - e.y);
       const ew = this.wardOf(e);
-      if (!ew) e.target = 'p';
+      if (!ew || e.role === 'abfang') e.target = 'p';
       else if (e.kind !== 'kanone' && e.kind !== 'rakete' && e.kind !== 'boss') {
         // Konvoi: die Angreifer bleiben stur an ihrem Frachter, nur ganz nah lassen sie sich ablenken
         if (e.target === 'f' && toP < (this.mission === 'konvoi' || this.mission === 'station' ? AGGRO * 0.55 : AGGRO) && this.outcome !== 'player') e.target = 'p';
@@ -4600,11 +4638,20 @@ export class ShooterGame implements MiniGame {
       const cone = e.kind === 'kanone' ? 0.3 : e.kind === 'rakete' ? 0.6 : e.kind === 'kk' ? 0.35 : 0.16;
       // Jäger feuern nur im Anflug, nicht beim Abdrehen
       const breaking = fighter && !!e.brk && e.brk > 0;
-      if (e.cd <= 0 && !breaking && e.kyT == null && d < range && (e.kind === 'boss' || off < cone)) {
+      if (e.kind === 'rakete') this.rocketBoat(e, dt, !breaking && d < range && off < cone, onP);
+      // vereinzelte Lenkraketen (Jäger, Kanonenboote, Xenon M und P) – nicht aus Schwärmen und nicht bei den Kha'ak
+      const sm = SIDE_MSL[e.kind];
+      if (sm && !e.swarm && this.side !== 'khaak') {
+        e.mslCd = (e.mslCd ?? sm.cd * (0.4 + this.r() * 0.6)) - dt;
+        if (e.mslCd <= 0 && !breaking && d < 520 && off < 0.5) {
+          e.mslCd = sm.cd * (0.8 + this.r() * 0.4);
+          for (let q = 0; q < sm.n; q++) this.launchEMissile(e, e.ang + (q - (sm.n - 1) / 2) * 0.3, false);
+        }
+      }
+      if (e.kind !== 'rakete' && e.cd <= 0 && !breaking && e.kyT == null && d < range && (e.kind === 'boss' || off < cone)) {
         const a = e.ang + (this.r() - 0.5) * (fighter ? 0.14 : 0.06);
         if (e.kind === 'jaeger') { e.cd = 0.3; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 300, 6, '#ffb070'); }
         else if (e.kind === 'kanone') { e.cd = 1.6; for (let q = 0; q < 3; q++) this.enemyShot(e, a + (q - 1) * 0.08, 240, 8, '#ffd27a'); }
-        else if (e.kind === 'rakete') { e.cd = 2.8; this.eMissiles.push({ x: e.x, y: e.y, vx: Math.cos(e.ang) * 90, vy: Math.sin(e.ang) * 90, hp: 6, life: 7, target: e.target, wd: e.wd }); }
         else if (e.kind === 'n') { e.cd = 0.26; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 340, 4, '#ff5c6c'); }
         else if (e.kind === 'm') { e.cd = 0.8; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 430, 11, '#ff3b4a', 3); }
         else if (e.kind === 'ks') { e.cd = 0.3; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 360, 3.5, '#d9a6ff'); }
@@ -4633,19 +4680,75 @@ export class ShooterGame implements MiniGame {
       const mw = m.target === 'f' ? this.wardOf(m) : null;
       const tx = mw ? this.wx(mw) : this.px, ty = mw ? this.wy(mw) : this.py;
       const dx = tx - m.x, dy = ty - m.y, d = Math.hypot(dx, dy) || 1;
-      m.vx += (dx / d) * 220 * dt;
-      m.vy += (dy / d) * 220 * dt;
+      const acc = m.small ? 300 : 220, vmax = m.small ? 195 : 150;
+      m.vx += (dx / d) * acc * dt;
+      m.vy += (dy / d) * acc * dt;
       const v = Math.hypot(m.vx, m.vy);
-      if (v > 150) { m.vx *= 150 / v; m.vy *= 150 / v; }
+      if (v > vmax) { m.vx *= vmax / v; m.vy *= vmax / v; }
       m.x += m.vx * dt;
       m.y += m.vy * dt;
       m.life -= dt;
-      if (Math.random() < 0.6) this.fx.add({ x: m.x, y: m.y, color: '#ff8a5c', size: 1.2, max: 0.3 });
-      const hw = this.wardAt(m.x, m.y, 2);
-      if (hw) { this.hitWard(hw, 18 * this.enemyDmg * this.fScale, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
-      else if (this.onHull(m.x, m.y, 2)) { this.damagePlayer(18 * this.enemyDmg, 1, [m.x, m.y]); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.6, false); }
+      if (Math.random() < 0.6) this.fx.add({ x: m.x, y: m.y, color: '#ff8a5c', size: m.small ? 0.9 : 1.2, max: m.small ? 0.22 : 0.3 });
+      const hw = this.wardAt(m.x, m.y, 2), boom = m.small ? 0.35 : 0.6;
+      if (hw) { this.hitWard(hw, m.dmg * this.enemyDmg * this.fScale, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', boom, false); }
+      else if (this.onHull(m.x, m.y, 2)) { this.damagePlayer(m.dmg * this.enemyDmg, 1, [m.x, m.y]); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', boom, false); }
     }
     this.eMissiles = this.eMissiles.filter((m) => m.life > 0 && m.hp > 0);
+    this.missileWarning(dt);
+  }
+
+  /** Gegnerische Lenkrakete starten (leicht: aus der Salve eines Raketenboots) */
+  private launchEMissile(e: Enemy, a: number, small: boolean): void {
+    const v = small ? 150 : 90;
+    this.eMissiles.push({ x: e.x + Math.cos(a) * e.r * 0.8, y: e.y + Math.sin(a) * e.r * 0.8, vx: Math.cos(a) * v, vy: Math.sin(a) * v, hp: small ? 2 : 6, life: small ? 6 : 7, target: e.target, wd: e.wd, dmg: small ? RB_DMG : 18, small });
+    this.fx.burst(e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r, '#ffb070', 3, 60, 1, 'spark', 0.2);
+  }
+
+  /** Raketenboote, die zugleich auf Schutzziele zielen oder feuern dürfen (je nach Stufe 2–4, große Kämpfe einer mehr) */
+  private get bomberCap(): number { return Math.min(4, 2 + Math.floor((this.level - 1) / 2)) + (this.big > 1 ? 1 : 0); }
+
+  /**
+   * Raketenboot: laufende Salve abgeben; sonst bei freiem Schussfeld zielen (sichtbare Ziellinie) und nach der Zielzeit
+   * eine Salve auslösen. Treffer stören die Zielerfassung; auf Schutzziele zielen nur bomberCap Boote zugleich.
+   */
+  private rocketBoat(e: Enemy, dt: number, can: boolean, onP: boolean): void {
+    e.jam = Math.max(0, (e.jam ?? 0) - dt);
+    if (e.mslQ) {
+      e.mslT = (e.mslT ?? 0) - dt;
+      if (e.mslT <= 0) {
+        e.mslQ--;
+        e.mslT = 0.11;
+        // Fächer: abwechselnd links und rechts vom Bug
+        const k = RB_SALVO - 1 - e.mslQ, side = (k % 2 ? 1 : -1) * (0.12 + Math.floor(k / 2) * 0.12);
+        this.launchEMissile(e, e.ang + side, true);
+        if (!e.mslQ) e.mslQ = undefined;
+      }
+      return;
+    }
+    if (!can || e.cd > 0) { if (!can && e.lockT != null) e.lockT = Math.max(0, e.lockT - dt * 2) || undefined; return; }
+    if (!onP && e.lockT == null && this.enemies.filter((q) => q !== e && q.target === 'f' && (q.lockT != null || q.mslQ)).length >= this.bomberCap) return;
+    // gestört: die Erfassung fällt langsam zurück
+    e.lockT = e.jam > 0 ? Math.max(0, (e.lockT ?? 0) - dt * 0.5) : (e.lockT ?? 0) + dt;
+    if (e.lockT >= (onP ? RB_LOCK_P : RB_LOCK)) { e.lockT = undefined; e.mslQ = RB_SALVO; e.mslT = 0; e.cd = RB_CD; }
+  }
+
+  /** Raketen im Anflug auf dich: Warnton, schneller je näher (die Anzeige zeichnet drawMissileWarn) */
+  private warnT = 0;
+  private missileThreats(): EMissile[] {
+    return this.eMissiles.filter((m) => {
+      if (m.target === 'f' && this.wardOf(m)) return false;
+      const dx = this.px - m.x, dy = this.py - m.y, d = Math.hypot(dx, dy);
+      return d < MSL_WARN_R && dx * m.vx + dy * m.vy > 0;
+    });
+  }
+  private missileWarning(dt: number): void {
+    this.warnT -= dt;
+    if (this.outcome === 'player') return;
+    const th = this.missileThreats();
+    if (!th.length || this.warnT > 0) return;
+    const d = Math.min(...th.map((m) => Math.hypot(this.px - m.x, this.py - m.y)));
+    this.warnT = 0.18 + (d / MSL_WARN_R) * 0.55;
+    sfx.missileWarn();
   }
 
   /**
@@ -4996,6 +5099,9 @@ export class ShooterGame implements MiniGame {
   /** toHull: Anteil, der den eigenen Schild umgeht und sofort die Hülle trifft (Thermal-Desintegrator) */
   private damageEnemy(e: Enemy, dmg: number, bypass = 0.3, toHull = 0): void {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
+    // Raketenboot unter deinem Beschuss (Schiff, Türme, Raketen, Staffel): Zielerfassung gestört – die Türme des
+    // Frachters allein halten es nicht auf, sonst käme nie eine Salve
+    if (e.lockT != null && dmg > 0 && this.logSrc !== 'ward') e.jam = 0.4;
     let d = e.shielded ? dmg * bypass : dmg;
     // Protokoll: was wirklich ankommt (höchstens, was Schild und Hülle noch hatten)
     const row = this.logRow();
@@ -5390,11 +5496,12 @@ export class ShooterGame implements MiniGame {
     this.drawClusterMass(ctx, t);
     for (const e of this.enemies) if (!this.inBack(e)) this.drawEnemy(ctx, e, t);
     this.drawTargetMarks(ctx, t);
+    this.drawRocketLocks(ctx, t);
     this.drawBlasts(ctx, t);
     this.drawBeams(ctx, t);
     // Geschosse über den Schiffen: die Türme liegen oben auf dem Rumpf, ihre Schüsse fliegen darüber hinweg
     this.drawShots(ctx);
-    if (this.outcome !== 'player') this.drawLock(ctx);
+    if (this.outcome !== 'player') { this.drawLock(ctx); this.drawMissileWarn(ctx, t); }
     this.fx.draw(ctx);
     this.floats.draw(ctx);
     ctx.restore();
@@ -5656,7 +5763,7 @@ export class ShooterGame implements MiniGame {
       if (img) {
         // Bild: Spitze zeigt im Bild nach oben, Flamme flackert am Heck
         ctx.rotate(a + Math.PI / 2);
-        const size = 24;
+        const size = m.small ? 16 : 24;
         ctx.fillStyle = rgba('#ff9a4a', 0.6 + 0.3 * Math.random());
         ctx.beginPath();
         ctx.moveTo(-2, size * 0.44); ctx.lineTo(2, size * 0.44); ctx.lineTo(0, size * 0.44 + 5 + Math.random() * 5);
@@ -6761,6 +6868,52 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Vorhaltekreuz: Kreis am Vorhaltepunkt des Ziels, grün wenn die Nase genau darauf zeigt; dazu die Visierlinie */
+  /** Raketenboot zielt: gestrichelte Linie zum Ziel, wird mit der Zielzeit kräftiger; Ring am Boot füllt sich */
+  private drawRocketLocks(ctx: CanvasRenderingContext2D, t: number): void {
+    ctx.save();
+    for (const e of this.enemies) {
+      if (e.lockT == null || e.kind !== 'rakete') continue;
+      const w = e.target === 'f' ? this.wardOf(e) : null;
+      const tx = w ? this.wx(w) : this.px, ty = w ? this.wy(w) : this.py;
+      const k = clamp(e.lockT / (w ? RB_LOCK : RB_LOCK_P), 0, 1), jam = (e.jam ?? 0) > 0;
+      const col = jam ? '#9fe6ff' : '#ff5c6c';
+      ctx.globalAlpha = 0.25 + 0.6 * k * (jam ? 0.6 : 0.75 + 0.25 * Math.sin(t * 18));
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.2 + k * 1.3;
+      ctx.setLineDash([6, 7]);
+      ctx.lineDashOffset = -t * 40;
+      ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 9, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Raketenwarnung am eigenen Schiff: pulsierende Bögen in Richtung jeder anfliegenden Rakete, Schriftzug darüber */
+  private drawMissileWarn(ctx: CanvasRenderingContext2D, t: number): void {
+    const th = this.missileThreats();
+    if (!th.length) return;
+    const R = this.ship.r + 26;
+    ctx.save();
+    ctx.strokeStyle = '#ff5c6c';
+    ctx.lineCap = 'round';
+    for (const m of th) {
+      const a = Math.atan2(m.y - this.py, m.x - this.px), d = Math.hypot(m.x - this.px, m.y - this.py);
+      const k = 1 - d / MSL_WARN_R;
+      ctx.globalAlpha = 0.35 + 0.55 * k * (0.6 + 0.4 * Math.sin(t * (10 + k * 14)));
+      ctx.lineWidth = 2 + k * 3;
+      ctx.beginPath(); ctx.arc(this.px, this.py, R, a - 0.22, a + 0.22); ctx.stroke();
+    }
+    ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 14);
+    ctx.fillStyle = '#ff7a84';
+    ctx.font = `700 ${12 / Math.max(0.35, this.zoom)}px "Chakra Petch", Barlow, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(th.length > 1 ? `RAKETEN ×${th.length}` : 'RAKETE', this.px, this.py - R - 8 / Math.max(0.35, this.zoom));
+    ctx.restore();
+  }
+
   private drawLock(ctx: CanvasRenderingContext2D): void {
     const L = this.lock;
     ctx.save();
@@ -6885,8 +7038,9 @@ export class ShooterGame implements MiniGame {
       }
     }
     ctx.restore();
-    for (const m of this.eMissiles) arrow(m.x, m.y, 'rgba(255,138,92,0.9)', 5);
-    for (const w of this.liveWards) arrow(this.wx(w), this.wy(w), w.kind === 'berger' ? '#6be38f' : '#5ff0d8', 9);
+    const threats = new Set(this.missileThreats());
+    for (const m of this.eMissiles) arrow(m.x, m.y, threats.has(m) ? `rgba(255,70,90,${0.6 + 0.4 * Math.sin(this.time * 16)})` : 'rgba(255,138,92,0.9)', threats.has(m) ? 8 : m.small ? 4 : 5);
+    for (const w of this.liveWards) arrow(this.wx(w), this.wy(w), w.flash > 0 ? '#ff5c6c' : w.kind === 'berger' ? '#6be38f' : '#5ff0d8', w.flash > 0 ? 11 : 9);
     // Bergung: ohne Container am Seil zeigt ein Pfeil zum nächsten Container
     if (this.mission === 'bergung' && !this.towing) {
       const c = this.crates.filter((q) => !q.done).sort((a, b) => Math.hypot(a.x - this.px, a.y - this.py) - Math.hypot(b.x - this.px, b.y - this.py))[0];
