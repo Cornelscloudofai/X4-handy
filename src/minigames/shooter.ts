@@ -98,7 +98,8 @@ interface Ward {
   hull: number; max: number; flash: number;
   /** Schadensbremse: Hülle, die er gerade noch voll verlieren darf (füllt sich mit der Zeit), Zeitpunkt der letzten Rechnung */
   budget?: number; budgetT?: number;
-  tur: { ox: number; oy: number; cd: number; a: number; hp: number; max: number }[];
+  /** Abwehrtürme; Frachter: Neutronen-Gatling mit Magazin (mag Schuss übrig, rl = Nachladen läuft noch) */
+  tur: { ox: number; oy: number; cd: number; a: number; hp: number; max: number; mag?: number; rl?: number }[];
   dead: boolean;
   /** Phase des Pendelns */
   ph: number;
@@ -309,6 +310,11 @@ const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schil
  * Raketenboot: zielt erst sichtbar (Ziellinie, auf Schutzziele RB_LOCK s, auf dich RB_LOCK_P s), dann Salve aus RB_SALVO
  * leichten Raketen mit je RB_DMG Schaden; Treffer am Boot stören die Zielerfassung. Nachladen RB_CD s.
  */
+/**
+ * Neutronen-Gatling auf dem Frachter: dichter Strom (cd s je Schuss, dmg Schaden), nach mag Schuss reload s
+ * nachladen – im Mittel so viel Wirkung wie die früheren Einzelschüsse; Sockeldurchmesser size
+ */
+const F_GAT = { cd: 0.1, dmg: 0.55, mag: 30, reload: 2, size: 17 };
 const RB_SALVO = 6, RB_DMG = 6, RB_LOCK = 2.2, RB_LOCK_P = 0.9, RB_CD = 5.5;
 /** Vereinzelte Lenkraketen anderer Gegner (wie die eigenen Kampfschiffe): Abstand zwischen zwei Abschüssen, Raketen je Abschuss */
 const SIDE_MSL: Partial<Record<EKind, { cd: number; n: number }>> = { jaeger: { cd: 17, n: 1 }, kanone: { cd: 11, n: 2 }, m: { cd: 14, n: 1 }, p: { cd: 10, n: 2 } };
@@ -3635,10 +3641,12 @@ export class ShooterGame implements MiniGame {
       w.flash = Math.max(0, w.flash - dt);
       if (w.dead) continue;
       const st = w.kind === 'station';
-      const range = (st ? 270 : 240) * RANGE_X, cd = st ? 0.8 : 0.9, dmg = st ? 3.2 : 3, x0 = this.wx(w), y0 = this.wy(w);
+      const range = (st ? 270 : 240) * RANGE_X, cd = st ? 0.8 : F_GAT.cd, dmg = st ? 3.2 : F_GAT.dmg, x0 = this.wx(w), y0 = this.wy(w);
       for (const t of w.tur) {
         if (t.hp <= 0) continue;
         t.cd -= dt;
+        // Gatling: Magazin leer → nachladen, dann wieder voll
+        if (!st && t.rl != null) { t.rl -= dt; if (t.rl > 0) continue; t.rl = undefined; t.mag = F_GAT.mag; }
         const tx0 = x0 + t.ox, ty0 = y0 + t.oy;
         let tgt: { x: number; y: number; vx: number; vy: number } | null = null, bd = range;
         for (const m of this.eMissiles) { const d = Math.hypot(m.x - tx0, m.y - ty0); if (d < bd) { bd = d; tgt = m; } }
@@ -3655,7 +3663,10 @@ export class ShooterGame implements MiniGame {
         t.a = Math.atan2(tgt.y + tgt.vy * lt - ty0, tgt.x + tgt.vx * lt - tx0);
         if (t.cd <= 0) {
           t.cd = cd;
-          this.bullets.push({ x: tx0 + Math.cos(t.a) * 8, y: ty0 + Math.sin(t.a) * 8, vx: Math.cos(t.a) * 520, vy: Math.sin(t.a) * 520, dmg, from: 'p', src: 'ward', life: range / 520, color: st ? '#ffb070' : '#9fe6ff', w: st ? 2 : 1.4, pierce: 0 });
+          // Gatling streut etwas
+          const a = st ? t.a : t.a + (this.r() - 0.5) * 0.08;
+          this.bullets.push({ x: tx0 + Math.cos(a) * 10, y: ty0 + Math.sin(a) * 10, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, dmg, from: 'p', src: 'ward', life: range / 520, color: st ? '#ffb070' : TURRETS.neutron.color, w: st ? 2 : 1.6, pierce: 0 });
+          if (!st) { t.mag = (t.mag ?? F_GAT.mag) - 1; if (t.mag <= 0) t.rl = F_GAT.reload; }
         }
       }
     }
@@ -6103,7 +6114,8 @@ export class ShooterGame implements MiniGame {
   /** Abwehrtürme eines Schutzziels (zielen frei); Stationstürme mit Bild und eigenem Hüllenbalken */
   private drawWardTurrets(ctx: CanvasRenderingContext2D, w: Ward): void {
     const x = this.wx(w), y = this.wy(w), st = w.kind === 'station';
-    const ts = st ? turretSprite('tau', 'split-cobra') : null;
+    // Station: Tau-Türme; Frachter und Bergungsschiff: Neutronen-Gatling
+    const ts = turretSprite(st ? 'tau' : 'neutron', 'split-cobra');
     for (const tur of w.tur) {
       ctx.save();
       ctx.translate(x + tur.ox, y + tur.oy);
@@ -6120,7 +6132,7 @@ export class ShooterGame implements MiniGame {
         continue;
       }
       if (ts) {
-        const W = 30 / ts.d;
+        const W = (st ? 30 : F_GAT.size) / ts.d;
         ctx.rotate(tur.a + Math.PI / 2);
         ctx.drawImage(ts.img, -ts.px * W, -ts.py * W, W, W);
       } else {
