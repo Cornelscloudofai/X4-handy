@@ -2,6 +2,64 @@
 
 Stand: Entwurf zur Abstimmung, noch nicht umgesetzt.
 
+## Überarbeitung: Einsatzzentrale als Raum (Stand nach Rückmeldung)
+
+Die Zentrale wird ein **gemalter Raum** (Bild mit leichter Tiefe beim Wischen bzw. Neigen), in dem man Bereiche antippt.
+Jeder Bereich leuchtet auf und trägt ein Schild, damit nichts gesucht werden muss. Eine schmale Leiste unten listet
+dieselben Ziele noch einmal als Schnellzugriff.
+
+| Ort im Raum | führt zu | Inhalt |
+| --- | --- | --- |
+| **Holodeck** (Glaswand mit Gitterboden) | **Simulator** | alle Minispiele: Arbeit und Kampftraining, Stufen, Rekorde, Tagesaufgaben |
+| **Einsatztisch** (Holo-Tisch mit Sektorkarte) | **Einsatzbrett** | echte Lage im Sektor: offene Vorfälle, Rotten, Auftragsspiele – jeweils „Hinfliegen“ bzw. „Selbst übernehmen“ |
+| **Aufzugtür / Hangartor** | **Hangar** | Schiffe, Ausrüstung, Werkstatt, Aussehen; dazu die eigene Flotte |
+| **Schreibtisch** (Terminal, Datenblätter) | **Akte** | Sterne, Abzeichen, Modteile, Verlauf der Einsätze |
+| **Wartungsklappe** (unscheinbar, Warnstreifen) | **Entwicklung** | alle Entwicklerwerkzeuge an einem Ort |
+
+### Simulator und echte Einsätze
+
+Beide nutzen dieselben Spiele. Getrennt sind **Regeln und Folgen**, nicht die Technik:
+
+| | Simulator | Echter Einsatz |
+| --- | --- | --- |
+| Herkunft | frei wählbar im Holodeck | entsteht im Sektor (Vorfall, Rotte, Auftrag, Störung) |
+| Schiff | jede freigeschaltete Schiffsklasse | das echte Schiff vor Ort, mit seiner Hülle und Staffel |
+| Folgen | keine – nur Sterne, Rekorde, Modteile | Credits, Ruf, Schäden, verlorene Mambas, Wracks |
+| Stufe | frei 1–5 | ergibt sich aus der Lage (Stärke der Rotte) |
+| Wertung | Sterne und Rekorde | Ergebnis wirkt in der Spielwelt; Sterne zählen nicht |
+
+Verknüpfung: Der Simulator ist das **Training** für die Einsätze. Er schaltet frei und belohnt mit Modteilen, die Mods
+wirken auch im Ernstfall. Umgekehrt schalten echte Siege Schauplätze und Schiffe im Simulator frei. Das Einsatzbrett ist
+nur eine Übersicht; die Einsätze selbst bleiben in der Spielwelt (Karte, Vorfallsleiste) und lassen sich wie heute
+direkt dort starten.
+
+### Ein Hangar, zwei Blickwinkel
+
+Kein zweiter Hangar. Schon heute fliegt ein echtes Großkampfschiff mit der Ausrüstung seiner Klasse aus dem Hangar
+(`loadoutFor`). Das bleibt das Modell:
+
+- **Ausrüstung gilt je Schiffsklasse** und ist zugleich Vorlage für den Simulator und für alle echten Schiffe dieser
+  Klasse. Einmal einstellen, überall gültig.
+- Der Hangar bekommt den Reiter **Flotte**. Er zeigt die echten Kampfschiffe aus dem Sektor mit Zustand (Hülle,
+  Staffel 14/20, Standort, Befehl) und den Aktionen, die es schon gibt (Auffüllen, Reparatur, Auf Karte zeigen).
+  Ausrüstung ändert man über die Klasse.
+- Später möglich: Umrüsten echter Schiffe kostet Credits oder Bauteile und dauert an einer Werft. Dann bekäme jedes
+  echte Schiff eine eigene Ausrüstung, die mit „Vorlage übernehmen“ aus der Klasse gefüllt wird.
+
+### Entwicklerwerkzeuge
+
+**Alle** an einem Ort hinter der Wartungsklappe, nach Bereichen gegliedert: Kampf (Gegnerstärke, Nebel-Test, freie
+Schiffswahl, alte Ausrüstungsstufe), Karte (alles aufdecken, Test-Angriff), Wirtschaft (Credits, Tempo). Ein Ort ist
+leichter zu finden und später mit einem Schalter auszublenden. Echte Einstellungen gehören *nicht* dorthin, sondern in
+die Einstellungen (und ins Pausenmenü), z. B. Steuerung, Gegneranzeige, Größenverhältnis, HUD.
+
+### Was getrennt bleibt, was zusammenkommt
+
+- **Zusammen:** Spiele und Technik (ein Simulator für alles), Ausrüstung je Klasse (ein Hangar), Entwicklerwerkzeuge
+  (eine Klappe), Fortschritt (eine Akte).
+- **Getrennt:** Folgen (Simulator ohne, Einsatz mit), Herkunft (Holodeck gegen Spielwelt), Einstellungen gegen
+  Entwicklerwerkzeuge.
+
 ## Wie es heute ist
 
 - **Einstieg:** Menü → „Minispiele“ öffnet ein Fenster mit drei Reitern: Spiele, Täglich, Kampf.
