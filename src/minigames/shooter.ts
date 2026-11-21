@@ -315,6 +315,24 @@ const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schil
  * nachladen – im Mittel so viel Wirkung wie die früheren Einzelschüsse; Sockeldurchmesser size
  */
 const F_GAT = { cd: 0.1, dmg: 0.55, mag: 30, reload: 2, size: 10 };
+/** Weicher Lichtschein eines Geschosses (je Farbe einmal erzeugt): heller Kern, sanft auslaufend */
+const GLOW = new Map<string, HTMLCanvasElement>();
+function glowSprite(color: string): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') return null;
+  let c = GLOW.get(color);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!, gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, rgba(color, 0.9));
+  gr.addColorStop(0.18, rgba(color, 0.5));
+  gr.addColorStop(0.45, rgba(color, 0.16));
+  gr.addColorStop(1, rgba(color, 0));
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 128, 128);
+  GLOW.set(color, c);
+  return c;
+}
 /** Nebel: Sichtweite um dein Schiff und um jedes Schutzziel (Spielpunkte) */
 const FOG_SEE = 460, FOG_WARD = 280;
 const RB_SALVO = 6, RB_DMG = 6, RB_LOCK = 2.2, RB_LOCK_P = 0.9, RB_CD = 5.5;
@@ -916,6 +934,8 @@ export class ShooterGame implements MiniGame {
   private fog = 0;
   private fogCv: HTMLCanvasElement[] = [];
   private fogWarm = 0;
+  /** Helligkeit des laufenden Nebelfelds (0,5 dunkler Qualm … 1,5 leuchtendes Gas), je Feld neu gewürfelt */
+  private fogTone = 1;
   // Ablauf
   private wave = -1;
   private waveT = 0;
@@ -2780,6 +2800,7 @@ export class ShooterGame implements MiniGame {
     if (this.wave === 0 && this.mission === 'ueberfall') this.spawnConvoy();
     if (this.wave === 0 && (this.mission === 'bergung' || this.mission === 'flucht')) this.spawnMissionPlats();
     if (this.section === 'rocks') this.spawnRocks();
+    if (this.section === 'nebel') this.fogTone = 0.5 + this.rv() * 1.0;
     if (this.section === 'mines') this.spawnMines();
     const boss = this.isBossWave(this.wave);
     if (boss) {
@@ -5566,6 +5587,7 @@ export class ShooterGame implements MiniGame {
     this.floats.draw(ctx);
     ctx.restore();
     this.drawFog(ctx, t);
+    this.drawShotsInFog(ctx);
     this.drawIndicators(ctx);
     this.drawRadar(ctx);
     this.drawHullBars(ctx);
@@ -5753,6 +5775,8 @@ export class ShooterGame implements MiniGame {
       }
       ctx.restore();
     }
+    // Lichtschein um jedes Geschoss: je dicker, desto größer und heller
+    this.drawShotGlow(ctx, 1);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
@@ -7198,6 +7222,63 @@ export class ShooterGame implements MiniGame {
     if (on) { this.sectionPlan.fill('nebel'); this.section = 'nebel'; } else if (this.section === 'nebel') this.section = 'none';
   }
 
+  /**
+   * Lichtschein der Geschosse und Raketen (additiv). k: Stärke; vis: Anteil je Ort (im Nebel nur dort, wo der Dunst die
+   * Geschosse verschluckt hätte – so leuchten sie durch den Nebel und erhellen ihn, ohne nah bei dir doppelt hell zu werden)
+   */
+  private drawShotGlow(ctx: CanvasRenderingContext2D, k: number, vis: (x: number, y: number) => number = () => 1): void {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const halo = (x: number, y: number, color: string, w: number) => {
+      const a = vis(x, y) * k;
+      if (a <= 0.02) return;
+      const img = glowSprite(color);
+      if (!img) return;
+      const R = 7 + w * 6.5;
+      ctx.globalAlpha = Math.min(0.85, (0.22 + w * 0.09) * a);
+      ctx.drawImage(img, x - R, y - R, R * 2, R * 2);
+    };
+    for (const b of this.bullets) halo(b.x, b.y, b.color, b.w);
+    for (const m of this.missiles) halo(m.x, m.y, '#ffb070', 2.6);
+    for (const m of this.eMissiles) halo(m.x, m.y, '#ff8a5c', m.small ? 1.8 : 2.6);
+    ctx.restore();
+  }
+
+  /** Dichte des Dunsts an einem Ort (0 = klar … 1 = voll), wie drawFog sie zeichnet */
+  private fogAt(x: number, y: number): number {
+    if (this.fog <= 0.01) return 0;
+    const ramp = (d: number, R: number) => Math.min(1, Math.max(0, (d / R - 0.4) / 0.6));
+    const see = (FOG_SEE + (1 - this.fog) * 3000) * 1.25;
+    let f = ramp(Math.hypot(x - this.px, y - this.py), see);
+    for (const w of this.liveWards) f = Math.min(f, ramp(Math.hypot(x - this.wx(w), y - this.wy(w)), FOG_WARD * 1.25));
+    return f * this.fog;
+  }
+
+  /**
+   * Über dem Nebel: Geschosse leuchten durch den Dunst (man sieht, wohin man schießt) und erhellen ihn mit größerem
+   * Schein – nur so stark, wie der Dunst am Ort dicht ist
+   */
+  private drawShotsInFog(ctx: CanvasRenderingContext2D): void {
+    if (this.fog <= 0.01) return;
+    ctx.save();
+    ctx.scale(this.zoom, this.zoom);
+    ctx.translate(-this.camX, -this.camY);
+    // Schein auf den Schwaden: größer als ohne Nebel
+    this.drawShotGlow(ctx, 1.6, (x, y) => 0.35 * this.fog + this.fogAt(x, y));
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const b of this.bullets) {
+      const a = this.fogAt(b.x, b.y);
+      if (a <= 0.02) continue;
+      const v = Math.hypot(b.vx, b.vy) || 1, L = b.from === 'p' ? 12 : 8;
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = Math.max(1.2, Math.min(b.w, 6));
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - (b.vx / v) * L, b.y - (b.vy / v) * L); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   /** Farbe der Nebelschwaden je Gegner */
   private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [168, 140, 116] : this.side === 'xenon' ? [178, 98, 106] : [136, 112, 190]; }
   /** Sichtweite im Nebel (Spielpunkte um dein Schiff); ohne Nebel unbegrenzt */
@@ -7241,7 +7322,9 @@ export class ShooterGame implements MiniGame {
     // 1. Dunst: schluckt Licht – was weiter weg ist, verschwindet allmählich in der Nebelfarbe (breiter Übergang,
     //    keine Kante), nah bei dir nur ein Hauch
     const d = layer(0);
-    d.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${0.86 * this.fog})`;
+    // heller Nebel: auch der Dunst etwas heller (leuchtendes Gas), dunkler: Qualm
+    const tl = 0.75 + this.fogTone * 0.35;
+    d.fillStyle = `rgba(${Math.round(tint[0] * tl)},${Math.round(tint[1] * tl)},${Math.round(tint[2] * tl)},${0.86 * this.fog})`;
     d.fillRect(0, 0, cw, ch);
     d.globalCompositeOperation = 'destination-out';
     const haze: [number, number][] = [[0, 0.9], [0.4, 0.85], [0.75, 0.3], [1, 0]];
@@ -7252,7 +7335,7 @@ export class ShooterGame implements MiniGame {
     const v = layer(1);
     const veilRgb = this.veilRgb, side = this.side;
     const vw = this.w / this.zoom, vh = this.h / this.zoom;
-    for (const [lay, par, CELL, a0, sz] of [[0, 0.85, 1500, 0.8, 1], [1, 1, 1150, 0.85, 0.8], [2, 1.08, 650, 0.6, 0.42]] as const) {
+    for (const [lay, par, CELL, a0, sz] of [[0, 0.85, 1500, 0.85, 1], [1, 1, 1150, 0.9, 0.8], [2, 1.08, 650, 0.65, 0.42]] as const) {
       const ox = this.camX * par + t * (lay === 2 ? 16 : lay ? 7 : -4), oy = this.camY * par + t * (lay === 2 ? -5 : lay ? 3 : 2);
       const i0 = Math.floor((ox - 1800) / CELL), i1 = Math.floor((ox + vw + 1800) / CELL);
       const j0 = Math.floor((oy - 1800) / CELL), j1 = Math.floor((oy + vh + 1800) / CELL);
@@ -7267,7 +7350,8 @@ export class ShooterGame implements MiniGame {
         v.save();
         v.translate(sx, sy);
         v.rotate(h3 * Math.PI * 2);
-        v.globalAlpha = (a0 - h1 * 0.2) * this.fog;
+        // jede Schwade etwas anders hell, dazu die Grundhelligkeit des Felds
+        v.globalAlpha = Math.min(1, (a0 - h1 * 0.45) * this.fogTone * this.fog);
         v.globalCompositeOperation = 'screen';
         v.drawImage(img, -W / 2, -H / 2, W, H);
         v.restore();
