@@ -914,7 +914,7 @@ export class ShooterGame implements MiniGame {
   private sectionPlan: ('none' | 'rocks' | 'mines' | 'nebel')[] = [];
   /** Nebel: Dichte 0–1 (blendet beim Abschnittswechsel weich ein und aus) und Zeichenfläche für den Schleier */
   private fog = 0;
-  private fogCv: HTMLCanvasElement | null = null;
+  private fogCv: HTMLCanvasElement[] = [];
   private fogWarm = 0;
   // Ablauf
   private wave = -1;
@@ -7199,7 +7199,7 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Farbe der Nebelschwaden je Gegner */
-  private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [178, 150, 128] : this.side === 'xenon' ? [196, 112, 118] : [150, 124, 205]; }
+  private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [168, 140, 116] : this.side === 'xenon' ? [178, 98, 106] : [136, 112, 190]; }
   /** Sichtweite im Nebel (Spielpunkte um dein Schiff); ohne Nebel unbegrenzt */
   private get fogSee(): number { return this.fog > 0.05 ? FOG_SEE + (1 - this.fog) * 3000 : Infinity; }
   /** im Nebel sichtbar? Nah an dir, nah an einem Schutzziel (dessen Sensoren) oder ein Großkampfschiff im Umriss */
@@ -7210,67 +7210,78 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Nebelschleier über dem Kampfgeschehen: dichte, langsam ziehende Schwaden in der Farbe des Schauplatzes, mit einem
-   * klaren Sichtkreis um dein Schiff und einem kleineren um jedes Schutzziel (dessen Sensoren). Gezeichnet in voller
-   * Bildschirmauflösung.
+   * Nebel über dem Kampfgeschehen, zwei Wirkungen wie bei echtem Dunst: (1) Dunst schluckt Licht – mit der Entfernung von
+   * dir (und vom Schutzziel, dessen Sensoren) verschwindet alles allmählich in der Nebelfarbe; (2) Schwaden streuen Licht –
+   * umgefärbte Gasnebelbilder, per Bildschirm-Mischung aufgelegt (hellen auf, decken nichts ab, keine Kanten). Gezeichnet
+   * in voller Bildschirmauflösung.
    */
   private drawFog(ctx: CanvasRenderingContext2D, t: number): void {
     if (this.fog <= 0.01 || typeof document === 'undefined') return;
     const cw = ctx.canvas.width, ch = ctx.canvas.height, k = cw / this.w;
-    const cv = this.fogCv ?? (this.fogCv = document.createElement('canvas'));
-    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
-    const f = cv.getContext('2d')!;
-    f.setTransform(1, 0, 0, 1, 0, 0);
-    f.globalCompositeOperation = 'source-over';
-    f.clearRect(0, 0, cw, ch);
-    const tint = this.side === 'pirate' ? [58, 48, 42] : this.side === 'xenon' ? [62, 36, 40] : [46, 36, 62];
-    // dünner Grundschleier überall, darin die eigentlichen Schwaden
-    f.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${0.55 * this.fog})`;
-    f.fillRect(0, 0, cw, ch);
-    // Schwaden aus Gasnebel- und Staubbildern, in der Spielwelt verteilt (je Zelle fest gewürfelt): zwei Lagen, die
-    // hintere zieht etwas langsamer mit (Tiefe), beide driften langsam
+    const layer = (i: number): CanvasRenderingContext2D => {
+      const cv = this.fogCv[i] ?? (this.fogCv[i] = document.createElement('canvas'));
+      if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+      const f = cv.getContext('2d')!;
+      f.setTransform(1, 0, 0, 1, 0, 0);
+      f.globalCompositeOperation = 'source-over';
+      f.globalAlpha = 1;
+      f.clearRect(0, 0, cw, ch);
+      return f;
+    };
+    // Sichtkreis (beim Aufziehen weit offen): stops = [Anteil des Radius, wie viel Nebel weggenommen wird]
+    const see = FOG_SEE + (1 - this.fog) * 3000;
+    const hole = (f: CanvasRenderingContext2D, wx: number, wy: number, r: number, stops: [number, number][]) => {
+      const sx = (wx - this.camX) * this.zoom * k, sy = (wy - this.camY) * this.zoom * k, R = r * this.zoom * k;
+      const g = f.createRadialGradient(sx, sy, 0, sx, sy, R);
+      for (const [o, a] of stops) g.addColorStop(o, `rgba(0,0,0,${a})`);
+      f.fillStyle = g;
+      f.beginPath(); f.arc(sx, sy, R, 0, Math.PI * 2); f.fill();
+    };
+    const tint = this.side === 'pirate' ? [52, 43, 38] : this.side === 'xenon' ? [56, 32, 36] : [40, 32, 56];
+    // 1. Dunst: schluckt Licht – was weiter weg ist, verschwindet allmählich in der Nebelfarbe (breiter Übergang,
+    //    keine Kante), nah bei dir nur ein Hauch
+    const d = layer(0);
+    d.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${0.86 * this.fog})`;
+    d.fillRect(0, 0, cw, ch);
+    d.globalCompositeOperation = 'destination-out';
+    const haze: [number, number][] = [[0, 0.9], [0.4, 0.85], [0.75, 0.3], [1, 0]];
+    hole(d, this.px, this.py, see * 1.25, haze);
+    for (const w of this.liveWards) hole(d, this.wx(w), this.wy(w), FOG_WARD * 1.25, haze);
+    // 2. Schwaden: weiche Schleier, die Licht streuen – hellen auf (Bildschirm-Mischung) statt Dinge abzudecken;
+    //    in der Spielwelt verteilt (je Zelle fest gewürfelt), drei Lagen treiben verschieden schnell
+    const v = layer(1);
     const veilRgb = this.veilRgb, side = this.side;
     const vw = this.w / this.zoom, vh = this.h / this.zoom;
-    // drei Lagen: weite Schwaden hinten, mittlere, dazu feine Fetzen dicht vor der Spielebene (ziehen am schnellsten)
-    for (const [lay, par, CELL, a0, sz] of [[0, 0.85, 1500, 0.75, 1], [1, 1, 1150, 0.9, 0.8], [2, 1.08, 650, 0.7, 0.42]] as const) {
+    for (const [lay, par, CELL, a0, sz] of [[0, 0.85, 1500, 0.8, 1], [1, 1, 1150, 0.85, 0.8], [2, 1.08, 650, 0.6, 0.42]] as const) {
       const ox = this.camX * par + t * (lay === 2 ? 16 : lay ? 7 : -4), oy = this.camY * par + t * (lay === 2 ? -5 : lay ? 3 : 2);
       const i0 = Math.floor((ox - 1800) / CELL), i1 = Math.floor((ox + vw + 1800) / CELL);
       const j0 = Math.floor((oy - 1800) / CELL), j1 = Math.floor((oy + vh + 1800) / CELL);
       for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
         const h1 = cellHash(i, j, lay, 11), h2 = cellHash(i, j, lay, 12), h3 = cellHash(i, j, lay, 13);
-        const v = fogVeil(side, Math.floor(h1 * FOG_VEILS), veilRgb);
-        if (!v) continue;
+        const img = fogVeil(side, Math.floor(h1 * FOG_VEILS), veilRgb);
+        if (!img) continue;
         const size = (1700 + h2 * 1800) * sz;
         const wx = (i + 0.2 + h2 * 0.6) * CELL, wy = (j + 0.2 + h3 * 0.6) * CELL;
         const sx = (wx - ox) * this.zoom * k, sy = (wy - oy) * this.zoom * k;
-        const W = size * this.zoom * k, H = W * (v.height / v.width);
-        f.save();
-        f.translate(sx, sy);
-        f.rotate(h3 * Math.PI * 2);
-        f.globalAlpha = (a0 - h1 * 0.25) * this.fog;
-        f.drawImage(v, -W / 2, -H / 2, W, H);
-        f.restore();
+        const W = size * this.zoom * k, H = W * (img.height / img.width);
+        v.save();
+        v.translate(sx, sy);
+        v.rotate(h3 * Math.PI * 2);
+        v.globalAlpha = (a0 - h1 * 0.2) * this.fog;
+        v.globalCompositeOperation = 'screen';
+        v.drawImage(img, -W / 2, -H / 2, W, H);
+        v.restore();
       }
     }
-    f.globalAlpha = 1;
-    // Sichtkreise ausschneiden: weicher Rand
-    f.globalCompositeOperation = 'destination-out';
-    const hole = (wx: number, wy: number, r: number) => {
-      const sx = (wx - this.camX) * this.zoom * k, sy = (wy - this.camY) * this.zoom * k, R = r * this.zoom * k;
-      // auch im Sichtkreis bleibt ein Hauch Schleier – man sieht, dass man im Nebel fliegt
-      const g = f.createRadialGradient(sx, sy, R * 0.3, sx, sy, R);
-      g.addColorStop(0, 'rgba(0,0,0,0.78)');
-      g.addColorStop(0.5, 'rgba(0,0,0,0.6)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      f.fillStyle = g;
-      f.beginPath(); f.arc(sx, sy, R, 0, Math.PI * 2); f.fill();
-    };
-    // Sichtkreis beim Aufziehen weit offen, im dichten Nebel FOG_SEE (endlich auch bei dünnem Nebel)
-    hole(this.px, this.py, (FOG_SEE + (1 - this.fog) * 3000) * 1.1);
-    for (const w of this.liveWards) hole(this.wx(w), this.wy(w), FOG_WARD * 1.1);
+    // nah bei dir dünner, damit das Geschehen lesbar bleibt
+    v.globalAlpha = 1;
+    v.globalCompositeOperation = 'destination-out';
+    hole(v, this.px, this.py, see * 1.1, [[0, 0.55], [0.5, 0.4], [1, 0]]);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(cv, 0, 0);
+    ctx.drawImage(d.canvas, 0, 0);
+    ctx.globalCompositeOperation = 'screen';
+    ctx.drawImage(v.canvas, 0, 0);
     ctx.restore();
   }
 

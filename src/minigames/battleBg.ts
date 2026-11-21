@@ -192,9 +192,8 @@ function soft(src: string): HTMLCanvasElement | null {
 }
 
 /**
- * Nebelschleier für Nebelfelder im Kampf: aus den Gasnebel- und Staubbildern der Schauplätze. Die Helligkeit des Bildes
- * wird zur Dichte des Schleiers, die Farbe zum Nebelton des Gegners hin gezogen (ein Rest der Bildfarbe bleibt); zum Rand
- * weich auslaufend. Einmal je Bild und Gegner berechnet, in voller Bildauflösung.
+ * Nebelschwaden für Nebelfelder im Kampf: die Gasnebel- und Staubbilder der Schauplätze, in den Nebelton umgefärbt (die
+ * Helligkeit bleibt, Hintergrund schwarz), zum Rand ins Schwarze auslaufend – gedacht für die Bildschirm-Mischung. Einmal je Bild und Gegner berechnet, in voller Bildauflösung.
  */
 const FOG_SRC: Record<BattleSide, string[]> = {
   pirate: [nebelRhak, staubAsche, helium, methan, staubTkr, nebelGlut],
@@ -211,20 +210,62 @@ export function fogVeil(side: BattleSide, i: number, rgb: [number, number, numbe
   const c = document.createElement('canvas');
   const w = (c.width = im.naturalWidth), h = (c.height = im.naturalHeight);
   const g = c.getContext('2d', { willReadFrequently: true })!;
+  // Helligkeit auf ein Raster (¼ Auflösung) mitteln und dort in Gleitkomma weichzeichnen – ohne 8-Bit-Stufen, die beim
+  // Vergrößern als Höhenlinien sichtbar würden
   g.drawImage(im, 0, 0);
-  const d = g.getImageData(0, 0, w, h), px = d.data;
+  const sp = g.getImageData(0, 0, w, h).data;
+  const S = 4, gw = Math.ceil(w / S), gh = Math.ceil(h / S);
+  const base = new Float32Array(gw * gh);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const k = (y * w + x) * 4;
+    base[Math.floor(y / S) * gw + Math.floor(x / S)] += Math.max(sp[k], sp[k + 1], sp[k + 2]) / 255 / (S * S);
+  }
+  /** dreifacher Kastenfilter (≈ Gauß) mit Radius r (Rasterpunkte) */
+  const blur = (a: Float32Array, r: number): Float32Array => {
+    let cur = a.slice();
+    const tmp = new Float32Array(cur.length);
+    for (let pass = 0; pass < 3; pass++) {
+      for (let y = 0; y < gh; y++) {
+        let acc = 0;
+        for (let x = -r; x <= r; x++) acc += cur[y * gw + Math.min(gw - 1, Math.max(0, x))];
+        for (let x = 0; x < gw; x++) {
+          tmp[y * gw + x] = acc / (2 * r + 1);
+          acc += cur[y * gw + Math.min(gw - 1, x + r + 1)] - cur[y * gw + Math.max(0, x - r)];
+        }
+      }
+      for (let x = 0; x < gw; x++) {
+        let acc = 0;
+        for (let y = -r; y <= r; y++) acc += tmp[Math.min(gh - 1, Math.max(0, y)) * gw + x];
+        for (let y = 0; y < gh; y++) {
+          cur[y * gw + x] = acc / (2 * r + 1);
+          acc += tmp[Math.min(gh - 1, y + r + 1) * gw + x] - tmp[Math.max(0, y - r) * gw + x];
+        }
+      }
+    }
+    return cur;
+  };
+  // Körper der Schwade (sehr weich, bestimmt Form und verwaschenen Rand) und Zeichnung im Inneren (leicht weich)
+  const soft = blur(base, Math.max(4, Math.round(gw / 26))), fine = blur(base, 2);
+  const at = (a: Float32Array, fx: number, fy: number): number => {
+    const x0 = Math.min(gw - 2, Math.max(0, Math.floor(fx))), y0 = Math.min(gh - 2, Math.max(0, Math.floor(fy)));
+    const tx = Math.min(1, Math.max(0, fx - x0)), ty = Math.min(1, Math.max(0, fy - y0));
+    const i = y0 * gw + x0;
+    return (a[i] * (1 - tx) + a[i + 1] * tx) * (1 - ty) + (a[i + gw] * (1 - tx) + a[i + gw + 1] * tx) * ty;
+  };
+  const d = g.createImageData(w, h), px = d.data;
   for (let y = 0; y < h; y++) {
-    const ny = (y / h) * 2 - 1;
+    const ny = (y / h) * 2 - 1, fy = y / S - 0.5;
     for (let x = 0; x < w; x++) {
-      const k = (y * w + x) * 4, nx = (x / w) * 2 - 1;
-      const r = px[k], gg = px[k + 1], b = px[k + 2];
-      const lum = Math.max(r, gg, b) / 255;
-      // Rand: elliptisch weich ausblenden, damit keine Bildkanten zu sehen sind
-      const e = Math.min(1, Math.max(0, (1 - Math.hypot(nx, ny)) / 0.45));
-      px[k + 3] = Math.round(255 * Math.min(1, Math.pow(lum * 1.7, 0.75)) * e);
-      px[k] = Math.round(rgb[0] * 0.7 + r * 0.3);
-      px[k + 1] = Math.round(rgb[1] * 0.7 + gg * 0.3);
-      px[k + 2] = Math.round(rgb[2] * 0.7 + b * 0.3);
+      const k = (y * w + x) * 4, nx = (x / w) * 2 - 1, fx = x / S - 0.5;
+      // zum Bildrand hin elliptisch ins Schwarze (bei der Bildschirm-Mischung neutral)
+      const e0 = Math.min(1, Math.max(0, (1 - Math.hypot(nx, ny)) / 0.6)), e = e0 * e0 * (3 - 2 * e0);
+      const body = Math.min(1, at(soft, fx, fy) * 2.2);
+      // Zeichnung nur, wo der Körper dicht ist – am Rand verschwindet sie, der Rand bleibt verwaschen
+      const v = (body * 0.6 + Math.min(1, at(fine, fx, fy) * 1.5) * body * body * 0.45) * e;
+      // Dithering: ±1 Stufe Rauschen, damit beim Vergrößern keine Linien entstehen
+      const n = Math.random() - 0.5;
+      px[k] = Math.round(rgb[0] * v + n); px[k + 1] = Math.round(rgb[1] * v + n); px[k + 2] = Math.round(rgb[2] * v + n);
+      px[k + 3] = 255;
     }
   }
   g.putImageData(d, 0, 0);

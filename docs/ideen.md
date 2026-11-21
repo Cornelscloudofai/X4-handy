@@ -5,7 +5,8 @@ Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 ## Nächste Schritte Kampf (vorgemerkt, der Reihe nach)
 
 Nach Gegnerrollen und Raketenwarnung angehen:
-1. Umgebung als Mitspieler: Nebel umgesetzt (Abschnitt „Nebelfeld“ ab Welle 3); offen: Wracks als Deckung (nur
+1. Umgebung als Mitspieler: Nebel umgesetzt (Abschnitt „Nebelfeld“ ab Welle 3; Darstellung Dunst + Schwaden – die
+   frühere Fassung mit deckenden Schleiern liegt in Commit 93a4a3f, falls wir zurück wollen); offen: Wracks als Deckung (nur
    Raketen kommen herum), Schwerkraftquellen (alles driftet, Raketen werden abgelenkt).
 2. Gegnerstärke an X4 angleichen: je Gegnertyp ein X4-Schiff als Vorbild (siehe „Kampf-Minispiel: offene Punkte“),
    dann Wellen und Rundendauer prüfen.
