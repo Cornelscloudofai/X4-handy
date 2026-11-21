@@ -89,7 +89,7 @@ export function simHomeHtml(m: SimHome): string {
       const mi = missionInfo(id), max = mi.sides.length * 15;
       return `<div class="row tap mg-mission" ${act('mg-game', { kind: mi.sides[0], mission: id })}>${artPic(MISSION_ART[id], 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc(mi.name)}</div><div class="sub wrap">${esc(mi.sub)}</div><div class="sub">${mi.sides.map((k) => SIDE_NAME[k]).join(' · ')} · ★ ${missionStars(id)}/${max}</div></div>${icon('chev', 20, 'chev')}</div>`;
     }).join('')}</div></div>
-    <div class="section"><h3>Endlos</h3><div class="box rows">${ENDLESS.map(([mission, name, sub]) => `<div class="row mg-mission sim-endless"><div class="grow"><div class="title" style="font-weight:500">${name}</div><div class="sub wrap">${sub}</div>
+    <div class="section"><h3>Endlos</h3><div class="box rows">${ENDLESS.map(([mission, name, sub]) => `<div class="row sim-endless"><div class="grow"><div class="title" style="font-weight:500">${name}</div><div class="sub wrap">${sub}</div>
       <div class="mg-sides">${COMBAT_KINDS.map((k) => { const bp = bestPoints(recordKey(k, mission), 'endless'); return `<button class="mg-side ${k}" ${act('mg-mode', { kind: k, mode: 'endless', mission })}><b>${SIDE_NAME[k]}</b><small>${bp ? `Rekord ${pts(bp)}` : 'kein Rekord'}</small></button>`; }).join('')}</div></div></div>`).join('')}</div></div>`;
   return hero + heute + tabs + (tab === 'combat' ? combat : work);
 }

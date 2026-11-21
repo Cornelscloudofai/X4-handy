@@ -2044,3 +2044,4 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .sim-goal svg { color: var(--muted); }
 .sim-goal.got svg { color: var(--teal); }
 .sim-goal.got .sub { color: var(--text); }
+.sim-endless { align-items: flex-start; }

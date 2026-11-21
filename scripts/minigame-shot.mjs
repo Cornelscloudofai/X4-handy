@@ -325,7 +325,7 @@ for (const kind of ['pirates', 'xenon', 'khaak']) {
 // --- Kampf-Einsätze: aus dem Reiter „Kampf“ starten, kurz vorspulen (Autopilot), Bild ---
 await simTab(page, 'combat');
 await page.waitForTimeout(200);
-if ((await page.locator('#modal .mg-mission').count()) !== 7) fail('Einsätze fehlen im Reiter „Kampf“');
+if ((await page.locator('#modal .mg-mission').count()) !== 8) fail('Einsätze fehlen im Reiter „Kampf“');
 await page.locator('#modal .mg-mission').first().scrollIntoViewIfNeeded();
 await page.screenshot({ path: `${out}/mg-16-einsaetze.png` });
 for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['flucht', 'khaak'], ['bergung', 'pirates'], ['ueberfall', 'pirates'], ['nest', 'khaak'], ['nest', 'xenon']]) {
