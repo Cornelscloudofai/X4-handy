@@ -4,6 +4,7 @@
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
 import { distUrl } from './serve.mjs';
+import { playSim } from './simNav.mjs';
 const out = process.argv[2];
 const browser = await chromium.launch(launchOpts());
 const errors = [];
@@ -21,9 +22,9 @@ async function open(viewport, mobile, hud) {
   return page;
 }
 async function combat(page, kind = 'xenon') {
-  await page.evaluate(() => { const g = window.__game; g.ui.panel = null; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
+  await page.evaluate(() => { const g = window.__game; g.ui.panel = null; g.ui.modal = { type: 'minigames' }; g.refresh(); });
   await page.waitForTimeout(300);
-  await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
+  await playSim(page, kind);
   await page.waitForTimeout(500);
   await page.click('#minigame [data-mg="start"]');
   await page.waitForTimeout(1500);

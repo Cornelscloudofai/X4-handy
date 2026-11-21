@@ -3,6 +3,7 @@
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
 import { distUrl } from './serve.mjs';
+import { playSim, simTab } from './simNav.mjs';
 const out = process.argv[2];
 const width = Number(process.argv[3] ?? 390);
 const browser = await chromium.launch(launchOpts());
@@ -13,15 +14,22 @@ page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(await distUrl());
 await page.waitForTimeout(700);
 await page.click('text=Loslegen');
-await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
+await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames' }; g.refresh(); });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
-if ((await page.locator('#modal [data-act="mg-play"]').count()) !== 9) fail('Minispiel-Liste unvollständig');
-// Reiter: Täglich und Kampf
-await page.click('#modal [data-act="mg-tab"][data-tab="daily"]');
+// Simulator: Heute-Leiste mit neun Tagesaufgaben, Reiter Arbeit (sechs Spiele) und Kampf (Geleitschutz, Einsätze, Endlos)
+if ((await page.locator('#modal .sim-day[data-act="mg-daily"]').count()) !== 9) fail('Heute-Leiste: Tagesaufgaben fehlen');
+if ((await page.locator('#modal [data-act="mg-game"]').count()) !== 6) fail('Reiter „Arbeit“: Spiele fehlen');
+await simTab(page, 'combat');
 await page.waitForTimeout(200);
-if ((await page.locator('#modal [data-act="mg-daily"]').count()) !== 9) fail('Reiter „Täglich“: Tagesaufgaben fehlen');
-await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+if ((await page.locator('#modal .sim-tile[data-act="mg-game"]').count()) !== 3) fail('Reiter „Kampf“: Geleitschutz fehlt');
+await page.screenshot({ path: `${out}/mg-0-kampf.png` });
+// Spielseite: eigene Stufe, Start
+await page.click('#modal .sim-tile[data-kind="xenon"]');
+await page.waitForTimeout(200);
+if ((await page.locator('#modal .sim-lv').count()) !== 5 || !(await page.locator('#modal .sim-start[data-act="mg-play"]').count())) fail('Spielseite unvollständig');
+await page.screenshot({ path: `${out}/mg-0-seite.png` });
+await page.click('#modal [data-act="mg-home"]');
 await page.waitForTimeout(200);
 // Hangar: Schiff auf der Plattform, Plaketten an den Bauteilen; Antippen öffnet die Schublade mit Karten, Antippen einer Karte baut sofort ein
 const loView = async (view, slot) => { await page.click(`#modal .hgr-hot[data-view="${view}"]${slot ? `[data-slot="${slot}"]` : ''}`); await page.waitForTimeout(250); };
@@ -97,14 +105,14 @@ await loHome();
 await page.click('#modal [data-act="mg-back"]');
 await page.waitForTimeout(200);
 if (!(await page.locator('#modal [data-act="loadout-open"]').innerText()).includes('Mamba')) fail('Schiffswahl erscheint nicht im Menü (Zurück → Reiter Kampf)');
-await page.click('#modal [data-act="mg-tab"][data-tab="games"]');
+await simTab(page, 'work');
 await page.waitForTimeout(200);
 
 const phase = () => page.evaluate(() => window.__mg?.phase ?? null);
 const mg = (fn, arg) => page.evaluate(fn, arg);
 
 // --- Rohr-Puzzle ---
-await page.click('#modal [data-act="mg-play"][data-kind="pipes"]');
+await playSim(page, 'pipes');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${out}/mg-1-pipes-intro.png` });
 if ((await phase()) !== 'intro') fail('Einführung fehlt');
@@ -143,8 +151,7 @@ if (await page.locator('#minigame').count()) fail('Minispiel schließt nicht');
 if (!(await page.locator('#modal .mg-best').count())) fail('Bestwert wird nicht angezeigt');
 
 // --- Erz ---
-await page.evaluate(() => { const g = window.__game; g.ui.modal.level = 2; g.refresh(); });
-await page.click('#modal [data-act="mg-play"][data-kind="ore"]');
+await playSim(page, 'ore', { level: 2 });
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(200);
@@ -178,7 +185,7 @@ await page.screenshot({ path: `${out}/mg-7-ore-result.png` });
 await page.click('#minigame [data-mg="quit"]');
 
 // --- Gas ---
-await page.click('#modal [data-act="mg-play"][data-kind="gas"]');
+await playSim(page, 'gas');
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(200);
@@ -212,7 +219,7 @@ await page.click('#minigame [data-mg="abort"]');
 await page.click('#minigame [data-mg="quit"]');
 
 // --- Frachtraum ---
-await page.click('#modal [data-act="mg-play"][data-kind="cargo"]');
+await playSim(page, 'cargo');
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(900);
@@ -233,7 +240,7 @@ await page.click('#minigame [data-mg="abort"]');
 await page.click('#minigame [data-mg="quit"]');
 
 // --- Superhighway ---
-await page.click('#modal [data-act="mg-play"][data-kind="highway"]');
+await playSim(page, 'highway');
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(300);
@@ -252,7 +259,7 @@ await page.click('#minigame [data-mg="abort"]');
 await page.click('#minigame [data-mg="quit"]');
 
 // --- Orbit-Andocken ---
-await page.click('#modal [data-act="mg-play"][data-kind="orbit"]');
+await playSim(page, 'orbit');
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(300);
@@ -272,7 +279,7 @@ await page.click('#minigame [data-mg="quit"]');
 
 // --- Kampf ---
 for (const kind of ['pirates', 'xenon', 'khaak']) {
-  await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
+  await playSim(page, kind);
   await page.waitForTimeout(300);
   await page.click('#minigame [data-mg="start"]');
   // Joystick: Finger links unten halten und ziehen
@@ -314,13 +321,13 @@ for (const kind of ['pirates', 'xenon', 'khaak']) {
   await page.click('#minigame [data-mg="quit"]');
 }
 // --- Kampf-Einsätze: aus dem Reiter „Kampf“ starten, kurz vorspulen (Autopilot), Bild ---
-await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+await simTab(page, 'combat');
 await page.waitForTimeout(200);
 if ((await page.locator('#modal .mg-mission').count()) !== 6) fail('Einsätze fehlen im Reiter „Kampf“');
 await page.locator('#modal .mg-mission').first().scrollIntoViewIfNeeded();
 await page.screenshot({ path: `${out}/mg-16-einsaetze.png` });
 for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['flucht', 'khaak'], ['bergung', 'pirates'], ['ueberfall', 'pirates'], ['nest', 'khaak'], ['nest', 'xenon']]) {
-  await page.click(`#modal [data-act="mg-mission"][data-mission="${mission}"][data-kind="${kind}"]`);
+  await playSim(page, kind, { mission });
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${out}/mg-17-${mission}-${kind}-intro.png` });
   await page.click('#minigame [data-mg="start"]');
@@ -342,17 +349,17 @@ for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['fl
   await page.click('#minigame [data-mg="quit"]');
   await page.waitForTimeout(200);
 }
-await page.click('#modal [data-act="mg-tab"][data-tab="games"]');
+await simTab(page, 'work');
 await page.waitForTimeout(200);
-// Tagesaufgabe und Endlos-Modus: Einführung mit Besonderheit und Nebenzielen
-await page.click('#modal [data-act="mg-tab"][data-tab="daily"]');
-await page.waitForTimeout(200);
-await page.click('#modal [data-act="mg-daily"][data-kind="ore"]');
+// Tagesaufgabe (Heute-Leiste) und Endlos-Modus (Reiter Kampf): Einführung mit Besonderheit und Nebenzielen
+await page.click('#modal .sim-day[data-act="mg-daily"][data-kind="ore"]');
 await page.waitForTimeout(300);
 if (!(await page.locator('#minigame .mg-mut-box').count())) fail('Tagesaufgabe ohne Besonderheit');
 if ((await page.locator('#minigame .mg-goals div').count()) !== 3) fail('Nebenziele fehlen');
 await page.screenshot({ path: `${out}/mg-12-daily-intro.png` });
 await page.click('#minigame [data-mg="quit"]');
+await simTab(page, 'combat');
+await page.waitForTimeout(200);
 await page.click('#modal [data-act="mg-mode"][data-kind="pirates"]');
 await page.waitForTimeout(300);
 await page.click('#minigame [data-mg="start"]');
@@ -363,13 +370,15 @@ await page.click('#minigame [data-mg="abort"]');
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-14-endless-result.png` });
 await page.click('#minigame [data-mg="quit"]');
-await page.click('#modal [data-act="mg-tab"][data-tab="games"]');
+await simTab(page, 'work');
+await page.waitForTimeout(200);
+await page.click('#modal [data-act="mg-game"][data-kind="highway"]');
 await page.waitForTimeout(200);
 await page.click('#modal [data-act="mg-level"][data-level="5"]');
 await page.waitForTimeout(200);
-if (!(await page.locator('#modal .mg-lock').count())) fail('Stufe 5 nicht gesperrt');
+if (!(await page.locator('#modal .sim-lv.locked.on').count()) || (await page.locator('#modal .sim-start[data-act="mg-play"]').count())) fail('Stufe 5 nicht gesperrt');
 await page.screenshot({ path: `${out}/mg-15-menu-locked.png`, fullPage: false });
-await page.click('#modal [data-act="mg-level"][data-level="1"]');
+await page.click('#modal [data-act="mg-home"]');
 // Hauptspiel läuft danach weiter
 const t0 = await page.evaluate(() => window.__game.state.time);
 await page.evaluate(() => { const g = window.__game; g.ui.modal = null; g.refresh(); });

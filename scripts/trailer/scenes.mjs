@@ -1,4 +1,5 @@
 // Hilfen zum Aufsetzen der Trailer-Szenen (laufen im Browser über window.__game bzw. window.__mg)
+import { playSim, simTab } from '../simNav.mjs';
 
 export async function intoGame(page) {
   await page.click('text=Loslegen');
@@ -54,15 +55,15 @@ export async function startMini(page, kind, { level = 1, gear = 2, mission, load
     await page.evaluate(() => document.getElementById('tr-lo')?.remove());
   }
   await page.evaluate(({ level, gear }) => {
-    const g = window.__game; g.ui.modal = { type: 'minigames', level, gear }; g.refresh();
+    const g = window.__game; g.ui.modal = { type: 'minigames' }; g.refresh();
   }, { level, gear });
   await page.clock.runFor(300);
   await page.evaluate(() => { window.__trPin = null; });
   if (mission) {
-    await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+    await simTab(page, 'combat');
     await page.clock.runFor(200);
-    await page.click(`#modal [data-act="mg-mission"][data-mission="${mission}"][data-kind="${kind}"]`);
-  } else await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
+    await playSim(page, kind, { mission, level, gear });
+  } else await playSim(page, kind, { level, gear });
   await page.clock.runFor(300);
   await page.click('#minigame [data-mg="start"]');
   await page.clock.runFor(50);

@@ -28,7 +28,8 @@ export type Modal =
   | { type: 'zentrale' }
   | { type: 'lage' }
   | { type: 'devtools'; level: 1 | 2 | 3 | 4 | 5 }
-  | { type: 'minigames'; level: 1 | 2 | 3 | 4 | 5; gear: 1 | 2 | 3; tab?: 'games' | 'daily' | 'combat' }
+  | import('./simView').SimHome
+  | import('./simView').SimGame
   | { type: 'chart'; spec: ChartSpec; hours: number }
   | { type: 'alerts' }
   | { type: 'akte' }

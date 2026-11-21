@@ -3,6 +3,7 @@
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
 import { distUrl } from './serve.mjs';
+import { simTab } from './simNav.mjs';
 const out = process.argv[2] ?? '/tmp';
 const ships = (process.argv[3] ?? 'jaguar,mamba,cobra,klapperschlange,raptor').split(',');
 const errors = [];
@@ -15,7 +16,7 @@ await page.waitForTimeout(600);
 await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
 await page.waitForTimeout(300);
-await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+await simTab(page, 'combat');
 await page.waitForTimeout(300);
 await page.click('#modal [data-act="loadout-open"]');
 await page.waitForTimeout(400);

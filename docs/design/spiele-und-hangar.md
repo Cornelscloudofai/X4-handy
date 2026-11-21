@@ -1,7 +1,13 @@
 # Konzept: Minispiele und Hangar neu ordnen
 
-Stand: Raum und vier Orte umgesetzt (`src/ui/zentrale.ts`, Bild `src/assets/zentrale/raum.jpg`); die Ziele sind
-vorerst die bisherigen Fenster. Die weiteren Schritte unten sind noch offen.
+Stand:
+- Umgesetzt: Raum mit vier Orten (`src/ui/zentrale.ts`, Bild `src/assets/zentrale/raum.jpg`).
+- Umgesetzt: Simulator neu geordnet (`src/ui/simView.ts`):
+  - Heute-Leiste mit den Tagesaufgaben
+  - Reiter **Arbeit** (sechs Spiele als Bildkacheln) und **Kampf** (Schiff, Geleitschutz, Einsätze, Endlos)
+  - Spielseite je Spiel und Einsatz mit eigener Stufe, Tagesaufgabe, Leitungskette bzw. Endlos und Abzeichen
+- Steuerung, Gegneranzeige und Größenverhältnis stehen in den Einstellungen; Ausrüstungsstufe und Gegnerstärke in der Wartung.
+- Offen: Hangar mit Reitern, Flotte, Sätze, Probeflug.
 
 ## Überarbeitung: Einsatzzentrale als Raum (Stand nach Rückmeldung)
 

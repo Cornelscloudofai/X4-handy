@@ -4,6 +4,7 @@
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
 import { distUrl } from './serve.mjs';
+import { playSim, simTab } from './simNav.mjs';
 const out = process.argv[2] ?? '/tmp';
 const errors = [];
 const browser = await chromium.launch(launchOpts());
@@ -26,13 +27,13 @@ const res = {};
 const runs = [['pirates'], ['xenon'], ['khaak'], ['pirates', 'station'], ['xenon', 'konvoi'], ['khaak', 'flucht'], ['pirates', 'bergung'], ['pirates', 'ueberfall'], ['xenon', 'nest']];
 for (const [kind, mission] of runs) {
   const name = mission ? `${kind}-${mission}` : kind;
-  await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
+  await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames' }; g.refresh(); });
   await page.waitForTimeout(300);
   if (mission) {
-    await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+    await simTab(page, 'combat');
     await page.waitForTimeout(250);
-    await page.click(`#modal [data-act="mg-mission"][data-mission="${mission}"][data-kind="${kind}"]`);
-  } else await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
+    await playSim(page, kind, { mission });
+  } else await playSim(page, kind);
   await page.waitForTimeout(400);
   await page.click('#minigame [data-mg="start"]');
   await page.waitForTimeout(2500);

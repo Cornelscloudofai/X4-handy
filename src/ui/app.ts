@@ -43,6 +43,7 @@ import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/s
 import { MODS, QUALITY, ackRefund, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
 import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutView';
 import { layoutZentrale } from './zentrale';
+import { COMBAT_KINDS, nextLevel, setSimGear, simGear, type SimMission } from './simView';
 import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
@@ -206,7 +207,7 @@ export function start(): void {
   fitSector();
   // Zugriff für automatisierte Tests
   (window as unknown as { __audio: unknown }).__audio = { names: SOUND_DEMO.map((x) => x[0]), render: (i: number, sec: number) => renderOffline(SOUND_DEMO[i][1], sec), meterPeak, ready: () => preloadSamples(new OfflineAudioContext(2, 1, 44100)), mood: (i: number, sec: number) => renderMood(i, sec) };
-  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, galaxyCam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), discover: (id: string) => discover(state, id), openPanel, gotoSector, renderer };
+  (window as unknown as { __game: unknown }).__game = { get state() { return state; }, cam, galaxyCam, ui, refresh, step: (sec: number) => step(state, sec), actions: A, yard: Y, claim: () => claimMission(state), discover: (id: string) => discover(state, id), openPanel, gotoSector, renderer, setSimGear };
   requestAnimationFrame(frame);
   // Intro beim echten Start (App-Version): Startschirm und Trailer, danach Karrierewahl bzw. Karte mit Titelmusik
   if (startScreenDue()) {
@@ -885,7 +886,7 @@ function zoomTick(dt: number): void {
 // ---------- Zurück-Taste (Android) und Escape ----------
 
 /** Minispiel-Menü, aus dem Schiffswahl oder Grafikvergleich geöffnet wurden (dorthin führt „Zurück“) */
-let lastMg: Extract<NonNullable<typeof ui.modal>, { type: 'minigames' }> | null = null;
+let lastMg: Extract<NonNullable<typeof ui.modal>, { type: 'minigames' | 'mgGame' }> | null = null;
 
 /** aus der Einsatzzentrale geöffnet: Schließen führt zurück in den Raum statt auf die Karte */
 let zBack = false;
@@ -893,6 +894,12 @@ function toZentrale(): typeof ui.modal {
   if (zBack && ui.modal && ui.modal.type !== 'zentrale') return { type: 'zentrale' };
   zBack = false;
   return null;
+}
+
+/** Simulator-Übersicht im Reiter, zu dem die offene Spielseite gehört */
+function simHome(): typeof ui.modal {
+  const m = ui.modal;
+  return { type: 'minigames', tab: m?.type === 'mgGame' && COMBAT_KINDS.includes(m.kind) ? 'combat' : 'work' };
 }
 
 /** Schließt die oberste Ebene. false = nichts mehr offen */
@@ -905,6 +912,7 @@ function goBack(): boolean {
     // Hangar: aus einer Auswahl erst zurück zur Platzliste
     else if (ui.modal.type === 'loadout' && ui.modal.view && ui.modal.view !== 'home') ui.modal = { ...ui.modal, view: 'home' };
     else if ((ui.modal.type === 'loadout' || ui.modal.type === 'shipArt') && lastMg) ui.modal = lastMg;
+    else if (ui.modal.type === 'mgGame') ui.modal = simHome();
     else ui.modal = toZentrale();
   } else if (ui.placing) ui.placing = null;
   else if (ui.order) ui.order = null;
@@ -1398,16 +1406,16 @@ function onClick(e: MouseEvent): void {
       case 'icon-style': ui.iconStyle = d.style === 'line' ? 'line' : 'glow'; saveIconStyle(ui.iconStyle); setWareIconStyle(ui.iconStyle); refresh(); break;
       case 'hud-reset': setHudScale(1); refresh(); break;
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
-      case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
+      case 'minigames': ui.modal = { type: 'minigames' }; refresh(); break;
       // Einsatzzentrale und ihre vier Orte; „Zurück“ führt von dort wieder in den Raum
       case 'zentrale': ui.modal = { type: 'zentrale' }; refresh(); break;
-      case 'z-sim': zBack = true; lastMg = null; ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
+      case 'z-sim': zBack = true; lastMg = null; ui.modal = { type: 'minigames' }; refresh(); break;
       case 'z-lage': zBack = true; ui.modal = { type: 'lage' }; refresh(); break;
       case 'z-hangar': zBack = true; lastMg = null; ui.modal = { type: 'loadout' }; refresh(); break;
       case 'z-dev': zBack = true; ui.modal = { type: 'devtools', level: 1 }; refresh(); break;
       case 'dev-level': if (ui.modal?.type === 'devtools') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
-      case 'ship-art-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
-      case 'loadout-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'loadout' }; refresh(); break;
+      case 'ship-art-open': if (ui.modal?.type === 'minigames' || ui.modal?.type === 'mgGame') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
+      case 'loadout-open': if (ui.modal?.type === 'minigames' || ui.modal?.type === 'mgGame') lastMg = ui.modal; ui.modal = { type: 'loadout' }; refresh(); break;
       case 'lo-view': if (ui.modal?.type === 'loadout') {
         // Schublade öffnen oder schließen; beim Schließen endet die Vorschau in der Werteleiste
         const view = d.view as LoView;
@@ -1454,7 +1462,7 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
-      case 'mg-back': ui.modal = lastMg ?? { type: 'minigames', level: 1, gear: 1, tab: 'combat' }; refresh(); break;
+      case 'mg-back': ui.modal = lastMg ?? { type: 'minigames', tab: 'combat' }; refresh(); break;
       case 'mg-controls': {
         setControlMode(d.mode as ControlMode);
         refresh();
@@ -1546,23 +1554,24 @@ function onClick(e: MouseEvent): void {
       }
       case 'obj-toggle': ui.objMin = !ui.objMin; try { localStorage.setItem('x4-sektorbau-objmin', ui.objMin ? '1' : ''); } catch { /* egal */ } refresh(); break;
       case 'more-sub': openPanel('more', undefined, d.tab, true); break;
-      case 'mg-tab': if (ui.modal?.type === 'minigames') { ui.modal.tab = d.tab as 'games' | 'daily' | 'combat'; refresh(); } break;
-      case 'mg-level': if (ui.modal?.type === 'minigames') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
-      case 'mg-gear': if (ui.modal?.type === 'minigames') { ui.modal.gear = Number(d.gear) as 1 | 2 | 3; refresh(); } break;
-      case 'mg-mission': {
-        if (ui.modal?.type !== 'minigames') break;
-        const { level, gear } = ui.modal;
-        const kind = d.kind as MiniKind;
-        if (!unlocked(kind, level)) break;
-        openMinigame(kind, { level, gear: { weapon: gear, shield: gear, engine: gear }, mission: d.mission as Mission }, () => refresh(), true);
+      // Simulator: Übersicht (Reiter Arbeit/Kampf) und Spielseiten mit eigener Stufe
+      case 'mg-tab': if (ui.modal?.type === 'minigames') { ui.modal.tab = d.tab === 'combat' ? 'combat' : 'work'; refresh(); } break;
+      case 'mg-game': {
+        const kind = d.kind as MiniKind, mission = d.mission as SimMission | undefined;
+        ui.modal = { type: 'mgGame', kind, mission, level: nextLevel(kind, mission) };
+        refresh();
         break;
       }
+      case 'mg-home': ui.modal = simHome(); refresh(); break;
+      case 'mg-side': if (ui.modal?.type === 'mgGame') { const kind = d.kind as MiniKind; ui.modal = { ...ui.modal, kind, level: unlocked(kind, ui.modal.level) ? ui.modal.level : nextLevel(kind, ui.modal.mission) }; refresh(); } break;
+      case 'mg-level': if (ui.modal?.type === 'mgGame') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
+      case 'mg-gear': setSimGear(Number(d.gear) as 1 | 2 | 3); refresh(); break;
       case 'mg-play': case 'mg-daily': case 'mg-mode': {
-        if (ui.modal?.type !== 'minigames') break;
-        const { level, gear } = ui.modal;
-        const kind = d.kind as MiniKind;
-        const g = { weapon: gear, shield: gear, engine: gear };
-        const opts: MiniOpts = a === 'mg-daily' ? { ...dailyOpts(kind), gear: g } : a === 'mg-mode' ? { level: 3, gear: g, mode: d.mode as Mode, mutator: null } : { level, gear: g };
+        if (ui.modal?.type !== 'minigames' && ui.modal?.type !== 'mgGame') break;
+        const kind = d.kind as MiniKind, gr = simGear();
+        const g = { weapon: gr, shield: gr, engine: gr };
+        const level = ui.modal.type === 'mgGame' ? ui.modal.level : 1;
+        const opts: MiniOpts = a === 'mg-daily' ? { ...dailyOpts(kind), gear: g } : a === 'mg-mode' ? { level: 3, gear: g, mode: d.mode as Mode, mutator: null } : { level, gear: g, ...(d.mission ? { mission: d.mission as Mission } : {}) };
         if (a === 'mg-play' && !unlocked(kind, level)) break;
         openMinigame(kind, opts, () => refresh(), true);
         break;

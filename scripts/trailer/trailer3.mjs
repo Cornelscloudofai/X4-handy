@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { open, recorder, FPS } from './browser.mjs';
 import { intoGame, buildEmpire, calmStations, quitMini, fastForward, zoom, GOD } from './scenes.mjs';
 import { OVERLAY, overlay, title, ease } from './overlay.mjs';
+import { playSim, simTab } from '../simNav.mjs';
 
 const out = process.argv[2] ?? 'trailer3';
 const preview = process.argv.includes('--preview');
@@ -65,10 +66,10 @@ const RAPTOR_GROUPS = (m, l) => Array.from({ length: 11 }, (_, i) => (i >= 8 ? l
 async function fight(page, kind, lo, { level = 3, gear = 2 } = {}) {
   await quitMini(page);
   await setLoadout(page, lo);
-  await page.evaluate(({ level, gear }) => { const g = window.__game; g.ui.modal = { type: 'minigames', level, gear }; g.refresh(); }, { level, gear });
+  await page.evaluate(({ level, gear }) => { const g = window.__game; g.ui.modal = { type: 'minigames' }; g.refresh(); }, { level, gear });
   await page.clock.runFor(300);
   await page.evaluate(() => { window.__trPin = null; window.__trTick = null; });
-  await page.click(`#modal [data-act="mg-play"][data-kind="${kind}"]`);
+  await playSim(page, kind, { level, gear });
   await page.clock.runFor(300);
   await page.click('#minigame [data-mg="start"]');
   await page.clock.runFor(50);
@@ -220,9 +221,9 @@ function scenes(page) {
   add('hangar', S.hangar, async () => {
     await page.evaluate(() => { document.getElementById('reveal')?.remove(); const g = window.__game; g.ui.view = 'sector'; g.gotoSector('zhin'); });
     await setLoadout(page, { ship: 'mamba', groups: RAPTOR_GROUPS((i) => (i % 3 === 1 ? 'rakete' : 'puls'), 'silo'), wing: { mamba: 12 } });
-    await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames', level: 3, gear: 2 }; g.refresh(); });
+    await page.evaluate(() => { const g = window.__game; g.ui.modal = { type: 'minigames' }; g.refresh(); });
     await page.clock.runFor(300);
-    await page.click('#modal [data-act="mg-tab"][data-tab="combat"]');
+    await simTab(page, 'combat');
     await page.clock.runFor(200);
     await page.click('#modal [data-act="loadout-open"]');
     await page.clock.runFor(900);

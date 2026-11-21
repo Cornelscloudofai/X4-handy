@@ -1,22 +1,18 @@
 // HTML-Bausteine aller Bildschirme. Aktionen laufen über data-act (siehe app.ts).
 import { HUD_MAX, HUD_MIN, hudScale, hudSetting } from './hudScale';
 import { wareIcon, wareMark } from './wareIcons';
-import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } from '../minigames/host';
-import { UNLOCK, badgeCount, best as mgBest, bestPoints as mgBestPoints, dailyBest, totalStars, unlocked } from '../minigames/records';
-import { MISSIONS, MISSION_IDS, recordKey } from '../minigames/missions';
-import type { Level } from '../minigames/common';
 import { drawFighterVector } from '../minigames/shooterData';
 import { installState } from './install';
 import { introAvailable, introEnabled } from './intro';
 import { tunePanel } from '../minigames/tunePanel';
 import { lageBody, zentraleHtml } from './zentrale';
+import { simGameHtml, simGear, simHomeHtml } from './simView';
 import { FRAME_STYLES, MENU_STYLES, frameStyle, menuStyle } from './hudStyle';
 import { loadoutView } from './loadoutView';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { modState } from '../minigames/mods';
-import { musicFx } from '../audio/rhythm';
-import { SHIPS, loadout, loadoutLabel, controlMode, enemyBars, ENEMY_BAR_STEPS, sizeScale } from '../minigames/loadout';
+import { controlMode, enemyBars, ENEMY_BAR_STEPS, sizeScale } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1876,6 +1872,13 @@ function morePanel(state: GameState, ui: UIState): string {
           ${introAvailable() ? `${toggleRow('Trailer beim Start', 'Läuft nach dem Startbildschirm höchstens einmal am Tag und lässt sich überspringen', introEnabled(), introEnabled() ? 'An' : 'Aus', 'intro-toggle')}
           ${linkRow('play', 'Trailer jetzt ansehen', 'Den Trailer noch einmal abspielen', 'intro-play')}` : ''}
         </div></div>
+        <div class="section"><h3>Kampf · Steuerung</h3><div class="segment">${(['eins', 'zwei', 'lenk'] as const).map((c) => `<button class="${controlMode() === c ? 'on' : ''}" ${act('mg-controls', { mode: c })}>${c === 'eins' ? 'Ein Stick' : c === 'zwei' ? 'Zwei Sticks' : 'Lenkrad'}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : controlMode() === 'zwei' ? 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zeigen, wohin der Jäger blickt; über den Ring hinaus wird gefeuert.' : 'Links fliegen wie bei zwei Sticks. Rechts lenken wie ein Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung; über den Ring hinaus wird gefeuert.'} Beim Überschreiten des Rings leuchtet er auf, klickt leise und vibriert, wo das Gerät es zulässt.</p>
+        <p class="small muted" style="margin:6px 0 0">Am PC schaltet sich die Maus-und-Tastatur-Steuerung von selbst ein: Das Schiff dreht sich zur Maus, W/A/S/D (oder Pfeiltasten) fliegen vorwärts, rückwärts und seitwärts, Linksklick feuert, Rechtsklick oder R Raketen, Leertaste Spezialfähigkeit, Mausrad Zoom.</p></div>
+        <div class="section"><h3>Kampf · Anzeige über den Gegnern</h3><div class="segment">${ENEMY_BAR_STEPS.map((v, i) => `<button class="${enemyBars() === v ? 'on' : ''}" ${act('mg-bars', { v: String(v) })}>${['Aus', 'Dezent', 'Mittel', 'Deutlich'][i]}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">Zwei feine Linien über jedem Gegner: oben der Schild (hellblau, lädt nach 3 s ohne Treffer wieder auf), darunter die Hülle. Unbeschädigte Gegner noch blasser.</p></div>
+        <div class="section"><h3>Kampf · Größenverhältnis</h3><div class="segment">${(['x4', 'gestaucht', 'bisher'] as const).map((k) => `<button class="${sizeScale() === k ? 'on' : ''}" ${act('mg-scale', { scale: k })}>${k === 'x4' ? 'Wie in X4' : k === 'gestaucht' ? 'Gestaucht' : 'Bisher'}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">${sizeScale() === 'x4' ? 'Längen wie in X4, Mamba (32 m) als Maß: Cobra und Dragon knapp sechsmal so lang wie ein Jäger, Klapperschlange 1 076, Raptor 3 790 Punkte.' : sizeScale() === 'gestaucht' ? 'Jäger und Korvetten wie in X4, große Schiffe zusammengeschoben, damit sie noch auf den Bildschirm passen.' : 'Die alten Größen von vor dem Abgleich mit X4.'} Gilt nur für den Kampfmodus, nicht für die Sektorkarte.</p></div>
         <div class="section"><h3>Ton</h3><div class="box rows">
           ${toggleRow('Klänge', 'Oberfläche, Effekte, Atmosphäre und Klangteppich', soundEnabled(), soundEnabled() ? 'An' : 'Aus', 'sound-toggle')}
         </div>
@@ -1943,66 +1946,15 @@ export function modalHtml(state: GameState, ui: UIState): string {
     case 'devtools': {
       const body = `<p class="lead">Werkzeuge zum Ausprobieren. Sie ändern Werte und Ansichten, nicht den Spielstand.</p>
         <div class="section"><h3>Karte</h3><div class="box rows"><div class="row tap" ${act('dev-reveal')}>${icon('galaxy', 20)}<div class="grow"><div class="title">Alle Sektoren aufdecken</div><div class="sub">Nur die Ansicht der Galaxiekarte – ${devRevealAll() ? 'eingeschaltet' : 'aus'}</div></div><b class="${devRevealAll() ? 'pos' : 'muted'}">${devRevealAll() ? 'An' : 'Aus'}</b></div></div></div>
-        ${tuneSection(m.level)}`;
+        ${tuneSection(m.level)}
+        <div class="section"><h3>Ausrüstungsstufe (alt)</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${simGear() === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">Alte Stufen für Waffen, Schild und Antrieb im Simulator – zum Vergleich mit der neuen Ausrüstung im Hangar.</p></div>`;
       return modalShell('Wartung', body, `<button class="btn" ${act('modal-close')}>Zurück</button>`, 'Einsatzzentrale · Entwicklung');
     }
-    case 'minigames': {
-      // Vorschau: alle Minispiele mit Stufe 1–5, Rekorden, Abzeichen, Tagesaufgaben und Herausforderungen
-      const stars = (n: number) => `<span class="mg-best" aria-label="${Math.max(0, n)} von 3 Sternen">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
-      const pts = (n: number) => Math.round(n).toLocaleString('de-DE');
-      const lvl = m.level as Level;
-      const gameRow = (k: MiniKind) => {
-        const open = unlocked(k, lvl);
-        const b = mgBest(k, lvl);
-        const info = `${b?.points ? `Rekord ${pts(b.points)} · ` : ''}★ ${totalStars(k)}/15 · Abzeichen ${badgeCount(k)}/${goalsOf(k).length}`;
-        return open
-          ? `<div class="row tap mg-row" ${act('mg-play', { kind: k })}>${artPic(k, 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">${esc(MINI_INFO[k].sub)}</div><div class="sub">${info}</div></div>${b ? stars(b.stars) : ''}${icon('play', 18, 'chev')}</div>`
-          : `<div class="row mg-lock mg-row">${artPic(k, 'mg-thumb locked')}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub wrap">Stufe ${lvl} ab ${UNLOCK[lvl]} Sternen in diesem Spiel – noch ${UNLOCK[lvl] - totalStars(k)}</div></div></div>`;
-      };
-      const daily = MINI_KINDS.map((k) => {
-        const o = dailyOpts(k);
-        const mu = mutatorsOf(k).find((x) => x.id === o.mutator);
-        const db = dailyBest(k);
-        return `<div class="row tap mg-row small-thumb" ${act('mg-daily', { kind: k })}>${artPic(k, 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc(MINI_INFO[k].name)}</div><div class="sub">${mu ? esc(mu.name) + ' · ' : ''}${db != null ? `heute ${pts(db)} Punkte` : 'heute noch nicht gespielt'}</div></div>${icon('play', 18, 'chev')}</div>`;
-      }).join('');
-      const modes = MINI_KINDS.filter((k) => MINI_INFO[k].chain || MINI_INFO[k].endless).map((k) => {
-        const mode = MINI_INFO[k].chain ? 'chain' : 'endless';
-        const bp = mgBestPoints(k, mode);
-        return `<div class="row tap mg-row small-thumb" ${act('mg-mode', { kind: k, mode })}>${artPic(k, 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[0])}</div><div class="sub wrap">${esc((MINI_INFO[k].chain ?? MINI_INFO[k].endless)!.split(':')[1]?.trim() ?? '')}${bp ? ` · Rekord ${pts(bp)}` : ''}</div></div>${icon('play', 18, 'chev')}</div>`;
-      }).join('');
-      const tab = m.tab ?? 'games';
-      const tabs = `<div class="segment mg-tabs">${([['games', 'Spiele'], ['daily', 'Täglich'], ['combat', 'Kampf']] as const).map(([id, l]) => `<button class="${tab === id ? 'on' : ''}" ${act('mg-tab', { tab: id })}>${l}</button>`).join('')}</div>`;
-      const gamesTab = `<p class="lead">Zum Ausprobieren. Jede zweite Runde bringt eine Besonderheit mit mehr Punkten; Nebenziele geben Abzeichen. Mit Sternen schaltest du je Spiel Stufe 4 und 5 frei.</p>
-        <div class="section"><h3>Schwierigkeit</h3><div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${m.level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div></div>
-        <div class="section"><h3>Spiele</h3><div class="box rows">${MINI_KINDS.map(gameRow).join('')}</div></div>
-        <div class="section"><h3>Musik-Effekte</h3><div class="segment">${([true, false] as const).map((on) => `<button class="${musicFx() === on ? 'on' : ''}" ${act('mg-musicfx', { on: on ? '1' : '0' })}>${on ? 'An' : 'Aus'}</button>`).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">Gasströme mit eigener Musik: Gasflocken glitzern auf dem Schlag, der Nebel atmet mit dem Bass, im kräftigen Teil ein Lichtschauer. Bei „Bewegung reduzieren“ bleibt alles ruhig.</p></div>`;
-      const dailyTab = `<div class="section"><h3>Tagesaufgaben</h3><div class="box rows">${daily}</div><p class="small muted" style="margin:8px 0 0">Jeden Tag eine feste Runde je Spiel (Stufe 3) – wie gut schaffst du sie heute?</p></div>
-        <div class="section"><h3>Herausforderungen</h3><div class="box rows">${modes}</div></div>`;
-      // Einsätze: je Einsatz eine Zeile, darunter ein Startknopf je Gegnerseite (mit den besten Sternen der gewählten Stufe)
-      const sideName = { pirates: 'Piraten', xenon: 'Xenon', khaak: 'Kha’ak' } as const;
-      const missions = MISSION_IDS.map((id) => {
-        const mi = MISSIONS[id];
-        const btns = mi.sides.map((k) => {
-          const b = mgBest(recordKey(k, id), lvl), open = unlocked(k, lvl);
-          return `<button class="mg-side ${k}" ${open ? act('mg-mission', { kind: k, mission: id }) : 'disabled'}><b>${sideName[k]}</b>${b ? stars(b.stars) : `<small>${open ? 'Stufe ' + lvl : 'gesperrt'}</small>`}</button>`;
-        }).join('');
-        return `<div class="row mg-mission"><div class="grow"><div class="title" style="font-weight:500">${esc(mi.name)}</div><div class="sub wrap">${esc(mi.sub)}</div><div class="mg-sides">${btns}</div></div></div>`;
-      }).join('');
-      const combatTab = `<div class="section"><h3>Dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('target', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SHIPS[loadout().ship].name)} – ${esc(SHIPS[loadout().ship].role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div>${icon('chev', 20, 'chev')}</div></div></div>
-        <div class="section"><h3>Einsätze · Stufe ${lvl}</h3><div class="box rows">${missions}</div><p class="small muted" style="margin:8px 0 0">Neben dem Geleitschutz (Reiter „Spiele“) eigene Aufgaben mit eigener Wertung. Die Stufe stellst du im Reiter „Spiele“ ein.</p></div>
-        <div class="section"><h3>Steuerung</h3><div class="segment">${(['eins', 'zwei', 'lenk'] as const).map((c) => `<button class="${controlMode() === c ? 'on' : ''}" ${act('mg-controls', { mode: c })}>${c === 'eins' ? 'Ein Stick' : c === 'zwei' ? 'Zwei Sticks' : 'Lenkrad'}</button>`).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : controlMode() === 'zwei' ? 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zeigen, wohin der Jäger blickt; über den Ring hinaus wird gefeuert.' : 'Links fliegen wie bei zwei Sticks. Rechts lenken wie ein Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung; über den Ring hinaus wird gefeuert.'} Beim Überschreiten des Rings leuchtet er auf, klickt leise und vibriert, wo das Gerät es zulässt.</p>
-        <p class="small muted" style="margin:6px 0 0">Am PC schaltet sich die Maus-und-Tastatur-Steuerung von selbst ein: Das Schiff dreht sich zur Maus, W/A/S/D (oder Pfeiltasten) fliegen vorwärts, rückwärts und seitwärts, Linksklick feuert, Rechtsklick oder R Raketen, Leertaste Spezialfähigkeit, Mausrad Zoom.</p></div>
-        <div class="section"><h3>Anzeige über den Gegnern</h3><div class="segment">${ENEMY_BAR_STEPS.map((v, i) => `<button class="${enemyBars() === v ? 'on' : ''}" ${act('mg-bars', { v: String(v) })}>${['Aus', 'Dezent', 'Mittel', 'Deutlich'][i]}</button>`).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">Zwei feine Linien über jedem Gegner: oben der Schild (hellblau, lädt nach 3 s ohne Treffer wieder auf), darunter die Hülle. Unbeschädigte Gegner noch blasser.</p></div>
-        <div class="section"><h3>Größenverhältnis</h3><div class="segment">${(['x4', 'gestaucht', 'bisher'] as const).map((k) => `<button class="${sizeScale() === k ? 'on' : ''}" ${act('mg-scale', { scale: k })}>${k === 'x4' ? 'Wie in X4' : k === 'gestaucht' ? 'Gestaucht' : 'Bisher'}</button>`).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">${sizeScale() === 'x4' ? 'Längen wie in X4, Mamba (32 m) als Maß: Cobra und Dragon knapp sechsmal so lang wie ein Jäger, Klapperschlange 1 076, Raptor 3 790 Punkte.' : sizeScale() === 'gestaucht' ? 'Jäger und Korvetten wie in X4, große Schiffe zusammengeschoben, damit sie noch auf den Bildschirm passen.' : 'Die alten Größen von vor dem Abgleich mit X4.'} Gilt nur für den Kampfmodus, nicht für die Sektorkarte.</p></div>
-        <div class="section"><h3>Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
-      const hero = `<div class="page-hero" style="${artStyle('more-games')}">${artPic('more-games', 'page-hero-art')}<div><b>${MINI_KINDS.length} Minispiele</b><span>★ ${MINI_KINDS.reduce((n, k) => n + totalStars(k), 0)} von ${MINI_KINDS.length * 15} · ${modState().parts} Modteile</span></div></div>`;
-      const body = hero + tabs + (tab === 'daily' ? dailyTab : tab === 'combat' ? combatTab : gamesTab);
-      return modalShell('Minispiele', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Vorschau');
+    case 'minigames': return modalShell('Simulator', simHomeHtml(m), `<button class="btn" ${act('modal-close')}>Schließen</button>`, 'Einsatzzentrale');
+    case 'mgGame': {
+      const g = simGameHtml(m);
+      return modalShell(g.title, g.body, `<button class="btn" ${act('mg-home')}>Zurück</button>`, g.eyebrow);
     }
     case 'loadout': {
       // Hangar: Platzliste und Auswahl je Platz (siehe loadoutView.ts)

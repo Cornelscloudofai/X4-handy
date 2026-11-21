@@ -4,6 +4,7 @@
 import { chromium } from 'playwright';
 import { launchOpts } from './browser.mjs';
 import { distUrl } from './serve.mjs';
+import { playSim } from './simNav.mjs';
 const out = process.argv[2];
 const browser = await chromium.launch(launchOpts());
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
@@ -48,9 +49,9 @@ if (!(await page.locator('#fbStatus', { hasText: 'Danke' }).count())) fail('Kein
 await page.screenshot({ path: `${out}/feedback-2-danke.png` });
 await page.click('#feedback [data-fb="close"]');
 // Pausenmenü eines Minispiels
-await page.evaluate(() => { const g = window.__game; g.ui.panel = null; g.ui.modal = { type: 'minigames', level: 1, gear: 1 }; g.refresh(); });
+await page.evaluate(() => { const g = window.__game; g.ui.panel = null; g.ui.modal = { type: 'minigames' }; g.refresh(); });
 await page.waitForTimeout(300);
-await page.click('#modal [data-act="mg-play"][data-kind="xenon"]');
+await playSim(page, 'xenon');
 await page.waitForTimeout(1500);
 await page.click('#minigame [data-mg="start"]');
 await page.waitForTimeout(1500);
