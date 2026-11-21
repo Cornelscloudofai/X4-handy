@@ -857,6 +857,15 @@ export interface EnemyTune { hull: number; shield: number }
 const clampTune = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(TUNE_MAX, Math.max(TUNE_MIN, v)) : 1);
 let tuneVer = 0;
 /** zählt jede Änderung hoch – ein laufender Kampf passt seine Gegner an, sobald sich die Zahl ändert */
+/** Test-Schalter: Nebelfeld in jeder Welle (später wieder nur zufällig); gemerkt im Browser */
+const FOG_TEST_KEY = 'x4-sektorbau-nebel-test';
+export function fogTest(): boolean {
+  try { return globalThis.localStorage?.getItem(FOG_TEST_KEY) === '1'; } catch { return false; }
+}
+export function setFogTest(on: boolean): void {
+  try { if (on) globalThis.localStorage?.setItem(FOG_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(FOG_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
+
 export function enemyTuneVersion(): number {
   return tuneVer;
 }

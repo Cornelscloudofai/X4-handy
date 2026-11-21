@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { fogTest, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -1088,6 +1088,8 @@ export class ShooterGame implements MiniGame {
     // Nebelfelder ab der dritten Welle (eigener Zufall, damit sich die übrige Abfolge nicht verschiebt)
     const fr = rng(cfg.seed ^ 0x4e45);
     for (let i = 2; i < 40; i++) if (this.sectionPlan[i] === 'none' && fr() < 0.4) this.sectionPlan[i] = 'nebel';
+    // Test-Schalter: jede Welle im Nebel
+    if (fogTest()) this.sectionPlan.fill('nebel');
   }
 
   // ---------- abgeleitete Werte ----------
@@ -2771,7 +2773,7 @@ export class ShooterGame implements MiniGame {
     this.banner = 2.4;
     this.section = this.mode === 'endless' ? this.sectionPlan[this.wave % this.sectionPlan.length] : this.sectionPlan[this.wave] ?? 'none';
     // im Wrackfeld, am Nest und beim Überfall keine Felsen oder Minen (eigene Hindernisse genug)
-    if (this.mission === 'bergung' || this.mission === 'nest' || this.mission === 'ueberfall') this.section = 'none';
+    if ((this.mission === 'bergung' || this.mission === 'nest' || this.mission === 'ueberfall') && !fogTest()) this.section = 'none';
     if (this.mutator?.id === 'mines') this.section = 'mines';
     // Einsatzbeginn: Nest bzw. Piratenkonvoi erscheinen mit der ersten Welle
     if (this.wave === 0 && this.mission === 'nest') this.spawnNest();
@@ -7191,6 +7193,11 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Radar um den eigenen Jäger (±RADAR Welteinheiten); Gegner außerhalb erscheinen am Rand */
+  /** Test-Schalter im Pausenmenü: Nebel sofort an bzw. aus, und für alle folgenden Wellen */
+  setFogTest(on: boolean): void {
+    if (on) { this.sectionPlan.fill('nebel'); this.section = 'nebel'; } else if (this.section === 'nebel') this.section = 'none';
+  }
+
   /** Farbe der Nebelschwaden je Gegner */
   private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [178, 150, 128] : this.side === 'xenon' ? [196, 112, 118] : [150, 124, 205]; }
   /** Sichtweite im Nebel (Spielpunkte um dein Schiff); ohne Nebel unbegrenzt */
@@ -7258,7 +7265,8 @@ export class ShooterGame implements MiniGame {
       f.fillStyle = g;
       f.beginPath(); f.arc(sx, sy, R, 0, Math.PI * 2); f.fill();
     };
-    hole(this.px, this.py, this.fogSee * 1.1);
+    // Sichtkreis beim Aufziehen weit offen, im dichten Nebel FOG_SEE (endlich auch bei dünnem Nebel)
+    hole(this.px, this.py, (FOG_SEE + (1 - this.fog) * 3000) * 1.1);
     for (const w of this.liveWards) hole(this.wx(w), this.wy(w), FOG_WARD * 1.1);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);

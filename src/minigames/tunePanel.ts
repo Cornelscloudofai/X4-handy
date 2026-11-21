@@ -2,7 +2,7 @@
 // die im Spiel herauskommen. Steht im Minispiel-Menü (Reiter Kampf) und im Pausenmenü eines laufenden Kampfs.
 import { esc } from '../ui/dom';
 import type { Level } from './common';
-import { enemyTune, tuneToSlider, type EnemyTune } from './loadout';
+import { enemyTune, fogTest, tuneToSlider, type EnemyTune } from './loadout';
 export { tuneFromSlider, tuneToSlider } from './loadout';
 import { enemyStatTable } from './shooterData';
 
@@ -21,7 +21,7 @@ export function tuneValue(v: number): string {
  * Ganzer Abschnitt; levelPicker: Knöpfe zur Wahl der Stufe (Menü) oder leer (Pause: Stufe der laufenden Runde);
  * reset: Attribut für den Zurücksetzen-Knopf; note: Hinweis unter der Tabelle
  */
-export function tunePanel(level: Level, o: { levelPicker?: string; reset: string; note: string }): string {
+export function tunePanel(level: Level, o: { levelPicker?: string; reset: string; fog: string; note: string }): string {
   const t = enemyTune();
   const slider = (key: 'hull' | 'shield', label: string) => `<div class="tune-row"><span class="tune-label">${label}</span>
     <input type="range" min="0" max="1000" step="1" value="${tuneToSlider(t[key])}" data-change="enemy-tune" data-key="${key}" aria-label="${label}-Faktor">
@@ -31,7 +31,10 @@ export function tunePanel(level: Level, o: { levelPicker?: string; reset: string
     ${o.levelPicker ?? `<div class="small muted" style="margin:10px 0 0">Werte im Spiel auf Stufe ${level}</div>`}
     <table class="tune-table"><thead><tr><th>Gegner</th><th>Hülle</th><th>Schild</th><th>Zusammen</th></tr></thead><tbody class="tune-body">${tuneRows(level, t)}</tbody></table>
     <p class="small muted" style="margin:8px 0 0">${o.note}</p>
-    <button class="btn" style="margin-top:8px" ${o.reset} ${t.hull === 1 && t.shield === 1 ? 'hidden' : ''} data-tune-reset>Auf ×1 zurücksetzen</button></div>`;
+    <button class="btn" style="margin-top:8px" ${o.reset} ${t.hull === 1 && t.shield === 1 ? 'hidden' : ''} data-tune-reset>Auf ×1 zurücksetzen</button>
+    <div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Nebel in jeder Welle</div>
+      <div class="sub wrap">Sonst kommt ein Nebelfeld nur zufällig ab der dritten Welle.</div></div>
+      <div class="toggle"><button class="plain ${fogTest() ? 'on' : ''}" ${o.fog} data-fog-test>${fogTest() ? 'An' : 'Aus'}</button></div></div></div>`;
 }
 
 /** Regler bewegt: Faktorangabe, Tabelle und Zurücksetzen-Knopf im selben Abschnitt nachführen */

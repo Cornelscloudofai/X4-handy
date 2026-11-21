@@ -8,7 +8,7 @@ import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, t
 import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
 import { earnParts, modStats, partsFor } from './mods';
 import { recordKey, type Mission } from './missions';
-import { controlMode, setEnemyTune, type Loadout } from './loadout';
+import { controlMode, fogTest, setEnemyTune, setFogTest, type Loadout } from './loadout';
 import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
 import { hudScale } from '../ui/hudScale';
@@ -344,6 +344,15 @@ function bindInput(s: Session): void {
       case 'quit': close(s.phase === 'end' ? s.result : null); break;
       case 'abort': finish(s, s.game.abort()); break;
       case 'feedback': feedbackHook?.(`Minispiel: ${s.game.eyebrow} · ${s.game.title} · Stufe ${s.cfg.level}${s.cfg.mission && s.cfg.mission !== 'geleit' ? ` · Einsatz ${s.cfg.mission}` : ''}`, s.canvas); break;
+      case 'fog-test': {
+        const on = !fogTest();
+        setFogTest(on);
+        const g = s.game as unknown as { setFogTest?: (on: boolean) => void };
+        g.setFogTest?.(on);
+        b.classList.toggle('on', on);
+        b.textContent = on ? 'An' : 'Aus';
+        break;
+      }
       case 'tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
         if (retunable(s.game)) s.game.retune();
@@ -449,7 +458,7 @@ function setPhase(p: Phase): void {
       <div class="mg-actions"><button class="btn ghost" data-mg="quit">Zurück</button><button class="btn primary" data-mg="start">Start</button></div></div>`;
   } else if (p === 'pause') {
     layer.innerHTML = `<div class="mg-card"><small class="eyebrow">Pause</small><h2>${esc(g.title)}</h2>
-      ${retunable(g) ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
+      ${retunable(g) ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', fog: 'data-mg="fog-test"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
       ${rulesBox(g.rules, s.kind, mode, true, !!s.cfg.mission && s.cfg.mission !== 'geleit')}
       <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button>${feedbackHook ? '<button class="btn ghost" data-mg="feedback">Feedback geben</button>' : ''}</div></div>`;
