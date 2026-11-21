@@ -152,6 +152,24 @@ input, select, textarea { font: inherit; color: var(--text); }
 }
 #nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 52px; border-radius: 12px; color: var(--muted); font-size: 11.5px; font-weight: 500; position: relative; border: 1px solid transparent; }
 #nav button.active { color: var(--teal); background: rgba(63, 224, 197, 0.08); border-color: rgba(63, 224, 197, 0.45); box-shadow: inset 0 0 14px rgba(63, 224, 197, 0.1); }
+/* gemalter Rahmen der Reiterleiste: Bild in voller Breite (höchstens 640 px), jeder Reiter in seinem Feld */
+#nav:has(.nav-frame) { display: block; padding: 2px 4px calc(var(--safe-bottom) + 2px); background: linear-gradient(180deg, rgba(4, 10, 18, 0), rgba(4, 10, 18, 0.75) 45%); border-top: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.nav-frame { position: relative; width: 100%; max-width: 640px; margin: 0 auto; background: center / 100% 100% no-repeat; }
+#nav .nav-frame > button { position: absolute; min-height: 0; gap: 1px; font-size: 11px; background: none; border: 0; box-shadow: none; }
+#nav .nav-frame > button > svg:not(.nav-hl), #nav .nav-frame > button > span:not(.badge) { position: relative; }
+/* Markierung des aktiven Reiters: Fläche und Kontur genau im Umriss des Felds */
+#nav .nav-frame > button > .nav-hl { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+#nav .nav-hl polygon { fill: rgba(63, 224, 197, 0.1); stroke: rgba(63, 224, 197, 0.75); stroke-width: 1.4px; vector-effect: non-scaling-stroke; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(63, 224, 197, 0.45)); }
+#nav .nav-frame > button.active .nav-hl { opacity: 1; }
+#nav .nav-frame > button svg:not(.nav-hl) { width: 21px; height: 21px; }
+#nav .nav-frame > button:not(.active) { color: #cfd9dc; }
+#nav .frame-glas > button svg:not(.nav-hl) { width: 18px; height: 18px; }
+#nav .frame-glas > button span:not(.badge) { font-size: 10px; }
+#nav .nav-frame .badge { top: 2px; }
+/* Menü-Knopf als Schild (Bild) neben den Nachrichten */
+.hud-menu-img { height: 34px; padding: 0; display: block; flex: none; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5)); }
+.hud-menu-img img { height: 100%; width: auto; display: block; }
+.hud-menu-img:active { filter: brightness(1.2); }
 #nav .badge { position: absolute; top: 5px; right: calc(50% - 20px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--amber); color: #1b1206; font-size: 10px; font-weight: 700; display: grid; place-items: center; font-family: var(--font-display); }
 
 #card { margin: 0 10px 8px; }

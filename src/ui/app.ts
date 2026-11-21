@@ -43,6 +43,7 @@ import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/s
 import { MODS, QUALITY, ackRefund, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
 import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutView';
 import { tuneFromSlider } from '../minigames/tunePanel';
+import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
 import { SHIPS, fogTest, setFogTest, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
@@ -1445,6 +1446,8 @@ function onClick(e: MouseEvent): void {
         refresh();
         break;
       }
+      case 'hud-menu': setMenuStyle(d.id!); refresh(); break;
+      case 'hud-frame': setFrameStyle(d.id!); refresh(); window.dispatchEvent(new Event('resize')); break;
       case 'mg-fog-test': setFogTest(!fogTest()); refresh(); break;
       case 'mg-tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });

@@ -9,6 +9,7 @@ import { drawFighterVector } from '../minigames/shooterData';
 import { installState } from './install';
 import { introAvailable, introEnabled } from './intro';
 import { tunePanel } from '../minigames/tunePanel';
+import { FRAME_STYLES, MENU_STYLES, frameStyle, menuStyle } from './hudStyle';
 import { loadoutView } from './loadoutView';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
@@ -145,7 +146,10 @@ export function hudHtml(state: GameState, ui: UIState, creditFlash: string, show
   const phen = inGalaxy ? '' : phenomenonShort(sec.id, state.time);
   const thumb = inGalaxy ? '' : BG_IMAGES.find((b) => b.id === sectorImageId(sec.id))?.url;
   const known = SECTORS.filter((x) => !FRONTIER_MAP[x.id]).length + (state.frontier?.discovered.length ?? 0);
-  const menuBtn = `<button class="hud-icon menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü und Einstellungen">${icon('gear', 19)}</button>`;
+  const ms = menuStyle();
+  const menuBtn = ms.url
+    ? `<button class="hud-menu-img" ${act('nav', { tab: 'more' })} aria-label="Menü und Einstellungen" style="aspect-ratio:${ms.ratio}"><img src="${ms.url}" alt=""></button>`
+    : `<button class="hud-icon menu-btn" ${act('nav', { tab: 'more' })} aria-label="Menü und Einstellungen">${icon('gear', 19)}</button>`;
   // gebündelte Leiste (Sektor, Sektorinfo, Credits, Tempo, Warnungen) · Werkzeuge (Bauen, Zoom)
   return `
   <div class="hud-bar">
@@ -243,7 +247,15 @@ export function navHtml(state: GameState, ui: UIState): string {
     ['missions', 'missions', 'Aufträge', offers],
     ['market', 'market', 'Handel', 0],
   ];
-  return items.map(([tab, ic, label, badge]) => `<button class="${active === tab ? 'active' : ''}" ${act('nav', { tab })} aria-label="${label}">${icon(ic, 23)}<span>${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`).join('');
+  const fr = frameStyle();
+  const btn = ([tab, ic, label, badge]: [string, string, string, number], style = '', hl = '') => `<button class="${active === tab ? 'active' : ''}" ${act('nav', { tab })} aria-label="${label}"${style}>${hl}${icon(ic, 23)}<span>${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
+  if (!fr.url || !fr.cells) return items.map((it) => btn(it)).join('');
+  // gemalter Rahmen: jeder Reiter genau in seinem Feld des Bilds; die Markierung folgt dem Umriss des Felds
+  return `<div class="nav-frame frame-${fr.id}" style="aspect-ratio:${fr.ratio};background-image:url(${fr.url})">${items.map((it, i) => {
+    const { box: [l, t, r, b], poly } = fr.cells![i];
+    const hl = `<svg class="nav-hl" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="${poly}"/></svg>`;
+    return btn(it, ` style="left:${(l * 100).toFixed(2)}%;width:${((r - l) * 100).toFixed(2)}%;top:${(t * 100).toFixed(2)}%;height:${((b - t) * 100).toFixed(2)}%"`, hl);
+  }).join('')}</div>`;
 }
 
 // ---------- Kontextkarte ----------
@@ -1850,6 +1862,10 @@ function morePanel(state: GameState, ui: UIState): string {
             <div class="sub">Leisten, Knöpfe, Fenster und Anzeigen in den Minispielen – kleiner zeigt dort mehr vom Spielfeld${hudScale() < hudSetting() - 0.001 ? ` · auf diesem Bildschirm höchstens ${Math.round(hudScale() * 100)} %` : ''}</div>
             <div class="range-row"><span class="small muted">klein</span><input type="range" min="${HUD_MIN * 100}" max="${HUD_MAX * 100}" step="5" value="${Math.round(hudSetting() * 100)}" data-change="hud-scale" aria-label="HUD-Größe"><span class="small muted">groß</span></div></div>
             ${Math.abs(hudSetting() - 1) > 0.001 ? `<button class="btn small" ${act('hud-reset')}>100 %</button>` : ''}</div>
+          <div class="row"><div class="grow"><div class="title" style="font-weight:500">Menü-Knopf</div><div class="sub">Oben auf der Karte: ${esc(menuStyle().name)}</div>
+            <div class="segment" style="margin-top:8px">${MENU_STYLES.map((m) => `<button class="${menuStyle().id === m.id ? 'on' : ''}" ${act('hud-menu', { id: m.id })}>${esc(m.name)}</button>`).join('')}</div></div></div>
+          <div class="row"><div class="grow"><div class="title" style="font-weight:500">Rahmen der Reiterleiste</div><div class="sub">Unten auf der Karte: ${esc(frameStyle().name)}</div>
+            <div class="segment" style="margin-top:8px">${FRAME_STYLES.map((f) => `<button class="${frameStyle().id === f.id ? 'on' : ''}" ${act('hud-frame', { id: f.id })}>${esc(f.name)}</button>`).join('')}</div></div></div>
           ${toggleRow('Sektor-Hintergrund', ui.bgMode === 'image' ? 'Bilder – gemalte Weltraum-Hintergründe mit Tiefenwirkung' : 'Erzeugt – marmorierte Nebel und Galaxien je Sektor', true, ui.bgMode === 'image' ? 'Bilder' : 'Erzeugt', 'bg-toggle')}
           ${ui.bgMode === 'image' ? `<div class="row"><div class="grow"><div class="title" style="font-weight:500">Bild für ${esc(SECTOR_MAP[ui.sector]?.name ?? '')}</div><div class="sub">${info ? `${esc(info.name)} · ${info.index + 1} von ${BG_IMAGES.length}` : '–'}</div></div>
           <div class="stepper"><button class="btn" ${act('bg-prev')} aria-label="Vorheriges Bild">‹</button><button class="btn" ${act('bg-next')} aria-label="Nächstes Bild">›</button></div></div>` : ''}
