@@ -1941,6 +1941,7 @@ export function modalHtml(state: GameState, ui: UIState): string {
         ${[...groups].map(([g, ids]) => `<div class="section"><h3>${esc(GROUP_LABEL[g as keyof typeof GROUP_LABEL] ?? g)}</h3><div class="wi-grid">${ids.map((id) => `<div class="wi-cell"><div class="wi-pair">${wareIcon(id, 30, 'line')}${wareIcon(id, 30, 'glow')}</div><span>${esc(WARES[id].name)}</span></div>`).join('')}</div></div>`).join('')}`;
       return modalShell('Warensymbole', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`);
     }
+    case 'superseded': return modalShell('In anderem Fenster geöffnet', `<p class="lead" style="margin:0">Das Spiel läuft inzwischen in einem anderen Fenster oder wurde neu gestartet. Damit der neuere Stand nicht überschrieben wird, speichert dieses Fenster nicht mehr.</p><p class="small muted" style="margin:10px 0 0">Neu laden übernimmt den zuletzt gespeicherten Stand.</p>`, `<button class="btn primary" ${act('reload-page')}>Neu laden</button>`);
     case 'zentrale': return zentraleHtml(state);
     case 'lage': return modalShell('Lagewand', lageBody(state), `<button class="btn" ${act('modal-close')}>Zurück</button>`, 'Einsatzzentrale');
     case 'devtools': {

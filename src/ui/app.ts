@@ -17,7 +17,8 @@ import { acceptContract } from '../engine/contracts';
 import { defaultTradeRule } from '../engine/economy';
 import { fieldById, stationById } from '../engine/logistics';
 import { catchUp, step } from '../engine/sim';
-import { deserialize, loadLocal, newGame, saveLocal, clearLocal, SAVE_KEY } from '../engine/state';
+import { deserialize, loadLocal, newGame, saveLocal, clearLocal, serialize, SAVE_KEY } from '../engine/state';
+import { SaveGuard } from './saveGuard';
 import { claimMission } from '../engine/story';
 import type { CombatOrder, RestAction, GameState, LogLink, Ship, TradeEndpoint } from '../engine/types';
 import { onGameEvent } from '../engine/util';
@@ -91,6 +92,13 @@ let dpr = 1;
 let lastFrame = 0;
 let uiTimer = 0;
 let saveTimer = 0;
+/** Abstand der automatischen Speicherung (s); dazu kurz nach jeder Handlung und beim Verlassen */
+const SAVE_EVERY = 10;
+let wasMinigame = false;
+let saveSoon = 0;
+let saveWarned = 0;
+/** nur eine geöffnete Instanz speichert (siehe saveGuard.ts) */
+let guard: SaveGuard | null = null;
 let dirtyUI = true;
 let lastCredits = 0;
 let creditFlash = '';
@@ -107,6 +115,8 @@ export function start(): void {
   canvas = $('map') as HTMLCanvasElement;
   ctx = canvas.getContext('2d')!;
   const loaded = loadLocal();
+  // diese Seite speichert ab jetzt; wird das Spiel anderswo neu geöffnet, hört sie damit auf
+  try { guard = new SaveGuard(localStorage); guard.claim(() => { ui.modal = { type: 'superseded' }; refresh(); }); } catch { guard = null; }
   if (loaded) {
     state = loaded;
     // Sicherung beim Start, noch vor dem Nachholen der Abwesenheit (schützt auch vor Fehlern einer neuen Version)
@@ -167,6 +177,8 @@ export function start(): void {
   window.addEventListener('pointercancel', () => (pointerInUI = false));
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
   window.addEventListener('pagehide', save);
+  // Android friert Seiten im Hintergrund ein und beendet sie dann ohne weitere Nachricht
+  document.addEventListener('freeze', save);
   onGameEvent((e) => {
     if (e.type === 'discovery') {
       showReveal(e.id, fmtClock(state.time), () => { ui.modal = { type: 'akte' }; refresh(); });
@@ -288,8 +300,13 @@ function audioScene(s: 'map' | 'minigame' | 'menu'): void {
 function frame(now: number): void {
   const dt = Math.min(0.25, lastFrame ? (now - lastFrame) / 1000 : 0.016);
   lastFrame = now;
+  // Speichern läuft immer, auch während eines Minispiels; nach dessen Ende (Ergebnis ist verbucht) sofort
+  saveTimer += dt;
+  const mg = minigameOpen();
+  if (saveTimer > SAVE_EVERY || (wasMinigame && !mg)) { saveTimer = 0; save(); }
+  wasMinigame = mg;
   // Während eines Minispiels ruht das Hauptspiel (keine Simulation, kein Zeichnen)
-  if (minigameOpen()) { audioScene('minigame'); requestAnimationFrame(frame); return; }
+  if (mg) { audioScene('minigame'); requestAnimationFrame(frame); return; }
   audioScene(ui.modal?.type === 'welcome' ? 'menu' : 'map');
   if (ui.sector !== moodSector) { moodSector = ui.sector; setSectorMood(moodSector); }
   // Stationsbrummen: je näher herangezoomt, desto deutlicher
@@ -329,8 +346,6 @@ function frame(now: number): void {
     if (!pointerInUI && !isDragging() && !editorBusy()) { renderUI(); dirtyUI = false; }
     uiTimer = 0.33;
   }
-  saveTimer += dt;
-  if (saveTimer > 15) { saveTimer = 0; save(); }
   requestAnimationFrame(frame);
 }
 
@@ -435,14 +450,32 @@ let leaving = false;
 
 function save(): void {
   if (!state || leaving) return;
+  clearTimeout(saveSoon);
+  // eine neuere Instanz hat übernommen: deren Stand nicht mit dem älteren von hier überschreiben
+  if (guard && !guard.mayWrite()) return;
   const ok = saveLocal(state);
   if (ok) void autoBackup(localStorage, backupLabel(state), 20 * 60e3);
-  ui.saveStatus = ok ? 'Zuletzt gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'Speichern auf diesem Gerät nicht möglich – nutze „Spielstand sichern“.';
+  else {
+    // Speichern gescheitert (meist Speicher voll): sofort eine Notsicherung mit dem aktuellen Stand und deutlich warnen
+    const snap = collect(localStorage, 'Notsicherung · ' + backupLabel(state));
+    snap.keys[SAVE_KEY] = serialize(state);
+    void saveBackup(snap);
+    if (Date.now() - saveWarned > 60e3) { saveWarned = Date.now(); toast('Speichern fehlgeschlagen – Notsicherung angelegt. Unter Menü → Spielstand sichern.', 'bad'); }
+  }
+  ui.saveStatus = ok ? 'Zuletzt gespeichert ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Speichern auf diesem Gerät nicht möglich – nutze „Spielstand sichern“.';
+}
+
+/** Kurz nach einer Handlung speichern (mehrere schnelle Handlungen ergeben eine Speicherung) */
+function requestSave(): void {
+  clearTimeout(saveSoon);
+  saveSoon = window.setTimeout(save, 1500);
 }
 
 // ---------- Oberfläche ----------
 
 function renderUI(): void {
+  // eine neuere Instanz speichert: dieser Hinweis bleibt stehen, bis neu geladen wird
+  if (guard?.superseded && ui.modal?.type !== 'superseded') ui.modal = { type: 'superseded' };
   morph($('hud'), hudHtml(state, ui, creditFlash, shownCredits));
   morph($('nav'), navHtml(state, ui));
   // Befehlsebene: Gruppe nur aus vorhandenen, einsatzfähigen Kampfschiffen
@@ -999,6 +1032,7 @@ function onClick(e: MouseEvent): void {
   const d = el.dataset;
   const a = d.act!;
   coachNotify(state, ui, a);
+  requestSave();
   // Klang passend zur Handlung (Spezialfälle wie Kauf und Bau klingen in ihrer Aktion)
   if (a === 'close-panel' || a === 'modal-close' || a === 'back') sfx.close();
   else if (a.endsWith('-toggle')) sfx.toggle(true);
@@ -1637,6 +1671,7 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'modal-close': ui.modal = toZentrale(); refresh(); break;
+      case 'reload-page': location.reload(); break;
       case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all', sel: d.cls }; refresh(); break;
       case 'dev-reveal': setDevRevealAll(!devRevealAll()); fitGalaxy(); toast(devRevealAll() ? 'Entwickleransicht: alle Sektoren aufgedeckt (nur Ansicht).' : 'Ansicht wie im Spielstand.', 'info'); refresh(); break;
       case 'akte': ui.modal = { type: 'akte' }; refresh(); break;

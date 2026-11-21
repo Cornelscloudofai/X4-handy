@@ -25,6 +25,7 @@ export type Modal =
   | { type: 'wareIcons' }
   | { type: 'shipArt' }
   | ({ type: 'loadout' } & import('./loadoutView').LoModal)
+  | { type: 'superseded' }
   | { type: 'zentrale' }
   | { type: 'lage' }
   | { type: 'devtools'; level: 1 | 2 | 3 | 4 | 5 }
