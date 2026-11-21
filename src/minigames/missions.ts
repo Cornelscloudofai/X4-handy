@@ -4,9 +4,9 @@
 /**
  * Geleit (Frachter zum Tor), Station verteidigen, Konvoi (drei Frachter), Überfall (Piratenkonvoi abfangen),
  * Bergung (Container unter Beschuss bergen), Nest (erst Brutöffnungen, dann Kern), Flucht (überleben, bis der
- * Sprungantrieb geladen ist)
+ * Sprungantrieb geladen ist), Überleben (kein Schutzziel, nur der eigene Jäger – auch endlos)
  */
-export type Mission = 'geleit' | 'station' | 'konvoi' | 'ueberfall' | 'bergung' | 'nest' | 'flucht';
+export type Mission = 'geleit' | 'station' | 'konvoi' | 'ueberfall' | 'bergung' | 'nest' | 'flucht' | 'ueberleben';
 
 /** Gegnerseite des Kampfs, wie im Menü (Spielkennung) */
 export type CombatKind = 'pirates' | 'xenon' | 'khaak';
@@ -25,6 +25,7 @@ export const MISSIONS: Record<Exclude<Mission, 'geleit'>, MissionInfo> = {
   flucht: { name: 'Flucht', sub: 'Ein beschädigter Frachter lädt den Sprungantrieb – halte durch, bis er springt', sides: ['pirates', 'xenon', 'khaak'] },
   bergung: { name: 'Bergung unter Beschuss', sub: 'Container mit dem Traktorstrahl aus dem Wrackfeld zum Bergungsschiff schleppen', sides: ['pirates', 'xenon', 'khaak'] },
   ueberfall: { name: 'Überfall', sub: 'Rollentausch: den Piratenkonvoi abfangen, bevor er das Sprungtor erreicht', sides: ['pirates'] },
+  ueberleben: { name: 'Überleben', sub: 'Kein Frachter, keine Station – nur dein Jäger. Die Wellen kommen von allen Seiten und werden dichter', sides: ['pirates', 'xenon', 'khaak'] },
   nest: { name: 'Nest ausheben', sub: 'Ein Nest spuckt Drohnen aus – erst die Brutöffnungen, dann der Kern', sides: ['xenon', 'khaak'] },
 };
 

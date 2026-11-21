@@ -744,6 +744,9 @@ export class ShooterGame implements MiniGame {
       case 'flucht': return { stars: ['Durchhalten, bis der Frachter springt', '… mit mindestens 35 % Frachter-Hülle', '… mit mindestens 60 % Frachter-Hülle'], points: ['Gesprungen: 1.000, dazu bis 2.000 nach Frachter-Hülle', `Der Sprungantrieb braucht ${Math.round(this.fluchtT)} s – auch wenn du nur ausweichst`] };
       case 'bergung': return { stars: [`${CRATES_MIN} Container bergen`, '6 Container bergen', `Alle ${CRATES} Container bergen`], points: ['Je abgelieferter Container 400', 'Am Ende: bis 1.000 nach Hülle des Bergungsschiffs', 'Wer einen Container schleppt, ist etwas langsamer; Treffer auf den Container zerstören ihn'] };
       case 'ueberfall': return { stars: ['Einen Piratenfrachter zerstören', 'Zwei Piratenfrachter zerstören', 'Alle drei Piratenfrachter zerstören'], points: ['Piratenfrachter 800, alle drei: 1.000 extra'] };
+      case 'ueberleben': return this.mode === 'endless'
+        ? { stars: ['4 Wellen überstehen', '7 Wellen überstehen', '10 Wellen überstehen'], points: ['Jede überstandene Welle: 300 × Wellennummer', 'Alle fünf Wellen ein Großkampfschiff, jede Welle etwas stärker'] }
+        : { stars: ['Alle Wellen überstehen', '… mit mindestens 50 % Hülle', '… mit mindestens 80 % Hülle'], points: ['Alle Wellen überstanden: 1.000, dazu bis 2.000 nach eigener Hülle'] };
       case 'nest': return { stars: ['Das Nest ausheben', '… in unter 4 Minuten', '… in unter 2:30 Minuten'], points: ['Brutöffnung 200, Kern 1.500, dazu bis 2.000 für Tempo (je Sekunde unter 5 Minuten fast 7)', this.side === 'khaak' ? 'Zwei Nebennester (je 750, brüten Späher-Cluster) und vier Turmplattformen (je 200) – freiwillige Ziele' : 'Zwei Nebennester (je 750, schicken Xenon-N-Drohnen) und vier Turmplattformen (je 200: Gatling, Zwillingskanone, schwerer Laser) – freiwillige Ziele'] };
       default: return null;
     }
@@ -989,7 +992,8 @@ export class ShooterGame implements MiniGame {
   constructor(cfg: GameCfg, private side: Side) {
     this.level = cfg.level;
     this.mode = cfg.mode === 'endless' ? 'endless' : cfg.mode ?? 'normal';
-    this.mission = this.mode === 'endless' ? 'geleit' : cfg.mission ?? 'geleit';
+    // Endlos gibt es als Geleitschutz und als reines Überleben
+    this.mission = this.mode === 'endless' ? (cfg.mission === 'ueberleben' ? 'ueberleben' : 'geleit') : cfg.mission ?? 'geleit';
     this.r = rng(cfg.seed);
     // eigener Würfel für Raketen-Eigenarten und Turmversatz: ändert den Ablauf der Runde (Wellen, Gegner) nicht
     this.rv = rng(cfg.seed ^ 0x5eed);
@@ -1005,6 +1009,7 @@ export class ShooterGame implements MiniGame {
       'Raketen (R) suchen ihr Ziel selbst, Spezialtaste darüber; ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
     ];
+    if (cfg.mission === 'ueberleben') this.controls = this.controls.map((c) => c.replace('Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen', 'Gegner kommen aus allen Richtungen – in Bewegung bleiben, nicht einkreisen lassen'));
     this.ship = SHIPS[lo.ship];
     this.fk = Math.max(1, (SHIPS.cobra.size * (SHIPS.cobra.turretD ?? 0.1)) / F_GAT.size);
     this.controls = [...this.controls, 'Auge-Taste neben dem Zoom: freie Sicht (ziehen verschiebt, zwei Finger zoomen, Schiff antippen = folgen), nochmal: Beobachter, der dem Gefecht folgt. Radar antippen: taktische Karte in Zeitlupe – dort einen Gegner antippen, und die Staffel greift ihn an'];
@@ -1074,7 +1079,7 @@ export class ShooterGame implements MiniGame {
     this.power = power;
     this.foeCount = clamp(Math.sqrt(power), 0.6, 3.6 * this.big);
     this.attackCap = clamp(Math.round(2 + Math.sqrt(power) * 1.4), 3, Math.round(8 * this.big));
-    this.nWaves = NORMAL_WAVES + (power >= 3.5 ? 1 : 0) + (power >= 10 ? 1 : 0) + (this.mission === 'station' ? 1 : 0);
+    this.nWaves = NORMAL_WAVES + (power >= 3.5 ? 1 : 0) + (power >= 10 ? 1 : 0) + (this.mission === 'station' || this.mission === 'ueberleben' ? 1 : 0);
     // Schiffsbilder liegen als eigene Dateien vor: gleich laden, bis dahin wird kurz per Code gezeichnet
     preloadSprites();
     this.score = new Score(this.mutator?.mult ?? 1, 6);
@@ -1093,6 +1098,10 @@ export class ShooterGame implements MiniGame {
             ? `Im Wrackfeld treiben ${CRATES} Container. Flieg nah heran, der Traktorstrahl koppelt an – dann zum Bergungsschiff schleppen. Mindestens ${CRATES_MIN} müssen ankommen. Treffer zerstören geschleppte Container, und die ${foe} greifen das Bergungsschiff an.`
             : this.mission === 'ueberfall'
               ? `Rollentausch: Ein Piratenkonvoi aus ${CARGO_N} Frachtern fliegt zum Sprungtor im Norden. Fang ihn ab, bevor er durch ist – Begleitjäger und Verstärkung aus dem Tor stellen sich dir in den Weg.`
+              : this.mission === 'ueberleben'
+                ? this.mode === 'endless'
+                  ? `Kein Frachter, keine Station: nur dein Jäger gegen ${foe}. Welle um Welle aus allen Richtungen, alle fünf Wellen ein Großkampfschiff, jede Welle etwas stärker. Wie lange hältst du durch?`
+                  : `Kein Frachter, keine Station: nur dein Jäger. Die ${foe} kommen in Wellen aus allen Richtungen, zum Schluss ein Großkampfschiff. Überleb alle Wellen.`
               : this.mission === 'nest'
                 ? `Ein ${side === 'khaak' ? 'Kha’ak-Nest' : 'Xenon-Nest'} spuckt ununterbrochen Drohnen aus. Zerstöre erst die ${NEST_OPEN} Brutöffnungen – solange sie stehen, schützt ein Schild den Kern. Dann den Kern.`
                 : this.mode === 'endless'
@@ -1223,7 +1232,7 @@ export class ShooterGame implements MiniGame {
   private tHit(e: Enemy): number { return TURRET_DMG * (e.fireK ?? 1); }
   private get capTurretDmg(): number { return [0.35, 0.55, 0.8, 0.9, 1][this.level - 1]; }
   /** Einsätze mit fester Zahl von Wellen (der Rest endet über sein eigenes Ziel) */
-  private get counted(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi' || this.mission === 'station'; }
+  private get counted(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi' || this.mission === 'station' || this.mission === 'ueberleben'; }
   /** Schutzziele fliegen eine Route (Geleit, Konvoi) */
   private get moving(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi'; }
   private get totalWaves(): number { return this.mode === 'endless' || !this.counted ? Infinity : this.nWaves; }
@@ -1467,6 +1476,7 @@ export class ShooterGame implements MiniGame {
       case 'flucht': return [{ label: 'Sprung', value: `${Math.floor(this.charge * 100)} %` }, { label: 'Frachter', value: `${Math.ceil(pct(w0) * 100)} %`, warn: pct(w0) < 0.35 }, me];
       case 'bergung': return [{ label: 'Container', value: `${this.crateDone}/${CRATES}`, warn: CRATES - this.crateLost < CRATES_MIN + 1 }, { label: 'Schiff', value: `${Math.ceil(pct(w0) * 100)} %`, warn: pct(w0) < 0.35 }, me];
       case 'ueberfall': return [{ label: 'Frachter', value: `${this.cargoKilled}/${CARGO_N}`, warn: this.cargoEscaped > 0 }, me];
+      case 'ueberleben': return [{ label: 'Welle', value: this.mode === 'endless' ? `${Math.max(1, this.wave + 1)}` : `${Math.max(1, this.wave + 1)}/${this.nWaves}` }, me];
       case 'nest': {
         const core = this.enemies.find((e) => e.nest);
         const open = this.enemies.filter((e) => e.parent?.nest && e.weapon === 'brut').length;
@@ -2702,8 +2712,9 @@ export class ShooterGame implements MiniGame {
   private waveBudget(i: number): number {
     const swarm = this.mutator?.id === 'swarm' ? 1.45 : 1;
     // mit einem starken Schiff schicken die Gegner mehr Schiffe
-    // Einsätze: Konvoi mehr (die Gegner teilen sich auf), Nest weniger (es brütet selbst), Bergung und Flucht wachsen langsamer
-    const ms = { geleit: 1, konvoi: 1.45, station: 1.4, flucht: 1.1, bergung: 0.85, nest: 0.4, ueberfall: 0.8 }[this.mission];
+    // Einsätze: Konvoi mehr (die Gegner teilen sich auf), Nest weniger (es brütet selbst), Bergung und Flucht wachsen langsamer;
+    // Überleben etwas mehr (alle Gegner gehen auf dich, du kannst frei ausweichen)
+    const ms = { geleit: 1, konvoi: 1.45, station: 1.4, flucht: 1.1, bergung: 0.85, nest: 0.4, ueberfall: 0.8, ueberleben: 1.2 }[this.mission];
     const ii = this.mission === 'bergung' || this.mission === 'nest' || this.mission === 'ueberfall' ? Math.min(i, 3) * 0.8 : i;
     return (5 + ii * 3 + this.level * 1.6) * swarm * this.foeCount * ms * (this.mode === 'endless' ? 1 + i * 0.08 : 1);
   }
@@ -2877,7 +2888,7 @@ export class ShooterGame implements MiniGame {
     let a = dirs[from % dirs.length] + (this.r() - 0.5) * 0.4;
     if (this.r() < 0.12) a = Math.PI / 2 + (this.r() - 0.5) * 0.8;
     // Station und Flucht: aus allen Richtungen gleich oft
-    if (this.mission === 'station' || this.mission === 'flucht') a = (from / 5) * Math.PI * 2 + (this.r() - 0.5) * 0.9;
+    if (this.mission === 'station' || this.mission === 'flucht' || this.mission === 'ueberleben') a = (from / 5) * Math.PI * 2 + (this.r() - 0.5) * 0.9;
     // Nest: Verteidiger kommen aus dem Nest
     if (this.mission === 'nest') return [this.fX + (this.r() - 0.5) * 420, this.fY + 140 + this.r() * 160];
     // Überfall: Verstärkung aus dem Sprungtor oder von der Seite des Konvois
@@ -3684,6 +3695,7 @@ export class ShooterGame implements MiniGame {
     setGoal(this.goals, 'loot3', this.loot >= 3);
     setGoal(this.goals, 'boss2', this.bossKills >= 2);
     setGoal(this.goals, 'nomissile', this.missilesUsed === 0);
+    setGoal(this.goals, 'kills40', this.kills >= 40);
     // alle Schutzziele verloren
     if (this.wards.length && !this.liveWards.length && !this.outcome) {
       this.outcome = 'freighter';
@@ -3825,6 +3837,11 @@ export class ShooterGame implements MiniGame {
         if (this.cargoKilled === CARGO_N) this.score.add(1000, 'Ganzer Konvoi');
         setGoal(this.goals, 'cargo3', this.cargoKilled === CARGO_N);
         break;
+      case 'ueberleben':
+        this.score.add(1000, 'Alle Wellen überstanden');
+        this.score.add(Math.round((this.hull / 100) * 2000), 'Eigene Hülle');
+        setGoal(this.goals, 'sv80', this.hull > 80);
+        break;
       case 'nest':
         this.score.add(Math.max(0, Math.round(2000 - this.time * 6.67)), 'Tempo');
         setGoal(this.goals, 'nest150', this.time < 150);
@@ -3841,6 +3858,8 @@ export class ShooterGame implements MiniGame {
 
   /** Ziele der Einsätze, die nicht an Wellen hängen: Sprungantrieb, Container, Piratenkonvoi */
   private updateMission(dt: number): void {
+    // Überleben: Bezugspunkt (Anflug der Wellen, Kamera am Ende) ist der eigene Jäger
+    if (this.mission === 'ueberleben') { this.fX = this.px; this.fY = this.py; }
     if (this.wave < 0) return;
     if (this.mission === 'flucht') {
       this.charge = Math.min(1, this.charge + dt / this.fluchtT);
@@ -5488,6 +5507,23 @@ export class ShooterGame implements MiniGame {
         got = [`${n} zerstört`, `${n} zerstört`, `${n} zerstört`];
         headline = ok ? (n === CARGO_N ? 'Ganzer Konvoi zerstört' : `${n} von ${CARGO_N} Frachtern zerstört`) : lost || 'Konvoi entkommen';
         lines.push(['Zerstört', `${n} von ${CARGO_N}`], ['Entkommen', `${this.cargoEscaped}`]);
+        break;
+      }
+      case 'ueberleben': {
+        const hf = this.outcome === 'player' ? 0 : this.hull / 100;
+        if (this.mode === 'endless') {
+          const waves = this.wave + (win ? 1 : 0);
+          ok = waves >= 3;
+          oks = [waves >= 4, waves >= 7, waves >= 10];
+          got = oks.map(() => `${Math.max(0, waves)} Wellen`);
+          headline = `Welle ${this.wave + 1} erreicht`;
+          lines.push(['Wellen', `${Math.max(0, this.wave)}`]);
+        } else {
+          oks = [win, win && hf >= 0.5, win && hf >= 0.8];
+          got = [win ? '' : lost, pct(hf), pct(hf)];
+          headline = win ? 'Alle Wellen überstanden' : lost || 'Abgebrochen';
+          lines.push(['Hülle', pct(hf)]);
+        }
         break;
       }
       case 'nest':
@@ -7470,8 +7506,8 @@ export class ShooterGame implements MiniGame {
       const st = this.wards[0];
       ctx.fillStyle = 'rgba(169,195,198,0.85)';
       if (st) ctx.fillText(`STATIONSTÜRME ${st.tur.filter((q) => q.hp > 0).length}/6`, x, y + 16);
-    } else if (this.mode === 'endless') {
-      ctx.fillText(`WELLE ${Math.max(1, this.wave + 1)}${this.isBossWave(Math.max(0, this.wave)) ? ' · BOSS' : ''}`, x, y);
+    } else if (this.mode === 'endless' || m === 'ueberleben') {
+      ctx.fillText(`WELLE ${Math.max(1, this.wave + 1)}${this.mode === 'endless' ? '' : ` VON ${this.nWaves}`}${this.isBossWave(Math.max(0, this.wave)) ? ' · BOSS' : ''}`, x, y);
     } else {
       ctx.fillText('STRECKE', x, y);
       for (let i = 0; i < this.nWaves; i++) {

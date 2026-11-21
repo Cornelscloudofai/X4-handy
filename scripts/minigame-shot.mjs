@@ -22,10 +22,12 @@ if ((await page.locator('#modal .sim-day[data-act="mg-daily"]').count()) !== 9) 
 if ((await page.locator('#modal [data-act="mg-game"]').count()) !== 6) fail('Reiter „Arbeit“: Spiele fehlen');
 await simTab(page, 'combat');
 await page.waitForTimeout(200);
-if ((await page.locator('#modal .sim-tile[data-act="mg-game"]').count()) !== 3) fail('Reiter „Kampf“: Geleitschutz fehlt');
+if ((await page.locator('#modal .mg-mission[data-mission="geleit"]').count()) !== 1) fail('Reiter „Kampf“: Geleitschutz fehlt');
 await page.screenshot({ path: `${out}/mg-0-kampf.png` });
 // Spielseite: eigene Stufe, Start
-await page.click('#modal .sim-tile[data-kind="xenon"]');
+await page.click('#modal .mg-mission[data-mission="geleit"]');
+await page.waitForTimeout(200);
+await page.click('#modal [data-act="mg-side"][data-kind="xenon"]');
 await page.waitForTimeout(200);
 if ((await page.locator('#modal .sim-lv').count()) !== 5 || !(await page.locator('#modal .sim-start[data-act="mg-play"]').count())) fail('Spielseite unvollständig');
 await page.screenshot({ path: `${out}/mg-0-seite.png` });
@@ -323,7 +325,7 @@ for (const kind of ['pirates', 'xenon', 'khaak']) {
 // --- Kampf-Einsätze: aus dem Reiter „Kampf“ starten, kurz vorspulen (Autopilot), Bild ---
 await simTab(page, 'combat');
 await page.waitForTimeout(200);
-if ((await page.locator('#modal .mg-mission').count()) !== 6) fail('Einsätze fehlen im Reiter „Kampf“');
+if ((await page.locator('#modal .mg-mission').count()) !== 7) fail('Einsätze fehlen im Reiter „Kampf“');
 await page.locator('#modal .mg-mission').first().scrollIntoViewIfNeeded();
 await page.screenshot({ path: `${out}/mg-16-einsaetze.png` });
 for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['flucht', 'khaak'], ['bergung', 'pirates'], ['ueberfall', 'pirates'], ['nest', 'khaak'], ['nest', 'xenon']]) {

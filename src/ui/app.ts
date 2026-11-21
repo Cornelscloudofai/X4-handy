@@ -1571,7 +1571,7 @@ function onClick(e: MouseEvent): void {
         const kind = d.kind as MiniKind, gr = simGear();
         const g = { weapon: gr, shield: gr, engine: gr };
         const level = ui.modal.type === 'mgGame' ? ui.modal.level : 1;
-        const opts: MiniOpts = a === 'mg-daily' ? { ...dailyOpts(kind), gear: g } : a === 'mg-mode' ? { level: 3, gear: g, mode: d.mode as Mode, mutator: null } : { level, gear: g, ...(d.mission ? { mission: d.mission as Mission } : {}) };
+        const opts: MiniOpts = a === 'mg-daily' ? { ...dailyOpts(kind), gear: g } : a === 'mg-mode' ? { level: 3, gear: g, mode: d.mode as Mode, mutator: null, ...(d.mission ? { mission: d.mission as Mission } : {}) } : { level, gear: g, ...(d.mission ? { mission: d.mission as Mission } : {}) };
         if (a === 'mg-play' && !unlocked(kind, level)) break;
         openMinigame(kind, opts, () => refresh(), true);
         break;

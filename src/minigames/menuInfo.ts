@@ -144,6 +144,7 @@ export const MISSION_GOALS: Record<Exclude<Mission, 'geleit'> | 'nestKhaak', Goa
   flucht: [{ id: 'fl50', text: 'Mit über 50 % Frachter-Hülle springen' }, G_COMBO3, G_TOUGH, G_LOOT3],
   bergung: [{ id: 'crate8', text: 'Alle acht Container bergen' }, { id: 'nolost', text: 'Keinen Container verlieren' }, G_COMBO3, G_TOUGH],
   ueberfall: [{ id: 'cargo3', text: 'Alle drei Piratenfrachter zerstören' }, { id: 'cargo45', text: 'Den ersten Frachter in unter 45 s zerstören' }, G_COMBO3, G_NOMISSILE],
+  ueberleben: [{ id: 'sv80', text: 'Mit über 80 % Hülle überleben' }, { id: 'kills40', text: '40 Gegner abschießen' }, G_COMBO3, G_LOOT3, G_NOMISSILE],
   nest: [{ id: 'nest150', text: 'Das Nest in unter 2:30 ausheben' }, { id: 'combo4', text: 'Kombo ×4 erreichen' }, G_TOUGH, G_NOMISSILE],
   // nur beim Kha'ak-Nest (dort gibt es Nebennester und Turmplattformen)
   nestKhaak: [{ id: 'hives', text: 'Auch beide Nebennester zerstören' }, { id: 'plats', text: 'Alle vier Turmplattformen zerstören' }, { id: 'nest150', text: 'Das Nest in unter 2:30 ausheben' }, G_TOUGH, G_NOMISSILE],
