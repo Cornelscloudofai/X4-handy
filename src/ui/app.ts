@@ -42,6 +42,7 @@ import type { Mission } from '../minigames/missions';
 import { setShipArt, shipArt, type FighterKind, type ShipArt } from '../render/shipArt';
 import { MODS, QUALITY, ackRefund, craft, fmtStat, remove as removeMod, type ModQuality, type ModSlot } from '../minigames/mods';
 import { hangarStats, layoutHangar, type LoMode, type LoView } from './loadoutView';
+import { layoutZentrale } from './zentrale';
 import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
@@ -477,6 +478,8 @@ function renderUI(): void {
   morph(modal, modalContent);
   modal.hidden = !modalContent;
   // Hangar: Leitlinien zu den Bauteilen, Wischen wechselt das Schiff
+  if (!ui.modal) zBack = false;
+  if (ui.modal?.type === 'zentrale') layoutZentrale(modal);
   if (ui.modal?.type === 'loadout') layoutHangar(modal, (dir) => { const btn = modal.querySelector<HTMLElement>(`[data-act="lo-ship"][data-dir="${dir}"]`); btn?.click(); });
   if (needFit && ui.modal?.type === 'planDiagram') { needFit = false; requestAnimationFrame(fitEditor); }
   document.documentElement.style.setProperty('--bottom-stack', (ui.modal ? 96 : $('bottom').offsetHeight) + 'px');
@@ -884,6 +887,14 @@ function zoomTick(dt: number): void {
 /** Minispiel-Menü, aus dem Schiffswahl oder Grafikvergleich geöffnet wurden (dorthin führt „Zurück“) */
 let lastMg: Extract<NonNullable<typeof ui.modal>, { type: 'minigames' }> | null = null;
 
+/** aus der Einsatzzentrale geöffnet: Schließen führt zurück in den Raum statt auf die Karte */
+let zBack = false;
+function toZentrale(): typeof ui.modal {
+  if (zBack && ui.modal && ui.modal.type !== 'zentrale') return { type: 'zentrale' };
+  zBack = false;
+  return null;
+}
+
 /** Schließt die oberste Ebene. false = nichts mehr offen */
 function goBack(): boolean {
   if (minigameBack()) return true;
@@ -894,7 +905,7 @@ function goBack(): boolean {
     // Hangar: aus einer Auswahl erst zurück zur Platzliste
     else if (ui.modal.type === 'loadout' && ui.modal.view && ui.modal.view !== 'home') ui.modal = { ...ui.modal, view: 'home' };
     else if ((ui.modal.type === 'loadout' || ui.modal.type === 'shipArt') && lastMg) ui.modal = lastMg;
-    else ui.modal = null;
+    else ui.modal = toZentrale();
   } else if (ui.placing) ui.placing = null;
   else if (ui.order) ui.order = null;
   else if (ui.orbOpen) ui.orbOpen = false;
@@ -1332,6 +1343,7 @@ function onClick(e: MouseEvent): void {
       case 'focus': {
         const kind = d.kind, id = d.id!;
         if (kind === 'station') { const st = stationById(state, id); if (st) { focusOn(st.x, st.z, st.sector); ui.selection = { kind: 'station', id }; } }
+        if (kind === 'hostile') { const h = hostileState(state).list.find((x) => String(x.id) === id); if (h) { ui.modal = null; zBack = false; focusOn(h.x, h.z, h.sector); } }
         if (kind === 'ship') { const s = state.ships.find((x) => x.id === id); if (s) { focusOn(s.x, s.z, s.sector); ui.selection = { kind: 'ship', id }; ui.follow = id; } }
         ui.panel = null;
         refresh();
@@ -1387,6 +1399,13 @@ function onClick(e: MouseEvent): void {
       case 'hud-reset': setHudScale(1); refresh(); break;
       case 'ware-icons': ui.modal = { type: 'wareIcons' }; refresh(); break;
       case 'minigames': ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
+      // Einsatzzentrale und ihre vier Orte; „Zurück“ führt von dort wieder in den Raum
+      case 'zentrale': ui.modal = { type: 'zentrale' }; refresh(); break;
+      case 'z-sim': zBack = true; lastMg = null; ui.modal = { type: 'minigames', level: 1, gear: 1 }; refresh(); break;
+      case 'z-lage': zBack = true; ui.modal = { type: 'lage' }; refresh(); break;
+      case 'z-hangar': zBack = true; lastMg = null; ui.modal = { type: 'loadout' }; refresh(); break;
+      case 'z-dev': zBack = true; ui.modal = { type: 'devtools', level: 1 }; refresh(); break;
+      case 'dev-level': if (ui.modal?.type === 'devtools') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
       case 'ship-art-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'shipArt' }; refresh(); break;
       case 'loadout-open': if (ui.modal?.type === 'minigames') lastMg = ui.modal; ui.modal = { type: 'loadout' }; refresh(); break;
       case 'lo-view': if (ui.modal?.type === 'loadout') {
@@ -1608,7 +1627,7 @@ function onClick(e: MouseEvent): void {
         runConfirmed(m.action, m.args);
         break;
       }
-      case 'modal-close': ui.modal = null; refresh(); break;
+      case 'modal-close': ui.modal = toZentrale(); refresh(); break;
       case 'buyship-modal': ui.modal = { type: 'buyShip', station: d.st || state.stations[0]?.id || '', role: (d.role as 'miner') ?? 'all', sel: d.cls }; refresh(); break;
       case 'dev-reveal': setDevRevealAll(!devRevealAll()); fitGalaxy(); toast(devRevealAll() ? 'Entwickleransicht: alle Sektoren aufgedeckt (nur Ansicht).' : 'Ansicht wie im Spielstand.', 'info'); refresh(); break;
       case 'akte': ui.modal = { type: 'akte' }; refresh(); break;

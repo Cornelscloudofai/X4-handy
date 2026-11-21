@@ -9,6 +9,7 @@ import { drawFighterVector } from '../minigames/shooterData';
 import { installState } from './install';
 import { introAvailable, introEnabled } from './intro';
 import { tunePanel } from '../minigames/tunePanel';
+import { lageBody, zentraleHtml } from './zentrale';
 import { FRAME_STYLES, MENU_STYLES, frameStyle, menuStyle } from './hudStyle';
 import { loadoutView } from './loadoutView';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
@@ -1776,7 +1777,7 @@ function sectorPanel(state: GameState, id: string, p: Panel, ui: UIState): strin
 /** Menüpunkte der Übersicht „Mehr“: je eine Kachel, die ein Untermenü öffnet */
 const MORE_SUBS: { id: string; title: string; icon: string; sub: string }[] = [
   { id: 'company', title: 'Unternehmen', icon: 'chart', sub: 'Kennzahlen, Verlauf, Ereignisse' },
-  { id: 'games', title: 'Minispiele', icon: 'game', sub: 'Acht Spiele, Rekorde, Tagesaufgaben' },
+  { id: 'games', title: 'Einsatzzentrale', icon: 'game', sub: 'Simulator, Lagewand, Hangar' },
   { id: 'help', title: 'Hilfe & Tipps', icon: 'help', sub: 'Erste Schritte und Erklärungen' },
   { id: 'settings', title: 'Einstellungen', icon: 'gear', sub: 'Karte, Darstellung, Ton' },
   { id: 'save', title: 'Spielstand', icon: 'save', sub: 'Sichern, laden, neu beginnen' },
@@ -1800,9 +1801,9 @@ function morePanel(state: GameState, ui: UIState): string {
     // Übersicht: Kopfbereich mit Planet und Handelsnetz, Unternehmenswert, zwei große Bildkacheln, vier kleine Kacheln
     const big = (id: 'company' | 'games') => {
       const m = MORE_SUBS.find((x) => x.id === id)!;
-      return `<button class="menu-big ${id}" ${id === 'games' ? act('minigames') : act('more-sub', { tab: id })} data-key="more-${id}" style="${artStyle(id === 'games' ? 'more-games' : 'more-company')}">
+      return `<button class="menu-big ${id}" ${id === 'games' ? act('zentrale') : act('more-sub', { tab: id })} data-key="more-${id}" style="${artStyle(id === 'games' ? 'more-games' : 'more-company')}">
         <span class="menu-big-ic">${icon(m.icon, 26)}</span>
-        <span class="menu-big-txt"><b>${esc(m.title)}</b><small>${id === 'games' ? `${MINI_KINDS.length} Spiele · Rekorde · ${modState().parts} Modteile` : 'Kennzahlen · Verlauf · Ereignisse'}</small></span>
+        <span class="menu-big-txt"><b>${esc(m.title)}</b><small>${id === 'games' ? `Simulator · Lagewand · Hangar · ${modState().parts} Modteile` : 'Kennzahlen · Verlauf · Ereignisse'}</small></span>
         <span class="menu-big-chev">${icon('chev', 26)}</span></button>`;
     };
     const small = MORE_SUBS.filter((m) => m.id !== 'company' && m.id !== 'games').map((m) => `<button class="menu-small has-img" style="${artStyle('more-' + m.id)}" ${act('more-sub', { tab: m.id })} data-key="more-${m.id}">
@@ -1937,6 +1938,14 @@ export function modalHtml(state: GameState, ui: UIState): string {
         ${[...groups].map(([g, ids]) => `<div class="section"><h3>${esc(GROUP_LABEL[g as keyof typeof GROUP_LABEL] ?? g)}</h3><div class="wi-grid">${ids.map((id) => `<div class="wi-cell"><div class="wi-pair">${wareIcon(id, 30, 'line')}${wareIcon(id, 30, 'glow')}</div><span>${esc(WARES[id].name)}</span></div>`).join('')}</div></div>`).join('')}`;
       return modalShell('Warensymbole', body, `<button class="btn" ${act('modal-close')}>Schließen</button>`);
     }
+    case 'zentrale': return zentraleHtml(state);
+    case 'lage': return modalShell('Lagewand', lageBody(state), `<button class="btn" ${act('modal-close')}>Zurück</button>`, 'Einsatzzentrale');
+    case 'devtools': {
+      const body = `<p class="lead">Werkzeuge zum Ausprobieren. Sie ändern Werte und Ansichten, nicht den Spielstand.</p>
+        <div class="section"><h3>Karte</h3><div class="box rows"><div class="row tap" ${act('dev-reveal')}>${icon('galaxy', 20)}<div class="grow"><div class="title">Alle Sektoren aufdecken</div><div class="sub">Nur die Ansicht der Galaxiekarte – ${devRevealAll() ? 'eingeschaltet' : 'aus'}</div></div><b class="${devRevealAll() ? 'pos' : 'muted'}">${devRevealAll() ? 'An' : 'Aus'}</b></div></div></div>
+        ${tuneSection(m.level)}`;
+      return modalShell('Wartung', body, `<button class="btn" ${act('modal-close')}>Zurück</button>`, 'Einsatzzentrale · Entwicklung');
+    }
     case 'minigames': {
       // Vorschau: alle Minispiele mit Stufe 1–5, Rekorden, Abzeichen, Tagesaufgaben und Herausforderungen
       const stars = (n: number) => `<span class="mg-best" aria-label="${Math.max(0, n)} von 3 Sternen">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
@@ -1989,7 +1998,6 @@ export function modalHtml(state: GameState, ui: UIState): string {
         <p class="small muted" style="margin:8px 0 0">Zwei feine Linien über jedem Gegner: oben der Schild (hellblau, lädt nach 3 s ohne Treffer wieder auf), darunter die Hülle. Unbeschädigte Gegner noch blasser.</p></div>
         <div class="section"><h3>Größenverhältnis</h3><div class="segment">${(['x4', 'gestaucht', 'bisher'] as const).map((k) => `<button class="${sizeScale() === k ? 'on' : ''}" ${act('mg-scale', { scale: k })}>${k === 'x4' ? 'Wie in X4' : k === 'gestaucht' ? 'Gestaucht' : 'Bisher'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">${sizeScale() === 'x4' ? 'Längen wie in X4, Mamba (32 m) als Maß: Cobra und Dragon knapp sechsmal so lang wie ein Jäger, Klapperschlange 1 076, Raptor 3 790 Punkte.' : sizeScale() === 'gestaucht' ? 'Jäger und Korvetten wie in X4, große Schiffe zusammengeschoben, damit sie noch auf den Bildschirm passen.' : 'Die alten Größen von vor dem Abgleich mit X4.'} Gilt nur für den Kampfmodus, nicht für die Sektorkarte.</p></div>
-        ${tuneSection(m.level)}
         <div class="section"><h3>Ausrüstung</h3><div class="segment">${([1, 2, 3] as const).map((g) => `<button class="${m.gear === g ? 'on' : ''}" ${act('mg-gear', { gear: g })}>${g === 1 ? 'Standard' : g === 2 ? 'Verbessert' : 'Spitze'}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Waffen, Schilde und Antrieb deines Jägers. Später verbesserst du sie mit Credits oder Teilen aus eigener Produktion.</p></div>`;
       const hero = `<div class="page-hero" style="${artStyle('more-games')}">${artPic('more-games', 'page-hero-art')}<div><b>${MINI_KINDS.length} Minispiele</b><span>★ ${MINI_KINDS.reduce((n, k) => n + totalStars(k), 0)} von ${MINI_KINDS.length * 15} · ${modState().parts} Modteile</span></div></div>`;
@@ -2309,7 +2317,7 @@ export { SPEEDS };
 function tuneSection(level: 1 | 2 | 3 | 4 | 5): string {
   return tunePanel(level, {
     levelPicker: `<div class="small muted" style="margin:10px 0 4px">Werte im Spiel auf Stufe</div>
-    <div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${level === l ? 'on' : ''}" ${act('mg-level', { level: l })}>${l}</button>`).join('')}</div>`,
+    <div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${level === l ? 'on' : ''}" ${act('dev-level', { level: l })}>${l}</button>`).join('')}</div>`,
     reset: act('mg-tune-reset'),
     fog: act('mg-fog-test'),
     note: 'Gilt sofort, auch mitten im Kampf: im Pausenmenü stehen dieselben Regler. Im Endlos-Modus kommen je Welle +6 % dazu (Boss +5 %). Der Schild lädt nach 3 s ohne Treffer mit 25 % je Sekunde nach.',

@@ -55,7 +55,7 @@ for (const [w, kind] of [[390, 'mining'], [360, 'trading']]) {
     ['dlg-schiffkauf', (g) => { g.ui.panel = null; g.openPanel('fleet'); setTimeout(() => document.querySelector('#panel [data-act="buyship-modal"]')?.click(), 50); }],
     ['dlg-module', (g) => { g.ui.modal = null; g.openPanel('station', g.state.stations[0].id, 'modules'); setTimeout(() => document.querySelector('#panel [data-act="modal-modules"]')?.click(), 50); }],
     ['dlg-vertreter', (g) => { g.ui.modal = null; g.ui.panel = null; g.ui.selection = { kind: 'trade', id: 'zhin' }; setTimeout(() => document.querySelector('[data-act="open-vendor"]')?.click(), 50); }],
-    ['dlg-minispiele', (g) => { g.ui.modal = null; g.ui.panel = null; g.ui.selection = null; g.openPanel('more'); setTimeout(() => document.querySelector('[data-act="minigames"]')?.click(), 50); }],
+    ['dlg-minispiele', (g) => { g.ui.modal = null; g.ui.panel = null; g.ui.selection = null; g.openPanel('more'); setTimeout(() => { document.querySelector('[data-act="zentrale"]')?.click(); setTimeout(() => document.querySelector('[data-act="z-sim"]')?.click(), 50); }, 50); }],
     ['dlg-hilfe', (g) => { g.ui.modal = { type: 'help' }; g.ui.panel = null; }],
     ['dlg-auftrag', (g) => { g.ui.modal = null; g.openPanel('missions'); setTimeout(() => document.querySelector('#panel .tabs button:nth-child(2)')?.click(), 50); }],
     ['sektorenkarte', (g) => { g.ui.panel = null; g.ui.modal = null; g.ui.view = 'galaxy'; g.ui.galaxySel = 'tkr'; }],

@@ -1,20 +1,23 @@
 # Konzept: Minispiele und Hangar neu ordnen
 
-Stand: Entwurf zur Abstimmung, noch nicht umgesetzt.
+Stand: Raum und vier Orte umgesetzt (`src/ui/zentrale.ts`, Bild `src/assets/zentrale/raum.jpg`); die Ziele sind
+vorerst die bisherigen Fenster. Die weiteren Schritte unten sind noch offen.
 
 ## Überarbeitung: Einsatzzentrale als Raum (Stand nach Rückmeldung)
 
-Die Zentrale wird ein **gemalter Raum** (Bild mit leichter Tiefe beim Wischen bzw. Neigen), in dem man Bereiche antippt.
-Jeder Bereich leuchtet auf und trägt ein Schild, damit nichts gesucht werden muss. Eine schmale Leiste unten listet
-dieselben Ziele noch einmal als Schnellzugriff.
+Die Zentrale ist ein **gemalter Raum** im Querformat (1912 × 823). Im Hochformat sieht man gut ein Viertel davon und
+wischt sich durch den Raum; gestartet wird an der Lagewand. Jeder Ort trägt ein Schild mit kurzem Stand, Pfeile am Rand
+nennen Orte außerhalb des Ausschnitts, eine Leiste unten führt ohne Suchen zu allen vier Orten. Von links nach rechts:
 
 | Ort im Raum | führt zu | Inhalt |
 | --- | --- | --- |
-| **Holodeck** (Glaswand mit Gitterboden) | **Simulator** | alle Minispiele: Arbeit und Kampftraining, Stufen, Rekorde, Tagesaufgaben |
-| **Einsatztisch** (Holo-Tisch mit Sektorkarte) | **Einsatzbrett** | echte Lage im Sektor: offene Vorfälle, Rotten, Auftragsspiele – jeweils „Hinfliegen“ bzw. „Selbst übernehmen“ |
-| **Aufzugtür / Hangartor** | **Hangar** | Schiffe, Ausrüstung, Werkstatt, Aussehen; dazu die eigene Flotte |
-| **Schreibtisch** (Terminal, Datenblätter) | **Akte** | Sterne, Abzeichen, Modteile, Verlauf der Einsätze |
-| **Wartungsklappe** (unscheinbar, Warnstreifen) | **Entwicklung** | alle Entwicklerwerkzeuge an einem Ort |
+| **Wartungsklappe** (ganz links, Warnstreifen) | **Entwicklung** | alle Entwicklerwerkzeuge an einem Ort |
+| **Simulatorkapseln** (drei Kapseln) | **Simulator** | alle Minispiele: Arbeit und Kampftraining, Stufen, Rekorde, Tagesaufgaben, Sterne und Abzeichen |
+| **Lagewand** (Wabenkarte mit Warnungen, Pult davor) | **Einsatzbrett** | echte Lage im Sektor: offene Vorfälle und Rotten – „Übernehmen“ bzw. „Auf Karte“; später Verlauf der Einsätze |
+| **Hangartor** (Fenster mit Jäger) | **Hangar** | Schiffe, Ausrüstung, Werkstatt, Aussehen; dazu die eigene Flotte |
+
+Der frühere Schreibtisch mit der „Akte“ entfällt: Sterne und Abzeichen stehen im Simulator, der Einsatzverlauf an der
+Lagewand.
 
 ### Simulator und echte Einsätze
 
@@ -22,7 +25,7 @@ Beide nutzen dieselben Spiele. Getrennt sind **Regeln und Folgen**, nicht die Te
 
 | | Simulator | Echter Einsatz |
 | --- | --- | --- |
-| Herkunft | frei wählbar im Holodeck | entsteht im Sektor (Vorfall, Rotte, Auftrag, Störung) |
+| Herkunft | frei wählbar in den Simulatorkapseln | entsteht im Sektor (Vorfall, Rotte, Auftrag, Störung) |
 | Schiff | jede freigeschaltete Schiffsklasse | das echte Schiff vor Ort, mit seiner Hülle und Staffel |
 | Folgen | keine – nur Sterne, Rekorde, Modteile | Credits, Ruf, Schäden, verlorene Mambas, Wracks |
 | Stufe | frei 1–5 | ergibt sich aus der Lage (Stärke der Rotte) |
@@ -56,8 +59,8 @@ die Einstellungen (und ins Pausenmenü), z. B. Steuerung, Gegneranzeige, Größe
 ### Was getrennt bleibt, was zusammenkommt
 
 - **Zusammen:** Spiele und Technik (ein Simulator für alles), Ausrüstung je Klasse (ein Hangar), Entwicklerwerkzeuge
-  (eine Klappe), Fortschritt (eine Akte).
-- **Getrennt:** Folgen (Simulator ohne, Einsatz mit), Herkunft (Holodeck gegen Spielwelt), Einstellungen gegen
+  (eine Klappe).
+- **Getrennt:** Folgen (Simulator ohne, Einsatz mit), Herkunft (Simulator gegen Spielwelt), Einstellungen gegen
   Entwicklerwerkzeuge.
 
 ## Wie es heute ist
