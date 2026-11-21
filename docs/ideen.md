@@ -2,6 +2,13 @@
 
 Gesammelte Wünsche, die noch umgesetzt werden sollen (neueste oben).
 
+## Gedankennotiz: Verbesserungen (vorgemerkt)
+
+- Speicherfunktion: Spielstand zuverlässig sichern, wenn die App geschlossen wird (auch beim Wegwischen/Beenden ohne Menü).
+- Hangar und Spiele: Anordnung überarbeiten (Hangar-Ansicht und Minispiel-Menü übersichtlicher gliedern).
+- Steuerungstutorial für jeden Steuerungstyp (Ein Stick, Zwei Sticks, Lenkrad, Maus und Tastatur).
+- Lenkrad-Steuerung: statt Kreis eine senkrechte bzw. waagerechte Linie als Lenkachse; Feuern quer zur Steuerachse.
+
 ## Nächste Schritte Kampf (vorgemerkt, der Reihe nach)
 
 Nach Gegnerrollen und Raketenwarnung angehen:
