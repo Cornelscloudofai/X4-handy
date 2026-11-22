@@ -316,7 +316,7 @@ const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DP
  */
 const KYON_FIRE = 1.7, KYON_SWEEP = 0.32;
 /** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
-const ZAP_JUMPS = 7, ZAP_HOP = 190, ZAP_CONE = 0.55;
+const ZAP_JUMPS = 5, ZAP_HOP = 150, ZAP_CONE = 0.55;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
 const PFLAK_FUSE = 16, PFLAK_R = 62;
 /** Wirkung von Kettenblitz und Flak nach Schiffsklasse des Ziels (S = voll; Türme und Großkampfschiffe kaum) */
@@ -692,7 +692,7 @@ const CARDS: (Card & { need?: CardNeed[] })[] = [
   { id: 'pellets', name: 'Schrotladung', desc: '+2 Geschosse je Schuss', max: 2, need: ['multi'] },
   { id: 'cone', name: 'Weiter Kegel', desc: 'Streuung +40 % – eine Ladung trifft mehr Ziele eines Schwarms', max: 2, need: ['multi'] },
   // Kettenblitz
-  { id: 'zap', name: 'Kettenreaktion', desc: 'Der Kettenblitz springt dreimal weiter und etwas weiter', max: 2, need: ['zap'] },
+  { id: 'zap', name: 'Kettenreaktion', desc: 'Der Kettenblitz springt zweimal öfter und etwas weiter', max: 2, need: ['zap'] },
   // Strahler
   { id: 'focus', name: 'Strahlfokus', desc: '+20 % Reichweite und Leistung des Strahls', max: 2, need: ['beam'] },
   { id: 'chain', name: 'Kettenstrahl', desc: 'Der Strahl springt vom Ziel auf einen weiteren Gegner in der Nähe (50 %)', max: 2, need: ['beam'] },
@@ -905,7 +905,7 @@ export class ShooterGame implements MiniGame {
   private missileCd = 2;
   private missilesUsed = 0;
   /** Kettenblitze im Bild: Pfade (je Sprung eine gezackte Linie), Restzeit */
-  private zaps: { paths: [number, number][][]; t: number; max: number }[] = [];
+  private zaps: { paths: [number, number][][]; fil: [number, number][][]; forks: [number, number][][]; hits: [number, number][]; t: number; max: number }[] = [];
   /** Triebwerksrauch (eigenes Schiff und Staffel); Düsen des eigenen Schiffs in Weltlage (beim Zeichnen ermittelt) */
   private smoke = new Smoke();
   private jetPts: { x: number; y: number; w: number; col: string }[] = [];
@@ -5016,10 +5016,13 @@ export class ShooterGame implements MiniGame {
             // je Gruppe höchstens zwei zugleich, insgesamt je nach Stärke deines Schiffs mehr (mehr Gruppen = mehr Druck)
             const mates = onP && e.grp != null ? this.enemies.filter((q) => q !== e && q.grp === e.grp && q.target === 'p' && (q.runT ?? 0) > 0).length : 0;
             // Schwärme greifen breiter an: bis zu fünf aus dem Schwarm zugleich, dazu drei über der Gesamtgrenze
-            if (onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) || mates >= (e.swarm ? 6 : 3)) && d < 420) {
-              // warten: seitlich um den Jäger kreisen
+            // Brut des Brutschiffs: ein Strom – deutlich mehr greifen zugleich an
+            if (onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) + (e.bred ? 12 : 0) || mates >= (e.swarm ? 6 : 3)) && d < 420) {
+              // warten: seitlich um den Jäger kreisen (zählt nicht mehr als Angreifer – sonst blieben alle in der
+              // Warteschleife, sobald einmal genug Anflüge begonnen hatten)
               want = Math.atan2(dy, dx) + e.dir * (d < 260 ? 2.1 : 1.4);
               sp = s.speed * 0.8;
+              e.runT = 0;
             } else {
               want = aimAt;
               e.runT = (e.runT ?? 0) + dt;
@@ -5266,7 +5269,7 @@ export class ShooterGame implements MiniGame {
    */
   private fireChain(ox: number, oy: number, a0: number): void {
     const range = this.wpn.range, hop = ZAP_HOP * (1 + 0.15 * this.c('zap'));
-    const jumps = ZAP_JUMPS + (this.ship.gunSize === 'm' ? 2 : 0) + 3 * this.c('zap');
+    const jumps = ZAP_JUMPS + (this.ship.gunSize === 'm' ? 2 : 0) + 2 * this.c('zap');
     const ok = (e: Enemy) => !(e.kind === 'boss' && e.shielded);
     let cur: Enemy | null = this.lock?.e && ok(this.lock.e) && Math.hypot(this.lock.e.x - ox, this.lock.e.y - oy) < range + this.lock.e.r ? this.lock.e : null;
     if (!cur) {
@@ -5279,7 +5282,7 @@ export class ShooterGame implements MiniGame {
         if (sc < bd) { bd = sc; cur = e; }
       }
     }
-    const paths: [number, number][][] = [];
+    const paths: [number, number][][] = [], hits: [number, number][] = [];
     this.logSrc = 'gun';
     this.logShot();
     if (!cur) {
@@ -5296,6 +5299,7 @@ export class ShooterGame implements MiniGame {
         hit.add(cur);
         const cls = cur.parent || cur.nest || cur.plat || cur.hive ? 'L' : ECLASS[cur.kind];
         this.logHit();
+        hits.push(to);
         this.fx.burst(to[0], to[1], '#d8ecff', 3, 140, 1.1, 'spark', 0.2);
         this.damageEnemy(cur, dmg * SWARM_K[cls], 0, 0);
         from = to;
@@ -5308,7 +5312,15 @@ export class ShooterGame implements MiniGame {
         cur = next;
       }
     }
-    this.zaps.push({ paths, t: 0.2, max: 0.2 });
+    // Nebenfaden je Abschnitt (eigener Zickzack, dünner) und hier und da eine kurze Verästelung
+    const fil = paths.map((p) => jagged(p[0], p[p.length - 1], Math.min(40, Math.hypot(p[p.length - 1][0] - p[0][0], p[p.length - 1][1] - p[0][1]) * 0.16), 4));
+    const forks: [number, number][][] = [];
+    for (const p of paths) for (let i = 2; i < p.length - 2; i += 3) {
+      if (Math.random() > 0.35) continue;
+      const [x, y] = p[i], a = Math.random() * Math.PI * 2, l = 12 + Math.random() * 22;
+      forks.push(jagged([x, y], [x + Math.cos(a) * l, y + Math.sin(a) * l], l * 0.4, 2));
+    }
+    this.zaps.push({ paths, fil, forks, hits, t: 0.22, max: 0.22 });
     if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: ox, y: oy, r: 120, color: '#9fc8ff', t: 0, max: 0.2 });
     sfx.zap(1, this.panAt(ox));
   }
@@ -5320,15 +5332,40 @@ export class ShooterGame implements MiniGame {
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
+    const stroke = (list: [number, number][][]) => {
+      ctx.beginPath();
+      for (const p of list) { ctx.moveTo(p[0][0], p[0][1]); for (const q of p) ctx.lineTo(q[0], q[1]); }
+      ctx.stroke();
+    };
+    const lw = (w: number) => Math.max(w, (w * 0.55) / this.zoom);
+    const halo = glowSprite('#8fb4ff');
     for (const z of this.zaps) {
-      const a = (z.t / z.max) ** 0.7 * k;
-      for (const [w, col, al] of [[8, '90,140,255', 0.22], [3.2, '170,210,255', 0.6], [1.2, '255,255,255', 1]] as const) {
+      // flackert: jede Entladung pulsiert zwei-, dreimal, bevor sie erlischt
+      const u = z.t / z.max, flick = 0.7 + 0.3 * Math.abs(Math.sin(u * 19));
+      const a = u ** 0.6 * k * flick;
+      // Tiefe in Schichten: weiter, sehr blasser Schein – kühler Mantel – heller Kern – weißer Faden
+      for (const [w, col, al] of [[11, '60,90,230', 0.1], [5.5, '110,160,255', 0.28], [2.4, '185,220,255', 0.7], [0.9, '255,255,255', 1]] as const) {
         ctx.globalAlpha = Math.min(1, a * al);
         ctx.strokeStyle = `rgb(${col})`;
-        ctx.lineWidth = Math.max(w, (w * 0.6) / this.zoom);
-        ctx.beginPath();
-        for (const p of z.paths) { ctx.moveTo(p[0][0], p[0][1]); for (const q of p) ctx.lineTo(q[0], q[1]); }
-        ctx.stroke();
+        ctx.lineWidth = lw(w);
+        stroke(z.paths);
+      }
+      // Nebenfaden und Verästelungen: dünn, etwas violetter, schneller verblasst
+      ctx.globalAlpha = Math.min(1, a * a * 0.55);
+      ctx.strokeStyle = 'rgb(170,175,255)';
+      ctx.lineWidth = lw(1.1);
+      stroke(z.fil);
+      ctx.globalAlpha = Math.min(1, a * a * 0.7);
+      ctx.strokeStyle = 'rgb(210,225,255)';
+      ctx.lineWidth = lw(0.8);
+      stroke(z.forks);
+      // Einschläge: kurzer, heller Lichtpunkt
+      if (halo) {
+        for (const [x, y] of z.hits) {
+          const r = 16 + 10 * u;
+          ctx.globalAlpha = Math.min(1, a * 0.8);
+          ctx.drawImage(halo, x - r, y - r, r * 2, r * 2);
+        }
       }
     }
     ctx.restore();
@@ -5346,11 +5383,19 @@ export class ShooterGame implements MiniGame {
    */
   private pflakBurst(b: Bullet): void {
     const { x, y } = b;
-    this.fx.add({ x, y, color: '#fff0c8', size: 10, max: 0.07 });
-    this.fx.add({ x, y, color: '#ff9a3a', size: PFLAK_R * 0.6, kind: 'fire', max: 0.32 });
-    this.fx.add({ x, y, color: '#ffb070', size: PFLAK_R * 0.45, kind: 'ring', max: 0.25 });
-    this.fx.burst(x, y, '#ffcf80', 7, 280, 1.1, 'spark', 0.3);
-    this.fx.add({ x, y, color: '#2e2925', size: PFLAK_R * 0.8, kind: 'smoke', solid: true, max: 1.1, drag: 0.7 });
+    // gleißender Blitz, Druckring, Feuerball aus mehreren Glutballen, Splitter mit Leuchtspur, dunkle Wolke mit Glutsaum
+    this.fx.add({ x, y, color: '#fffaf0', size: 12, max: 0.06 });
+    this.fx.add({ x, y, color: '#ffe2a8', size: PFLAK_R * 0.3, max: 0.1 });
+    this.fx.add({ x, y, color: '#ffd28a', size: PFLAK_R * 0.55, kind: 'ring', max: 0.22 });
+    this.fx.add({ x, y, color: '#ff9a3a', size: PFLAK_R * 0.5, kind: 'fire', max: 0.34 });
+    for (let k = 0; k < 3; k++) {
+      const a = Math.random() * Math.PI * 2, d = PFLAK_R * (0.15 + Math.random() * 0.2);
+      this.fx.add({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, vx: Math.cos(a) * 40, vy: Math.sin(a) * 40, color: k ? '#ff7a2a' : '#ffb24a', size: PFLAK_R * (0.22 + Math.random() * 0.14), kind: 'fire', max: 0.28 + Math.random() * 0.12, drag: 3 });
+    }
+    this.fx.burst(x, y, '#ffe0a0', 9, 340, 1.3, 'spark', 0.32);
+    this.fx.burst(x, y, '#ff9a4a', 5, 160, 1.6, 'chunk', 0.5);
+    this.fx.add({ x, y, color: '#5a3520', size: PFLAK_R * 0.55, kind: 'smoke', solid: true, max: 0.6, drag: 1.2 });
+    this.fx.add({ x, y, color: '#2a2420', size: PFLAK_R * 0.85, kind: 'smoke', solid: true, max: 1.3, drag: 0.7 });
     if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x, y, r: 120, color: '#ffa04a', t: 0, max: 0.3 });
     const fall = (d: number) => Math.max(0, 1 - 0.6 * (d / PFLAK_R));
     const tk = this.tDmg / this.baseDmg, s = this.swarmDmg / (1 + 0.3 * this.c('heavy')) * 0.7 * tk;
@@ -8012,8 +8057,9 @@ export class ShooterGame implements MiniGame {
    */
   /**
    * Leuchtende Triebwerke der kleinen Schiffe (Jäger, Späher): Schein am Heck und eine kurze Leuchtspur gegen die
-   * Flugrichtung. Kha'ak violett und kräftig – so sieht man den Strom der Brut als Fluss leuchtender Punkte, auch weit
-   * herausgezoomt (Mindestgröße in Bildschirmpunkten) und im Nebel (k: Stärke; im Nebel nach Dichte)
+   * Flugrichtung. Kha'ak violett und kräftig – so sieht man den Strom der Brut als Fluss leuchtender Punkte, auch im
+   * Nebel (k: Stärke; im Nebel nach Dichte). Größe wie das Schiff: beim Herauszoomen schrumpft der Schein mit, nur ganz
+   * klein gezoomt bleibt er knapp sichtbar
    */
   private drawEngineGlows(ctx: CanvasRenderingContext2D, k: number): void {
     if (k <= 0.01) return;
@@ -8030,16 +8076,16 @@ export class ShooterGame implements MiniGame {
       const v = Math.hypot(e.vx, e.vy), a = (kh ? 0.95 : 0.6) * k * (0.6 + 0.4 * Math.min(1, v / 150));
       // Leuchtspur gegen die Flugrichtung
       if (v > 20) {
-        const L = Math.min(v * 0.14, 46) + 5 / z, ux = -e.vx / v, uy = -e.vy / v;
+        const L = Math.min(v * 0.12, 38), ux = -e.vx / v, uy = -e.vy / v;
         const g = ctx.createLinearGradient(tx, ty, tx + ux * L, ty + uy * L);
         g.addColorStop(0, rgba(kh ? '#e2c4ff' : col, a * 0.8));
         g.addColorStop(1, rgba(col, 0));
         ctx.strokeStyle = g;
-        ctx.lineWidth = Math.max(e.r * 0.5, 2.2 / z);
+        ctx.lineWidth = Math.max(e.r * 0.45, 1 / z);
         ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx + ux * L, ty + uy * L); ctx.stroke();
       }
       // Schein: nie kleiner als ein paar Bildschirmpunkte
-      const R = Math.max(e.r * (kh ? 2.8 : 2), (kh ? 11 : 7) / z);
+      const R = Math.max(e.r * (kh ? 2.4 : 1.8), (kh ? 2.5 : 2) / z);
       ctx.globalAlpha = Math.min(1, a);
       ctx.drawImage(halo, tx - R, ty - R, R * 2, R * 2);
       ctx.globalAlpha = 1;

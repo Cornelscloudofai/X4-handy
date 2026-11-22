@@ -39,7 +39,9 @@ describe('Kampf: Elite-Gegner', () => {
     for (const side of ['pirate', 'xenon', 'khaak'] as const) {
       const { g, G } = game(side, 5, 3);
       let seen = 0;
-      for (let t = 0; t < 60 && !g.result(); t += DT) { g.update(DT); seen = Math.max(seen, G.enemies.filter((e) => e.elite).length); }
+      // der Jäger fliegt nicht und bleibt heil (geprüft wird nur, dass Elite-Gegner in den Wellen auftauchen)
+      const P = G as unknown as { hull: number; shield: number };
+      for (let t = 0; t < 60 && !g.result(); t += DT) { P.hull = 100; P.shield = 999; g.update(DT); seen = Math.max(seen, G.enemies.filter((e) => e.elite).length); }
       expect(seen, side).toBeGreaterThan(0);
       for (const e of G.enemies.filter((q) => q.elite)) expect(Object.keys(ELITES)).toContain(e.elite);
     }
