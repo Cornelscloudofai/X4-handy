@@ -2045,3 +2045,46 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 .sim-goal.got svg { color: var(--teal); }
 .sim-goal.got .sub { color: var(--text); }
 .sim-endless { align-items: flex-start; }
+
+/* Steuerung wählen: Kachel-Auswahl auf der Startkarte, Liste mit Vorschau, Knopf „Steuerung: …“ */
+.mg-ctrl-chip { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 10px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(63, 224, 197, 0.08); color: var(--text); font: 500 13px Barlow, sans-serif; }
+.mg-ctrl-chip svg { color: var(--teal); }
+.mg-ctrl-chip em { font-style: normal; color: var(--teal); margin-left: 4px; }
+.mg-ctrl-pick { margin: 4px 0 12px; padding: 10px; border: 1px solid var(--line-2); border-radius: 14px; background: rgba(63, 224, 197, 0.05); }
+.mg-ctrl-pick > small { display: block; margin-bottom: 8px; color: var(--amber, #ffb547); font: 600 11px "Chakra Petch", Barlow, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+.mg-ctrl-pick p { margin: 8px 0 6px; }
+.ctrl-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ctrl-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px 7px; border-radius: 10px; border: 1px solid var(--line-2); background: rgba(6, 16, 22, 0.6); color: var(--text); font: 600 12px Barlow, sans-serif; }
+.ctrl-tile.on { border-color: var(--teal); background: rgba(63, 224, 197, 0.14); box-shadow: 0 0 0 1px var(--teal) inset; }
+.ctrl-tile .ctrl-prev { width: 100%; height: auto; max-width: 96px; }
+.linkish { background: none; border: 0; padding: 0; color: var(--teal); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.mg-ask { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted, #a9c3c6); }
+.mg-ask input { width: 18px; height: 18px; accent-color: var(--teal); }
+.ctrl-cards { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 12px; }
+.ctrl-card { display: grid; grid-template-columns: 92px 1fr; gap: 4px 10px; align-items: center; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line-2); background: rgba(6, 16, 22, 0.55); }
+.ctrl-card.on { border-color: var(--teal); background: rgba(63, 224, 197, 0.1); }
+.ctrl-card .ctrl-prev { grid-row: span 2; width: 92px; height: auto; }
+.ctrl-txt b { display: block; font-size: 14px; }
+.ctrl-txt small { color: var(--muted, #a9c3c6); font-size: 12px; }
+.ctrl-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* Vorschau: Sticks, Knöpfe und Tasten; ein Daumenpunkt macht die Bewegung vor */
+.ctrl-prev .pv-ring { fill: none; stroke: rgba(228, 243, 240, 0.35); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.ctrl-prev .pv-knob { fill: rgba(228, 243, 240, 0.75); }
+.ctrl-prev .pv-btn { fill: rgba(255, 181, 71, 0.25); stroke: #ffb547; stroke-width: 1.5; }
+.ctrl-prev .pv-tap { fill: rgba(255, 210, 122, 0.5); transform-box: fill-box; transform-origin: center; animation: pvTap 1.6s ease-out infinite; }
+.ctrl-prev .pv-axis { stroke: rgba(63, 224, 197, 0.7); stroke-width: 2; stroke-linecap: round; }
+.ctrl-prev .pv-fire { stroke: #ffd27a; stroke-width: 1.5; stroke-dasharray: 4 3; }
+.ctrl-prev .pv-key { fill: rgba(6, 16, 22, 0.8); stroke: rgba(169, 195, 198, 0.5); stroke-width: 1; }
+.ctrl-prev .pv-lit { fill: rgba(255, 181, 71, 0.35); stroke: #ffb547; animation: pvLit 1.2s ease-in-out infinite; }
+.ctrl-prev .pv-txt { fill: #e4f3f0; font: 600 10px "Chakra Petch", Barlow, sans-serif; text-anchor: middle; }
+.ctrl-prev .pv-circle { animation: pvCircle 2.6s ease-in-out infinite; }
+.ctrl-prev .pv-up { animation: pvUp 2.2s ease-in-out infinite; }
+.ctrl-prev .pv-aim { animation: pvAim 2.6s ease-in-out infinite; }
+.ctrl-prev .pv-steer { animation: pvSteer 2.4s ease-in-out infinite; }
+@keyframes pvTap { 0% { opacity: 0.9; transform: scale(0.6); } 70%, 100% { opacity: 0; transform: scale(1.9); } }
+@keyframes pvLit { 50% { fill: rgba(255, 181, 71, 0.65); } }
+@keyframes pvCircle { 0%, 100% { transform: translate(0, -11px); } 25% { transform: translate(11px, 0); } 50% { transform: translate(0, 11px); } 75% { transform: translate(-11px, 0); } }
+@keyframes pvUp { 0%, 100% { transform: translate(0, 0); } 40%, 70% { transform: translate(0, -12px); } }
+@keyframes pvAim { 0%, 100% { transform: translate(-9px, -9px); } 50% { transform: translate(9px, -9px); } 80% { transform: translate(0, -15px); } }
+@keyframes pvSteer { 0%, 100% { transform: translate(-16px, 0); } 45% { transform: translate(16px, 0); } 70%, 85% { transform: translate(4px, -14px); } }
+@media (prefers-reduced-motion: reduce) { .ctrl-prev * { animation: none !important; } }

@@ -1,4 +1,5 @@
 // Steuerung: Spielschleife, Karte, Eingaben, Oberfläche und Speichern
+import type { SchoolCtrl } from '../minigames/flightSchool';
 import { coachNotify, markCoachSeen, renderCoach } from './coach';
 import { undo, withUndo } from './undo';
 import * as Y from '../engine/yard';
@@ -1608,6 +1609,11 @@ function onClick(e: MouseEvent): void {
       case 'mg-side': if (ui.modal?.type === 'mgGame') { const kind = d.kind as MiniKind; ui.modal = { ...ui.modal, kind, level: unlocked(kind, ui.modal.level) ? ui.modal.level : nextLevel(kind, ui.modal.mission) }; refresh(); } break;
       case 'mg-level': if (ui.modal?.type === 'mgGame') { ui.modal.level = Number(d.level) as Level; refresh(); } break;
       case 'mg-gear': setSimGear(Number(d.gear) as 1 | 2 | 3); refresh(); break;
+      case 'mg-school': {
+        const gr = simGear();
+        openMinigame('pirates', { level: 1, gear: { weapon: gr, shield: gr, engine: gr }, school: d.ctrl as SchoolCtrl }, () => refresh(), true);
+        break;
+      }
       case 'mg-play': case 'mg-daily': case 'mg-mode': {
         if (ui.modal?.type !== 'minigames' && ui.modal?.type !== 'mgGame') break;
         const kind = d.kind as MiniKind, gr = simGear();

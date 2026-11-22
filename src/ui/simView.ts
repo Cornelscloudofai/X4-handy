@@ -3,9 +3,10 @@
 // Wartung der Einsatzzentrale.
 import type { Level } from '../minigames/common';
 import { MINI_INFO, MINI_KINDS, dailyOpts, goalsOf, mutatorsOf, type MiniKind } from '../minigames/host';
-import { SHIPS, loadout, loadoutLabel } from '../minigames/loadout';
+import { SHIPS, controlMode, loadout, loadoutLabel } from '../minigames/loadout';
 import { MISSIONS, MISSION_IDS, recordKey, type Mission } from '../minigames/missions';
 import { modState } from '../minigames/mods';
+import { SCHOOL_CTRLS, SCHOOL_NAME, SCHOOL_SUB, fmtTime, schoolBest, schoolDone } from '../minigames/flightSchool';
 import { musicFx } from '../audio/rhythm';
 import { UNLOCK, best, bestPoints, dailyBest, hasBadge, totalStars, unlocked } from '../minigames/records';
 import { esc } from './dom';
@@ -85,6 +86,11 @@ export function simHomeHtml(m: SimHome): string {
     <p class="small muted" style="margin:10px 0 0">Antippen öffnet die Spielseite mit Stufe, Rekorden und Abzeichen. Mit Sternen schaltest du je Spiel Stufe 4 und 5 frei.</p></div>`;
   const ship = SHIPS[loadout().ship];
   const combat = `<div class="section"><h3>Dein Schiff</h3><div class="box rows"><div class="row tap" ${act('loadout-open')}>${icon('fighter', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(ship.name)} – ${esc(ship.role)}</div><div class="sub wrap">${esc(loadoutLabel())}</div></div><span class="small muted">Hangar</span>${icon('chev', 20, 'chev')}</div></div></div>
+    <div class="section"><h3>Flugschule</h3><div class="box rows">${SCHOOL_CTRLS.map((c) => {
+      const b = schoolBest(c), done = schoolDone(c);
+      return `<div class="row tap sim-school" ${act('mg-school', { ctrl: c })}>${icon(done ? 'check' : 'fighter', 20)}<div class="grow"><div class="title" style="font-weight:500">${esc(SCHOOL_NAME[c])}${c === controlMode() ? ' <span class="small muted">· deine Steuerung</span>' : ''}</div><div class="sub wrap">${esc(SCHOOL_SUB[c])}</div><div class="sub">${done ? `Geschafft${b != null ? ` · Bestzeit ${fmtTime(b)}` : ''}` : 'Fünf Stationen ohne Gegner, etwa zwei Minuten'}</div></div>${icon('play', 18, 'chev')}</div>`;
+    }).join('')}</div>
+      <p class="small muted" style="margin:10px 0 0">Reine Übung ohne Wertung. Die Steuerung stellst du in den Einstellungen um.</p></div>
     <div class="section"><h3>Einsätze</h3><div class="box rows">${MISSION_LIST.map((id) => {
       const mi = missionInfo(id), max = mi.sides.length * 15;
       return `<div class="row tap mg-mission" ${act('mg-game', { kind: mi.sides[0], mission: id })}>${artPic(MISSION_ART[id], 'mg-thumb')}<div class="grow"><div class="title" style="font-weight:500">${esc(mi.name)}</div><div class="sub wrap">${esc(mi.sub)}</div><div class="sub">${mi.sides.map((k) => SIDE_NAME[k]).join(' · ')} · ★ ${missionStars(id)}/${max}</div></div>${icon('chev', 20, 'chev')}</div>`;

@@ -25,6 +25,7 @@ import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 import { drawGraded } from '../render/canvasFx';
 import { drawSpecialIcon } from './specialIcons';
 import { hullGap, hullMaskOf, type HullMask } from './hullMask';
+import { FlightSchool, fmtTime, saveSchool, schoolBest, SCHOOL_NAME, type SchoolCtrl, type SchoolHost } from './flightSchool';
 export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
 export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
@@ -201,6 +202,8 @@ interface Enemy {
   /** Elite-Eigenschaft; Flink: Abklingzeit des Ausweichens; im Schutz eines Kommandanten */
   elite?: Elite; dodgeCd?: number; cmdBy?: Enemy;
   inside?: boolean;
+  /** Zielboje der Flugschule: steht still, schießt nicht */
+  boje?: boolean;
 }
 /** Waffe in Spielwerten (aus den X4-Werten umgerechnet) */
 interface GameGun {
@@ -731,9 +734,9 @@ function jagged(a: [number, number], b: [number, number], amp: number, depth: nu
 }
 
 export class ShooterGame implements MiniGame {
-  readonly eyebrow: string;
-  readonly title: string;
-  readonly intro: string;
+  eyebrow: string;
+  title: string;
+  intro: string;
   readonly controls: string[] = [
     'Links hinhalten und ziehen: Joystick – der Jäger dreht sich in die Richtung und gibt Schub; im inneren Ring dreht er nur und driftet weiter (Trägheit) – so kannst du wenden und rückwärts fliegend schießen',
     'Bordkanonen schießen nur geradeaus: Feuertaste (F) halten; der Kreis vor dem Ziel zeigt, wohin du zielen musst',
@@ -868,6 +871,12 @@ export class ShooterGame implements MiniGame {
   private leads: { e: Enemy; x: number; y: number }[] = [];
   private missileCd = 2;
   private missilesUsed = 0;
+  /** ausgelöste Spezialfähigkeiten (Flugschule) */
+  private specials = 0;
+  /** Flugschule: Lektion (Steuerung) und Ablauf; neue Bestzeit */
+  private schoolCfg: SchoolCtrl | null = null;
+  private school: FlightSchool | null = null;
+  private schoolNew = false;
   private dashCd = 0;
   private dashT = 0;
   // Ausrüstung: Schiff, Bordwaffe, Turmwaffe, Schild
@@ -1064,7 +1073,8 @@ export class ShooterGame implements MiniGame {
     this.mutator = findMutator(SHOOTER_MUTATORS, cfg.mutator);
     this.place = cfg.place ?? null;
     const lo: Loadout = cfg.loadout ?? loadout();
-    this.ctrl = cfg.controls ?? (cfg.loadout ? 'eins' : controlMode());
+    this.schoolCfg = cfg.school ?? null;
+    this.ctrl = cfg.school ? (cfg.school === 'pc' ? 'zwei' : cfg.school) : cfg.controls ?? (cfg.loadout ? 'eins' : controlMode());
     this.lenk = cfg.lenk ?? lenkSetup();
     if (this.ctrl === 'zwei') this.controls = [
       'Zwei Sticks: links hinhalten und ziehen zum Fliegen, aus Sicht des Jägers – nach oben Schub geradeaus, zur Seite seitwärts, nach unten rückwärts – seitwärts mit einem Viertel, rückwärts mit einem Drittel der Kraft und des Tempos; der Jäger driftet mit Trägheit',
@@ -1197,6 +1207,98 @@ export class ShooterGame implements MiniGame {
     this.fogged = cfg.fog ?? (fogTest() || (fogOk && roll));
     this.fogTone = 0.5 + fr() * 1.0;
     if (this.fogged) this.fog = 1;
+    if (this.schoolCfg) this.setupSchool(this.schoolCfg);
+  }
+
+  /** Flugschule: keine Gegner, kein Nebel, keine Abschnitte, keine Staffel, keine Wertung */
+  private setupSchool(c: SchoolCtrl): void {
+    this.fogged = false;
+    this.fog = 0;
+    this.sectionPlan = this.sectionPlan.map(() => 'none');
+    this.wings = [];
+    this.goals.length = 0;
+    this.eyebrow = 'Flugschule';
+    this.title = SCHOOL_NAME[c];
+    const b = schoolBest(c);
+    this.intro = `Übungsflug ohne Gegner und ohne Wertung: fünf Stationen, etwa zwei Minuten. Ringe durchfliegen, Zielbojen abschießen, ${c === 'eins' ? 'auf der Stelle wenden' : 'seitwärts und rückwärts durch ein Tor'}, Rakete und Spezialfähigkeit, zum Schluss ein Testflug auf Zeit.${b != null ? ` Deine Bestzeit: ${fmtTime(b)}.` : ''} Wo du nicht weiterkommst, zeigt ein Schatten-Daumen den Griff.`;
+    if (c === 'pc') this.controls.splice(0, this.controls.length, 'W/A/S/D oder Pfeiltasten: Schub aus Sicht des Jägers – W geradeaus, A/D seitwärts, S rückwärts', 'Maus: der Jäger dreht zum Mauszeiger; linke Taste halten feuert', 'R oder rechte Maustaste: Raketen; Leertaste oder mittlere Taste: Spezialfähigkeit', '+/− oder Mausrad: Zoom');
+    else this.controls.splice(this.controls.length - (this.ship.turrets.length ? 2 : 1));
+    this.controls.splice(0, this.controls.length, ...this.controls.filter((q) => !q.startsWith('Gegner kommen')));
+  }
+
+  /** Anbindung der Flugschule (Getter lesen den laufenden Zustand) */
+  private schoolHost(): SchoolHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const g = this;
+    return {
+      get px() { return g.px; }, get py() { return g.py; }, get aimA() { return g.aimA; }, get pvx() { return g.pvx; }, get pvy() { return g.pvy; },
+      get shipR() { return g.ship.size * 0.5; }, get WW() { return g.WW; }, get WH() { return g.WH; },
+      get ctrl() { return g.ctrl; }, get lenk() { return g.lenk; },
+      get hasMissiles() { return g.launchers.length > 0 && g.ammo >= g.mDef.slots; }, get torpedo() { return g.ship.special === 'torpedo'; }, get specialName() { return SPECIALS[g.ship.special].name; },
+      get missilesFired() { return g.missilesUsed; }, get specialsUsed() { return g.specials; },
+      get joy() { return g.joy && g.joy.id !== 98 && g.joy.id !== 99 ? g.joy : null; }, get aim() { return g.aim; }, get firing() { return g.fireId !== null; },
+      get w() { return g.w; }, get h() { return g.h; }, top: TOP,
+      get btnFire() { return g.btnFire; }, get btnMissile() { return g.btnMissile; }, get btnDash() { return g.btnDash; },
+      joyR: JOY_R, aimR: AIM_R,
+      toScreen: (x, y) => [(x - g.camX) * g.zoom, (y - g.camY) * g.zoom],
+      spawnBuoy: (x, y, far) => {
+        const e = g.makeEnemy('turret', x, y);
+        // drei Salven der Bordwaffen (Strahl: drei Sekunden); die ferne Boje hält eine Raketensalve aus, aber kaum mehr
+        const salvo = g.damage * Math.max(1, g.guns.length) * (g.wpn.beam ? 1 : Math.max(1, g.wpn.pellets));
+        e.hp = e.max = far ? Math.max(salvo * 4, g.missileDmg * 0.8) : salvo * 3;
+        e.sh = e.shMax = 0;
+        e.r = far ? 22 : 18;
+        e.boje = true;
+        e.target = 'p';
+        g.enemies.push(e);
+        return e;
+      },
+      alive: (b) => g.enemies.includes(b as Enemy),
+      say: (x, y, text, color) => g.floats.add(x, y, text, color, 15),
+      tick: () => sfx.tick(),
+      good: () => sfx.chime(),
+      complete: (t) => {
+        g.schoolNew = saveSchool(c0(), t);
+        g.outcome = 'win';
+        g.endT = 0;
+        sfx.success();
+      },
+    };
+    function c0(): SchoolCtrl { return g.schoolCfg!; }
+  }
+
+  /** Zielboje der Flugschule: Ring mit Leuchtfeuer, Fadenkreuz in der Mitte */
+  private drawBuoy(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
+    const r = e.r, blink = 0.5 + 0.5 * Math.sin(t * 4 + e.x * 0.01), hit = e.flash > 0;
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    const glow = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 2.6);
+    glow.addColorStop(0, `rgba(255,140,90,${0.28 + 0.2 * blink})`);
+    glow.addColorStop(1, 'rgba(255,140,90,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0, 0, r * 2.6, 0, Math.PI * 2); ctx.fill();
+    // Körper: dunkler Ring mit vier Streben
+    ctx.fillStyle = hit ? '#ffffff' : '#243039';
+    ctx.strokeStyle = hit ? '#ffffff' : '#ff8a5c';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,210,170,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.rotate(t * 0.4);
+    for (let k = 0; k < 4; k++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath(); ctx.moveTo(r * 0.35, 0); ctx.lineTo(r * 0.9, 0); ctx.stroke();
+    }
+    ctx.fillStyle = `rgba(255,200,150,${0.6 + 0.4 * blink})`;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // Zustand: Balken unter der Boje
+    if (e.hp < e.max) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(e.x - r, e.y + r + 6, r * 2, 3);
+      ctx.fillStyle = '#ffb547';
+      ctx.fillRect(e.x - r, e.y + r + 6, r * 2 * clamp(e.hp / e.max, 0, 1), 3);
+    }
   }
 
   // ---------- abgeleitete Werte ----------
@@ -1543,6 +1645,7 @@ export class ShooterGame implements MiniGame {
 
   private hudBase(): HudItem[] {
     const me: HudItem = { label: this.ship.cls === 'S' ? 'Jäger' : this.ship.role, value: `${Math.ceil(this.hull)} %`, warn: this.hull < 35 };
+    if (this.school) return [{ label: 'Station', value: `${Math.min(this.school.st + 1, this.school.stations)}/${this.school.stations}` }, { label: 'Übung', value: this.school.stationName }];
     const pct = (w: Ward | undefined) => (w && !w.dead ? w.hull / w.max : 0);
     const w0 = this.wards[0];
     switch (this.mission) {
@@ -2533,7 +2636,7 @@ export class ShooterGame implements MiniGame {
   private pickTarget(x: number, y: number, range: number, order: TurretOrder, ok: (e: Enemy, d: number) => boolean = () => true): Enemy | null {
     let best: Enemy | null = null, bd = range, pref: Enemy | null = null, pd = range;
     for (const e of this.enemies) {
-      if (e.kind === 'boss' && e.shielded) continue;
+      if ((e.kind === 'boss' && e.shielded) || e.boje) continue;
       const d = Math.hypot(e.x - x, e.y - y);
       if (d >= range || !ok(e, d)) continue;
       if (d < bd) { bd = d; best = e; }
@@ -2732,7 +2835,7 @@ export class ShooterGame implements MiniGame {
     const a = dir ?? (target ? Math.atan2(target.y - this.py, target.x - this.px) : this.aimA), d0 = this.ship.size * 0.45;
     const bx = this.px + Math.cos(this.aimA) * d0, by = this.py + Math.sin(this.aimA) * d0;
     this.missiles.push({ x: bx, y: by, vx: Math.cos(a) * 140 + this.pvx * 0.5, vy: Math.sin(a) * 140 + this.pvy * 0.5, target, life: TORPEDO.life, def: TORPEDO, dmg: this.baseDmg * TORPEDO_DMG, src: 'spec', tk: 1, vk: 1, wob: 0, wf: 0, ox: 0, oy: 0 });
-    this.dashCd = this.dashCdMax;
+    this.dashCd = this.dashCdMax; this.specials++;
     this.fx.add({ x: bx, y: by, color: '#ffe0a0', size: 10, max: 0.12 });
     this.fx.burst(bx, by, '#ffd27a', 8, 140, 1.4, 'spark', 0.3);
     if (target) this.floats.add(target.x, target.y - target.r - 14, 'Torpedo erfasst', '#ffd27a', 12);
@@ -2745,20 +2848,20 @@ export class ShooterGame implements MiniGame {
     if (this.ship.special === 'salvo') {
       // Raketenschwarm: sofort eine doppelte Salve im weiten Fächer, auch während des Nachladens
       if (!this.fireMissiles(true)) { this.floats.add(this.px, this.py - 30, 'Keine Raketen', '#ff5c6c', 13); return; }
-      this.dashCd = this.dashCdMax;
+      this.dashCd = this.dashCdMax; this.specials++;
       this.floats.add(this.px, this.py - 30, 'Raketenschwarm', '#ffb547', 13);
       return;
     }
     if (this.ship.special === 'overdrive') {
       this.odT = 3;
-      this.dashCd = this.dashCdMax;
+      this.dashCd = this.dashCdMax; this.specials++;
       this.floats.add(this.px, this.py - 30, 'Waffenüberladung', '#ffb547', 13);
       sfx.boost();
       return;
     }
     if (this.ship.special === 'sprint') {
       this.sprintT = 2.5;
-      this.dashCd = this.dashCdMax;
+      this.dashCd = this.dashCdMax; this.specials++;
       sfx.boost();
       return;
     }
@@ -2769,7 +2872,7 @@ export class ShooterGame implements MiniGame {
     }
     if (this.ship.special === 'escort') {
       this.escortT = 15;
-      this.dashCd = this.dashCdMax;
+      this.dashCd = this.dashCdMax; this.specials++;
       this.floats.add(this.px, this.py - 40, 'Begleitjäger gestartet', '#ffb070', 13);
       sfx.launch();
       return;
@@ -2779,7 +2882,7 @@ export class ShooterGame implements MiniGame {
     const d = Math.hypot(dx, dy) || 1;
     dx /= d; dy /= d;
     this.dashT = 0.3;
-    this.dashCd = this.dashCdMax;
+    this.dashCd = this.dashCdMax; this.specials++;
     this.dashVx = dx * this.speed * 3.2;
     this.dashVy = dy * this.speed * 3.2;
     for (let k = 0; k < 10; k++) this.fx.add({ x: this.px, y: this.py, vx: -dx * 120 + (Math.random() - 0.5) * 80, vy: -dy * 120 + (Math.random() - 0.5) * 80, color: '#9ffff0', size: 1.5, max: 0.35 });
@@ -3788,7 +3891,8 @@ export class ShooterGame implements MiniGame {
     this.fog += ((this.fogged ? 1 : 0) - this.fog) * Math.min(1, dt * 0.7);
     this.updateWeather(dt);
     this.shieldHit = Math.max(0, this.shieldHit - dt);
-    if (this.wave < 0 && this.time > 0.8) this.spawnWave();
+    if (this.wave < 0 && this.time > 0.8 && !this.schoolCfg) this.spawnWave();
+    if (this.schoolCfg && !this.school) this.school = new FlightSchool(this.schoolHost(), this.schoolCfg);
     this.waveT += dt;
     if (this.bossT >= 0) this.bossT += dt;
     this.updateWards(dt);
@@ -3839,6 +3943,7 @@ export class ShooterGame implements MiniGame {
     this.updateShots(dt);
     this.updateField(dt);
     this.updatePickups(dt);
+    this.school?.update(dt);
     this.followCam(dt, false);
     this.minHull = Math.min(this.minHull, this.hull);
     setGoal(this.goals, 'tough', this.minHull >= 50 && this.outcome !== 'player');
@@ -4636,6 +4741,7 @@ export class ShooterGame implements MiniGame {
     for (const e of this.enemies) {
       const s = SPEC[e.kind];
       e.flash = Math.max(0, e.flash - dt);
+      if (e.boje) { e.vx = 0; e.vy = 0; continue; }
       if (e.parent) {
         // Geschützturm am Boss (dreht frei, sitzt fest auf seinem Sockel)
         const p = e.parent, a = p.ang + Math.PI / 2;
@@ -5452,6 +5558,12 @@ export class ShooterGame implements MiniGame {
 
   private killEnemy(e: Enemy, byPlayer: boolean): void {
     if (!this.enemies.includes(e)) return;
+    if (e.boje) {
+      this.enemies = this.enemies.filter((q) => q !== e);
+      this.explode(e.x, e.y, '#ff8a5c', 1, true, e.r * 2.2);
+      this.floats.add(e.x, e.y - 30, 'Boje getroffen', '#ffb547', 13);
+      return;
+    }
     // Türme gehen mit dem Schiff unter
     for (const q of this.enemies) if (q.parent === e) this.explode(q.x, q.y, '#ffb070', 0.6, false, this.visualR(q) * 0.9);
     this.enemies = this.enemies.filter((q) => q !== e && q.parent !== e);
@@ -5692,6 +5804,7 @@ export class ShooterGame implements MiniGame {
   }
 
   private finish(): GameResult {
+    if (this.schoolCfg) return this.finishSchool();
     const r = this.finishCore();
     r.report = this.report();
     r.hullLeft = this.outcome === 'player' ? 0 : this.hull / 100;
@@ -5699,6 +5812,23 @@ export class ShooterGame implements MiniGame {
     for (const w of this.wings) if (w.state === 'dead') lost[w.ship] = (lost[w.ship] ?? 0) + 1;
     if (Object.keys(lost).length) r.wingLost = lost;
     return r;
+  }
+
+  /** Flugschule: keine Sterne, keine Punkte – nur Zeit und Bestzeit */
+  private finishSchool(): GameResult {
+    const c = this.schoolCfg!, s = this.school, ok = !!s?.done, b = schoolBest(c);
+    return {
+      success: ok,
+      stars: 0,
+      score: 0,
+      points: 0,
+      goals: [],
+      headline: ok ? `Lektion ${SCHOOL_NAME[c]} geschafft` : 'Übung abgebrochen',
+      lines: ok
+        ? [['Testflug', fmtTime(s!.testTime)], ['Bestzeit', `${b != null ? fmtTime(b) : '–'}${this.schoolNew ? ' · neu' : ''}`]]
+        : [['Station', `${(s?.st ?? 0) + 1} von ${s?.stations ?? 5}`]],
+      school: true,
+    };
   }
 
   private finishCore(): GameResult {
@@ -5882,6 +6012,7 @@ export class ShooterGame implements MiniGame {
     for (const m of this.mines) this.drawMine(ctx, m, t);
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
+    this.school?.drawWorld(ctx);
     // ganz unten die Großkampfschiffe der Gegner (Xenon K, Träger, Nester samt Türmen) – auch unter dem Frachter
     for (const e of this.enemies) if (this.inBack(e)) this.drawEnemy(ctx, e, t);
     this.drawWards(ctx, t);
@@ -5911,7 +6042,7 @@ export class ShooterGame implements MiniGame {
     this.drawRadar(ctx);
     this.drawHullBars(ctx);
     this.drawControls(ctx, t);
-    this.drawProgress(ctx);
+    if (this.school) this.school.drawHud(ctx); else this.drawProgress(ctx);
     if (this.tac) this.drawTac(ctx);
     if (this.banner > 0) {
       const a = Math.min(1, this.banner * 2) * Math.min(1, (2.4 - this.banner) * 4);
@@ -6920,6 +7051,7 @@ export class ShooterGame implements MiniGame {
   }
 
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number): void {
+    if (e.boje) { this.drawBuoy(ctx, e, t); return; }
     if (e.nest) { this.drawNest(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }
     if (e.plat) { this.drawPlat(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }
     if (e.hive) { this.drawHive(ctx, e, t); this.drawEnemyStatus(ctx, e); return; }

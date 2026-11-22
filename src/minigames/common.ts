@@ -35,6 +35,8 @@ export interface GameCfg {
   controls?: ControlMode;
   /** Kampf: Effekte der Schiffsmodifikationen (sonst die eingebauten; mit festem loadout keine) */
   mods?: ModStats;
+  /** Kampf: Flugschule – Übungsflug für diese Steuerung, ohne Gegner und Wertung */
+  school?: import('./flightSchool').SchoolCtrl;
   /** Kampf: Lenkachse (sonst die gespeicherte Wahl) */
   lenk?: import('./loadout').LenkSetup;
   /** Kampf: Nebel für die ganze Runde erzwingen (true) oder ausschließen (false); sonst Zufall bzw. Test-Schalter */
@@ -62,6 +64,8 @@ export interface Place {
 export interface GameResult {
   /** Erfolgreich abgeschlossen (sonst gescheitert oder Zeit abgelaufen) */
   success: boolean;
+  /** Flugschule: keine Wertung, keine Rekorde, keine Modteile */
+  school?: boolean;
   /** 0–3 Sterne */
   stars: 0 | 1 | 2 | 3;
   /** Kennzahl des Spiels (z. B. Ausbeute in Prozent) */

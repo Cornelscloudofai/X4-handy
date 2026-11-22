@@ -8,10 +8,11 @@ import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, t
 import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
 import { earnParts, modStats, partsFor } from './mods';
 import { recordKey, type Mission } from './missions';
-import { controlMode, fogTest, setEnemyTune, setFogTest, type Loadout } from './loadout';
+import { controlMode, fogTest, setControlMode, setEnemyTune, setFogTest, type ControlMode, type Loadout } from './loadout';
 import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
 import { hudScale } from '../ui/hudScale';
+import { SCHOOL_CTRLS, SCHOOL_NAME, SCHOOL_SUB, type SchoolCtrl } from './flightSchool';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, totalStars, UNLOCK, type RecordOutcome } from './records';
 
 export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon' | 'khaak';
@@ -33,6 +34,8 @@ export interface MiniOpts {
   /** Kampf mit einem bestimmten eigenen Schiff (Großkampfschiff aus dem Sektor) und seiner Hülle beim Start */
   loadout?: Loadout;
   startHull?: number;
+  /** Kampf: Flugschule für diese Steuerung (ohne Gegner, ohne Wertung) */
+  school?: SchoolCtrl;
 }
 
 export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: string; chain?: string; endless?: string }> = {
@@ -73,6 +76,7 @@ function resolve(kind: MiniKind, o: MiniOpts): GameCfg {
   }
   // eigenes Schiff aus dem Sektor: Steuerung und Werkstatt-Mods wie gespeichert
   const own = o.loadout ? { loadout: o.loadout, controls: controlMode(), mods: modStats(o.loadout.ship), startHull: o.startHull } : {};
+  if (o.school) return { level: 1, seed, gear: o.gear, mutator: null, mode: 'normal', mission: 'ueberleben', school: o.school, fog: false };
   return { level: o.level, seed, ware: o.ware, gear: o.gear, mutator, mode: o.mode ?? 'normal', mission: o.mission, place: o.place, ...own };
 }
 
@@ -338,7 +342,13 @@ function bindInput(s: Session): void {
     if (!b || cur !== s) return;
     sfx.tap();
     switch (b.dataset.mg) {
-      case 'start': case 'resume': setPhase('play'); break;
+      case 'start':
+        // erste Kämpfe: Auswahl der Steuerung auf der Startkarte – „Nicht mehr fragen“ gilt ab jetzt
+        if (s.root.querySelector('.mg-ctrl-pick')) setAskControls(!askChecked);
+        setPhase('play');
+        break;
+      case 'resume': setPhase('play'); break;
+      case 'ask-toggle': askChecked = (b as HTMLInputElement).checked; return;
       case 'pause': if (s.phase === 'play') setPhase('pause'); break;
       case 'rot': cycleRot(s); break;
       case 'quit': close(s.phase === 'end' ? s.result : null); break;
@@ -360,6 +370,10 @@ function bindInput(s: Session): void {
         refreshTunePanel(s.root, s.cfg.level);
         break;
       }
+      case 'ctrl': showChooser(s); break;
+      case 'ctrl-back': setPhase('intro'); break;
+      case 'ctrl-pick': pickControls(s, b.dataset.c as SchoolCtrl); break;
+      case 'ctrl-try': tryControls(s, b.dataset.c as SchoolCtrl); break;
       case 'again': {
         const { kind, opts, onDone, replay } = s;
         onDone?.(s.result);
@@ -373,8 +387,82 @@ function bindInput(s: Session): void {
   });
 }
 
+// ---------- Steuerung wählen ----------
+
+/** Vor dem Kampf fragen, bis „Nicht mehr fragen“ angehakt ist (der Haken steht anfangs schon) */
+const ASK_KEY = 'x4-sektorbau-steuerwahl';
+function askControls(): boolean {
+  try { return globalThis.localStorage?.getItem(ASK_KEY) !== 'nie'; } catch { return false; }
+}
+function setAskControls(on: boolean): void {
+  try { if (on) globalThis.localStorage?.removeItem(ASK_KEY); else globalThis.localStorage?.setItem(ASK_KEY, 'nie'); } catch { /* Speicher nicht verfügbar */ }
+}
+/** Haken „Nicht mehr fragen“ (bleibt erhalten, wenn das Spiel nach einer Wahl neu aufgebaut wird) */
+let askChecked = true;
+
+const CTRL_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="14" r="4.5"/><circle cx="7" cy="14" r="1.4" fill="currentColor"/><circle cx="17.5" cy="14" r="4.5"/><path d="M17.5 9.5v-3"/></svg>';
+
+/**
+ * Kleine Vorschau je Steuerung: Sticks bzw. Tasten, ein Daumen macht die Bewegung vor (CSS-Animation, siehe
+ * .ctrl-prev in styles.css)
+ */
+function ctrlPreview(c: SchoolCtrl): string {
+  const stick = (x: number, cls: string) => `<circle cx="${x}" cy="40" r="20" class="pv-ring"/><circle cx="${x}" cy="40" r="8" class="pv-knob ${cls}"/>`;
+  const body = c === 'eins'
+    ? `${stick(34, 'pv-circle')}<circle cx="118" cy="44" r="12" class="pv-btn"/><circle cx="118" cy="44" r="12" class="pv-tap"/>`
+    : c === 'zwei'
+      ? `${stick(34, 'pv-up')}${stick(112, 'pv-aim')}`
+      : c === 'lenk'
+        ? `${stick(34, 'pv-up')}<line x1="88" y1="46" x2="136" y2="46" class="pv-axis"/><line x1="88" y1="32" x2="136" y2="32" class="pv-fire"/><circle cx="112" cy="46" r="8" class="pv-knob pv-steer"/>`
+        : ['W', 'A', 'S', 'D'].map((k, i) => `<rect x="${[34, 14, 34, 54][i]}" y="${[14, 36, 36, 36][i]}" width="18" height="18" rx="4" class="pv-key ${k === 'W' ? 'pv-lit' : ''}"/><text x="${[43, 23, 43, 63][i]}" y="${[27, 49, 49, 49][i]}" class="pv-txt">${k}</text>`).join('') + '<rect x="100" y="16" width="26" height="38" rx="13" class="pv-key"/><line x1="113" y1="16" x2="113" y2="30" class="pv-axis"/><rect x="100.5" y="16.5" width="12" height="14" rx="6" class="pv-tap pv-mouse"/>';
+  return `<svg class="ctrl-prev" viewBox="0 0 150 80" aria-hidden="true">${body}</svg>`;
+}
+
+/** Startkarte der ersten Kämpfe: vier kleine Kacheln, Üben in der Flugschule, Haken „Nicht mehr fragen“ */
+function ctrlPick(s: Session): string {
+  const cur = s.cfg.controls ?? controlMode();
+  return `<div class="mg-ctrl-pick"><small>Steuerung wählen</small><div class="ctrl-tiles">${SCHOOL_CTRLS.filter((c) => c !== 'pc').map((c) => `<button class="ctrl-tile ${c === cur ? 'on' : ''}" data-mg="ctrl-pick" data-c="${c}" aria-pressed="${c === cur}">${ctrlPreview(c)}<b>${esc(SCHOOL_NAME[c])}</b></button>`).join('')}</div>
+    <p class="small muted">${esc(SCHOOL_SUB[cur])}. Am PC gelten Tastatur und Maus von selbst. <button class="linkish" data-mg="ctrl-try" data-c="${cur}">In der Flugschule üben</button></p>
+    <label class="mg-ask"><input type="checkbox" data-mg="ask-toggle" ${askChecked ? 'checked' : ''}> Nicht mehr fragen – später über „Steuerung“ auf dieser Karte</label></div>`;
+}
+
+function showChooser(s: Session): void {
+  const layer = s.root.querySelector<HTMLElement>('.mg-layer')!;
+  const cur = s.cfg.controls ?? controlMode();
+  layer.hidden = false;
+  layer.innerHTML = `<div class="mg-card mg-chooser"><small class="eyebrow">Steuerung</small><h2>Wie willst du fliegen?</h2>
+    <p class="small muted">Jede Steuerung hat in der Flugschule eine eigene Übung (etwa zwei Minuten, ohne Gegner). Umstellen kannst du jederzeit – hier über „Steuerung“ oder in den Einstellungen.</p>
+    <div class="ctrl-cards">${SCHOOL_CTRLS.map((c) => `<div class="ctrl-card ${c === cur ? 'on' : ''}">${ctrlPreview(c)}
+      <div class="ctrl-txt"><b>${esc(SCHOOL_NAME[c])}</b><small>${esc(SCHOOL_SUB[c])}</small></div>
+      <div class="ctrl-btns">${c === 'pc' ? '<span class="small muted">am PC von selbst aktiv</span>' : `<button class="btn ${c === cur ? 'primary' : ''} small" data-mg="ctrl-pick" data-c="${c}">${c === cur ? 'Gewählt' : 'Wählen'}</button>`}<button class="btn ghost small" data-mg="ctrl-try" data-c="${c}">In der Flugschule üben</button></div></div>`).join('')}</div>
+    <div class="mg-actions"><button class="btn primary" data-mg="ctrl-pick" data-c="${cur}">Weiter mit ${esc(SCHOOL_NAME[cur])}</button></div></div>`;
+}
+
+/** Steuerung übernehmen: das Spiel wird mit ihr neu aufgebaut (die Steuerung steht ab dem Bau fest) */
+function pickControls(s: Session, c: SchoolCtrl): void {
+  if (c === 'pc') { setPhase('intro'); return; }
+  const now = s.cfg.controls ?? controlMode();
+  setControlMode(c as ControlMode);
+  if (c === now) { setPhase('intro'); return; }
+  const { kind, opts, onDone, replay } = s;
+  s.onDone = undefined;
+  close(null);
+  openMinigame(kind, opts, onDone, replay);
+}
+
+/** In der Flugschule üben, danach zurück zu diesem Kampf */
+function tryControls(s: Session, c: SchoolCtrl): void {
+  if (c !== 'pc') setControlMode(c as ControlMode);
+  const { kind, opts, onDone, replay } = s;
+  s.onDone = undefined;
+  close(null);
+  openMinigame('pirates', { level: 1, gear: opts.gear, school: c }, () => openMinigame(kind, opts, onDone, replay), false);
+}
+
 function finish(s: Session, r: GameResult): void {
   s.result = r;
+  // Flugschule: reine Übung – keine Rekorde, Abzeichen oder Modteile
+  if (s.cfg.school) { s.outcome = null; s.parts = 0; setPhase('end'); return; }
   s.outcome = recordResult(recordKey(s.kind, s.cfg.mission), s.cfg.level, s.cfg.mode ?? 'normal', r);
   s.parts = earnParts(partsFor(r.stars, s.cfg.mode ?? 'normal'));
   setPhase('end');
@@ -449,7 +537,15 @@ function setPhase(p: Phase): void {
   if (p === 'intro') {
     const rk = recordKey(s.kind, s.cfg.mission);
     const rec = mode === 'daily' ? dailyBest(s.kind) : mode === 'normal' ? best(rk, s.cfg.level)?.points ?? null : bestPoints(rk, mode);
-    layer.innerHTML = `<div class="mg-card">${artPic(s.kind, 'mg-intro-art')}<small class="eyebrow">${esc(g.eyebrow)}${MODE_LABEL[mode] ? ' · ' + MODE_LABEL[mode] : ''} · Stufe ${s.cfg.level}</small><h2>${esc(g.title)}</h2><p>${esc(g.intro)}</p>
+    if (s.cfg.school) {
+      layer.innerHTML = `<div class="mg-card">${artPic(s.kind, 'mg-intro-art')}<small class="eyebrow">${esc(g.eyebrow)}</small><h2>${esc(g.title)}</h2><p>${esc(g.intro)}</p>
+        <ul class="mg-controls">${g.controls.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
+        <div class="mg-actions"><button class="btn ghost" data-mg="quit">Zurück</button><button class="btn primary" data-mg="start">Losfliegen</button></div></div>`;
+      return;
+    }
+    const ask = combat(s.kind) && askControls();
+    const chip = !combat(s.kind) ? '' : ask ? ctrlPick(s) : `<button class="mg-ctrl-chip" data-mg="ctrl">${CTRL_ICON}Steuerung: ${esc(SCHOOL_NAME[s.cfg.controls ?? controlMode()])}<em>ändern</em></button>`;
+    layer.innerHTML = `<div class="mg-card">${artPic(s.kind, 'mg-intro-art')}<small class="eyebrow">${esc(g.eyebrow)}${MODE_LABEL[mode] ? ' · ' + MODE_LABEL[mode] : ''} · Stufe ${s.cfg.level}</small><h2>${esc(g.title)}</h2>${chip}<p>${esc(g.intro)}</p>
       ${mutatorBox(g.mutator)}
       <ul class="mg-controls">${g.controls.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
       ${g.goals.length ? `<div class="mg-goals"><small>Nebenziele</small>${g.goals.map((q) => `<div class="${hasBadge(rk, q.id) ? 'has' : ''}"><i></i>${esc(q.text)}${hasBadge(rk, q.id) ? '<em>Abzeichen</em>' : ''}</div>`).join('')}</div>` : ''}
@@ -465,6 +561,14 @@ function setPhase(p: Phase): void {
   } else {
     const r = s.result!;
     const o = s.outcome;
+    if (r.school) {
+      layer.innerHTML = `<div class="mg-card end ${r.success ? 'win' : 'lose'}"><small class="eyebrow">Flugschule</small><h2>${esc(r.headline)}</h2>
+        <div class="mg-lines">${r.lines.map(([k, v]) => `<div><small>${esc(k)}</small><b class="num">${esc(v)}</b></div>`).join('')}</div>
+        <p class="small muted">Reine Übung: kein Einfluss auf Rekorde, Sterne oder Modteile.</p>
+        <div class="mg-actions">${s.replay ? '<button class="btn ghost" data-mg="again">Nochmal</button>' : ''}<button class="btn primary" data-mg="quit">${s.replay ? 'Fertig' : 'Weiter zum Einsatz'}</button></div></div>`;
+      if (r.success) sfx.success();
+      return;
+    }
     layer.innerHTML = `<div class="mg-card end ${r.success ? 'win' : 'lose'}"><small class="eyebrow">${r.success ? 'Geschafft' : 'Nicht geschafft'}</small><h2>${esc(r.headline)}</h2>
       <div class="mg-stars">${[1, 2, 3].map((i) => `<span class="${i <= r.stars ? 'on' : ''}" style="--d:${i * 0.18}s">${STAR}</span>`).join('')}</div>
       <div class="mg-points"><b class="num">${fmtPts(r.points)}</b><span>Punkte</span>${o?.newRecord ? '<em>Neuer Rekord!</em>' : o?.previous ? `<small>Rekord ${fmtPts(o.previous)}</small>` : ''}</div>
@@ -503,7 +607,7 @@ function loop(now: number): void {
   }
   const g = s.game, combo = g.combo(), done = g.goals.filter((q) => q.done).length;
   const sub = `${Math.round(g.points())}|${combo}|${done}`;
-  if (sub !== s.subKey) {
+  if (sub !== s.subKey && !s.cfg.school) {
     s.subKey = sub;
     (s.root.querySelector('.mg-sub') as HTMLElement).innerHTML = `<span class="mg-pts"><b class="num">${fmtPts(g.points())}</b> Punkte</span>
       ${combo > 1 ? `<span class="mg-combo num" style="--k:${Math.min(1, (combo - 1) / 3)}">×${String(combo).replace('.', ',')}</span>` : ''}
