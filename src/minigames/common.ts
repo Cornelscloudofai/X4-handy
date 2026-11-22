@@ -485,7 +485,8 @@ export class Floaters {
 }
 
 /** Runde Taste auf der Leinwand (Fähigkeit mit Abklingzeit) */
-export function drawButton(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ready: number, color: string, label: string, t: number, charges?: number): void {
+/** Rundknopf mit Ladering; Beschriftung als Text oder als gezeichnetes Symbol (Funktion bekommt Mitte, Größe, Farbe) */
+export function drawButton(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ready: number, color: string, label: string | ((x: number, y: number, s: number, color: string) => void), t: number, charges?: number): void {
   const ok = ready >= 1;
   ctx.fillStyle = ok ? rgba(color, 0.16) : 'rgba(14,30,44,0.8)';
   ctx.beginPath();
@@ -502,11 +503,14 @@ export function drawButton(ctx: CanvasRenderingContext2D, x: number, y: number, 
     ctx.stroke();
   }
   ctx.fillStyle = ok ? color : 'rgba(169,195,198,0.6)';
-  ctx.font = `700 ${Math.round(r * 0.62)}px "Chakra Petch", Barlow, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, x, y);
-  ctx.textBaseline = 'alphabetic';
+  if (typeof label === 'function') label(x, y, r * 0.56, ok ? color : 'rgba(169,195,198,0.6)');
+  else {
+    ctx.font = `700 ${Math.round(r * 0.62)}px "Chakra Petch", Barlow, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+    ctx.textBaseline = 'alphabetic';
+  }
   if (charges != null) {
     for (let k = 0; k < charges; k++) {
       ctx.fillStyle = color;

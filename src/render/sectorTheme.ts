@@ -5,6 +5,7 @@ import { SECTOR_MAP } from '../data/sectors';
 import { hashStr } from '../engine/util';
 import { fbm, perlin, smooth } from './noise';
 import { hexToRgb, rgba, rng } from './sprites';
+import { drawBlurred } from './canvasFx';
 
 /**
  * Grundform des Nebels: marble = großflächige Marmorierung über den ganzen Himmel, zwei Farben ineinander
@@ -254,9 +255,7 @@ export function nebulaLayer(w: number, h: number, t: SectorTheme, res = 1): HTML
   // danach ohne Filter auf Geräteauflösung (res) vergrößern
   const [cm, gm] = canvas(sw * 2, sh * 2);
   gm.imageSmoothingEnabled = true;
-  gm.filter = 'blur(1.3px)';
-  gm.drawImage(c0, -1, -1, cm.width + 2, cm.height + 2);
-  gm.filter = 'none';
+  drawBlurred(gm, c0, -1, -1, cm.width + 2, cm.height + 2, 1.3);
   const [c, ctx] = canvas(w * res, h * res);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
@@ -374,8 +373,7 @@ function drawGalaxy(ctx: CanvasRenderingContext2D, x: number, y: number, size: n
   o.fill();
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.filter = `blur(${Math.max(0.4, size * 0.006)}px)`;
-  ctx.drawImage(oc, x - sz / 2, y - sz / 2);
+  drawBlurred(ctx, oc, x - sz / 2, y - sz / 2, oc.width, oc.height, Math.max(0.4, size * 0.006));
   ctx.restore();
 }
 

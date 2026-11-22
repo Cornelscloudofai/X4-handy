@@ -6,6 +6,7 @@
 // und liegen so deckungsgleich.
 
 import { stormNow, xenonNow } from '../engine/phenomena';
+import { drawBlurred, drawGraded } from './canvasFx';
 
 const FILES = import.meta.glob('../assets/szenen/*/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const URLS: Record<string, Record<string, string>> = {};
@@ -355,9 +356,7 @@ function graded(src: HTMLImageElement | HTMLCanvasElement, srcKey: string, tone:
   c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d')!;
-  g.filter = `contrast(0.94) saturate(0.85) brightness(${(0.86 * (1 - dark)).toFixed(3)})`;
-  g.drawImage(src, 0, 0);
-  g.filter = 'none';
+  drawGraded(g, src, 0, 0, W, H, 0.86 * (1 - dark), 'contrast(0.94) saturate(0.85)');
   g.globalCompositeOperation = 'source-atop';
   g.fillStyle = `rgba(${tone},${haze})`;
   g.fillRect(0, 0, W, H);
@@ -407,9 +406,7 @@ function skyOf(sectorId: string): HTMLCanvasElement | null {
   g.fillRect(0, 0, w, h);
   // weichgezeichnet und etwas über den Rand hinaus, damit die Kanten nicht nach Schwarz auslaufen
   g.globalCompositeOperation = 'lighten';
-  g.filter = 'blur(18px)';
-  g.drawImage(img, -40, -40, w + 80, h + 80);
-  g.filter = 'none';
+  drawBlurred(g, img, -40, -40, w + 80, h + 80, 18);
   g.globalCompositeOperation = 'source-over';
   skies.set(sectorId, c);
   return c;
@@ -575,8 +572,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, sectorId: string, W: nu
       // Lichter (aufhellend) bleiben klar, alles andere bekommt Luftperspektive
       if (tone && it.blend !== 'lighter') ctx.drawImage(graded(src, `${img.src}${it.veil ? '|v' : ''}`, tone, it.depth, it.dark ?? 0), -cx * w, -cy * h, w, h);
       else {
-        if (it.dark) ctx.filter = `brightness(${(1 - it.dark).toFixed(2)})`;
-        ctx.drawImage(src, -cx * w, -cy * h, w, h);
+        if (it.dark) drawGraded(ctx, src, -cx * w, -cy * h, w, h, 1 - it.dark);
+        else ctx.drawImage(src, -cx * w, -cy * h, w, h);
       }
       ctx.restore();
       if (it.fadeY && portrait && it.blend !== 'lighter') {

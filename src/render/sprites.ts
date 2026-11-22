@@ -1,6 +1,7 @@
 // Prozedurale Grafiken: Asteroidenfelder, Gasnebel, Hintergrund
 import { WARES } from '../data/wares';
 import { fbm, perlin, smooth } from './noise';
+import { drawBlurred } from './canvasFx';
 
 export function rng(seed: number): () => number {
   let t = seed >>> 0 || 1;
@@ -112,9 +113,7 @@ function gasSprite(ware: string, seed: number, layer: number): HTMLCanvasElement
   const ctx = c.getContext('2d')!;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.filter = 'blur(1.6px)';
-  ctx.drawImage(c0, 0, 0, size, size);
-  ctx.filter = 'none';
+  drawBlurred(ctx, c0, 0, 0, size, size, 1.6);
   if (!layer) {
     const big = size / S;
     for (let i = 0; i < 30; i++) {

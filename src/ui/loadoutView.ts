@@ -232,7 +232,7 @@ export function loadoutView(m: LoModal): string {
       return card({ key: 'ship', value: id, on: lo.ship === id, name: `${d.name} · ${d.cls}`, big: `${num(s2.fire)}/s`, sm: `${d.role} · Hülle ${num(d.x4.hull)} · ${d.x4.v} m/s`, img: pic(id), ds: `${pct(s2.fire, cur.fire) ? `<i>Feuer</i>${pct(s2.fire, cur.fire)}` : ''}${pct(s2.hull, cur.hull) ? `<i>Hülle</i>${pct(s2.hull, cur.hull)}` : ''}${delta(s2.speed, cur.speed, (x) => `${num(x)} m/s`)}` });
     }).join('');
     body = `<div class="hgr-cards">${cards('S')}${cards('M')}${cards('L')}${cards('XL')}</div>
-      <div class="hgr-desc"><b>${esc(ship.name)}:</b> ${esc(ship.desc)} <span class="muted">Spezialfähigkeit: ${esc(SPECIALS[ship.special].name)} (Taste ${SPECIALS[ship.special].key}).</span></div>`;
+      <div class="hgr-desc"><b>${esc(ship.name)}:</b> ${esc(ship.desc)} <span class="muted">Spezialfähigkeit: ${esc(SPECIALS[ship.special].name)} (Taste über der Feuertaste).</span></div>`;
   } else if (view === 'weapon') {
     const n = ship.x4.weapons, size = ship.gunSize, curDps = n * sustainedDps(g, wd.beam), curKm = wd.beam ? 1.6 : km(g);
     title = 'Bordkanonen'; sub = `${n} × ${size.toUpperCase()}-Waffenplatz · Werte aus X4 9.0`;

@@ -6,6 +6,7 @@ import type { Camera } from './camera';
 import { BG_IMAGES } from './bgImages';
 import { stationAlerts } from '../engine/analysis';
 import { SCOUT_HOP, scouts } from '../engine/explore';
+import { drawBlurred } from './canvasFx';
 
 const FONT = '"Chakra Petch", "Barlow", system-ui, sans-serif';
 export const GALAXY_HEX = 100;
@@ -107,8 +108,9 @@ function backdrop(i: number, w: number, h: number): HTMLCanvasElement | null {
   if (ready) {
     const k = Math.max(w / img.naturalWidth, h / img.naturalHeight) * (own ? 1 : 1.3);
     g.save();
-    if (!own) { g.filter = 'blur(18px)'; g.globalAlpha = 0.24; }
-    g.drawImage(img, (w - img.naturalWidth * k) / 2, (h - img.naturalHeight * k) / 2, img.naturalWidth * k, img.naturalHeight * k);
+    const at = [(w - img.naturalWidth * k) / 2, (h - img.naturalHeight * k) / 2, img.naturalWidth * k, img.naturalHeight * k] as const;
+    if (!own) { g.globalAlpha = 0.24; drawBlurred(g, img, ...at, 18); }
+    else g.drawImage(img, ...at);
     g.restore();
   }
   const v = g.createRadialGradient(w * 0.45, h * 0.5, 40, w / 2, h / 2, Math.max(w, h) * 0.75);

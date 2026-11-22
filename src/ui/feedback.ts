@@ -2,6 +2,7 @@
 // „feedback“, siehe public/__forms.html) – mit Bildschirmfoto, auf Wunsch dem Spielstand und Angaben zu Version,
 // Gerät und Ort im Spiel. Eigene Ebene über allem (auch über einem laufenden Minispiel).
 import { esc } from './dom';
+import { errorReport } from './errorLog';
 import { icon } from './icons';
 
 declare const __APP_VERSION__: string;
@@ -76,7 +77,7 @@ export function openFeedback(o: FeedbackOpts): void {
   const status = (t: string, cls = '') => { const s = $('fbStatus'); s.textContent = t; s.className = `small fb-status ${cls}`; };
   const text = $<HTMLTextAreaElement>('fbText');
   text.addEventListener('input', () => { try { localStorage.setItem(DRAFT, text.value); } catch { /* egal */ } });
-  const report = (): string => [`Art: ${kind}`, `Text: ${text.value.trim()}`, `Name: ${$<HTMLInputElement>('fbName').value.trim() || '–'}`, `Version: ${version()}`, `Ort: ${o.context}`, o.summary ? `Spielstand: ${o.summary}` : '', `Gerät: ${device()}`].filter(Boolean).join('\n');
+  const report = (): string => [`Art: ${kind}`, `Text: ${text.value.trim()}`, `Name: ${$<HTMLInputElement>('fbName').value.trim() || '–'}`, `Version: ${version()}`, `Ort: ${o.context}`, o.summary ? `Spielstand: ${o.summary}` : '', `Gerät: ${device()}`, errorReport() ? `Fehler:\n${errorReport()}` : ''].filter(Boolean).join('\n');
   const close = () => root.remove();
   root.addEventListener('click', async (e) => {
     const el = e.target as HTMLElement;
@@ -112,6 +113,7 @@ export function openFeedback(o: FeedbackOpts): void {
     fd.append('ort', o.context);
     fd.append('spielstand', o.summary ?? '');
     fd.append('geraet', device());
+    fd.append('fehler', errorReport() || '–');
     if ($<HTMLInputElement>('fbShot').checked) { const img = await shot; if (img) fd.append('bild', img, `bildschirm-${Date.now()}.jpg`); }
     if ($<HTMLInputElement>('fbSave').checked && o.save) fd.append('sicherung', new Blob([o.save()], { type: 'application/json' }), `x4-sektorbau-sicherung-${Date.now()}.json`);
     let res: Response;

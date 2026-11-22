@@ -177,6 +177,9 @@ export function start(): void {
   window.addEventListener('pointercancel', () => (pointerInUI = false));
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
   window.addEventListener('pagehide', save);
+  // iOS ignoriert „user-scalable=no“: Zwei-Finger-Gesten und Doppeltippen würden sonst die ganze Oberfläche zoomen
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 && !(e.target as Element)?.closest?.('#map, .dg-editor, #minigame canvas')) e.preventDefault(); }, { passive: false });
   // Android friert Seiten im Hintergrund ein und beendet sie dann ohne weitere Nachricht
   document.addEventListener('freeze', save);
   onGameEvent((e) => {

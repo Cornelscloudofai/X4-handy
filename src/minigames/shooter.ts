@@ -22,6 +22,8 @@ import {
 import { MISSION_GOALS, SHOOTER_ENDLESS_GOALS as ENDLESS_GOALS, SHOOTER_GOALS, SHOOTER_MUTATORS, SHOOTER_NORMAL_GOALS as NORMAL_GOALS } from './menuInfo';
 import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './shooterData';
 import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
+import { drawGraded } from '../render/canvasFx';
+import { drawSpecialIcon } from './specialIcons';
 export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
 export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
@@ -3246,8 +3248,7 @@ export class ShooterGame implements MiniGame {
       ctx.rotate(e.ang + Math.PI / 2);
       // dunkelt nach, glüht rötlich und verschwindet im letzten Drittel hinter dem Feuer
       ctx.globalAlpha = q < 0.65 ? 1 : Math.max(0, 1 - (q - 0.65) / 0.35);
-      ctx.filter = `brightness(${(1 - 0.55 * q).toFixed(2)}) sepia(${(0.5 * q).toFixed(2)})`;
-      ctx.drawImage(spr.img, -size / 2, -size / 2 - spr.oy * size, size, size);
+      drawGraded(ctx, spr.img, -size / 2, -size / 2 - spr.oy * size, size, size, 1 - 0.55 * q, `sepia(${(0.5 * q).toFixed(2)})`, ['rgb(150,80,40)', 0.35 * q]);
       ctx.restore();
     }
   }
@@ -7826,7 +7827,8 @@ export class ShooterGame implements MiniGame {
       ctx.fillText(String(this.ammo), bx, by - br - 6);
     }
     const [dx, dy, dr] = this.btnDash;
-    drawButton(ctx, dx, dy, dr, 1 - this.dashCd / this.dashCdMax, '#5ff0d8', SPECIALS[this.ship.special].key, t);
+    const sp = this.ship.special;
+    drawButton(ctx, dx, dy, dr, 1 - this.dashCd / this.dashCdMax, '#5ff0d8', (x, y, sz, col) => drawSpecialIcon(ctx, sp, x, y, sz, col), t);
   }
 
   private drawCards(ctx: CanvasRenderingContext2D): void {

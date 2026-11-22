@@ -335,7 +335,8 @@ export function ensure(): Graph | null {
       onChange.forEach((f) => f());
     }
     const c = live.ctx as AudioContext;
-    if (c.state === 'suspended' && !document.hidden) void c.resume();
+    // iOS kennt zusätzlich „interrupted“ (Anruf, App-Wechsel): dann ebenfalls fortsetzen
+    if (c.state !== 'running' && c.state !== 'closed' && !document.hidden) void c.resume();
     return live;
   } catch {
     return null;
@@ -357,6 +358,9 @@ export function liveContext(): AudioContext | null {
 export function initLifecycle(): void {
   const unlock = () => ensure();
   window.addEventListener('pointerdown', unlock, { passive: true });
+  // iOS (Safari) gibt Ton erst bei einem beendeten Tippen frei, nicht beim Aufsetzen des Fingers
+  window.addEventListener('touchend', unlock, { passive: true });
+  window.addEventListener('click', unlock);
   window.addEventListener('keydown', unlock);
   document.addEventListener('visibilitychange', () => {
     const c = live?.ctx as AudioContext | undefined;
