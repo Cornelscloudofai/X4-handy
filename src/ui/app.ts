@@ -50,7 +50,7 @@ import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
-import { SHIPS, fogTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
+import { SHIPS, broodTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode, Place } from '../minigames/common';
 import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
@@ -1519,6 +1519,7 @@ function onClick(e: MouseEvent): void {
       case 'hud-menu': setMenuStyle(d.id!); refresh(); break;
       case 'hud-frame': setFrameStyle(d.id!); refresh(); window.dispatchEvent(new Event('resize')); break;
       case 'mg-fog-test': setFogTest(!fogTest()); refresh(); break;
+      case 'mg-brood-test': setBroodTest(!broodTest()); refresh(); break;
       case 'mg-tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
         refresh();

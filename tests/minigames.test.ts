@@ -1502,16 +1502,35 @@ describe('Kampf: Kha’ak', () => {
     expect(g.rules.points[0]).toContain('Späher');
   });
 
-  it('Grundausstattung, Stufe 1: mit Autopilot zu gewinnen', () => {
+  it('Stufe 1 mit Ausrüstung Mk2: mit Autopilot zu gewinnen', () => {
     let wins = 0;
     for (let seed = 1; seed <= 8; seed++) {
-      const g = new ShooterGame(cfg(1, seed), 'khaak');
+      const g = new ShooterGame(cfg(1, seed, { gear: 2 }), 'khaak');
       g.resize(W, H);
       if (run(g, () => g.autopilot(), 600).success) wins++;
     }
-    // Türme bewusst stark, das Brutschiff brütet laufend Späher: der einfache Autopilot schafft etwa jede fünfte Runde
-    // (gemessen über zehn Runden, wie vor dem Späherstrom) – mindestens eine von acht
+    // Das Brutschiff ist bewusst stark (lange Kyon-Strahlen, zähe Brutkapseln, laufender Späherstrom): mit der
+    // Grundausstattung schafft der einfache Autopilot es kaum noch, mit Mk2 etwa jede fünfte Runde (3 von 16) – mindestens
+    // eine von acht
     expect(wins).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Brutschiff: Kyon-Türme mit großer Reichweite und doppelter Stärke, zähe Brutkapseln; Zerstörer: vier Türme einfach', () => {
+    type T = { kind: string; parent?: { mini?: boolean }; weapon?: string; max: number; beamLen?: number; beamK?: number };
+    const g = make(3) as unknown as { spawnBoss(mini?: boolean): void; enemies: T[] };
+    g.spawnBoss(false);
+    const lasers = g.enemies.filter((e) => e.weapon === 'laser'), pods = g.enemies.filter((e) => e.weapon === 'brut');
+    expect(lasers.length).toBe(2);
+    expect(lasers.every((e) => e.beamK === 2 && e.beamLen! > 1.5 * 600)).toBe(true);
+    const plain = make(3) as unknown as typeof g;
+    plain.spawnBoss(true);
+    const z = plain.enemies.filter((e) => e.weapon === 'laser');
+    expect(z.length).toBe(4);
+    // zwei Türme am Brutschiff zusammen so stark wie vier am Zerstörer, und weiter reichend
+    expect(lasers.reduce((a, e) => a + e.beamK!, 0)).toBe(z.reduce((a, e) => a + (e.beamK ?? 1), 0));
+    expect(lasers[0].beamLen!).toBeGreaterThan(z[0].beamLen!);
+    const turret = plain.enemies.find((e) => e.kind === 'turret' && e.weapon === 'laser')!;
+    expect(pods[0].max).toBeGreaterThan(turret.max * 1.8);
   });
 
   it('nur Kha’ak-Schiffe, Späher immer in Clustern', () => {

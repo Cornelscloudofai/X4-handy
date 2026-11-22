@@ -2278,6 +2278,7 @@ function tuneSection(level: 1 | 2 | 3 | 4 | 5): string {
     <div class="segment">${([1, 2, 3, 4, 5] as const).map((l) => `<button class="${level === l ? 'on' : ''}" ${act('dev-level', { level: l })}>${l}</button>`).join('')}</div>`,
     reset: act('mg-tune-reset'),
     fog: act('mg-fog-test'),
+    brood: act('mg-brood-test'),
     note: 'Gilt sofort, auch mitten im Kampf: im Pausenmenü stehen dieselben Regler. Im Endlos-Modus kommen je Welle +6 % dazu (Boss +5 %). Der Schild lädt nach 3 s ohne Treffer mit 25 % je Sekunde nach.',
   });
 }

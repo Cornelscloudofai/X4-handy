@@ -899,6 +899,15 @@ export function setFogTest(on: boolean): void {
   try { if (on) globalThis.localStorage?.setItem(FOG_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(FOG_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
 }
 
+/** Test-Schalter: in Kha'ak-Runden liegt ab Welle 1 ein Brutschiff am Kartenrand; gemerkt im Browser */
+const BROOD_TEST_KEY = 'x4-sektorbau-brut-test';
+export function broodTest(): boolean {
+  try { return globalThis.localStorage?.getItem(BROOD_TEST_KEY) === '1'; } catch { return false; }
+}
+export function setBroodTest(on: boolean): void {
+  try { if (on) globalThis.localStorage?.setItem(BROOD_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(BROOD_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
+
 export function enemyTuneVersion(): number {
   return tuneVer;
 }
