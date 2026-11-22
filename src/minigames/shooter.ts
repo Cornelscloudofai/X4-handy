@@ -5016,7 +5016,7 @@ export class ShooterGame implements MiniGame {
             // je Gruppe höchstens zwei zugleich, insgesamt je nach Stärke deines Schiffs mehr (mehr Gruppen = mehr Druck)
             const mates = onP && e.grp != null ? this.enemies.filter((q) => q !== e && q.grp === e.grp && q.target === 'p' && (q.runT ?? 0) > 0).length : 0;
             // Schwärme greifen breiter an: bis zu fünf aus dem Schwarm zugleich, dazu drei über der Gesamtgrenze
-            // Kha'ak-Späher kennen keine Warteschleife: alle greifen zugleich an, im Zickzack (siehe unten)
+            // Kha'ak-Späher kennen keine Warteschleife: jeder fliegt seine eigenen Anflüge, alle zugleich
             if (e.kind !== 'ks' && onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) || mates >= (e.swarm ? 6 : 3)) && d < 420) {
               // warten: seitlich um den Jäger kreisen (zählt nicht mehr als Angreifer – sonst blieben alle in der
               // Warteschleife, sobald einmal genug Anflüge begonnen hatten)
@@ -5025,8 +5025,6 @@ export class ShooterGame implements MiniGame {
               e.runT = 0;
             } else {
               want = aimAt;
-              // Späher: wilder Zickzack-Anflug statt gerader Linie (je Späher eigener Takt); kurz vor dem Ziel gerade
-              if (e.kind === 'ks' && d > 140) want = aimAt + Math.sin(this.time * (5 + (e.orbit % 1) * 3) + e.orbit * 7) * 0.7 * Math.min(1, (d - 140) / 200);
               e.runT = (e.runT ?? 0) + dt;
               // Kyon-Jäger: zwei Strahlen je Anflug
               const salvo = e.kind === 'kj' || e.kind === 'ka' ? 3 : 5;
@@ -5120,8 +5118,9 @@ export class ShooterGame implements MiniGame {
         else if (e.kind === 'kanone') { e.cd = 1.6; for (let q = 0; q < 3; q++) this.enemyShot(e, a + (q - 1) * 0.08, 240, 8, '#ffd27a'); }
         else if (e.kind === 'n') { e.cd = 0.26; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 340, 4, '#ff5c6c'); }
         else if (e.kind === 'm') { e.cd = 0.8; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 430, 11, '#ff3b4a', 3); }
-        // Späher: Schuss genau aufs Ziel (Vorhalt), hell und gut sichtbar
-        else if (e.kind === 'ks') { e.cd = 0.24; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, aimAt + (this.r() - 0.5) * 0.1, 360, 3.5, '#f2d4ff', 2.8); }
+        // Späher: kurzer Kyon-Puls (trifft sofort, etwas Streuung) – schwächer je Treffer als ein Geschoss, weil er nicht
+        // ausweichbar ist
+        else if (e.kind === 'ks') { e.cd = 0.4; e.shots = (e.shots ?? 0) + 1; this.fireKyon(e, aimAt + (this.r() - 0.5) * 0.12, 1.1, this.gunRange(e), undefined, '#e2b8ff', undefined, true); }
         // Kyon: erst laden (dünne Ziellinie), dann trifft der Strahl
         else if (e.kind === 'kj' || e.kind === 'ka') { e.cd = e.kind === 'ka' ? 0.6 : 0.75; e.shots = (e.shots ?? 0) + 1; e.kyT = 0.35; }
         else if (e.kind === 'kk') { e.cd = 2.6; e.kyT = 0.6; }
@@ -5222,7 +5221,7 @@ export class ShooterGame implements MiniGame {
    * Kyon-Strahl: trifft sofort alles auf der Linie (Jäger, Frachter); gegen Schilde ×1,5 – Kha'ak brennen Schilde
    * schnell durch, die Hülle hält länger
    */
-  private fireKyon(e: Enemy, a: number, dmg: number, len = KYON_LEN, start: [number, number] = [e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r], color = '#b45cff', vsShield = KYON_SHIELD): void {
+  private fireKyon(e: Enemy, a: number, dmg: number, len = KYON_LEN, start: [number, number] = [e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r], color = '#b45cff', vsShield = KYON_SHIELD, pulse = false): void {
     const cx = Math.cos(a), cy = Math.sin(a);
     const [x0, y0] = start;
     const dist = (x: number, y: number): number => {
@@ -5241,9 +5240,10 @@ export class ShooterGame implements MiniGame {
       this.hitWard(w, dmg * this.enemyDmg * this.fScale, x0 + cx * t, y0 + cy * t);
       end = Math.min(end, t);
     }
-    this.rails.push({ x1: x0, y1: y0, x2: x0 + cx * end, y2: y0 + cy * end, t: 0.22, color });
+    // Puls (Späher): kurz und dünn, nur jeder dritte hörbar – sonst überdeckt der Schwarm alles
+    this.rails.push({ x1: x0, y1: y0, x2: x0 + cx * end, y2: y0 + cy * end, t: pulse ? 0.12 : 0.22, max: pulse ? 0.12 : undefined, color });
     const sx = (e.x - this.camX) * this.zoom, sy = (e.y - this.camY) * this.zoom;
-    if (sx > -40 && sx < this.w + 40 && sy > -40 && sy < this.h + 40) sfx.kyon(this.panAt(e.x));
+    if (sx > -40 && sx < this.w + 40 && sy > -40 && sy < this.h + 40 && (!pulse || this.r() < 0.33)) sfx.kyon(this.panAt(e.x));
   }
 
   /** Phasensprung des Abfangjägers: 90–140 px quer zur Schusslinie des Jägers versetzen */
