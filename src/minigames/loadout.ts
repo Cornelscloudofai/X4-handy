@@ -2,8 +2,8 @@
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
 export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'wolf' | 'dragon' | 'cobra' | 'klapperschlange' | 'raptor' | 'argon';
-export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'massdriver' | 'schnellplasma' | 'plasmasalve';
-export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson' | 'rakete';
+export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'massdriver' | 'blitz' | 'schnellplasma' | 'plasmasalve';
+export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson' | 'rakete' | 'flak';
 /** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
 export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron' | 'silo';
 export type ShieldId = 'leicht' | 'schwer';
@@ -393,6 +393,11 @@ export interface WeaponDef {
   rail?: boolean;
   /** Mass Driver: Projektil mit langer Leuchtspur, durchschlägt ein Ziel und trifft das nächste mit halber Wucht */
   slug?: boolean;
+  /**
+   * Kettenblitz: springt vom ersten Ziel zu weiteren in der Nähe; je Treffer genau so stark, dass ein Späher vergeht,
+   * gegen größere Schiffe und Türme fast wirkungslos (Waffe gegen Schwärme)
+   */
+  chain?: boolean;
   /** Zielhilfe im Verhältnis zu sonst (Bosonenlanze: kleiner Schwenkbereich) */
   gimbal?: number;
   color: string;
@@ -467,6 +472,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     s: { dmg: 750, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.55, angle: 0.23 },
     m: { dmg: 1150, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.59, angle: 0.23 },
   },
+  // Kettenblitz: die Werte zählen nur für Takt und Reichweite (rund 530 Spielpunkte) – den Schaden bestimmt das Ziel
+  blitz: {
+    name: 'Kettenblitz', group: 'allgemein', color: '#bfe4ff', w: 2, chain: true,
+    desc: 'Entladung, die von Ziel zu Ziel springt (7 Sprünge, auf M-Plätzen 9): jeder Treffer genau so stark, dass ein Kha’ak-Späher vergeht – gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
+    s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.16, angle: 0 },
+    m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.18, angle: 0 },
+  },
   // Mass Driver (Terraner): ballistisch wie eine Kanone, aber mit sehr hoher Mündungsgeschwindigkeit – zwischen
   // Neutronen-Gatling und Bosonenlanze eingeordnet: rund 60 % des Lanzenschadens je Schuss, etwas schnellerer Takt,
   // kann aber verfehlen (sichtbares Projektil, etwas Vorhalt nötig); Durchschlag als Besonderheit
@@ -523,7 +535,7 @@ export function weaponFits(w: WeaponDef, size: GunSize): boolean {
  * salvos: Vorrat je Turm in vollen Salven (danach schweigt er bis zum Ende der Runde)
  */
 export interface TurretMissile { n: number; gap: number; reload: number; dmg: number; range: number; salvos: number; fixed?: boolean }
-export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile }
+export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile; /** Flak: Sprenggranaten mit Annäherungszünder */ flak?: boolean }
 export const TURRETS: Record<TurretId, TurretDef> = {
   puls: { name: 'Pulsturm', desc: 'Schnell schwenkend und genau, wenig Schaden – gut gegen Raketen und Jäger.', turn: 180, color: '#7ffff0', w: 2,
     gun: { dmg: 18, rate: 3.8, amt: 1, mag: 8, reload: 2.4, v: 5000, life: 0.7, angle: 0.17 } },
@@ -543,6 +555,9 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   rakete: { name: 'Raketen-Vierling', desc: 'Schwenkt auf das Ziel und schickt vier Lenkraketen zugleich los, dann fünf Sekunden Pause. Große Reichweite, trifft fast immer – gegen Raketen wirkungslos. Vorrat: 80 Raketen je Turm.', turn: 90, color: '#ffb070', w: 2,
     missile: { n: 4, gap: 0, reload: 5, dmg: 1, range: 1, salvos: 20 },
     gun: { dmg: 0, rate: 1, amt: 4, mag: 0, reload: 0, v: 400, life: 6.5, angle: 0 } },
+  // Flakturm: Sprenggranaten mit Annäherungszünder – zerplatzen zwischen kleinen Schiffen und Raketen
+  flak: { name: 'Flakturm', desc: 'Sprenggranaten mit Annäherungszünder: zerplatzen zwischen kleinen Schiffen und treffen alles im Umkreis – stark gegen Schwärme und Raketen, schwach gegen große Ziele.', turn: 170, color: '#ffb070', w: 2.2, flak: true,
+    gun: { dmg: 30, rate: 2.2, amt: 1, mag: 6, reload: 3, v: 1400, life: 1.2, angle: 0.3 } },
 };
 export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
 

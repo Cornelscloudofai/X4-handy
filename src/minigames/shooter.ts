@@ -234,6 +234,8 @@ interface GameGun {
   gimbal: number;
   color: string;
   w: number;
+  /** Flakturm: Sprenggranaten mit Annäherungszünder */
+  flak?: boolean;
   /** Raketenturm: feuert Lenkraketen statt Geschossen */
   missile?: TurretMissile;
 }
@@ -258,7 +260,7 @@ export function leadTime(w: { beam?: boolean; rail?: boolean; speed: number }, d
   return w.beam || w.rail ? 0 : d / Math.max(1, w.speed);
 }
 
-function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile }): GameGun {
+function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
     const md = MISSILES.lenk, range = md.v * md.life * 0.85 * o.missile.range;
@@ -269,11 +271,11 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   return {
     dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME * RELOAD,
     speed, life: beam ? 0 : range / speed, range, pellets: g.amt, jitter: g.angle * JITTER,
-    beam, hullPierce: o.hullPierce ?? 0, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w,
+    beam, hullPierce: o.hullPierce ?? 0, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w, flak: o.flak || undefined,
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -313,6 +315,12 @@ const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DP
  * langsam (KYON_SWEEP rad/s) dem Ziel nach – wer nur kurz ausweicht, wird eingeholt
  */
 const KYON_FIRE = 1.7, KYON_SWEEP = 0.32;
+/** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
+const ZAP_JUMPS = 7, ZAP_HOP = 190, ZAP_CONE = 0.55;
+/** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
+const PFLAK_FUSE = 16, PFLAK_R = 62;
+/** Wirkung von Kettenblitz und Flak nach Schiffsklasse des Ziels (S = voll; Türme und Großkampfschiffe kaum) */
+const SWARM_K: Record<'S' | 'M' | 'L', number> = { S: 1, M: 0.3, L: 0.1 };
 /**
  * Reichweite der Kyon-Strahlen: Zerstörer 30 % weiter als der Xenon-Laser, das größere Brutschiff 55 % weiter. Das
  * Brutschiff hat nur zwei Kyon-Türme statt vier – jeder brennt doppelt so stark, zusammen also wie der Zerstörer
@@ -671,7 +679,7 @@ function turnTo(a: number, b: number, step: number): number {
  * Schiff das hat (siehe cardFits): guns = Bordwaffen mit Geschossen, beam = Strahler, rail = Bosonenlanze,
  * anyGun = irgendeine Bordwaffe, turrets, launchers, wings (Begleiter), bays (Träger), wingMissiles (Begleiter mit Werfern)
  */
-type CardNeed = 'guns' | 'beam' | 'rail' | 'anyGun' | 'turrets' | 'launchers' | 'wings' | 'bays' | 'wingMissiles';
+type CardNeed = 'guns' | 'beam' | 'rail' | 'anyGun' | 'turrets' | 'launchers' | 'wings' | 'bays' | 'wingMissiles' | 'multi' | 'zap';
 const CARDS: (Card & { need?: CardNeed[] })[] = [
   // Bordwaffen allgemein
   { id: 'heavy', name: 'Schwere Ladung', desc: '+30 % Schaden für alle Waffen und Türme', max: 3 },
@@ -680,6 +688,11 @@ const CARDS: (Card & { need?: CardNeed[] })[] = [
   { id: 'spread', name: 'Streuschuss', desc: 'Zwei zusätzliche Geschosse schräg', max: 2, need: ['guns'] },
   { id: 'pierce', name: 'Durchschlag', desc: 'Geschosse, Strahlen und Lanzen gehen durch einen weiteren Gegner', max: 2, need: ['guns', 'beam', 'rail'] },
   { id: 'splash', name: 'Splitterwirkung', desc: 'Geschosse zerplatzen beim Einschlag und treffen Gegner daneben', max: 2, need: ['guns'] },
+  // Schrotwaffen (mehrere Geschosse je Schuss: Schrotbatterie, Tau-Beschleuniger)
+  { id: 'pellets', name: 'Schrotladung', desc: '+2 Geschosse je Schuss', max: 2, need: ['multi'] },
+  { id: 'cone', name: 'Weiter Kegel', desc: 'Streuung +40 % – eine Ladung trifft mehr Ziele eines Schwarms', max: 2, need: ['multi'] },
+  // Kettenblitz
+  { id: 'zap', name: 'Kettenreaktion', desc: 'Der Kettenblitz springt dreimal weiter und etwas weiter', max: 2, need: ['zap'] },
   // Strahler
   { id: 'focus', name: 'Strahlfokus', desc: '+20 % Reichweite und Leistung des Strahls', max: 2, need: ['beam'] },
   { id: 'chain', name: 'Kettenstrahl', desc: 'Der Strahl springt vom Ziel auf einen weiteren Gegner in der Nähe (50 %)', max: 2, need: ['beam'] },
@@ -891,6 +904,8 @@ export class ShooterGame implements MiniGame {
   private leads: { e: Enemy; x: number; y: number }[] = [];
   private missileCd = 2;
   private missilesUsed = 0;
+  /** Kettenblitze im Bild: Pfade (je Sprung eine gezackte Linie), Restzeit */
+  private zaps: { paths: [number, number][][]; t: number; max: number }[] = [];
   /** Triebwerksrauch (eigenes Schiff und Staffel); Düsen des eigenen Schiffs in Weltlage (beim Zeichnen ermittelt) */
   private smoke = new Smoke();
   private jetPts: { x: number; y: number; w: number; col: string }[] = [];
@@ -2707,7 +2722,9 @@ export class ShooterGame implements MiniGame {
     const guns = this.ship.x4.weapons > 0 && this.guns.length > 0, w = this.wpn;
     const has: Record<CardNeed, boolean> = {
       anyGun: guns,
-      guns: guns && !w.beam && !w.rail,
+      guns: guns && !w.beam && !w.rail && !this.chainGun,
+      multi: guns && !w.beam && !w.rail && w.pellets > 1,
+      zap: guns && this.chainGun,
       beam: guns && !!w.beam,
       rail: guns && !!w.rail,
       turrets: this.pTur.length + this.pL.length > 0,
@@ -4374,6 +4391,8 @@ export class ShooterGame implements MiniGame {
     this.beams = [];
     for (const r of this.rails) r.t -= dt;
     this.rails = this.rails.filter((r) => r.t > 0);
+    for (const z of this.zaps) z.t -= dt;
+    this.zaps = this.zaps.filter((z) => z.t > 0);
     const w = this.wpn;
     // Magazin bzw. Salve: nach einer Pause ohne Feuern ist es wieder voll (wie in X4)
     if (this.fireId === null) {
@@ -4396,13 +4415,18 @@ export class ShooterGame implements MiniGame {
       const over = !!w.rail && this.c('overload') > 0 && this.railN % (this.c('overload') >= 2 ? 2 : 3) === 0;
       const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
       const conv = this.convergeDist(w.range);
-      for (const gx of this.guns) {
+      // Kettenblitz: eine Entladung aus dem Bug statt Geschossen aus jeder Kanone
+      if (this.chainGun) {
+        const fwd = this.ship.size * (this.ship.gunFwd ?? 0.3);
+        this.fireChain(this.px + c * fwd, this.py + sn * fwd, a0);
+      } else for (const gx of this.guns) {
         // alle Bordkanonen feuern; Lage quer zur Flugrichtung, jede auf den gemeinsamen Punkt geschwenkt
         const fwd = this.ship.size * (this.ship.gunFwd ?? 0.3);
         const ox = this.px - sn * gx + c * fwd, oy = this.py + c * gx + sn * fwd;
         const ag = this.gunAngle(ox, oy, a0, conv);
-        for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < w.pellets; p++) {
-          const a = ag + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter;
+        const pellets = w.pellets + (w.pellets > 1 ? 2 * this.c('pellets') : 0), cone = 1 + 0.4 * this.c('cone');
+        for (let s2 = -spread; s2 <= spread; s2++) for (let p = 0; p < pellets; p++) {
+          const a = ag + s2 * 0.16 + (this.r() - 0.5) * 2 * w.jitter * cone;
           // Lanze: Durchschlag wie bei Geschossen; Überladung: jeder dritte (zweite) Schuss trifft doppelt
           this.logSrc = 'gun'; this.logShot();
           if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7) * (over ? 2 : 1), w.range, over ? '#ffd27a' : w.color, this.ship.gunSize === 'l' || over, this.c('pierce')); continue; }
@@ -4596,7 +4620,9 @@ export class ShooterGame implements MiniGame {
           // L-Türme des Trägers: schwere Lanze (orange, dick, langes Nachglühen)
           this.logSrc = key; this.logShot();
           if (w.rail) { this.fireRail(x + Math.cos(a) * 8, y + Math.sin(a) * 8, a, this.tDmg * w.dmg, range, w.color, !!t.L); continue; }
-          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life: w.life * this.tRangeMul, color: w.color, w: Math.min(w.w, 4), pierce: 0 });
+          // Flak: Zeitzünder knapp hinter dem Ziel, dazu der Annäherungszünder (siehe updateShots)
+          const life = w.flak ? Math.min(w.life * this.tRangeMul, (bd + 30) / w.speed) : w.life * this.tRangeMul;
+          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined });
         }
         t.cd = (w.interval * this.tempo) / this.tRateMul;
         if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
@@ -5226,6 +5252,121 @@ export class ShooterGame implements MiniGame {
     sfx.phase(this.panAt(e.x));
   }
 
+  /** Schaden je Treffer des Kettenblitzes gegen S-Schiffe: genau ein Späher dieser Stufe (Hülle und Schild) */
+  private get swarmDmg(): number {
+    const s = enemyStats('ks', this.level, { tune: this.tune });
+    return (s.hp + s.sh) * 1.02 * (1 + 0.3 * this.c('heavy')) * (1 + this.m('dmg'));
+  }
+  private get chainGun(): boolean { return !!WEAPONS[this.wpnId as WeaponId]?.chain; }
+
+  /**
+   * Kettenblitz: trifft das Ziel vor dem Bug (Hauptziel, sonst das nächste im Kegel) und springt von dort zum jeweils
+   * nächsten noch nicht getroffenen Gegner in Sprungweite. Gegen S-Schiffe genau ein Späher je Treffer, gegen M kaum ein
+   * Drittel, gegen Türme und Großkampfschiffe ein Zehntel.
+   */
+  private fireChain(ox: number, oy: number, a0: number): void {
+    const range = this.wpn.range, hop = ZAP_HOP * (1 + 0.15 * this.c('zap'));
+    const jumps = ZAP_JUMPS + (this.ship.gunSize === 'm' ? 2 : 0) + 3 * this.c('zap');
+    const ok = (e: Enemy) => !(e.kind === 'boss' && e.shielded);
+    let cur: Enemy | null = this.lock?.e && ok(this.lock.e) && Math.hypot(this.lock.e.x - ox, this.lock.e.y - oy) < range + this.lock.e.r ? this.lock.e : null;
+    if (!cur) {
+      let bd = Infinity;
+      for (const e of this.enemies) {
+        if (!ok(e)) continue;
+        const d = Math.hypot(e.x - ox, e.y - oy), off = Math.abs(wrapA(Math.atan2(e.y - oy, e.x - ox) - a0));
+        if (d > range + e.r || off > ZAP_CONE) continue;
+        const sc = d * (1 + off * 2);
+        if (sc < bd) { bd = sc; cur = e; }
+      }
+    }
+    const paths: [number, number][][] = [];
+    this.logSrc = 'gun';
+    this.logShot();
+    if (!cur) {
+      // ins Leere: kurzer, zuckender Blitz
+      const ex = ox + Math.cos(a0) * range * 0.45, ey = oy + Math.sin(a0) * range * 0.45;
+      paths.push(jagged([ox, oy], [ex, ey], range * 0.12, 4));
+    } else {
+      const hit = new Set<Enemy>();
+      let from: [number, number] = [ox, oy];
+      const dmg = this.swarmDmg;
+      for (let k = 0; cur && k <= jumps; k++) {
+        const to: [number, number] = [cur.x, cur.y];
+        paths.push(jagged(from, to, Math.min(60, Math.hypot(to[0] - from[0], to[1] - from[1]) * 0.22), 4));
+        hit.add(cur);
+        const cls = cur.parent || cur.nest || cur.plat || cur.hive ? 'L' : ECLASS[cur.kind];
+        this.logHit();
+        this.fx.burst(to[0], to[1], '#d8ecff', 3, 140, 1.1, 'spark', 0.2);
+        this.damageEnemy(cur, dmg * SWARM_K[cls], 0, 0);
+        from = to;
+        let next: Enemy | null = null, nd = Infinity;
+        for (const e of this.enemies) {
+          if (hit.has(e) || !ok(e)) continue;
+          const d = Math.hypot(e.x - to[0], e.y - to[1]) - e.r;
+          if (d < hop && d < nd) { nd = d; next = e; }
+        }
+        cur = next;
+      }
+    }
+    this.zaps.push({ paths, t: 0.2, max: 0.2 });
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: ox, y: oy, r: 120, color: '#9fc8ff', t: 0, max: 0.2 });
+    sfx.zap(1, this.panAt(ox));
+  }
+
+  /** Kettenblitze zeichnen: weiter blauer Schein, heller Kern, weißer Faden (k: Stärke, im Nebel schwächer) */
+  private drawZaps(ctx: CanvasRenderingContext2D, k = 1): void {
+    if (!this.zaps.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const z of this.zaps) {
+      const a = (z.t / z.max) ** 0.7 * k;
+      for (const [w, col, al] of [[8, '90,140,255', 0.22], [3.2, '170,210,255', 0.6], [1.2, '255,255,255', 1]] as const) {
+        ctx.globalAlpha = Math.min(1, a * al);
+        ctx.strokeStyle = `rgb(${col})`;
+        ctx.lineWidth = Math.max(w, (w * 0.6) / this.zoom);
+        ctx.beginPath();
+        for (const p of z.paths) { ctx.moveTo(p[0][0], p[0][1]); for (const q of p) ctx.lineTo(q[0], q[1]); }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** eigene Flakgranate zündet nahe einem Gegner oder einer feindlichen Rakete */
+  private pflakFuse(x: number, y: number): boolean {
+    if (this.eMissiles.some((m) => Math.hypot(m.x - x, m.y - y) < PFLAK_FUSE + 6)) return true;
+    return this.enemies.some((e) => !(e.kind === 'boss' && e.shielded) && !e.parent && Math.hypot(e.x - x, e.y - y) < PFLAK_FUSE + e.r);
+  }
+
+  /**
+   * Eigene Flakgranate zerplatzt: Sprengwolke, die alles im Umkreis trifft (zum Rand hin schwächer). Gegen S-Schiffe gut
+   * die Hälfte eines Spähers je Wolke, gegen größere Ziele nach Klasse weniger; feindliche Raketen vergehen.
+   */
+  private pflakBurst(b: Bullet): void {
+    const { x, y } = b;
+    this.fx.add({ x, y, color: '#fff0c8', size: 10, max: 0.07 });
+    this.fx.add({ x, y, color: '#ff9a3a', size: PFLAK_R * 0.6, kind: 'fire', max: 0.32 });
+    this.fx.add({ x, y, color: '#ffb070', size: PFLAK_R * 0.45, kind: 'ring', max: 0.25 });
+    this.fx.burst(x, y, '#ffcf80', 7, 280, 1.1, 'spark', 0.3);
+    this.fx.add({ x, y, color: '#2e2925', size: PFLAK_R * 0.8, kind: 'smoke', solid: true, max: 1.1, drag: 0.7 });
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x, y, r: 120, color: '#ffa04a', t: 0, max: 0.3 });
+    const fall = (d: number) => Math.max(0, 1 - 0.6 * (d / PFLAK_R));
+    const tk = this.tDmg / this.baseDmg, s = this.swarmDmg / (1 + 0.3 * this.c('heavy')) * 0.7 * tk;
+    this.logSrc = b.src ?? 'tm';
+    for (const e of [...this.enemies]) {
+      if (e.kind === 'boss' && e.shielded) continue;
+      const d = Math.hypot(e.x - x, e.y - y) - e.r;
+      if (d > PFLAK_R) continue;
+      const cls = e.parent || e.nest || e.plat || e.hive ? 'L' : ECLASS[e.kind];
+      this.logHit();
+      this.damageEnemy(e, s * SWARM_K[cls] * fall(Math.max(0, d)), 0.3);
+    }
+    for (const m of this.eMissiles) if (Math.hypot(m.x - x, m.y - y) < PFLAK_R) { m.hp = 0; this.explode(m.x, m.y, '#ff8a5c', 0.5, false); }
+    this.eMissiles = this.eMissiles.filter((m) => m.hp > 0);
+  }
+
   /** Flak zündet, wenn sie einem Ziel nahe kommt: deinem Schiff, einem Begleiter oder einem Schutzziel */
   private flakFuse(x: number, y: number): boolean {
     if (this.outcome !== 'player' && this.gapOr(x, y, this.ship.r) < FLAK_FUSE) return true;
@@ -5342,6 +5483,7 @@ export class ShooterGame implements MiniGame {
       b.life -= dt;
       // Flak: Annäherungszünder – zündet nahe dem Ziel oder spätestens am Ende der Flugbahn
       if (b.flak && (b.life <= 0 || this.flakFuse(b.x, b.y))) { this.flakBurst(b); continue; }
+      if (b.pflak && (b.life <= 0 || this.pflakFuse(b.x, b.y))) { this.pflakBurst(b); continue; }
       if (b.life <= 0) continue;
       // Asteroiden bieten Deckung vor gegnerischem Feuer; eigene Waffen tragen sie ab
       const rock = this.rocks.length ? this.rockAt(b.x, b.y) : undefined;
@@ -6098,6 +6240,7 @@ export class ShooterGame implements MiniGame {
     this.drawRocketLocks(ctx, t);
     this.drawBlasts(ctx, t);
     this.drawBeams(ctx, t);
+    this.drawZaps(ctx);
     // Geschosse über den Schiffen: die Türme liegen oben auf dem Rumpf, ihre Schüsse fliegen darüber hinweg
     this.drawShots(ctx);
     if (this.outcome !== 'player') { this.drawLock(ctx); this.drawMissileWarn(ctx, t); }
@@ -7927,6 +8070,7 @@ export class ShooterGame implements MiniGame {
     for (const e of this.enemies) if (e.beamDur && e.beamT && e.beamT <= e.beamDur) this.drawKyonBeam(ctx, e, this.time, 0.35 + this.fog, true);
     // Triebwerke der Jäger und Späher: als leuchtende Punkte auch im Nebel zu sehen
     this.drawEngineGlows(ctx, this.fog);
+    this.drawZaps(ctx, 0.5 * this.fog);
     ctx.globalCompositeOperation = 'lighter';
     // Blitze: feine gezackte Linien mit weichem Leuchtsaum (Breite in Bildschirmpunkten), Äste schwächer
     ctx.lineJoin = 'round';
