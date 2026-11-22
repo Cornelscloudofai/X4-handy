@@ -191,6 +191,8 @@ interface Enemy {
   broodT?: number; brood?: number;
   /** Laserstrahl: Restzeit (aufladen, dann feuern), Richtung, angesammelter Schaden am Frachter */
   beamT?: number; beamA?: number; beamAcc?: number;
+  /** Kyon: Brenndauer dieses Schusses (sonst LASER_FIRE) und Ziel (Jäger oder Schutzziel), dem der Strahl nachschwenkt */
+  beamDur?: number; beamTgt?: 'p' | 'f';
   shielded: boolean;
   /** eigener Schild: lädt nach 3 s ohne Treffer wieder auf; Aufblitzen bei Treffern auf den Schild */
   sh: number; shMax: number; shT: number; shFlash: number;
@@ -296,6 +298,13 @@ interface TurretMem { tgt?: Enemy | EMissile | null; lvx?: number; lvy?: number;
 
 /** Laserturm der Xenon: Reichweite, Aufladezeit, Brenndauer, Schaden pro Sekunde */
 const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
+/**
+ * Kyon-Strahl des Kha’ak-Zerstörers (Großziel): brennt KYON_FIRE s statt LASER_FIRE und schwenkt dabei
+ * langsam (KYON_SWEEP rad/s) dem Ziel nach – wer nur kurz ausweicht, wird eingeholt
+ */
+const KYON_FIRE = 1.7, KYON_SWEEP = 0.2;
+/** Brutkammer des Kha'ak-Brutschiffs: im Schnitt alle BROOD_EVERY s ein Späher (gut jeder dritte Takt zwei), höchstens BROOD_MAX Späher gleichzeitig */
+const BROOD_EVERY = 1.0, BROOD_MAX = 6;
 /**
  * Reichweite gegnerischer Geschütztürme (Großkampfschiffe, Nester, Frachter): Kanonen- und Plasmatürme – deutlich
  * weiter als die Bordwaffen der Jäger, damit Großziele nicht gefahrlos aus sicherer Entfernung beschossen werden
@@ -2808,13 +2817,13 @@ export class ShooterGame implements MiniGame {
     }
     // Laserstrahl in Vorbereitung, der den Jäger trifft: quer dazu ausweichen
     for (const e of this.enemies) {
-      if (!e.beamT || e.beamT <= LASER_FIRE) continue;
+      if (!e.beamT || e.beamT <= (e.beamDur ?? LASER_FIRE)) continue;
       const c = Math.cos(e.beamA!), sn = Math.sin(e.beamA!);
       const along = (this.px - e.x) * c + (this.py - e.y) * sn, across = -(this.px - e.x) * sn + (this.py - e.y) * c;
       if (along > 0 && along < LASER_LEN && Math.abs(across) < 30) {
         const sgn = across >= 0 ? 1 : -1;
         this.joy = { id: 99, ox: 0, oy: 0, kx: -sn * sgn, ky: c * sgn };
-        if (e.beamT < LASER_FIRE + 0.25) this.doSpecial();
+        if (e.beamT < (e.beamDur ?? LASER_FIRE) + 0.25) this.doSpecial();
       }
     }
     this.fireId = best && off < 0.15 && d < this.reach - 15 ? 99 : null;
@@ -3203,6 +3212,8 @@ export class ShooterGame implements MiniGame {
     b.r = 34 * k;
     b.mini = mini;
     b.carrier = carrier || undefined;
+    // Kha'ak-Zerstörer: deutlich zäher als die übrigen Großziele (er trägt die langen Kyon-Strahlen)
+    if (small && this.side === 'khaak') { b.hp *= 1.4; b.max *= 1.4; b.sh *= 1.4; b.shMax *= 1.4; }
     this.enemies.push(b);
     type Mount = [number, number, ('laser' | 'plasma' | 'brut' | 'm' | 'flak')?];
     const all: Mount[] = this.side === 'pirate' && !small
@@ -3228,7 +3239,7 @@ export class ShooterGame implements MiniGame {
     const kf = this.kStrength();
     const strength = (weapon?: string): number => this.side === 'xenon' ? (weapon === 'm' ? kf.M : kf.L)
       : this.side === 'pirate' && !small ? (this.level >= 3 || this.big > 1 ? 1 : 4 / 6)
-        : small && this.side === 'khaak' ? 0.5 : small && this.side === 'pirate' ? 2 / 3 : 1;
+        : small && this.side === 'khaak' ? 0.9 : small && this.side === 'pirate' ? 2 / 3 : 1;
     for (const [ox, oy, weapon] of offs) {
       const t = this.makeEnemy('turret', b.x + ox * k, b.y + oy * k);
       t.parent = b; t.ox = ox * k; t.oy = oy * k; t.weapon = weapon;
@@ -3244,7 +3255,7 @@ export class ShooterGame implements MiniGame {
       } else if (small && this.side === 'khaak') t.r = Math.max(9, 5 * k);
       else t.r *= k;
       // Xenon-Türme feuern versetzt; ab Stufe 4 schneller (statt eines fünften Turms)
-      if (weapon) t.cd = weapon === 'brut' ? 4 + this.r() * 3 : 1.5 + this.r() * 2;
+      if (weapon) t.cd = weapon === 'brut' ? 2 + this.r() * 1.5 : 1.5 + this.r() * 2;
       this.enemies.push(t);
     }
     if (!mini) this.bossT = 0;
@@ -4623,19 +4634,28 @@ export class ShooterGame implements MiniGame {
           continue;
         }
         if (e.weapon === 'brut') {
-          // Brutkasten des Brutschiffs: entlässt alle paar Sekunden zwei Kha'ak-Jäger (solange nur wenige unterwegs sind, höchstens dreimal)
+          // Brutkammer des Brutschiffs: solange sie steht, schlüpft etwa jede Sekunde ein Späher (manchmal zwei) –
+          // wer die Kammern nicht schnell ausschaltet, hat bald einen Schwarm am Hals. Obergrenze, damit es spielbar bleibt.
           if (e.cd <= 0) {
-            e.cd = 12 + this.r() * 2;
-            // höchstens drei Bruten je Brutkasten, damit der Kampf nicht endlos wird
-            if ((e.brood ?? 0) < 3 * this.big && this.enemies.length < this.fieldCap && this.enemies.filter((q) => q.kind === 'kj').length < 4 * this.big) {
-              e.brood = (e.brood ?? 0) + 1;
-              for (let q = 0; q < 2; q++) {
-                const j = this.makeEnemy('kj', e.x + (q - 0.5) * 14, e.y);
-                const a = p.ang + (q - 0.5) * 1.2;
-                j.ang = a; j.vx = Math.cos(a) * 200; j.vy = Math.sin(a) * 200; j.target = 'p';
+            // Stufe 1 und 2 etwas langsamer und mit weniger Spähern gleichzeitig (Einstieg), ab Stufe 3 voll
+            const low = Math.max(0, 3 - this.level), high = Math.max(0, this.level - 3);
+            // ab Stufe 4 ein Strom: kürzere Abstände, zwei bis drei Späher je Takt, die hintereinander aus der Kammer
+            // schießen, und mehr gleichzeitig unterwegs
+            e.cd = (BROOD_EVERY * (1 + 0.3 * low) / (1 + 0.5 * high)) * (0.75 + this.r() * 0.5);
+            const scouts = this.enemies.filter((q) => q.kind === 'ks').length;
+            if (this.enemies.length < this.fieldCap && scouts < (BROOD_MAX - low + 2 * high) * this.big) {
+              const n = high ? 2 + (this.r() < 0.4 ? 1 : 0) : this.r() < 0.35 ? 2 : 1;
+              const a0 = p.ang + (this.r() - 0.5) * (high ? 0.7 : 1.6);
+              for (let q = 0; q < n; q++) {
+                // hintereinander in Flugrichtung versetzt – so sieht es wie ein fließender Strom aus
+                const a = a0 + (this.r() - 0.5) * 0.25, back = q * 16;
+                const j = this.makeEnemy('ks', e.x - Math.cos(a) * back, e.y - Math.sin(a) * back);
+                // die Brut stürzt sich auf dich (nicht auf den Frachter) – wer die Kammern zerstört, stoppt den Strom
+                j.ang = a; j.vx = Math.cos(a) * 240; j.vy = Math.sin(a) * 240; j.target = 'p';
                 this.enemies.push(j);
               }
-              this.fx.add({ x: e.x, y: e.y, color: '#c77dff', size: 4, kind: 'ring', max: 0.5 });
+              this.fx.add({ x: e.x, y: e.y, color: '#c77dff', size: 5, kind: 'ring', max: 0.45 });
+              this.fx.burst(e.x, e.y, '#d9a8ff', 5, 90, 1.1, 'spark', 0.3);
             }
           }
           continue;
@@ -5063,7 +5083,13 @@ export class ShooterGame implements MiniGame {
   private updateLaser(e: Enemy, dt: number, fx: number, fy: number): void {
     if (e.beamT && e.beamT > 0) {
       e.beamT -= dt;
-      if (e.beamT > 0 && e.beamT < LASER_FIRE) {
+      const dur = e.beamDur ?? LASER_FIRE;
+      if (e.beamT > 0 && e.beamT < dur) {
+        // Kyon: schwenkt langsam dem Ziel nach
+        if (e.beamDur && e.beamDur > LASER_FIRE) {
+          const tx = e.beamTgt === 'f' && this.liveWards.length ? fx : this.px, ty = e.beamTgt === 'f' && this.liveWards.length ? fy : this.py;
+          e.beamA = turnTo(e.beamA!, Math.atan2(ty - e.y, tx - e.x), KYON_SWEEP * dt);
+        }
         const a = e.beamA!, cx = Math.cos(a), cy = Math.sin(a);
         const dist = (x: number, y: number): number => {
           const t = clamp((x - e.x) * cx + (y - e.y) * cy, 0, LASER_LEN);
@@ -5074,7 +5100,8 @@ export class ShooterGame implements MiniGame {
         // Schutzziele: Frachter entlang der Längsachse prüfen; Schaden gesammelt, damit nicht jedes Bild Funken sprühen
         const hw = this.wards.find((w) => !w.dead && this.beamOnWard(w, dist));
         if (hw) {
-          e.beamAcc = (e.beamAcc ?? 0) + LASER_DPS * this.enemyDmg * dt;
+          // Kyon brennt dreimal so lange und schwenkt nach: am großen Frachter je Sekunde weniger, insgesamt gut 40 % mehr als ein Laser
+          e.beamAcc = (e.beamAcc ?? 0) + LASER_DPS * this.enemyDmg * dt * (e.beamDur && e.beamDur > LASER_FIRE ? 0.45 : 1);
           if (e.beamAcc > 4) { const t = clamp((this.wx(hw) - e.x) * cx + (this.wy(hw) - e.y) * cy, 0, LASER_LEN); this.hitWard(hw, e.beamAcc * this.fScale, e.x + cx * t, e.y + cy * t); e.beamAcc = 0; }
         }
       }
@@ -5086,8 +5113,12 @@ export class ShooterGame implements MiniGame {
     if (e.cd <= 0 && Math.hypot(tx - e.x, ty - e.y) < LASER_LEN - 20) {
       // Kha'ak-Kyon-Türme laden etwas länger nach (das Brutschiff bringt dafür Jäger mit)
       e.cd = ((this.level >= 4 ? 3 : 3.8) + this.r() + (this.side === 'khaak' ? 1.5 : 0)) / this.tRate(e);
-      e.beamT = LASER_CHARGE + LASER_FIRE;
+      // Kha'ak: Kyon-Strahl im neuen Aussehen; lang und nachschwenkend nur beim Zerstörer (Großziel), das Brutschiff
+      // behält den kurzen Strahl
+      e.beamDur = this.side !== 'khaak' ? undefined : e.parent?.mini ? KYON_FIRE : LASER_FIRE;
+      e.beamT = LASER_CHARGE + (e.beamDur ?? LASER_FIRE);
       e.beamA = Math.atan2(ty - e.y, tx - e.x);
+      e.beamTgt = toP ? 'p' : 'f';
       e.beamAcc = 0;
     }
   }
@@ -5967,13 +5998,16 @@ export class ShooterGame implements MiniGame {
       // ab der Spitze des Laserrohrs
       ctx.moveTo(e.x + c * 26, e.y + sn * 26);
       ctx.lineTo(ex, ey);
-      if (e.beamT > LASER_FIRE) {
-        const k = 1 - (e.beamT - LASER_FIRE) / LASER_CHARGE;
+      const dur = e.beamDur ?? LASER_FIRE;
+      if (e.beamT > dur) {
+        const k = 1 - (e.beamT - dur) / LASER_CHARGE;
         ctx.strokeStyle = rgba(c1, 0.25 + 0.35 * k * (0.6 + 0.4 * Math.sin(t * 40)));
         ctx.lineWidth = 1 + k;
         ctx.setLineDash([6, 6]);
         ctx.stroke();
         ctx.setLineDash([]);
+      } else if (e.beamDur) {
+        this.drawKyonBeam(ctx, e, t, 1);
       } else {
         const k = Math.min(1, e.beamT / 0.12, (LASER_FIRE - e.beamT) / 0.06);
         ctx.strokeStyle = rgba(c1, 0.35 * k);
@@ -5987,6 +6021,40 @@ export class ShooterGame implements MiniGame {
         ctx.stroke();
       }
     }
+    ctx.restore();
+  }
+
+  /**
+   * Kyon-Strahl (Kha'ak-Großschiffe): weiter violetter Schein, flackernder Kern, Energiekugeln, die durch den Strahl zum
+   * Ziel fließen, gleißender Austritt am Turm. k: Stärke; fogOnly: nur Schein und Kugeln (über dem Nebel)
+   */
+  private drawKyonBeam(ctx: CanvasRenderingContext2D, e: Enemy, t: number, k: number, fogOnly = false): void {
+    const dur = e.beamDur ?? KYON_FIRE, a = e.beamA!, c = Math.cos(a), sn = Math.sin(a);
+    const env = Math.min(1, e.beamT! / 0.15, (dur - e.beamT!) / 0.1);
+    if (env <= 0) return;
+    const x0 = e.x + c * 26, y0 = e.y + sn * 26, L = LASER_LEN - 26, x1 = x0 + c * L, y1 = y0 + sn * L;
+    const fl = 0.85 + 0.15 * Math.sin(t * 47 + e.x) * Math.sin(t * 29);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    const line = (w: number, col: string, al: number) => {
+      ctx.strokeStyle = rgba(col, Math.min(1, al * env * k));
+      ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    };
+    line(46 * fl, '#7b2fd0', fogOnly ? 0.22 : 0.12);
+    line(22 * fl, '#a855f7', fogOnly ? 0.3 : 0.28);
+    if (!fogOnly) { line(8 * fl, '#c98cff', 0.75); line(2.4, '#f6ecff', 1); }
+    // Energiekugeln fließen vom Turm zum Ziel
+    const halo = glowSprite('#d7a8ff');
+    const gap = 170, sp = 1250, off = (t * sp + e.x * 3) % gap;
+    for (let d = off; d < L; d += gap) {
+      const px = x0 + c * d, py = y0 + sn * d, pulse = 0.7 + 0.3 * Math.sin(d * 0.05 + t * 9);
+      if (halo) { ctx.globalAlpha = Math.min(1, 0.8 * env * k * pulse); ctx.drawImage(halo, px - 20, py - 20, 40, 40); }
+      if (!fogOnly) { ctx.globalAlpha = env; ctx.fillStyle = '#fbf4ff'; ctx.beginPath(); ctx.arc(px, py, 3.2 * pulse, 0, Math.PI * 2); ctx.fill(); }
+    }
+    // gleißender Austritt am Turm
+    if (halo) { ctx.globalAlpha = Math.min(1, env * k * fl); ctx.drawImage(halo, x0 - 34, y0 - 34, 68, 68); }
     ctx.restore();
   }
 
@@ -7611,6 +7679,9 @@ export class ShooterGame implements MiniGame {
       ctx.globalAlpha = Math.min(0.6, a * 0.22);
       ctx.drawImage(img, f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
     }
+    // Kyon-Strahlen leuchten durch den Dunst
+    for (const e of this.enemies) if (e.beamDur && e.beamT && e.beamT <= e.beamDur) this.drawKyonBeam(ctx, e, this.time, 0.35 + this.fog, true);
+    ctx.globalCompositeOperation = 'lighter';
     // Blitze: feine gezackte Linien mit weichem Leuchtsaum (Breite in Bildschirmpunkten), Äste schwächer
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -7816,6 +7887,12 @@ export class ShooterGame implements MiniGame {
     };
     for (const s of this.storms) light(s.x, s.y, s.r, '214,226,255', this.stormGlow(s) * 0.95);
     for (const f of this.flares) light(f.x, f.y, f.r, '255,170,90', (1 - f.t / f.max) ** 1.5 * 0.8);
+    // Kyon-Strahlen tauchen die Schwaden längs des Strahls in violettes Licht
+    for (const e of this.enemies) {
+      if (!e.beamDur || !e.beamT || e.beamT > e.beamDur) continue;
+      const c = Math.cos(e.beamA!), sn = Math.sin(e.beamA!), env = Math.min(1, e.beamT / 0.15, (e.beamDur - e.beamT) / 0.1);
+      for (let d = 60; d < LASER_LEN; d += 160) light(e.x + c * d, e.y + sn * d, 260, '176,110,255', 0.55 * env);
+    }
     // nah bei dir dünner, damit das Geschehen lesbar bleibt
     v.globalAlpha = 1;
     v.globalCompositeOperation = 'destination-out';

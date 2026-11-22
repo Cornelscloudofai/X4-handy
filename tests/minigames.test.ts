@@ -1504,12 +1504,13 @@ describe('Kampf: Kha’ak', () => {
 
   it('Grundausstattung, Stufe 1: mit Autopilot zu gewinnen', () => {
     let wins = 0;
-    for (let seed = 1; seed <= 3; seed++) {
+    for (let seed = 1; seed <= 8; seed++) {
       const g = new ShooterGame(cfg(1, seed), 'khaak');
       g.resize(W, H);
       if (run(g, () => g.autopilot(), 600).success) wins++;
     }
-    // Türme bewusst stark: der einfache Autopilot schafft mindestens eine von drei Runden
+    // Türme bewusst stark, das Brutschiff brütet laufend Späher: der einfache Autopilot schafft etwa jede fünfte Runde
+    // (gemessen über zehn Runden, wie vor dem Späherstrom) – mindestens eine von acht
     expect(wins).toBeGreaterThanOrEqual(1);
   });
 
@@ -1649,16 +1650,22 @@ describe('Kampf: Kha’ak', () => {
     expect(e.brood).toBe(1);
   });
 
-  it('Brutschiff: Kyon-Türme und Brutkästen, die Jäger ausbrüten (nur bei wenigen Jägern)', () => {
+  it('Brutschiff: Kyon-Türme und Brutkammern, die laufend Späher ausbrüten (mit Obergrenze)', () => {
     const g = make();
     g.spawnBoss();
     const turrets = g.enemies.filter((e) => e.parent);
     expect(turrets.map((t) => t.weapon).sort()).toEqual(['brut', 'brut', 'laser', 'laser']);
+    const scouts = () => g.enemies.filter((e) => e.kind === 'ks').length;
+    const s0 = scouts();
     for (const t of turrets) if (t.weapon === 'brut') t.cd = 0;
     g.update(DT);
-    expect(g.enemies.filter((e) => e.kind === 'kj')).toHaveLength(4);
-    for (let i = 0; i < 3; i++) { for (const t of turrets) if (t.weapon === 'brut') t.cd = 0; g.update(DT); }
-    expect(g.enemies.filter((e) => e.kind === 'kj').length).toBeLessThanOrEqual(6);
+    // jede Kammer: ein oder zwei Späher
+    expect(scouts() - s0).toBeGreaterThanOrEqual(2);
+    expect(scouts() - s0).toBeLessThanOrEqual(4);
+    // nach ein paar Sekunden weitere – aber nie mehr als die Obergrenze
+    for (let i = 0; i < 60 * 20; i++) g.update(DT);
+    expect(scouts()).toBeGreaterThan(s0);
+    expect(scouts()).toBeLessThanOrEqual(Math.max(s0, 6 * 2.5));
   });
 
   it('Zerstörer als Großziel: vier Kyon-Türme auf den Sockellöchern an Bug und Heck', () => {

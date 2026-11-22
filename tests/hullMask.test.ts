@@ -35,4 +35,15 @@ describe('Trefferform aus dem Schiffsbild', () => {
     expect(m.edge.length).toBeGreaterThan(20);
     for (const [u] of m.edge) expect(u).toBeGreaterThanOrEqual(0.4);
   });
+  it('Abstand ist in alle Richtungen gleich – auch schräg und außerhalb des Bilds (kein Kreuz im Nebel)', () => {
+    // kleiner runder Rumpf in der Mitte eines 21 × 21-Bilds
+    const w = 21, solid = new Uint8Array(w * w);
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) if ((x - 10) ** 2 + (y - 10) ** 2 <= 9) solid[y * w + x] = 1;
+    const m = maskFromSolid(solid, w, w);
+    for (const R of [8, 30, 80]) {
+      const vals = [0, 0.4, 0.785, 1.2, 1.571, 2.356, 3.14].map((a) => hullGap(m, Math.cos(a) * R, Math.sin(a) * R, 21, 21));
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      expect(hi - lo).toBeLessThan(1.2);
+    }
+  });
 });
