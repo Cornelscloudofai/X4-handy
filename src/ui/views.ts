@@ -12,7 +12,7 @@ import { loadoutView } from './loadoutView';
 import { FIGHTER_NAME, classSpriteUrl, moduleSpriteUrl, fighterKind, shipArt, spriteName, spriteUrl, type FighterKind, type ShipArt } from '../render/shipArt';
 import { artPic, artStyle, CAREER, PANEL_HERO } from './menuArt';
 import { modState } from '../minigames/mods';
-import { controlMode, enemyBars, ENEMY_BAR_STEPS, sizeScale } from '../minigames/loadout';
+import { controlMode, lenkSetup, enemyBars, ENEMY_BAR_STEPS, sizeScale } from '../minigames/loadout';
 
 let vectorUrl = '';
 /** Die Neon-Zeichnung des Jägers als Bild (für den Vergleich) */
@@ -1873,7 +1873,11 @@ function morePanel(state: GameState, ui: UIState): string {
           ${linkRow('play', 'Trailer jetzt ansehen', 'Den Trailer noch einmal abspielen', 'intro-play')}` : ''}
         </div></div>
         <div class="section"><h3>Kampf · Steuerung</h3><div class="segment">${(['eins', 'zwei', 'lenk'] as const).map((c) => `<button class="${controlMode() === c ? 'on' : ''}" ${act('mg-controls', { mode: c })}>${c === 'eins' ? 'Ein Stick' : c === 'zwei' ? 'Zwei Sticks' : 'Lenkrad'}</button>`).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : controlMode() === 'zwei' ? 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zeigen, wohin der Jäger blickt; über den Ring hinaus wird gefeuert.' : 'Links fliegen wie bei zwei Sticks. Rechts lenken wie ein Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung; über den Ring hinaus wird gefeuert.'} Beim Überschreiten des Rings leuchtet er auf, klickt leise und vibriert, wo das Gerät es zulässt.</p>
+        <p class="small muted" style="margin:8px 0 0">${controlMode() === 'eins' ? 'Links ein Stick: Richtung und Schub (im inneren Ring nur drehen), rechts Feuertaste.' : controlMode() === 'zwei' ? 'Links fliegen aus Sicht des Jägers: oben = geradeaus Schub, seitwärts ¼, rückwärts ⅓ des Tempos. Rechts zeigen, wohin der Jäger blickt; über den Ring hinaus wird gefeuert.' : (lenkSetup().axis === 'h' ? 'Links fliegen wie bei zwei Sticks. Rechts eine waagerechte Lenkachse: Daumen nach links/rechts dreht (je weiter aus der Mitte, desto schneller); quer über die Feuerlinie geschoben wird gefeuert.' : 'Links fliegen wie bei zwei Sticks. Rechts eine senkrechte Lenkachse: Daumen nach oben dreht nach links, nach unten nach rechts; quer über die Feuerlinie geschoben wird gefeuert. Der Daumen verdeckt so weniger vom Bild.')} Beim Überschreiten der Feuerschwelle leuchtet sie auf, klickt leise und vibriert, wo das Gerät es zulässt.</p>
+        ${controlMode() === 'lenk' ? `<div class="small muted" style="margin:10px 0 4px">Lenkachse</div>
+        <div class="segment">${(['h', 'v'] as const).map((ax) => `<button class="${lenkSetup().axis === ax ? 'on' : ''}" ${act('mg-lenk', { axis: ax })}>${ax === 'h' ? 'Waagerecht' : 'Senkrecht'}</button>`).join('')}</div>
+        <div class="small muted" style="margin:10px 0 4px">Feuerlinie</div>
+        <div class="segment">${([false, true] as const).map((fl) => `<button class="${lenkSetup().flip === fl ? 'on' : ''}" ${act('mg-lenk', { flip: fl ? '1' : '0' })}>${lenkSetup().axis === 'h' ? (fl ? 'Unter der Achse' : 'Über der Achse') : fl ? 'Links der Achse' : 'Rechts der Achse'}</button>`).join('')}</div>` : ''}
         <p class="small muted" style="margin:6px 0 0">Am PC schaltet sich die Maus-und-Tastatur-Steuerung von selbst ein: Das Schiff dreht sich zur Maus, W/A/S/D (oder Pfeiltasten) fliegen vorwärts, rückwärts und seitwärts, Linksklick feuert, Rechtsklick oder R Raketen, Leertaste Spezialfähigkeit, Mausrad Zoom.</p></div>
         <div class="section"><h3>Kampf · Anzeige über den Gegnern</h3><div class="segment">${ENEMY_BAR_STEPS.map((v, i) => `<button class="${enemyBars() === v ? 'on' : ''}" ${act('mg-bars', { v: String(v) })}>${['Aus', 'Dezent', 'Mittel', 'Deutlich'][i]}</button>`).join('')}</div>
         <p class="small muted" style="margin:8px 0 0">Zwei feine Linien über jedem Gegner: oben der Schild (hellblau, lädt nach 3 s ohne Treffer wieder auf), darunter die Hülle. Unbeschädigte Gegner noch blasser.</p></div>

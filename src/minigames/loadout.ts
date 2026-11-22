@@ -822,7 +822,7 @@ export function loadoutLabel(l: Loadout = loadout()): string {
 }
 
 // ---- Steuerung im Kampf: ein Stick (Drehen + Schub, Feuertaste) oder zwei Sticks (links fliegen, rechts zielen und feuern) ----
-/** eins: ein Stick + Feuertaste; zwei: rechts zielen (Richtung zeigen); lenk: rechts lenken wie ein Lenkrad */
+/** eins: ein Stick + Feuertaste; zwei: rechts zielen (Richtung zeigen); lenk: rechts eine Lenkachse (drehen), quer dazu feuern */
 export type ControlMode = 'eins' | 'zwei' | 'lenk';
 const CONTROL_KEY = 'x4-sektorbau-steuerung';
 export function controlMode(): ControlMode {
@@ -833,6 +833,28 @@ export function controlMode(): ControlMode {
     return 'eins';
   }
 }
+/**
+ * Lenkachse (Steuerung „Lenkrad“): waagerecht (Daumen links/rechts dreht) oder senkrecht (oben = links drehen, unten =
+ * rechts); die Feuerlinie liegt quer dazu – über bzw. rechts der Achse, mit flip darunter bzw. links
+ */
+export interface LenkSetup { axis: 'h' | 'v'; flip: boolean }
+const LENK_KEY = 'x4-sektorbau-lenkachse';
+export function lenkSetup(): LenkSetup {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(LENK_KEY) ?? 'null') as Partial<LenkSetup> | null;
+    return { axis: v?.axis === 'v' ? 'v' : 'h', flip: !!v?.flip };
+  } catch {
+    return { axis: 'h', flip: false };
+  }
+}
+export function setLenkSetup(p: Partial<LenkSetup>): void {
+  try {
+    globalThis.localStorage?.setItem(LENK_KEY, JSON.stringify({ ...lenkSetup(), ...p }));
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+}
+
 export function setControlMode(m: ControlMode): void {
   try {
     globalThis.localStorage?.setItem(CONTROL_KEY, m);

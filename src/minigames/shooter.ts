@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { fogTest, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { fogTest, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -546,6 +546,11 @@ const AIM_FULL = 0.72;
 const AIM_FIRE = 0.88;
 /** Totzone in der Mitte des rechten Sticks */
 const AIM_DEAD = 0.1;
+/**
+ * Lenkachse: Ruhezone in der Mitte (Anteil des Achsenwegs), ab der das Schiff dreht; Feuerlinie quer zur Achse
+ * (Anteil von AIM_R), ab der gefeuert wird
+ */
+const LENK_DEAD = 0.1, LENK_FIRE = 0.42;
 /** Lenkstärke 0 … 1 aus dem Ausschlag des rechten Sticks */
 const aimStrength = (ad: number): number => clamp((ad - AIM_DEAD) / (AIM_FULL - AIM_DEAD), 0, 1);
 const SIDE_THRUST = 1 / 4;
@@ -857,6 +862,8 @@ export class ShooterGame implements MiniGame {
   private cruise = 0;
   /** Vorhaltepunkt des anvisierten Gegners */
   private lock: { e: Enemy; x: number; y: number; ok: boolean; off: number } | null = null;
+  /** Lenkachse (Steuerung „Lenkrad“) */
+  private lenk: LenkSetup = { axis: 'h', flip: false };
   /** Vorhaltepunkte aller Gegner in Feuerreichweite (das Hauptziel ist lock) */
   private leads: { e: Enemy; x: number; y: number }[] = [];
   private missileCd = 2;
@@ -1058,12 +1065,25 @@ export class ShooterGame implements MiniGame {
     this.place = cfg.place ?? null;
     const lo: Loadout = cfg.loadout ?? loadout();
     this.ctrl = cfg.controls ?? (cfg.loadout ? 'eins' : controlMode());
+    this.lenk = cfg.lenk ?? lenkSetup();
     if (this.ctrl === 'zwei') this.controls = [
       'Zwei Sticks: links hinhalten und ziehen zum Fliegen, aus Sicht des Jägers – nach oben Schub geradeaus, zur Seite seitwärts, nach unten rückwärts – seitwärts mit einem Viertel, rückwärts mit einem Drittel der Kraft und des Tempos; der Jäger driftet mit Trägheit',
       'Rechts hinhalten und ziehen zum Zielen: der Jäger dreht sich dorthin (so entsteht auch Drift); über den Ring hinaus feuern die Bordkanonen – mit kurzem Vibrieren',
       'Raketen (R) suchen ihr Ziel selbst, Spezialtaste darüber; ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
       'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
     ];
+    if (this.ctrl === 'lenk') {
+      const { axis, flip } = this.lenk;
+      const fire = axis === 'h' ? (flip ? 'unter' : 'über') : flip ? 'links' : 'rechts';
+      this.controls = [
+        'Links fliegen wie bei zwei Sticks: nach oben Schub geradeaus, zur Seite seitwärts, nach unten rückwärts',
+        axis === 'h'
+          ? `Rechts die Lenkachse: Daumen nach links oder rechts schieben dreht den Jäger – je weiter aus der Mitte, desto schneller. Über die gestrichelte Feuerlinie ${fire} der Achse schieben: feuern – lenken und feuern geht mit einem Daumen`
+          : `Rechts die senkrechte Lenkachse: Daumen nach oben dreht nach links, nach unten nach rechts – je weiter aus der Mitte, desto schneller. Über die gestrichelte Feuerlinie ${fire} der Achse schieben: feuern`,
+        'Raketen (R) suchen ihr Ziel selbst, Spezialtaste darüber; ohne Gegner in der Nähe schaltet der Reiseantrieb zu',
+        'Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen',
+      ];
+    }
     if (cfg.mission === 'ueberleben') this.controls = this.controls.map((c) => c.replace('Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen', 'Gegner kommen aus allen Richtungen – in Bewegung bleiben, nicht einkreisen lassen'));
     this.ship = SHIPS[lo.ship];
     this.fk = Math.max(1, (SHIPS.cobra.size * (SHIPS.cobra.turretD ?? 0.1)) / F_GAT.size);
@@ -4098,15 +4118,13 @@ export class ShooterGame implements MiniGame {
       // auch seitwärts und rückwärts, dort schwächer
       const a = this.aim, ad = a ? Math.min(1, Math.hypot(a.kx, a.ky)) : 0;
       if (this.ctrl === 'lenk') {
-        // Lenkrad: oben = geradeaus, links/rechts = drehen (je weiter zur Seite, desto schneller), unten = volle Drehung
-        if (a && ad > AIM_DEAD) {
-          const rel = Math.atan2(a.kx, -a.ky);
-          const k = clamp(rel / (Math.PI / 2), -1, 1) * aimStrength(ad);
-          this.aimA = wrapA(this.aimA + k * this.turnRate * dt);
-        }
+        // Lenkachse: entlang der Achse drehen (je weiter aus der Mitte, desto schneller; in der Ruhezone geradeaus)
+        const { s } = this.lenkAxes(a);
+        if (Math.abs(s) > LENK_DEAD) this.aimA = wrapA(this.aimA + Math.sign(s) * ((Math.abs(s) - LENK_DEAD) / (1 - LENK_DEAD)) * this.turnRate * dt);
       } else if (a && ad > AIM_DEAD) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * aimStrength(ad) * dt));
       if (this.fireId !== 99) {
-        const fire = a && ad > AIM_FIRE ? a.id : null;
+        // Lenkachse: über die Feuerlinie quer zur Achse; zwei Sticks: über den Feuerring hinaus
+        const fire = a && (this.ctrl === 'lenk' ? this.lenkAxes(a).f > LENK_FIRE : ad > AIM_FIRE) ? a.id : null;
         // Rückmeldung, sobald der rechte Stick über den Ring geht und die Waffen auslösen: kurzes Vibrieren (wo das
         // Gerät es erlaubt), leiser Klick und ein Aufleuchten des Rings
         if (fire !== null && this.fireId === null) { vibrate(25); sfx.tick(); this.ringFlash = 0.25; }
@@ -8208,6 +8226,58 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
   }
 
+  /**
+   * Auslenkung auf der Lenkachse: s entlang der Achse (-1 … 1, positiv = rechts drehen), f quer dazu zur Feuerseite hin
+   * (Anteil von AIM_R). Waagerecht: rechts = rechts drehen; senkrecht: oben = links drehen (wie am Lenkradkranz rechts)
+   */
+  private lenkAxes(a: { kx: number; ky: number } | null): { s: number; f: number } {
+    if (!a) return { s: 0, f: 0 };
+    const { axis, flip } = this.lenk;
+    if (axis === 'h') return { s: clamp(a.kx, -1, 1), f: flip ? a.ky : -a.ky };
+    return { s: clamp(a.ky, -1, 1), f: flip ? -a.kx : a.kx };
+  }
+
+  /** Lenkachse zeichnen: Achse mit Ruhezone, Feuerlinie auf der gewählten Seite, Griff am Daumen */
+  private drawLenk(ctx: CanvasRenderingContext2D, a: { ox: number; oy: number; kx: number; ky: number }): void {
+    const { axis, flip } = this.lenk, R = AIM_R, firing = this.fireId !== null;
+    // Achsenrichtung (ux, uy) und Richtung zur Feuerseite (fx, fy)
+    const [ux, uy] = axis === 'h' ? [1, 0] : [0, 1];
+    const [fx, fy] = axis === 'h' ? [0, flip ? 1 : -1] : [flip ? -1 : 1, 0];
+    const col = firing ? '#ffb547' : '#3fe0c5';
+    ctx.save();
+    ctx.lineCap = 'round';
+    // Achse
+    ctx.strokeStyle = rgba(col, 0.4);
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(a.ox - ux * R, a.oy - uy * R); ctx.lineTo(a.ox + ux * R, a.oy + uy * R); ctx.stroke();
+    // Ruhezone und Endmarken
+    ctx.lineWidth = 2;
+    for (const k of [-LENK_DEAD, LENK_DEAD, -1, 1]) {
+      const m = Math.abs(k) === 1 ? 10 : 6;
+      ctx.beginPath(); ctx.moveTo(a.ox + ux * R * k - fx * m, a.oy + uy * R * k - fy * m); ctx.lineTo(a.ox + ux * R * k + fx * m, a.oy + uy * R * k + fy * m); ctx.stroke();
+    }
+    // Pfeile: Drehrichtung an den Enden (links/rechts drehen)
+    ctx.fillStyle = rgba(col, 0.45);
+    for (const k of [-1, 1]) {
+      const cx = a.ox + ux * R * (k * 1.18), cy = a.oy + uy * R * (k * 1.18);
+      ctx.beginPath(); ctx.moveTo(cx + ux * k * 8, cy + uy * k * 8); ctx.lineTo(cx - fx * 6 - ux * k * 2, cy - fy * 6 - uy * k * 2); ctx.lineTo(cx + fx * 6 - ux * k * 2, cy + fy * 6 - uy * k * 2); ctx.closePath(); ctx.fill();
+    }
+    // Feuerlinie quer zur Achse auf der Feuerseite, darüber hinaus ein Band
+    const fl = R * LENK_FIRE;
+    ctx.strokeStyle = rgba('#ffb547', firing ? 0.22 : 0.1);
+    ctx.lineWidth = R * 0.2;
+    ctx.beginPath(); ctx.moveTo(a.ox - ux * R + fx * (fl + R * 0.1), a.oy - uy * R + fy * (fl + R * 0.1)); ctx.lineTo(a.ox + ux * R + fx * (fl + R * 0.1), a.oy + uy * R + fy * (fl + R * 0.1)); ctx.stroke();
+    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = rgba('#ffd27a', this.ringFlash > 0 ? Math.min(1, this.ringFlash * 3) : 0.55);
+    ctx.lineWidth = this.ringFlash > 0 ? 4 : 2;
+    ctx.beginPath(); ctx.moveTo(a.ox - ux * R + fx * fl, a.oy - uy * R + fy * fl); ctx.lineTo(a.ox + ux * R + fx * fl, a.oy + uy * R + fy * fl); ctx.stroke();
+    ctx.setLineDash([]);
+    // Griff
+    ctx.fillStyle = rgba(col, 0.4);
+    ctx.beginPath(); ctx.arc(a.ox + a.kx * R, a.oy + a.ky * R, 22, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
   private drawControls(ctx: CanvasRenderingContext2D, t: number): void {
     const stick = (j: { ox: number; oy: number; kx: number; ky: number }, inner: number, dashed: boolean, color: string, R = JOY_R) => {
       ctx.strokeStyle = rgba(color, 0.35);
@@ -8230,7 +8300,8 @@ export class ShooterGame implements MiniGame {
     const j = this.joy;
     if (this.pc) this.drawPcHint(ctx);
     if (j && j.id < 98 && !this.pc) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
-    if (this.aim) {
+    if (this.aim && this.ctrl === 'lenk') this.drawLenk(ctx, this.aim);
+    else if (this.aim) {
       // mittlerer Ring (gestrichelt): volle Lenkung; Band außen ab dem Feuerring: feuern
       stick(this.aim, AIM_FULL, true, this.fireId !== null ? '#ffb547' : '#3fe0c5', AIM_R);
       ctx.strokeStyle = rgba('#ffb547', this.fireId !== null ? 0.45 : 0.18);
@@ -8244,15 +8315,6 @@ export class ShooterGame implements MiniGame {
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.arc(this.aim.ox, this.aim.oy, AIM_R * AIM_FIRE, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      // Lenkrad: Hilfslinie „geradeaus“ nach oben
-      if (this.ctrl === 'lenk') {
-        ctx.strokeStyle = 'rgba(110,220,205,0.25)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(this.aim.ox, this.aim.oy - AIM_R * 0.2);
-        ctx.lineTo(this.aim.ox, this.aim.oy - AIM_R);
         ctx.stroke();
       }
     }

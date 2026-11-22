@@ -49,7 +49,7 @@ import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
-import { SHIPS, fogTest, setFogTest, loadout, setControlMode, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
+import { SHIPS, fogTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode, Place } from '../minigames/common';
 import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
@@ -1502,6 +1502,11 @@ function onClick(e: MouseEvent): void {
       case 'mg-back': ui.modal = lastMg ?? { type: 'minigames', tab: 'combat' }; refresh(); break;
       case 'mg-controls': {
         setControlMode(d.mode as ControlMode);
+        refresh();
+        break;
+      }
+      case 'mg-lenk': {
+        setLenkSetup(d.axis ? { axis: d.axis === 'v' ? 'v' : 'h' } : { flip: d.flip === '1' });
         refresh();
         break;
       }
