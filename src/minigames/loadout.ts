@@ -2,7 +2,7 @@
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
 export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'wolf' | 'dragon' | 'cobra' | 'klapperschlange' | 'raptor' | 'argon';
-export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'schnellplasma' | 'plasmasalve';
+export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'massdriver' | 'schnellplasma' | 'plasmasalve';
 export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson' | 'rakete';
 /** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
 export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron' | 'silo';
@@ -391,6 +391,8 @@ export interface WeaponDef {
   /** Anteil des Schadens, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */
   hullPierce?: number;
   rail?: boolean;
+  /** Mass Driver: Projektil mit langer Leuchtspur, durchschlägt ein Ziel und trifft das nächste mit halber Wucht */
+  slug?: boolean;
   /** Zielhilfe im Verhältnis zu sonst (Bosonenlanze: kleiner Schwenkbereich) */
   gimbal?: number;
   color: string;
@@ -464,6 +466,15 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     desc: 'Split: blitzschneller Lanzenstrahl, der sofort trifft – riesiger Schaden und größte Reichweite, etwa ein Schuss pro Sekunde.',
     s: { dmg: 750, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.55, angle: 0.23 },
     m: { dmg: 1150, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.59, angle: 0.23 },
+  },
+  // Mass Driver (Terraner): ballistisch wie eine Kanone, aber mit sehr hoher Mündungsgeschwindigkeit – zwischen
+  // Neutronen-Gatling und Bosonenlanze eingeordnet: rund 60 % des Lanzenschadens je Schuss, etwas schnellerer Takt,
+  // kann aber verfehlen (sichtbares Projektil, etwas Vorhalt nötig); Durchschlag als Besonderheit
+  massdriver: {
+    name: 'Mass Driver', group: 'allgemein', color: '#9fdcff', w: 2.6, gimbal: 0.7, slug: true,
+    desc: 'Terraner: magnetisch beschleunigtes Projektil, sehr schnell und mit langer Leuchtspur – hoher Einzelschaden, durchschlägt ein Ziel und trifft das nächste mit halber Wucht. Kann verfehlen.',
+    s: { dmg: 450, rate: 1.3, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.15, angle: 0.12 },
+    m: { dmg: 690, rate: 1.3, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.25, angle: 0.12 },
   },
   // Schwere Hauptbatterie (nur L): eigene Entwürfe ohne X4-Vorbild. Takt so gewählt, dass im Minispiel etwa ein Schuss
   // pro Sekunde fällt (Schnellfeuer) bzw. drei Schuss in einer Sekunde, dann drei Sekunden Pause (Salve).

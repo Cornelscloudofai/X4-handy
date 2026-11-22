@@ -77,7 +77,7 @@ const MOD_GLYPH: Record<ModSlot, string> = { weapon: 'gun', engine: 'engine', sh
 const glyph = (k: string, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[k] ?? GLYPH.gun}</svg>`;
 const WEAPON_LOOK: Record<string, [string, string]> = {
   rakete: ['rocket', '#ffb070'], puls: ['gun', '#3fe0c5'], bolzen: ['gun', '#9fe870'], schrot: ['scatter', '#ffb547'], strahl: ['beam', '#5fb4ff'], plasma: ['plasma', '#ff6a3d'],
-  neutron: ['gatling', '#7fd8ff'], tau: ['scatter', '#ffd27a'], thermal: ['gun', '#ff8a5c'], boson: ['lance', '#c58bff'],
+  neutron: ['gatling', '#7fd8ff'], tau: ['scatter', '#ffd27a'], thermal: ['gun', '#ff8a5c'], boson: ['lance', '#c58bff'], massdriver: ['lance', '#9fdcff'],
   schnellplasma: ['plasma', '#ff8a3d'], plasmasalve: ['plasma', '#ff5c3d'],
 };
 const MISSILE_LOOK: Record<string, string> = { lenk: '#ffb070', schwer: '#ff7a3a', schwarm: '#ffd27a', stoer: '#8fe0ff' };

@@ -261,6 +261,8 @@ const GUNS: Record<string, { s: string[]; rate: number; gain: number; w: number;
   tau: { s: ['sn-tau-a', 'sn-tau-b'], rate: 0.9, gain: 0.48, w: 0.2, f: 55, len: 0.24, dur: 1.3 },
   thermal: { s: ['sn-thermal-a', 'sn-thermal-b'], rate: 0.9, gain: 0.45, w: 0.2, f: 60, len: 0.2, dur: 1 },
   boson: { s: ['sn-boson-a', 'sn-boson-b'], rate: 0.86, gain: 0.8, w: 0.28, f: 45, len: 0.3, dur: 1.8 },
+  // Mass Driver: scharfer, heller Knall (Bolzen- und Lanzenaufnahme höher gedreht), kurzer Bass
+  massdriver: { s: ['sn-bolzen-b', 'sn-boson-b'], rate: 1.12, gain: 0.62, w: 0.24, f: 60, len: 0.18, dur: 0.9 },
   // schwere Plasmawaffen der L-Hauptbatterie: noch tiefer
   schnellplasma: { s: ['sn-schwer-a', 'sn-schwer-b'], rate: 0.82, gain: 0.55, w: 0.26, f: 45, len: 0.28, dur: 1.2 },
   plasmasalve: { s: ['sn-schwer-b', 'sn-schwer-a'], rate: 0.76, gain: 0.58, w: 0.28, f: 42, len: 0.3, dur: 1.1 },

@@ -246,13 +246,14 @@ export function leadTime(w: { beam?: boolean; rail?: boolean; speed: number }, d
   return w.beam || w.rail ? 0 : d / Math.max(1, w.speed);
 }
 
-function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile }): GameGun {
+function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
     const md = MISSILES.lenk, range = md.v * md.life * 0.85 * o.missile.range;
     return { dmg: g.dmg * DMG_SCALE, interval: o.missile.reload, mag: 0, reload: 0, speed: md.v, life: md.life * o.missile.range, range, pellets: o.missile.n, jitter: 0, beam: false, hullPierce: 0, rail: false, gimbal: 1, color: o.color, w: o.w, missile: o.missile };
   }
-  const beam = !!o.beam, range = gameRange(g, beam), speed = beam ? 0 : gameSpeed(g.v);
+  // Mass Driver: im Spiel deutlich schneller als die übrigen Geschosse (die Tempo-Stauchung gilt für ihn nur halb)
+  const beam = !!o.beam, range = gameRange(g, beam), speed = beam ? 0 : gameSpeed(g.v) * (o.slug ? 2.2 : 1);
   return {
     dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME * RELOAD,
     speed, life: beam ? 0 : range / speed, range, pellets: g.amt, jitter: g.angle * JITTER,
@@ -260,7 +261,7 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -313,6 +314,13 @@ const TURRET_RATE = 1.6, TURRET_DMG = 1.15;
  * FLAK_FX: Größe der Sprengwolke (Optik)
  */
 const FLAK_FUSE = 14, FLAK_R = 46, FLAK_DMG = 2.8, FLAK_FX = 62;
+/**
+ * Torpedo des Dragon (Spezialfähigkeit): schwerer Lenkflugkörper. Schaden TORPEDO_DMG × Grundschaden (vorher 14 als
+ * ungelenkter Schuss geradeaus, jetzt deutlich mehr und er trifft); gegen Boote und Großziele stärker, Druckwelle
+ * im Umkreis. Träge Lenkung: wendige Jäger können ausweichen.
+ */
+const TORPEDO_DMG = 30;
+const TORPEDO: MissileDef = { name: 'Torpedo', role: 'Spezialfähigkeit', desc: '', dmg: 1, v: 360, acc: 520, turn: 1.6, life: 6, slots: 0, lock: 'big', vs: { S: 0.8, M: 1.3, L: 1.6 }, splash: [110, 0.55], color: '#ffd27a', size: 44 };
 
 /** Drehrate je Gegnerart (rad/s): Jäger wendig, Kanonenboote träge – wer sie umkreist, ist vor ihren Kanonen sicher */
 const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 2.2, xs: 1.6, p: 0.55, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
@@ -907,6 +915,11 @@ export class ShooterGame implements MiniGame {
   /** Turmbefehle der M- und L-Türme (gemerkt) und ein laufendes Wischen am Befehlsknopf */
   orders = readOrders();
   private orderDrag: { id: number; which: OrderKey; x0: number; y0: number; pick: string | null } | null = null;
+  /**
+   * Torpedo zielen (Dragon): Spezialtaste halten – ein Zielkreis erscheint, die Taste wird zum Steuerknüppel für den
+   * Kreis (Weltpunkt rx, ry), Loslassen erfasst das Ziel darunter und feuert. Kurz tippen feuert aufs aktuelle Ziel.
+   */
+  private torpAim: { id: number; ox: number; oy: number; kx: number; ky: number; t0: number; on: boolean; rx: number; ry: number; pick: Enemy | null } | null = null;
   /** Staffel (eigene Begleitschiffe) */
   private wings: Wing[] = [];
   /** Auf der taktischen Karte gewähltes Ziel: alle Begleiter greifen es an */
@@ -1552,7 +1565,11 @@ export class ShooterGame implements MiniGame {
     const [bx, by, br] = this.btnMissile;
     if (Math.hypot(x - bx, y - by) < br + 10) { this.fireMissiles(); return; }
     const [dx, dy, dr] = this.btnDash;
-    if (Math.hypot(x - dx, y - dy) < dr + 10) { this.doSpecial(); return; }
+    if (Math.hypot(x - dx, y - dy) < dr + 10) {
+      if (this.ship.special === 'torpedo') { this.startTorpAim(id, x, y); return; }
+      this.doSpecial();
+      return;
+    }
     for (const [which, ox, oy, orr] of this.orderBtns) {
       if (Math.hypot(x - ox, y - oy) < orr + 8) { this.orderDrag = { id, which, x0: ox, y0: oy, pick: null }; sfx.tap(); return; }
     }
@@ -1580,6 +1597,7 @@ export class ShooterGame implements MiniGame {
 
   pointerMove(id: number, x: number, y: number): void {
     if (this.panId === id) { this.setPan(y); return; }
+    if (this.torpAim?.id === id) { this.moveTorpAim(x, y); return; }
     // zurück am Schiff: ein Finger, der schon vorher auf einem Stick lag, übernimmt ihn wieder (an seiner jetzigen Stelle)
     if (this.camMode === 'schiff' && !this.tac) {
       if (id === this.heldJoy && (!this.joy || this.joy.id === 98)) { this.joy = { id, ox: x, oy: y, kx: 0, ky: 0 }; this.heldJoy = null; }
@@ -1630,6 +1648,7 @@ export class ShooterGame implements MiniGame {
 
   pointerUp(id: number): void {
     if (this.panId === id) this.panId = null;
+    if (this.torpAim?.id === id) { this.releaseTorpAim(); return; }
     if (this.heldJoy === id) this.heldJoy = null;
     // freie Sicht: Stick-Finger nur kurz angetippt (nicht gezogen) – wie oben: dem Objekt dort folgen
     const st = this.stickTap;
@@ -2622,6 +2641,75 @@ export class ShooterGame implements MiniGame {
     return ahead ?? any;
   }
 
+  /** Torpedo-Taste gedrückt: noch nicht feuern – erst halten (zielen) oder kurz tippen (aktuelles Ziel) */
+  private startTorpAim(id: number, x: number, y: number): void {
+    if (this.dashCd > 0 || this.outcome || this.choosing) return;
+    // Zielkreis beginnt auf dem erfassten Ziel, sonst ein Stück voraus
+    const e = this.lock?.e, d0 = 420 + this.ship.size * 0.5;
+    const rx = e ? e.x : this.px + Math.cos(this.aimA) * d0, ry = e ? e.y : this.py + Math.sin(this.aimA) * d0;
+    this.torpAim = { id, ox: x, oy: y, kx: 0, ky: 0, t0: this.time, on: false, rx, ry, pick: null };
+  }
+
+  private moveTorpAim(x: number, y: number): void {
+    const a = this.torpAim!, R = 46;
+    let kx = (x - a.ox) / R, ky = (y - a.oy) / R;
+    const l = Math.hypot(kx, ky);
+    if (l > 1) { kx /= l; ky /= l; }
+    a.kx = kx; a.ky = ky;
+    if (l > 0.2) a.on = true;
+  }
+
+  /** Zielkreis nachführen (Steuerknüppel: Auslenkung = Tempo), Ziel unter dem Kreis vormerken */
+  private updateTorpAim(dt: number): void {
+    const a = this.torpAim;
+    if (!a) return;
+    if (!a.on && this.time - a.t0 > 0.22) a.on = true;
+    if (!a.on) return;
+    // Tempo nach Bildausschnitt: voller Ausschlag quert die Bildbreite in knapp einer Sekunde, kleiner fein
+    const vw = this.w / this.zoom, vh = this.h / this.zoom, sp = vw * 1.15;
+    a.rx += a.kx * Math.abs(a.kx) * sp * dt;
+    a.ry += a.ky * Math.abs(a.ky) * sp * dt;
+    // im sichtbaren Bereich bleiben (Rand frei für Anzeigen) und nicht weiter als die Reichweite des Torpedos
+    const m = 40 / this.zoom;
+    a.rx = clamp(a.rx, this.camX + m, this.camX + vw - m);
+    a.ry = clamp(a.ry, this.camY + (TOP + 30) / this.zoom, this.camY + vh - m * 3);
+    const dx = a.rx - this.px, dy = a.ry - this.py, d = Math.hypot(dx, dy), max = TORPEDO.v * TORPEDO.life * 0.9;
+    if (d > max) { a.rx = this.px + (dx / d) * max; a.ry = this.py + (dy / d) * max; }
+    let best: Enemy | null = null, bd = 140;
+    for (const e of this.enemies) {
+      if (e.kind === 'cargo' && this.mission !== 'ueberfall') continue;
+      if (!this.seen(e.x, e.y, e.r)) continue;
+      const q = Math.hypot(e.x - a.rx, e.y - a.ry) - e.r;
+      if (q < bd) { bd = q; best = e; }
+    }
+    a.pick = best;
+  }
+
+  private releaseTorpAim(): void {
+    const a = this.torpAim!;
+    this.torpAim = null;
+    // kurz getippt: aufs erfasste Ziel bzw. was vor dem Bug liegt
+    const tgt = a.on ? a.pick : this.lock?.e ?? null;
+    const dir = a.on && !tgt ? Math.atan2(a.ry - this.py, a.rx - this.px) : undefined;
+    this.fireTorpedo(tgt, dir);
+  }
+
+  /**
+   * Schwerer Lenktorpedo: startet aus dem Bug, beschleunigt, lenkt träge ins Ziel und reißt beim Einschlag eine große
+   * Druckwelle (Schaden im Umkreis). Ohne Ziel fliegt er in die gewählte Richtung und sucht sich unterwegs eins.
+   */
+  private fireTorpedo(target: Enemy | null, dir?: number): void {
+    if (this.dashCd > 0 || this.outcome || this.choosing) return;
+    const a = dir ?? (target ? Math.atan2(target.y - this.py, target.x - this.px) : this.aimA), d0 = this.ship.size * 0.45;
+    const bx = this.px + Math.cos(this.aimA) * d0, by = this.py + Math.sin(this.aimA) * d0;
+    this.missiles.push({ x: bx, y: by, vx: Math.cos(a) * 140 + this.pvx * 0.5, vy: Math.sin(a) * 140 + this.pvy * 0.5, target, life: TORPEDO.life, def: TORPEDO, dmg: this.baseDmg * TORPEDO_DMG, src: 'spec', tk: 1, vk: 1, wob: 0, wf: 0, ox: 0, oy: 0 });
+    this.dashCd = this.dashCdMax;
+    this.fx.add({ x: bx, y: by, color: '#ffe0a0', size: 10, max: 0.12 });
+    this.fx.burst(bx, by, '#ffd27a', 8, 140, 1.4, 'spark', 0.3);
+    if (target) this.floats.add(target.x, target.y - target.r - 14, 'Torpedo erfasst', '#ffd27a', 12);
+    sfx.missile();
+  }
+
   /** Spezialfähigkeit des Schiffs: Ausweichen, Waffenüberladung oder Schildüberladung */
   private doSpecial(): void {
     if (this.dashCd > 0 || this.outcome || this.choosing) return;
@@ -2646,11 +2734,8 @@ export class ShooterGame implements MiniGame {
       return;
     }
     if (this.ship.special === 'torpedo') {
-      // schwerer, langsamer Torpedo geradeaus aus dem Bug, großer Flächenschaden
-      const a = this.aimA, d0 = this.ship.size * 0.45;
-      this.bullets.push({ x: this.px + Math.cos(a) * d0, y: this.py + Math.sin(a) * d0, vx: Math.cos(a) * 300 + this.pvx * 0.5, vy: Math.sin(a) * 300 + this.pvy * 0.5, dmg: this.baseDmg * 14, from: 'p', src: 'spec', life: 2.4, color: '#ffd27a', w: 7, pierce: 0, splash: 70 });
-      this.dashCd = this.dashCdMax;
-      sfx.shot('thermal');
+      // Tastatur/Maus und Autopilot: sofort aufs erfasste Ziel (Zielen per Halten nur auf dem Touchschirm)
+      this.fireTorpedo(this.lock?.e ?? this.enemies.find((e) => !e.parent && this.seen(e.x, e.y, e.r)) ?? null);
       return;
     }
     if (this.ship.special === 'escort') {
@@ -4121,7 +4206,10 @@ export class ShooterGame implements MiniGame {
           // Lanze: Durchschlag wie bei Geschossen; Überladung: jeder dritte (zweite) Schuss trifft doppelt
           this.logSrc = 'gun'; this.logShot();
           if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7) * (over ? 2 : 1), w.range, over ? '#ffd27a' : w.color, this.ship.gunSize === 'l' || over, this.c('pierce')); continue; }
-          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', src: 'gun', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce'), hullPierce: w.hullPierce || undefined, splash: this.c('splash') ? 30 + 25 * this.c('splash') : undefined });
+          const slug = !!WEAPONS[this.wpnId as WeaponId]?.slug;
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', src: 'gun', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce') + (slug ? 1 : 0), hullPierce: w.hullPierce || undefined, splash: this.c('splash') ? 30 + 25 * this.c('splash') : undefined, slug: slug || undefined });
+          // Mass Driver: Mündungsblitz und kleine Druckwelle an der Mündung
+          if (slug) { this.fx.add({ x: ox, y: oy, color: '#dff4ff', size: 7, max: 0.07 }); this.fx.add({ x: ox + Math.cos(a) * 6, y: oy + Math.sin(a) * 6, color: '#9fdcff', size: 5, kind: 'ring', max: 0.16 }); }
         }
       }
       // nächster Schuss; ist das Magazin leer, erst nachladen
@@ -4129,6 +4217,7 @@ export class ShooterGame implements MiniGame {
       if (w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; this.reloadLeft = this.reloadMax = this.fireCd; this.reloading = true; }
     }
     this.updateTurrets(dt);
+    this.updateTorpAim(dt);
     if (this.tBeams.length) sustain('turretBeam', 'beam', 0.45);
     this.updateLTurrets(dt);
     this.updateWings(dt);
@@ -5055,6 +5144,13 @@ export class ShooterGame implements MiniGame {
             this.fx.add({ x: b.x, y: b.y, color: b.color, size: b.splash * 0.5, kind: 'ring', max: 0.3 });
           }
           this.fx.burst(b.x, b.y, '#bffff6', 3, 120, 1.2, 'spark', 0.2);
+          // Mass Driver: heller Einschlag mit Funkenkegel in Flugrichtung; beim Durchschlag weiter mit halber Wucht
+          if (b.slug) {
+            this.fx.add({ x: b.x, y: b.y, color: '#e8f6ff', size: 8, max: 0.08 });
+            this.fx.add({ x: b.x, y: b.y, color: '#9fdcff', size: 9, kind: 'ring', max: 0.22 });
+            this.fx.burst(b.x, b.y, '#cfeeff', 6, 260, 1.1, 'spark', 0.22);
+            if (b.pierce > 0) b.dmg *= 0.5;
+          }
           if (b.pierce > 0) { b.pierce--; (b.hit ??= new Set()).add(e); keep.push(b); }
           continue;
         }
@@ -5269,7 +5365,9 @@ export class ShooterGame implements MiniGame {
     if (def.splash) {
       const [rad, f] = def.splash;
       for (const q of [...this.enemies]) if (q !== e && Math.hypot(q.x - m.x, q.y - m.y) < rad + q.r) { this.logSrc = m.src ?? 'other'; this.damageEnemy(q, m.dmg * f); }
-      this.explode(m.x, m.y, '#ffb070', 1.2, false);
+      // Torpedo: große Explosion mit Druckwelle (hörbar), Rakete: kleine
+      if (def === TORPEDO) { this.explode(m.x, m.y, '#ffb070', 2.4); this.fx.add({ x: m.x, y: m.y, color: '#ffd27a', size: rad * 0.55, kind: 'ring', max: 0.45 }); }
+      else this.explode(m.x, m.y, '#ffb070', 1.2, false);
     }
     this.fx.burst(m.x, m.y, def.stun ? '#8fe0ff' : '#ffd27a', m.mini ? 7 : 12, 180, 1.8, 'spark', 0.35);
   }
@@ -5953,6 +6051,28 @@ export class ShooterGame implements MiniGame {
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     for (const b of this.bullets) {
+      if (b.slug) {
+        // Mass Driver: lange, dünne Leuchtspur hinter einem gleißenden Kern (Länge nach Tempo)
+        const v = Math.hypot(b.vx, b.vy) || 1, L = Math.min(190, v * 0.11), ux = b.vx / v, uy = b.vy / v;
+        ctx.lineCap = 'round';
+        // breiter, schwacher Schein der Spur, darüber die schmale helle Spur
+        for (const [w, a] of [[b.w * 4, 0.22], [b.w * 1.5, 0.85]] as const) {
+          const g = ctx.createLinearGradient(b.x, b.y, b.x - ux * L, b.y - uy * L);
+          g.addColorStop(0, rgba(b.color, a));
+          g.addColorStop(0.35, rgba(b.color, a * 0.45));
+          g.addColorStop(1, rgba(b.color, 0));
+          ctx.strokeStyle = g;
+          ctx.lineWidth = w;
+          ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - ux * L, b.y - uy * L); ctx.stroke();
+        }
+        // gleißender Kern mit kurzem Leuchthof
+        const halo = glowSprite(b.color);
+        if (halo) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.7; ctx.drawImage(halo, b.x - 14, b.y - 14, 28, 28); ctx.restore(); }
+        ctx.strokeStyle = '#f6fcff';
+        ctx.lineWidth = b.w * 0.8;
+        ctx.beginPath(); ctx.moveTo(b.x + ux * 3, b.y + uy * 3); ctx.lineTo(b.x - ux * 16, b.y - uy * 16); ctx.stroke();
+        continue;
+      }
       if (b.w >= 5) {
         // Plasmakugel: glühender Kern mit Hof
         const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.w * 2.2);
@@ -8130,7 +8250,52 @@ export class ShooterGame implements MiniGame {
     }
     const [dx, dy, dr] = this.btnDash;
     const sp = this.ship.special;
+    this.drawTorpAim(ctx, t, dx, dy, dr);
     drawButton(ctx, dx, dy, dr, 1 - this.dashCd / this.dashCdMax, '#5ff0d8', (x, y, sz, col) => drawSpecialIcon(ctx, sp, x, y, sz, col), t);
+  }
+
+  /** Torpedo zielen: Zielkreis in der Welt, Linie vom Schiff, Klammern um das erfasste Ziel, Knüppel auf der Taste */
+  private drawTorpAim(ctx: CanvasRenderingContext2D, t: number, bx: number, by: number, br: number): void {
+    const a = this.torpAim;
+    if (!a) return;
+    ctx.save();
+    // Knüppel: Griff auf der Taste folgt dem Finger
+    ctx.fillStyle = 'rgba(255,210,122,0.85)';
+    ctx.beginPath(); ctx.arc(bx + a.kx * br * 0.7, by + a.ky * br * 0.7, br * 0.38, 0, Math.PI * 2); ctx.fill();
+    if (a.on) {
+      const S = (wx: number, wy: number): [number, number] => [(wx - this.camX) * this.zoom, (wy - this.camY) * this.zoom];
+      const [px, py] = S(this.px, this.py), [rx, ry] = S(a.rx, a.ry);
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(255,210,122,0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(rx, ry); ctx.stroke();
+      ctx.setLineDash([]);
+      // Zielkreis mit Fadenkreuz, langsam drehend
+      const R = 34, rot = t * 1.2;
+      ctx.strokeStyle = a.pick ? '#ffd27a' : 'rgba(255,210,122,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.stroke();
+      for (let k = 0; k < 4; k++) {
+        const ang = rot + (k * Math.PI) / 2;
+        ctx.beginPath(); ctx.moveTo(rx + Math.cos(ang) * (R - 8), ry + Math.sin(ang) * (R - 8)); ctx.lineTo(rx + Math.cos(ang) * (R + 8), ry + Math.sin(ang) * (R + 8)); ctx.stroke();
+      }
+      if (a.pick) {
+        // Klammern um das Ziel, pulsierend
+        const [ex, ey] = S(a.pick.x, a.pick.y), r = a.pick.r * this.zoom + 10 + 3 * Math.sin(t * 8), c = r * 0.45;
+        ctx.strokeStyle = '#ff9a5c';
+        ctx.lineWidth = 2.5;
+        for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+          ctx.beginPath();
+          ctx.moveTo(ex + sx * r, ey + sy * (r - c)); ctx.lineTo(ex + sx * r, ey + sy * r); ctx.lineTo(ex + sx * (r - c), ey + sy * r);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#ffd27a';
+        ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('ZIEL ERFASST', ex, ey - r - 8);
+      }
+    }
+    ctx.restore();
   }
 
   private drawCards(ctx: CanvasRenderingContext2D): void {
