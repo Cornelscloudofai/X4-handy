@@ -3471,7 +3471,7 @@ export class ShooterGame implements MiniGame {
 
   /** Reichweite der Bordwaffen eines Gegners (Bug), größere Schiffe etwas weiter */
   private gunRange(e: Enemy): number {
-    return (e.kind === 'n' || e.kind === 'ks' ? 210 : e.kind === 'boss' ? 480 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320) + Math.max(0, e.r - SPEC[e.kind].r);
+    return (e.kind === 'n' ? 210 : e.kind === 'ks' ? 320 : e.kind === 'boss' ? 480 : e.kind === 'rakete' ? 360 : e.kind === 'kj' || e.kind === 'ka' || e.kind === 'kk' ? KYON_LEN - 20 : 320) + Math.max(0, e.r - SPEC[e.kind].r);
   }
 
   /**
@@ -5016,8 +5016,8 @@ export class ShooterGame implements MiniGame {
             // je Gruppe höchstens zwei zugleich, insgesamt je nach Stärke deines Schiffs mehr (mehr Gruppen = mehr Druck)
             const mates = onP && e.grp != null ? this.enemies.filter((q) => q !== e && q.grp === e.grp && q.target === 'p' && (q.runT ?? 0) > 0).length : 0;
             // Schwärme greifen breiter an: bis zu fünf aus dem Schwarm zugleich, dazu drei über der Gesamtgrenze
-            // Brut des Brutschiffs: ein Strom – deutlich mehr greifen zugleich an
-            if (onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) + (e.bred ? 12 : 0) || mates >= (e.swarm ? 6 : 3)) && d < 420) {
+            // Kha'ak-Späher kennen keine Warteschleife: alle greifen zugleich an, im Zickzack (siehe unten)
+            if (e.kind !== 'ks' && onP && (attackers >= this.attackCap + (e.swarm ? 3 : 0) || mates >= (e.swarm ? 6 : 3)) && d < 420) {
               // warten: seitlich um den Jäger kreisen (zählt nicht mehr als Angreifer – sonst blieben alle in der
               // Warteschleife, sobald einmal genug Anflüge begonnen hatten)
               want = Math.atan2(dy, dx) + e.dir * (d < 260 ? 2.1 : 1.4);
@@ -5025,6 +5025,8 @@ export class ShooterGame implements MiniGame {
               e.runT = 0;
             } else {
               want = aimAt;
+              // Späher: wilder Zickzack-Anflug statt gerader Linie (je Späher eigener Takt); kurz vor dem Ziel gerade
+              if (e.kind === 'ks' && d > 140) want = aimAt + Math.sin(this.time * (5 + (e.orbit % 1) * 3) + e.orbit * 7) * 0.7 * Math.min(1, (d - 140) / 200);
               e.runT = (e.runT ?? 0) + dt;
               // Kyon-Jäger: zwei Strahlen je Anflug
               const salvo = e.kind === 'kj' || e.kind === 'ka' ? 3 : 5;
@@ -5099,7 +5101,7 @@ export class ShooterGame implements MiniGame {
       e.cd -= dt;
       const off = Math.abs(wrapA(aimAt - e.ang));
       const range = this.gunRange(e);
-      const cone = e.kind === 'kanone' ? 0.3 : e.kind === 'rakete' ? 0.6 : e.kind === 'kk' ? 0.35 : 0.16;
+      const cone = e.kind === 'kanone' ? 0.3 : e.kind === 'rakete' ? 0.6 : e.kind === 'kk' ? 0.35 : e.kind === 'ks' ? 0.35 : 0.16;
       // Jäger feuern nur im Anflug, nicht beim Abdrehen
       const breaking = fighter && !!e.brk && e.brk > 0;
       if (e.kind === 'rakete') this.rocketBoat(e, dt, !breaking && d < range && off < cone, onP);
@@ -5118,7 +5120,8 @@ export class ShooterGame implements MiniGame {
         else if (e.kind === 'kanone') { e.cd = 1.6; for (let q = 0; q < 3; q++) this.enemyShot(e, a + (q - 1) * 0.08, 240, 8, '#ffd27a'); }
         else if (e.kind === 'n') { e.cd = 0.26; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 340, 4, '#ff5c6c'); }
         else if (e.kind === 'm') { e.cd = 0.8; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 430, 11, '#ff3b4a', 3); }
-        else if (e.kind === 'ks') { e.cd = 0.3; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 360, 3.5, '#d9a6ff'); }
+        // Späher: Schuss genau aufs Ziel (Vorhalt), hell und gut sichtbar
+        else if (e.kind === 'ks') { e.cd = 0.24; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, aimAt + (this.r() - 0.5) * 0.1, 360, 3.5, '#f2d4ff', 2.8); }
         // Kyon: erst laden (dünne Ziellinie), dann trifft der Strahl
         else if (e.kind === 'kj' || e.kind === 'ka') { e.cd = e.kind === 'ka' ? 0.6 : 0.75; e.shots = (e.shots ?? 0) + 1; e.kyT = 0.35; }
         else if (e.kind === 'kk') { e.cd = 2.6; e.kyT = 0.6; }
