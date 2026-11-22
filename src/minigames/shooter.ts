@@ -320,8 +320,12 @@ const KYON_FIRE = 1.7, KYON_SWEEP = 0.32;
 const KYON_LEN_Z = LASER_LEN * 1.3, KYON_LEN_B = LASER_LEN * 1.55, KYON_BROOD_DMG = 2;
 /** Brutkapseln am Brutschiff: Hülle und Schild mal so viel wie ein gewöhnlicher Turm */
 const BROOD_POD_HP = 2.2;
-/** Brutkammer des Kha'ak-Brutschiffs: im Schnitt alle BROOD_EVERY s ein Späher (gut jeder dritte Takt zwei), höchstens BROOD_MAX eigene Späher gleichzeitig (ab Stufe 4 mehr) */
-const BROOD_EVERY = 1.0, BROOD_MAX = 8;
+/**
+ * Brutkammer des Kha'ak-Brutschiffs: ein Strom aus Spähern. Takt je Kammer (Stufe 1 … 5) und Obergrenze der eigenen Brut
+ * im Feld (Stufe 1 … 5; mit einem Großkampfschiff als eigenem Schiff anderthalbfach) – wer die Kammern nicht schnell
+ * zerstört, hat bald einen ganzen Schwarm am Hals
+ */
+const BROOD_EVERY = [0.45, 0.38, 0.3, 0.24, 0.18], BROOD_CAP = [40, 55, 70, 85, 100];
 /** Länge eines Laser- bzw. Kyon-Strahls */
 const beamLen = (e: { beamLen?: number }) => e.beamLen ?? LASER_LEN;
 /**
@@ -4823,13 +4827,12 @@ export class ShooterGame implements MiniGame {
           // Brutkammer des Brutschiffs: solange sie steht, schlüpft etwa jede Sekunde ein Späher (manchmal zwei) –
           // wer die Kammern nicht schnell ausschaltet, hat bald einen Schwarm am Hals. Obergrenze, damit es spielbar bleibt.
           if (e.cd <= 0) {
-            // je Kammer etwa jede Sekunde ein bis zwei Späher (Stufe 1: alle 1,3 s), ab Stufe 4 ein Strom: kürzere
-            // Abstände, zwei bis drei je Takt hintereinander. Obergrenze zählt nur die eigene Brut (nicht die Späher der
-            // Wellen): Stufe 1–3 bis 8, Stufe 4 bis 11, Stufe 5 bis 14 zugleich
-            const low = Math.max(0, 3 - this.level), high = Math.max(0, this.level - 3);
-            e.cd = (BROOD_EVERY * (1 + 0.15 * low) / (1 + 0.5 * high)) * (0.75 + this.r() * 0.5);
-            const brood = this.enemies.filter((q) => q.kind === 'ks' && q.bred).length;
-            if (this.enemies.length < this.fieldCap + 20 && brood < (BROOD_MAX + 3 * high) * this.big) {
+            // Strom: je Kammer Stufe 1 etwa 3, Stufe 5 gut 13 Späher je Sekunde, ein bis drei je Takt hintereinander.
+            // Obergrenze zählt nur die eigene Brut (nicht die Späher der Wellen): Stufe 1 bis 40, Stufe 5 bis 100 zugleich
+            const high = Math.max(0, this.level - 3);
+            e.cd = BROOD_EVERY[this.level - 1] * (0.75 + this.r() * 0.5);
+            const brood = this.enemies.filter((q) => q.kind === 'ks' && q.bred).length, cap = BROOD_CAP[this.level - 1] * (this.big > 1 ? 1.5 : 1);
+            if (this.enemies.length < this.fieldCap + cap && brood < cap) {
               const n = high ? 2 + (this.r() < 0.4 ? 1 : 0) : this.r() < 0.35 ? 2 : 1;
               const a0 = p.ang + (this.r() - 0.5) * (high ? 0.7 : 1.6);
               for (let q = 0; q < n; q++) {
@@ -6090,6 +6093,7 @@ export class ShooterGame implements MiniGame {
     for (const w of this.wings) if (w.state === 'fly' || w.state === 'home' || (!this.ship.hullLayer && (w.state === 'in' || w.state === 'out'))) this.drawWing(ctx, w, t);
     this.drawClusterMass(ctx, t);
     for (const e of this.enemies) if (!this.inBack(e)) this.drawEnemy(ctx, e, t);
+    this.drawEngineGlows(ctx, 1);
     this.drawTargetMarks(ctx, t);
     this.drawRocketLocks(ctx, t);
     this.drawBlasts(ctx, t);
@@ -7863,6 +7867,43 @@ export class ShooterGame implements MiniGame {
    * Über dem Nebel: Geschosse leuchten durch den Dunst (man sieht, wohin man schießt) und erhellen ihn mit größerem
    * Schein – nur so stark, wie der Dunst am Ort dicht ist
    */
+  /**
+   * Leuchtende Triebwerke der kleinen Schiffe (Jäger, Späher): Schein am Heck und eine kurze Leuchtspur gegen die
+   * Flugrichtung. Kha'ak violett und kräftig – so sieht man den Strom der Brut als Fluss leuchtender Punkte, auch weit
+   * herausgezoomt (Mindestgröße in Bildschirmpunkten) und im Nebel (k: Stärke; im Nebel nach Dichte)
+   */
+  private drawEngineGlows(ctx: CanvasRenderingContext2D, k: number): void {
+    if (k <= 0.01) return;
+    const kh = this.side === 'khaak', z = this.zoom;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const e of this.enemies) {
+      if (!FIGHTERS.has(e.kind) || e.kind === 'm' || e.parent) continue;
+      const col = kh ? '#b45cff' : this.side === 'xenon' ? '#ff4a5a' : '#ff9a4a';
+      const halo = glowSprite(col);
+      if (!halo) continue;
+      const c = Math.cos(e.ang), s = Math.sin(e.ang), tx = e.x - c * e.r * 0.8, ty = e.y - s * e.r * 0.8;
+      const v = Math.hypot(e.vx, e.vy), a = (kh ? 0.95 : 0.6) * k * (0.6 + 0.4 * Math.min(1, v / 150));
+      // Leuchtspur gegen die Flugrichtung
+      if (v > 20) {
+        const L = Math.min(v * 0.14, 46) + 5 / z, ux = -e.vx / v, uy = -e.vy / v;
+        const g = ctx.createLinearGradient(tx, ty, tx + ux * L, ty + uy * L);
+        g.addColorStop(0, rgba(kh ? '#e2c4ff' : col, a * 0.8));
+        g.addColorStop(1, rgba(col, 0));
+        ctx.strokeStyle = g;
+        ctx.lineWidth = Math.max(e.r * 0.5, 2.2 / z);
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx + ux * L, ty + uy * L); ctx.stroke();
+      }
+      // Schein: nie kleiner als ein paar Bildschirmpunkte
+      const R = Math.max(e.r * (kh ? 2.8 : 2), (kh ? 11 : 7) / z);
+      ctx.globalAlpha = Math.min(1, a);
+      ctx.drawImage(halo, tx - R, ty - R, R * 2, R * 2);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
   private drawShotsInFog(ctx: CanvasRenderingContext2D): void {
     if (this.fog <= 0.01) return;
     ctx.save();
@@ -7884,6 +7925,8 @@ export class ShooterGame implements MiniGame {
     }
     // Kyon-Strahlen leuchten durch den Dunst
     for (const e of this.enemies) if (e.beamDur && e.beamT && e.beamT <= e.beamDur) this.drawKyonBeam(ctx, e, this.time, 0.35 + this.fog, true);
+    // Triebwerke der Jäger und Späher: als leuchtende Punkte auch im Nebel zu sehen
+    this.drawEngineGlows(ctx, this.fog);
     ctx.globalCompositeOperation = 'lighter';
     // Blitze: feine gezackte Linien mit weichem Leuchtsaum (Breite in Bildschirmpunkten), Äste schwächer
     ctx.lineJoin = 'round';

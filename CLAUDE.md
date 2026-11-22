@@ -17,7 +17,12 @@
   baut nur, wenn die Commit-Meldung `[live]` enthält (`scripts/netlify-ignore.sh`). `[live]` nur setzen, wenn der Nutzer
   ausdrücklich veröffentlichen will – sonst nie. Das Claude-Artifact darf weiter bei jeder Änderung aktualisiert werden.
   Keine KI-Funktionen von Netlify nutzen oder auslösen.
-- Vor jedem Commit: `npx vitest run` und `npm run e2e` – Ergebnis wirklich prüfen (Exit-Code), nicht nur die Ausgabe überfliegen.
+- Gestuft testen (Ergebnis immer am Exit-Code prüfen, nicht nur die Ausgabe überfliegen):
+  - Während der Arbeit: `npx tsc --noEmit -p .` und nur die betroffenen Testdateien (`npx vitest run tests/<datei>`).
+  - Vor jedem Commit: `npx vitest run` komplett.
+  - `npm run e2e` bei Änderungen an Oberfläche, Menüs, Speichern/Laden oder Spielstart – dann im Hintergrund laufen
+    lassen und weiterarbeiten; schlägt er fehl, sofort beheben. **Vor jedem `[live]`-Release immer** `npm run e2e`.
+  - Achtung: `npm run build` prüft auch die Tests auf Typfehler – schlägt er fehl, ist `dist/` veraltet.
 - Bild-Prompts immer als Codeblock (```text … ```) ausgeben, damit sie per Kopieren-Knopf übernommen werden können – nicht als Zitat.
 - **Texte glaubwürdig, nicht generisch.** Story, Beschreibungen, Kapitel, Fundstücke: konkret und aus der Spielwelt heraus
   (Logbucheinträge, Funksprüche, Notizen, Namen, Zahlen, kleine Details). Keine Werbe- und KI-Floskeln wie „am Rand des
