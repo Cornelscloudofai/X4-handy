@@ -391,6 +391,17 @@ const BOOMS = {
   s: ['sn-expl-s-a', 'sn-expl-s-b', 'sn-expl-s-c'], m: ['sn-expl-m-a', 'sn-expl-m-b', 'sn-expl-m-c'],
   l: ['sn-expl-l-a', 'sn-expl-l-b', 'sn-expl-l-c'], boss: ['sn-expl-boss-a', 'sn-expl-boss-b'],
 };
+/** fernes Donnergrollen (Gewitter im Nebel): kurzer Knall, dann tiefes, langes Rollen; near 0..1 = Lautstärke */
+function thunder(near = 0.6, pan = 0): void {
+  if (!gate('thunder', 1500)) return;
+  play('sfx', { pan: pan * 0.5, verb: 0.45, gain: 1 }, (g, o, t) => {
+    const t0 = t + 0.15 + (1 - near) * 0.9;
+    noise(g, o, { t: t0, type: 'lowpass', f: 1400, to: 300, a: 0.004, d: 0.35, gain: 0.08 * near });
+    noise(g, o, { t: t0 + 0.05, type: 'lowpass', f: 420, to: 60, a: 0.25, d: 2.6 + near, gain: 0.22 * near });
+    weight(g, o, t0, 0.12 * near, 45, 1.4);
+  });
+}
+
 function explosion(size = 1, pan = 0): void {
   const s = Math.max(0.3, Math.min(4, size));
   if (!gate(s >= 2 ? 'boom-big' : 'boom', s >= 2 ? 150 : 70)) return;
@@ -556,7 +567,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, turretShot, heavyShot, enemyShot, missile, missileWarn, hit, zap, kyon, phase, explosion, shield, hull, alarm, boss, pickup, fail,
+  shot, turretShot, heavyShot, enemyShot, missile, missileWarn, hit, zap, kyon, phase, explosion, thunder, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 

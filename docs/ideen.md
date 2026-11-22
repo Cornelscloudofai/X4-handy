@@ -24,6 +24,20 @@ Nach Gegnerrollen und Raketenwarnung angehen:
 4. Raptor-Nachschub über die eigene Werft (Abschnitt unten).
 5. Radio auf der Sektorkarte (Abschnitt unten; Lieder liefert der Spieler).
 
+## Neue Waffe: Mass Driver (vorgemerkt)
+
+- Prinzip wie die Bosonenlanze (Ein-Schuss-Waffe, hoher Einzelschaden, große Reichweite), aber **ballistisch**: ein
+  sichtbares Projektil statt sofortigem Treffer. Sehr hohe Mündungsgeschwindigkeit, deutlich unter der Lanze
+  (Lanze `v` 14 000, `rail`) – Vorschlag 4 000–6 000, damit man das Geschoss gerade noch fliegen sieht und bei
+  schnellen Zielen vorhalten muss.
+- Optik: heller, sehr kurzer Leuchtkern mit langer, dünner Spur, Mündungsblitz und kurzer Rückstoß; Einschlag mit Funken
+  und kleiner Druckwelle. Im Nebel leuchtet die Spur durch (wie die übrigen Geschosse).
+- Einordnung im Balancing (offen): zwischen Neutronen-Gatling und Bosonenlanze. Ansatz: Schaden je Schuss etwa 55–65 %
+  der Lanze, Takt etwas höher (ca. 1,3 Schuss/s), dafür kann er verfehlen; leichter Durchschlag (trifft ein zweites Ziel
+  dahinter mit halbem Schaden) als Besonderheit. Als S- und M-Waffe, später evtl. als Turm.
+- X4-Bezug: Terraner-Waffe (Mass Driver). Bei uns als „fremde“ Waffe einordnen, z. B. über Fundstücke oder eine
+  eigene Freischaltung.
+
 ## Raptor-Staffel: Nachschub über die eigene Werft (vorgemerkt)
 
 - Heute: Mambas für den Hangar werden sofort und überall gekauft (Knopf „+1“, „Auffüllen“, auf Wunsch automatisch).

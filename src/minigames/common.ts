@@ -35,6 +35,8 @@ export interface GameCfg {
   controls?: ControlMode;
   /** Kampf: Effekte der Schiffsmodifikationen (sonst die eingebauten; mit festem loadout keine) */
   mods?: ModStats;
+  /** Kampf: Nebel für die ganze Runde erzwingen (true) oder ausschließen (false); sonst Zufall bzw. Test-Schalter */
+  fog?: boolean;
   /** Kampf: Einsatz (sonst Geleitschutz) */
   mission?: Mission;
   /** Kampf aus der Spielwelt: wo er stattfindet (sonst Sternenfeld wie im Kampfmenü) */

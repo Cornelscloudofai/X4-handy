@@ -24,6 +24,7 @@ import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './s
 import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 import { drawGraded } from '../render/canvasFx';
 import { drawSpecialIcon } from './specialIcons';
+import { hullGap, hullMaskOf, type HullMask } from './hullMask';
 export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
 export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
@@ -259,7 +260,7 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -304,6 +305,14 @@ const TURRET_RANGE = 520, PLASMA_RANGE = 560;
  * mehr Schaden je Treffer; die Hülle steht in SPEC.turret
  */
 const TURRET_RATE = 1.6, TURRET_DMG = 1.15;
+/**
+ * Flak des Piratenträgers: Annäherungszünder (zündet FLAK_FUSE vor dem Ziel), Splitterwirkung im Umkreis FLAK_R, zum
+ * Rand hin schwächer; je Granate FLAK_DMG Turmtreffer. Früher 4 nur als Direkttreffer – mit Zünder trifft fast jede
+ * Granate, daher je Treffer weniger. Abgestimmt mit dem Autopiloten (je 14 Runden): Stufe 2 Grundausrüstung gewinnt
+ * wie vorher 12 von 14, Stufe 3 Spitzenausrüstung 12 statt 14 – die Flak ist spürbar stärker, aber nicht übermächtig.
+ * FLAK_FX: Größe der Sprengwolke (Optik)
+ */
+const FLAK_FUSE = 14, FLAK_R = 46, FLAK_DMG = 2.8, FLAK_FX = 62;
 
 /** Drehrate je Gegnerart (rad/s): Jäger wendig, Kanonenboote träge – wer sie umkreist, ist vor ihren Kanonen sicher */
 const TURN: Record<EKind, number> = { jaeger: 2.4, kanone: 0.8, rakete: 1, schild: 1.6, n: 3, m: 2.2, xs: 1.6, p: 0.55, boss: 0.45, turret: 0, ks: 3.2, kj: 2.6, ka: 2.8, kk: 0.9, cargo: 0.6 };
@@ -684,6 +693,21 @@ const SPRITE_SIZE = 46;
 const LB_LEN = 0.12, LB_ROOT = 0.12, LB_WIDE = 1.6;
 
 
+/** gezackte Linie von a nach b: Mittelpunkt-Verschiebung über `depth` Stufen, Ausschlag halbiert sich je Stufe */
+function jagged(a: [number, number], b: [number, number], amp: number, depth: number): [number, number][] {
+  let pts: [number, number][] = [a, b];
+  for (let d = 0; d < depth; d++, amp *= 0.5) {
+    const next: [number, number][] = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1;
+      const off = (Math.random() - 0.5) * amp;
+      next.push([(x0 + x1) / 2 - (dy / l) * off, (y0 + y1) / 2 + (dx / l) * off], pts[i]);
+    }
+    pts = next;
+  }
+  return pts;
+}
+
 export class ShooterGame implements MiniGame {
   readonly eyebrow: string;
   readonly title: string;
@@ -938,9 +962,16 @@ export class ShooterGame implements MiniGame {
   /** Nebel: Dichte 0–1 (blendet beim Abschnittswechsel weich ein und aus) und Zeichenfläche für den Schleier */
   private fog = 0;
   private fogCv: HTMLCanvasElement[] = [];
+  /** Lichtblitze für den Nebel: Explosionen erhellen den Dunst um sich (Weltpunkte, Radius, Farbe, Lebensdauer) */
+  private flares: { x: number; y: number; r: number; color: string; t: number; max: number }[] = [];
+  /** Gewitter im Nebel: aufleuchtende Wolkenpartien, manchmal mit sichtbarem Blitz; nächstes Wetterleuchten in stormT s */
+  private storms: { x: number; y: number; r: number; t: number; max: number; flick: number; bolt: [number, number][][] | null }[] = [];
+  private stormT = 3;
   private fogWarm = 0;
   /** Helligkeit des laufenden Nebelfelds (0,5 dunkler Qualm … 1,5 leuchtendes Gas), je Feld neu gewürfelt */
   private fogTone = 1;
+  /** diese Runde im Nebel (ganze Runde, ab Welle 1) */
+  private fogged = false;
   // Ablauf
   private wave = -1;
   private waveT = 0;
@@ -1116,11 +1147,14 @@ export class ShooterGame implements MiniGame {
     if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
     for (let i = 0; i < 40; i++) this.sectionPlan.push(this.mutator?.id === 'mines' ? 'mines' : i === 0 ? 'none' : this.r() < 0.45 ? (this.r() < 0.5 ? 'rocks' : 'mines') : 'none');
-    // Nebelfelder ab der dritten Welle (eigener Zufall, damit sich die übrige Abfolge nicht verschiebt)
+    // Nebel gilt für die ganze Runde: ab Welle 1 und auch zwischen den Wellen (etwa jede dritte Runde; nicht im
+    // Wrackfeld, am Nest und beim Überfall). Eigener Zufall, damit sich die übrige Abfolge nicht verschiebt.
     const fr = rng(cfg.seed ^ 0x4e45);
-    for (let i = 2; i < 40; i++) if (this.sectionPlan[i] === 'none' && fr() < 0.4) this.sectionPlan[i] = 'nebel';
-    // Test-Schalter: jede Welle im Nebel
-    if (fogTest()) this.sectionPlan.fill('nebel');
+    const fogOk = this.mission !== 'bergung' && this.mission !== 'nest' && this.mission !== 'ueberfall';
+    const roll = fr() < 0.35;
+    this.fogged = cfg.fog ?? (fogTest() || (fogOk && roll));
+    this.fogTone = 0.5 + fr() * 1.0;
+    if (this.fogged) this.fog = 1;
   }
 
   // ---------- abgeleitete Werte ----------
@@ -2813,7 +2847,6 @@ export class ShooterGame implements MiniGame {
     if (this.wave === 0 && this.mission === 'ueberfall') this.spawnConvoy();
     if (this.wave === 0 && (this.mission === 'bergung' || this.mission === 'flucht')) this.spawnMissionPlats();
     if (this.section === 'rocks') this.spawnRocks();
-    if (this.section === 'nebel') this.fogTone = 0.5 + this.rv() * 1.0;
     if (this.section === 'mines') this.spawnMines();
     const boss = this.isBossWave(this.wave);
     if (boss) {
@@ -2868,7 +2901,7 @@ export class ShooterGame implements MiniGame {
       if (this.wave === 0 && this.place) this.bannerSub = `${this.place.name} · ${this.bannerSub}`;
       if (this.wave === 0 && this.mission === 'ueberfall') this.bannerText = 'PIRATENKONVOI';
       if (this.wave === 0 && this.mission === 'nest') this.bannerText = this.side === 'khaak' ? 'KHA’AK-NEST' : 'XENON-NEST';
-      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : this.section === 'nebel' ? ' · Nebelfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
+      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : this.fogged && this.wave === 0 ? ' · Nebelfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
     // Nachschub vom Frachter nach jeder überstandenen Welle: ein Viertel des Raketenlagers
@@ -3191,7 +3224,8 @@ export class ShooterGame implements MiniGame {
   private turretTarget(e: Enemy, range: number): [number, number] | null {
     let best: [number, number] | null = null, bd = range;
     const check = (x: number, y: number, hullR: number) => { const d = Math.hypot(x - e.x, y - e.y) - hullR; if (d < bd) { bd = d; best = [x, y]; } };
-    check(this.px, this.py, this.ship.aspect ? this.ship.size * 0.45 : this.ship.r);
+    const pg = this.ship.aspect ? null : this.hullGapAt(e.x, e.y);
+    if (pg != null) { if (pg < bd) { bd = pg; best = [this.px, this.py]; } } else check(this.px, this.py, this.ship.aspect ? this.ship.size * 0.45 : this.ship.r);
     for (const w of this.liveWards) check(this.wx(w), this.wy(w), w.kind === 'station' ? STATION_R : 40);
     for (const w of this.wings) if (w.state === 'fly') check(w.x, w.y, w.def.size * 0.4);
     return best;
@@ -3633,9 +3667,10 @@ export class ShooterGame implements MiniGame {
     this.time += dt;
     this.score.update(dt);
     // Nebelschwaden vorab berechnen (eines je Sekunde, solange ein Nebelfeld ansteht), damit es beim Aufziehen nicht ruckelt
-    if (this.fogWarm < FOG_VEILS && this.time > 2 + this.fogWarm && this.sectionPlan.includes('nebel') && fogVeil(this.side, this.fogWarm, this.veilRgb)) this.fogWarm++;
+    if (this.fogWarm < FOG_VEILS && this.time > 2 + this.fogWarm && this.fogged && fogVeil(this.side, this.fogWarm, this.veilRgb)) this.fogWarm++;
     // Nebel zieht weich auf bzw. lichtet sich
-    this.fog += ((this.section === 'nebel' ? 1 : 0) - this.fog) * Math.min(1, dt * 0.7);
+    this.fog += ((this.fogged ? 1 : 0) - this.fog) * Math.min(1, dt * 0.7);
+    this.updateWeather(dt);
     this.shieldHit = Math.max(0, this.shieldHit - dt);
     if (this.wave < 0 && this.time > 0.8) this.spawnWave();
     this.waveT += dt;
@@ -4029,7 +4064,7 @@ export class ShooterGame implements MiniGame {
     // Vorhaltepunkte: für jeden Gegner in Feuerreichweite (nach vorn und zur Seite); Hauptziel ist der, dessen
     // Vorhaltepunkt der Mittelachse am nächsten liegt – auf ihn schwenken die Bordkanonen
     // im Nebel reicht die Zielerfassung nur so weit, wie man sieht
-    const lockR = Math.min(Math.max(520, this.reach) * (1 + this.m('lock')), this.fogSee);
+    const lockR = Math.min(Math.max(520, this.reach) * (1 + this.m('lock')), this.fogSee + this.hullReach);
     const leads: { e: Enemy; x: number; y: number; off: number; d: number }[] = [];
     for (const e of this.enemies) {
       if (e.kind === 'boss' && e.shielded) continue;
@@ -4545,7 +4580,8 @@ export class ShooterGame implements MiniGame {
               const lat = (flak ? [-0.2, -0.07, 0.07, 0.2] : [-0.025, 0.025])[i] * size, fwd = size * 0.55;
               // Repeater: schnelle, leichte Geschosse (drei Zweierstöße je Sekunde)
               const v = flak ? 320 : 720;
-              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? 4 : 1.2) * this.capTurretDmg * this.tHit(e), flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, (range + 60) / v);
+              this.enemyShot(e, a2 + (this.r() - 0.5) * 0.05, v, (flak ? FLAK_DMG : 1.2) * this.capTurretDmg * this.tHit(e), flak ? '#ffb070' : '#ff3b4a', flak ? 2.2 : 2.5, flak ? (Math.hypot(tx - e.x, ty - e.y) + 40) / v : (range + 60) / v);
+              if (flak) this.bullets[this.bullets.length - 1].flak = true;
               const pb = this.bullets[this.bullets.length - 1], c = Math.cos(a2), sn = Math.sin(a2);
               pb.x += c * fwd - sn * lat; pb.y += sn * fwd + c * lat;
               e.salvo!--; e.salvoT = flak ? 0.07 : 0.06;
@@ -4891,6 +4927,39 @@ export class ShooterGame implements MiniGame {
     sfx.phase(this.panAt(e.x));
   }
 
+  /** Flak zündet, wenn sie einem Ziel nahe kommt: deinem Schiff, einem Begleiter oder einem Schutzziel */
+  private flakFuse(x: number, y: number): boolean {
+    if (this.outcome !== 'player' && this.gapOr(x, y, this.ship.r) < FLAK_FUSE) return true;
+    if (this.wings.some((w) => (w.state === 'fly' || w.state === 'home') && Math.hypot(w.x - x, w.y - y) < FLAK_FUSE + w.def.size * 0.4)) return true;
+    return !!this.wardAt(x, y, FLAK_FUSE);
+  }
+
+  /** Flakgranate zerplatzt: kleine Sprengwolke mit Splittern, Schaden im Umkreis (zum Rand hin schwächer) */
+  private flakBurst(b: Bullet): void {
+    const { x, y } = b;
+    this.fx.add({ x, y, color: '#fff0c8', size: 14, max: 0.08 });
+    this.fx.add({ x, y, color: '#ff8a2a', size: FLAK_FX * 0.75, kind: 'fire', max: 0.42 });
+    for (let k = 0; k < 2; k++) {
+      const a = Math.random() * Math.PI * 2, d = FLAK_FX * 0.25;
+      this.fx.add({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, color: '#ffb24a', size: FLAK_FX * 0.4, kind: 'fire', max: 0.3 });
+    }
+    this.fx.add({ x, y, color: '#ffb070', size: FLAK_FX * 0.5, kind: 'ring', max: 0.3 });
+    this.fx.burst(x, y, '#ffcf80', 10, 320, 1.2, 'spark', 0.35);
+    // dunkle Sprengwolke, die noch einen Moment stehen bleibt
+    this.fx.add({ x, y, color: '#2e2925', size: FLAK_FX * 1.0, kind: 'smoke', solid: true, max: 1.5, drag: 0.7 });
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x, y, r: 150, color: '#ffa04a', t: 0, max: 0.35 });
+    const sx = (x - this.camX) * this.zoom, sy = (y - this.camY) * this.zoom;
+    if (sx > -40 && sx < this.w + 40 && sy > -40 && sy < this.h + 40) sfx.hit(this.panAt(x));
+    const fall = (d: number) => Math.max(0, 1 - 0.75 * (d / FLAK_R));
+    if (this.outcome !== 'player') {
+      const g = this.gapOr(x, y, this.ship.r);
+      if (g < FLAK_R) this.damagePlayer(b.dmg * fall(g), 1, this.ship.aspect ? undefined : [x, y], 0.5);
+    }
+    for (const w of [...this.wings]) if ((w.state === 'fly' || w.state === 'home') && Math.hypot(w.x - x, w.y - y) < FLAK_R + w.def.size * 0.4) this.damageWing(w, b.dmg * 0.7, x, y);
+    const hw = this.wardAt(x, y, FLAK_R * 0.5);
+    if (hw) this.hitWard(hw, b.dmg * this.fScale * 0.6, x, y);
+  }
+
   private enemyShot(e: Enemy, a: number, v: number, dmg: number, color: string, w = 2, life = 1.8): void {
     this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: dmg * this.enemyDmg, from: 'e', life, color, w, pierce: 0 });
     // nur hörbar, wenn der Schütze im Bild ist
@@ -4961,6 +5030,8 @@ export class ShooterGame implements MiniGame {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.life -= dt;
+      // Flak: Annäherungszünder – zündet nahe dem Ziel oder spätestens am Ende der Flugbahn
+      if (b.flak && (b.life <= 0 || this.flakFuse(b.x, b.y))) { this.flakBurst(b); continue; }
       if (b.life <= 0) continue;
       // Asteroiden bieten Deckung vor gegnerischem Feuer; eigene Waffen tragen sie ab
       const rock = this.rocks.length ? this.rockAt(b.x, b.y) : undefined;
@@ -5088,10 +5159,17 @@ export class ShooterGame implements MiniGame {
       // leicht gebremst, XL zerplatzt ihn einfach
       const d = Math.hypot(this.px - k.x, this.py - k.y);
       const pr = k.r + this.ship.r - 2;
+      const cls = this.ship.cls;
+      // L und XL: Zusammenstoß an der echten Hülle (sie ist viel größer als der Trefferradius)
+      if (k.r > 0 && (cls === 'L' || cls === 'XL')) {
+        const g = this.hullGapAt(k.x, k.y);
+        if (g != null ? g < k.r * 0.8 : d < pr) {
+          this.breakRock(k);
+          if (cls === 'L') { this.pvx *= 0.82; this.pvy *= 0.82; }
+        }
+        continue;
+      }
       if (k.r > 0 && d < pr && d > 0) {
-        const cls = this.ship.cls;
-        if (cls === 'XL') { this.breakRock(k); continue; }
-        if (cls === 'L') { this.breakRock(k); this.pvx *= 0.82; this.pvy *= 0.82; continue; }
         const nx = (this.px - k.x) / d, ny = (this.py - k.y) / d;
         this.px = k.x + nx * pr;
         this.py = k.y + ny * pr;
@@ -5112,7 +5190,7 @@ export class ShooterGame implements MiniGame {
       m.x += m.vx * dt;
       m.y += m.vy * dt;
       if (m.armed < 0) {
-        const near = Math.hypot(this.px - m.x, this.py - m.y) < 44 || !!this.wardAt(m.x, m.y, 14) || this.enemies.some((e) => Math.hypot(e.x - m.x, e.y - m.y) < 40);
+        const near = this.gapOr(m.x, m.y, this.ship.r) < 44 - 12 || !!this.wardAt(m.x, m.y, 14) || this.enemies.some((e) => Math.hypot(e.x - m.x, e.y - m.y) < 40);
         if (near) { m.armed = 0.7; sfx.warn(); }
       } else {
         m.armed -= dt;
@@ -5128,7 +5206,7 @@ export class ShooterGame implements MiniGame {
     m.hp = -100;
     this.explode(m.x, m.y, '#ffb547', 1.2);
     this.fx.add({ x: m.x, y: m.y, color: '#ffd27a', size: 20, kind: 'ring', max: 0.4 });
-    if (Math.hypot(this.px - m.x, this.py - m.y) < 70 && this.dashT <= 0) this.damagePlayer(25);
+    if (this.gapOr(m.x, m.y, this.ship.r) < 70 - 12 && this.dashT <= 0) this.damagePlayer(25);
     for (const w of this.wards) if (!w.dead && this.wardHit(w, m.x, m.y, 40)) this.hitWard(w, 30, m.x, m.y);
     this.logSrc = 'other';
     for (const e of [...this.enemies]) if (Math.hypot(e.x - m.x, e.y - m.y) < 70) this.damageEnemy(e, 60);
@@ -5313,13 +5391,49 @@ export class ShooterGame implements MiniGame {
       if (b.t > 0) { keep.push(b); continue; }
       this.explode(b.x, b.y, ELITES.raecher.color, 2.4);
       this.fx.add({ x: b.x, y: b.y, color: '#ffb070', size: BLAST_R / 6, kind: 'ring', max: 0.5 });
-      if (this.outcome !== 'player' && Math.hypot(this.px - b.x, this.py - b.y) < BLAST_R + 12) this.damagePlayer(b.dmg);
+      if (this.outcome !== 'player' && this.gapOr(b.x, b.y, 12) < BLAST_R) this.damagePlayer(b.dmg);
       for (const w of this.wards) if (!w.dead && Math.hypot(this.wx(w) - b.x, this.wy(w) - b.y) < BLAST_R + 60) this.hitWard(w, b.dmg, b.x, b.y);
       this.logSrc = 'other';
       for (const q of [...this.enemies]) if (!q.parent && Math.hypot(q.x - b.x, q.y - b.y) < BLAST_R + q.r) this.damageEnemy(q, (q.max + q.shMax) * 0.4, 1);
     }
     this.blasts = keep;
   }
+
+  /** Zeichengröße und Trefferform des eigenen Schiffs (wie in drawPlayer); null ohne geladenes Bild (z. B. in Tests) */
+  private hullGeo(): { m: HullMask; sw: number; sh: number } | null {
+    // je Takt einmal ermitteln (wird für Treffer und Nebel sehr oft gefragt)
+    if (this.geoAt === this.time && this.geoMemo !== undefined) return this.geoMemo;
+    this.geoAt = this.time;
+    this.geoMemo = this.hullGeoNow();
+    return this.geoMemo;
+  }
+  private geoAt = -1;
+  private geoMemo: { m: HullMask; sw: number; sh: number } | null | undefined = undefined;
+  private hullGeoNow(): { m: HullMask; sw: number; sh: number } | null {
+    const spr = shipSprite(this.ship.sprite, this.ship.fallback);
+    if (!spr) return null;
+    const m = hullMaskOf(spr.img);
+    if (!m) return null;
+    const size = this.ship.size === 40 ? (shipArt() === 'ai' ? SPRITE_SIZE * 0.86 : SPRITE_SIZE) : this.ship.size;
+    return { m, sw: size * (this.ship.aspect ?? 1), sh: size };
+  }
+
+  /** Abstand eines Punkts zur Außenhülle des eigenen Schiffs (0 = auf der Hülle); null ohne Trefferform */
+  private hullGapAt(x: number, y: number): number | null {
+    const geo = this.hullGeo();
+    if (!geo) return null;
+    const th = this.aimA + Math.PI / 2, c = Math.cos(th), s = Math.sin(th), dx = x - this.px, dy = y - this.py;
+    return hullGap(geo.m, dx * c + dy * s, -dx * s + dy * c, geo.sw, geo.sh);
+  }
+
+  /** Abstand zur Hülle; ohne Trefferform der Abstand zur Mitte minus r (bisheriges Verhalten) */
+  private gapOr(x: number, y: number, r: number): number {
+    if (this.ship.aspect) return Math.hypot(this.px - x, this.py - y) - r;
+    return this.hullGapAt(x, y) ?? Math.hypot(this.px - x, this.py - y) - r;
+  }
+
+  /** Schild: Treffergrenze liegt so weit vor der Hülle */
+  private get shieldPad(): number { return clamp(this.ship.size * 0.04, 1.5, 30); }
 
   /** Schaden am Jäger: erst Schild, dann Hülle; vsShield > 1 trifft den Schild stärker (Kyon) */
   /**
@@ -5328,7 +5442,13 @@ export class ShooterGame implements MiniGame {
    */
   private onHull(x: number, y: number, pad: number): boolean {
     const asp = this.ship.aspect;
-    if (!asp) return Math.hypot(this.px - x, this.py - y) < this.ship.r + pad;
+    if (!asp) {
+      // Hülle aus dem Schiffsbild; mit Schild liegt die Grenze leicht außerhalb
+      const g = this.hullGapAt(x, y);
+      // innerhalb der Hülle ist der Abstand 0; ein negativer Spielraum (schmaler Laser) zählt dort wie 0
+      if (g != null) return g <= Math.max(0, pad) + (this.shield > 0 ? this.shieldPad : 0);
+      return Math.hypot(this.px - x, this.py - y) < this.ship.r + pad;
+    }
     const dx = x - this.px, dy = y - this.py, c = Math.cos(this.aimA), s = Math.sin(this.aimA);
     const along = dx * c + dy * s, across = -dx * s + dy * c;
     // Rumpf ohne die Gitterstreben am Rand: gut vier Fünftel der Bildbreite
@@ -5342,6 +5462,19 @@ export class ShooterGame implements MiniGame {
    */
   private beamOnHull(dist: (x: number, y: number) => number, pad: number): [number, number] | null {
     const asp = this.ship.aspect;
+    const geo = asp ? null : this.hullGeo();
+    if (geo) {
+      // Strahl trifft, sobald er einem Umrisspunkt der Hülle nahe kommt (getroffen wird dieser Punkt)
+      const { m, sw, sh } = geo, th = this.aimA + Math.PI / 2, c = Math.cos(th), s = Math.sin(th);
+      const lim = pad + (this.shield > 0 ? this.shieldPad : 0) + sw / m.w;
+      let best: [number, number] | null = null, bd = lim;
+      for (const [u, v] of m.edge) {
+        const lx = (u - 0.5) * sw, ly = (v - 0.5) * sh;
+        const x = this.px + lx * c - ly * s, y = this.py + lx * s + ly * c, d = dist(x, y);
+        if (d < bd) { bd = d; best = [x, y]; }
+      }
+      return best;
+    }
     if (!asp) return dist(this.px, this.py) < this.ship.r + pad ? [this.px, this.py] : null;
     const hw = this.ship.size * asp * 0.42, hl = this.ship.size / 2 - hw, c = Math.cos(this.aimA), s = Math.sin(this.aimA);
     for (let k = -1; k <= 1.0001; k += 0.1) {
@@ -5402,6 +5535,8 @@ export class ShooterGame implements MiniGame {
     this.shake = Math.max(this.shake, Math.min(0.5, 0.12 * size, 0.12 + rad / 1500));
     if (sound) sfx.explosion(size, this.panAt(x));
     else sfx.hit(this.panAt(x));
+    // im Nebel: der Feuerball erhellt den Dunst ringsum (größer und heller als die Explosion selbst)
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x, y, r: Math.max(160, rad * 6), color: '#ffa04a', t: 0, max: 0.55 + Math.min(1, rad / 250) });
   }
 
   /** Stereo-Position (−1 links … 1 rechts) eines Weltpunkts auf dem Bildschirm */
@@ -7256,7 +7391,7 @@ export class ShooterGame implements MiniGame {
   /** Radar um den eigenen Jäger (±RADAR Welteinheiten); Gegner außerhalb erscheinen am Rand */
   /** Test-Schalter im Pausenmenü: Nebel sofort an bzw. aus, und für alle folgenden Wellen */
   setFogTest(on: boolean): void {
-    if (on) { this.sectionPlan.fill('nebel'); this.section = 'nebel'; } else if (this.section === 'nebel') this.section = 'none';
+    this.fogged = on;
   }
 
   /**
@@ -7281,12 +7416,54 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
   }
 
+  /**
+   * Lichter im Nebel fortschreiben: Explosionsschein vergeht; Gewitter (rein optisch) – alle 4–11 s leuchtet irgendwo im
+   * Bild eine Wolkenpartie auf, oft zwei-, dreimal kurz hintereinander, etwa jedes dritte Mal mit sichtbarem Blitz
+   */
+  private updateWeather(dt: number): void {
+    for (const f of this.flares) f.t += dt;
+    this.flares = this.flares.filter((f) => f.t < f.max);
+    for (const s of this.storms) s.t += dt;
+    this.storms = this.storms.filter((s) => s.t < s.max);
+    if (this.fog < 0.6) { this.stormT = 2 + Math.random() * 3; return; }
+    this.stormT -= dt;
+    if (this.stormT > 0) return;
+    this.stormT = 4 + Math.random() * 7;
+    const vw = this.w / this.zoom, vh = this.h / this.zoom;
+    // eher am Rand des Sichtbereichs als direkt über dir
+    const a = Math.random() * Math.PI * 2, d = 0.25 + Math.random() * 0.35;
+    const x = this.camX + vw / 2 + Math.cos(a) * vw * d, y = this.camY + vh / 2 + Math.sin(a) * vh * d;
+    const r = (500 + Math.random() * 700) * (0.6 + 0.4 * Math.min(2, 1 / Math.max(0.3, this.zoom)));
+    let bolt: [number, number][][] | null = null;
+    if (Math.random() < 0.35) {
+      // Blitz quer durch die Wolke: Hauptast durch fortgesetzte Mittelpunkt-Verschiebung (feine Zacken), dazu 2–3 Äste
+      const ang = Math.random() * Math.PI * 2, L = r * (0.9 + Math.random() * 0.5);
+      const a0: [number, number] = [x - Math.cos(ang) * L / 2, y - Math.sin(ang) * L / 2];
+      const main = jagged(a0, [x + Math.cos(ang) * L / 2, y + Math.sin(ang) * L / 2], L * 0.22, 6);
+      bolt = [main];
+      for (let k = 0, n = 2 + Math.floor(Math.random() * 2); k < n; k++) {
+        const from = main[Math.floor(main.length * (0.2 + Math.random() * 0.6))];
+        const ba = ang + (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.6), bl = L * (0.15 + Math.random() * 0.25);
+        bolt.push(jagged(from, [from[0] + Math.cos(ba) * bl, from[1] + Math.sin(ba) * bl], bl * 0.25, 4));
+      }
+    }
+    this.storms.push({ x, y, r, t: 0, max: 0.9 + Math.random() * 0.6, flick: Math.floor(1 + Math.random() * 3), bolt });
+    sfx.thunder(Math.random() * 0.6 + 0.4, this.panAt(x));
+  }
+
+  /** Helligkeit eines Wetterleuchtens zur Zeit t: schnelles Aufflackern (1–3 Mal), dann Nachglühen */
+  private stormGlow(s: { t: number; max: number; flick: number }): number {
+    const p = s.t / s.max;
+    const pulse = Math.max(0, Math.sin(p * Math.PI * (s.flick * 2 + 1))) ** 3;
+    return pulse * (1 - p) ** 0.7;
+  }
+
   /** Dichte des Dunsts an einem Ort (0 = klar … 1 = voll), wie drawFog sie zeichnet */
   private fogAt(x: number, y: number): number {
     if (this.fog <= 0.01) return 0;
     const ramp = (d: number, R: number) => Math.min(1, Math.max(0, (d / R - 0.4) / 0.6));
-    const see = (FOG_SEE + (1 - this.fog) * 3000) * 1.25;
-    let f = ramp(Math.hypot(x - this.px, y - this.py), see);
+    const see = this.seeR * 1.25;
+    let f = ramp(this.selfDist(x, y), see);
     for (const w of this.liveWards) f = Math.min(f, ramp(Math.hypot(x - this.wx(w), y - this.wy(w)), FOG_WARD * 1.25));
     return f * this.fog;
   }
@@ -7302,6 +7479,38 @@ export class ShooterGame implements MiniGame {
     ctx.translate(-this.camX, -this.camY);
     // Schein auf den Schwaden: größer als ohne Nebel
     this.drawShotGlow(ctx, 1.6, (x, y) => 0.35 * this.fog + this.fogAt(x, y));
+    // Explosionen leuchten durch den Dunst: heller Kern und weiter Schein (je dichter der Dunst am Ort, desto mehr)
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of this.flares) {
+      const a = (1 - f.t / f.max) ** 1.4 * (0.3 * this.fog + this.fogAt(f.x, f.y));
+      const img = glowSprite(f.color);
+      if (!img || a <= 0.02) continue;
+      // weicher, breiter Schein ohne harten Kern (der Feuerball selbst kommt aus den Partikeln)
+      ctx.globalAlpha = Math.min(0.6, a * 0.32);
+      ctx.drawImage(img, f.x - f.r * 0.45, f.y - f.r * 0.45, f.r * 0.9, f.r * 0.9);
+      ctx.globalAlpha = Math.min(0.6, a * 0.22);
+      ctx.drawImage(img, f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
+    }
+    // Blitze: feine gezackte Linien mit weichem Leuchtsaum (Breite in Bildschirmpunkten), Äste schwächer
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const s of this.storms) {
+      if (!s.bolt) continue;
+      const a = this.stormGlow(s);
+      if (a <= 0.05) continue;
+      s.bolt.forEach((path, bi) => {
+        const br = bi ? 0.55 : 1;
+        for (const [w, col, al] of [[9, '120,150,255', 0.16], [4, '170,195,255', 0.35], [1.4, '240,245,255', 1]] as const) {
+          ctx.globalAlpha = a * al * br;
+          ctx.strokeStyle = `rgb(${col})`;
+          ctx.lineWidth = (w * (bi ? 0.7 : 1)) / this.zoom;
+          ctx.beginPath();
+          path.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+          ctx.stroke();
+        }
+      });
+    }
+    ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     for (const b of this.bullets) {
@@ -7319,11 +7528,26 @@ export class ShooterGame implements MiniGame {
   /** Farbe der Nebelschwaden je Gegner */
   private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [168, 140, 116] : this.side === 'xenon' ? [178, 98, 106] : [136, 112, 190]; }
   /** Sichtweite im Nebel (Spielpunkte um dein Schiff); ohne Nebel unbegrenzt */
-  private get fogSee(): number { return this.fog > 0.05 ? FOG_SEE + (1 - this.fog) * 3000 : Infinity; }
+  private get fogSee(): number { return this.fog > 0.05 ? this.seeR : Infinity; }
+  /**
+   * Sichtweite im Nebel, gemessen von der Außenhülle: in der ersten Welle weiter (man orientiert sich noch), ab der
+   * dritten die volle Enge; auf höheren Stufen etwas weniger. Beim Aufziehen des Nebels weit offen.
+   */
+  private get seeR(): number {
+    const waveK = this.wave <= 0 ? 1.3 : this.wave === 1 ? 1.12 : 1;
+    const levelK = 1.08 - 0.06 * this.level;
+    return FOG_SEE * waveK * levelK + (1 - this.fog) * 3000;
+  }
+  /** Abstand eines Punkts zum eigenen Schiff – zur Außenhülle, wo die Trefferform bekannt ist (große Schiffe!) */
+  private selfDist(x: number, y: number): number {
+    return this.hullGapAt(x, y) ?? Math.max(0, Math.hypot(x - this.px, y - this.py) - this.ship.r);
+  }
+  /** wie weit die Hülle über die Mitte hinausreicht (für Abstände, die von der Mitte aus gemessen werden) */
+  private get hullReach(): number { return this.ship.aspect ? this.ship.size / 2 : this.ship.size > 60 ? this.ship.size * 0.45 : this.ship.r; }
   /** im Nebel sichtbar? Nah an dir, nah an einem Schutzziel (dessen Sensoren) oder ein Großkampfschiff im Umriss */
   private seen(x: number, y: number, r = 0): boolean {
     if (this.fog <= 0.05) return true;
-    if (Math.hypot(x - this.px, y - this.py) < this.fogSee + r) return true;
+    if (this.selfDist(x, y) < this.fogSee + r) return true;
     return this.liveWards.some((w) => Math.hypot(x - this.wx(w), y - this.wy(w)) < FOG_WARD + r);
   }
 
@@ -7333,6 +7557,69 @@ export class ShooterGame implements MiniGame {
    * umgefärbte Gasnebelbilder, per Bildschirm-Mischung aufgelegt (hellen auf, decken nichts ab, keine Kanten). Gezeichnet
    * in voller Bildschirmauflösung.
    */
+  /**
+   * Sichtbereich in den Nebel schneiden – im Abstand R um die Außenhülle (nicht als Kreis um die Mitte: bei großen
+   * Schiffen läge sonst der halbe Rumpf im Dunst). Berechnet auf einem groben Raster (Abstand zur Hülle je Zelle),
+   * weich vergrößert aufgelegt.
+   */
+  private clearAroundHull(f: CanvasRenderingContext2D, R: number, stops: [number, number][], k: number): void {
+    const cw = f.canvas.width, ch = f.canvas.height, CELL = 12;
+    const gw = Math.ceil(cw / CELL), gh = Math.ceil(ch / CELL);
+    const dist = this.fogDistGrid(gw, gh, CELL, k, R);
+    const mc = this.fogCv[3] ?? (this.fogCv[3] = document.createElement('canvas'));
+    if (mc.width !== gw || mc.height !== gh) { mc.width = gw; mc.height = gh; }
+    const mg = mc.getContext('2d')!;
+    const img = mg.createImageData(gw, gh), px = img.data;
+    // Verlauf als Tabelle (256 Stufen über 0..R)
+    const lut = new Uint8ClampedArray(257);
+    for (let i = 0; i <= 256; i++) {
+      const q = i / 256;
+      let a = 0;
+      for (let j = 1; j < stops.length; j++) {
+        const [o1, a1] = stops[j];
+        if (q <= o1) { const [o0, a0] = stops[j - 1]; a = a0 + (a1 - a0) * ((q - o0) / (o1 - o0 || 1)); break; }
+      }
+      lut[i] = Math.round(a * 255);
+    }
+    for (let i = 0; i < gw * gh; i++) {
+      const q = dist[i] / R;
+      if (q < 1) px[i * 4 + 3] = lut[Math.floor(q * 256)];
+    }
+    mg.putImageData(img, 0, 0);
+    f.save();
+    f.globalCompositeOperation = 'destination-out';
+    f.imageSmoothingEnabled = true;
+    f.imageSmoothingQuality = 'high';
+    f.drawImage(mc, 0, 0, gw * CELL, gh * CELL);
+    f.restore();
+  }
+
+  /** Abstand jeder Rasterzelle zur Außenhülle (Welteinheiten), einmal je Takt für beide Nebellagen */
+  private fogDistGrid(gw: number, gh: number, CELL: number, k: number, R: number): Float32Array {
+    const key = `${this.time}|${gw}x${gh}|${this.camX}|${this.camY}|${this.zoom}`;
+    if (this.fogDistKey === key && this.fogDist) return this.fogDist;
+    const d = this.fogDist && this.fogDist.length === gw * gh ? this.fogDist : new Float32Array(gw * gh);
+    d.fill(1e9);
+    const s = this.zoom * k, geo = this.hullGeo();
+    // nur der Bereich um das Schiff (größter Radius beider Lagen, R ist der Dunst)
+    const reach = R * 1.15 + this.hullReach + 40;
+    const x0 = Math.max(0, Math.floor(((this.px - reach - this.camX) * s) / CELL)), x1 = Math.min(gw - 1, Math.ceil(((this.px + reach - this.camX) * s) / CELL));
+    const y0 = Math.max(0, Math.floor(((this.py - reach - this.camY) * s) / CELL)), y1 = Math.min(gh - 1, Math.ceil(((this.py + reach - this.camY) * s) / CELL));
+    const th = this.aimA + Math.PI / 2, c = Math.cos(th), sn = Math.sin(th);
+    for (let gy = y0; gy <= y1; gy++) {
+      const dy = this.camY + ((gy + 0.5) * CELL) / s - this.py;
+      for (let gx = x0; gx <= x1; gx++) {
+        const dx = this.camX + ((gx + 0.5) * CELL) / s - this.px;
+        d[gy * gw + gx] = geo ? hullGap(geo.m, dx * c + dy * sn, -dx * sn + dy * c, geo.sw, geo.sh) : this.selfDist(this.px + dx, this.py + dy);
+      }
+    }
+    this.fogDist = d;
+    this.fogDistKey = key;
+    return d;
+  }
+  private fogDist: Float32Array | null = null;
+  private fogDistKey = '';
+
   private drawFog(ctx: CanvasRenderingContext2D, t: number): void {
     if (this.fog <= 0.01 || typeof document === 'undefined') return;
     const cw = ctx.canvas.width, ch = ctx.canvas.height, k = cw / this.w;
@@ -7347,7 +7634,7 @@ export class ShooterGame implements MiniGame {
       return f;
     };
     // Sichtkreis (beim Aufziehen weit offen): stops = [Anteil des Radius, wie viel Nebel weggenommen wird]
-    const see = FOG_SEE + (1 - this.fog) * 3000;
+    const see = this.seeR;
     const hole = (f: CanvasRenderingContext2D, wx: number, wy: number, r: number, stops: [number, number][]) => {
       const sx = (wx - this.camX) * this.zoom * k, sy = (wy - this.camY) * this.zoom * k, R = r * this.zoom * k;
       const g = f.createRadialGradient(sx, sy, 0, sx, sy, R);
@@ -7365,7 +7652,7 @@ export class ShooterGame implements MiniGame {
     d.fillRect(0, 0, cw, ch);
     d.globalCompositeOperation = 'destination-out';
     const haze: [number, number][] = [[0, 0.9], [0.4, 0.85], [0.75, 0.3], [1, 0]];
-    hole(d, this.px, this.py, see * 1.25, haze);
+    this.clearAroundHull(d, see * 1.25, haze, k);
     for (const w of this.liveWards) hole(d, this.wx(w), this.wy(w), FOG_WARD * 1.25, haze);
     // 2. Schwaden: weiche Schleier, die Licht streuen – hellen auf (Bildschirm-Mischung) statt Dinge abzudecken;
     //    in der Spielwelt verteilt (je Zelle fest gewürfelt), drei Lagen treiben verschieden schnell
@@ -7394,10 +7681,25 @@ export class ShooterGame implements MiniGame {
         v.restore();
       }
     }
+    // Licht auf den Schwaden: Gewitter und Explosionen erhellen nur dort, wo Gas ist ('source-atop')
+    v.globalCompositeOperation = 'source-atop';
+    const light = (wx: number, wy: number, r: number, rgb: string, a: number) => {
+      if (a <= 0.01) return;
+      const sx = (wx - this.camX) * this.zoom * k, sy = (wy - this.camY) * this.zoom * k, R = r * this.zoom * k;
+      const g = v.createRadialGradient(sx, sy, 0, sx, sy, R);
+      g.addColorStop(0, `rgba(${rgb},${Math.min(1, a)})`);
+      g.addColorStop(0.45, `rgba(${rgb},${Math.min(1, a) * 0.45})`);
+      g.addColorStop(1, `rgba(${rgb},0)`);
+      v.globalAlpha = 1;
+      v.fillStyle = g;
+      v.fillRect(sx - R, sy - R, R * 2, R * 2);
+    };
+    for (const s of this.storms) light(s.x, s.y, s.r, '214,226,255', this.stormGlow(s) * 0.95);
+    for (const f of this.flares) light(f.x, f.y, f.r, '255,170,90', (1 - f.t / f.max) ** 1.5 * 0.8);
     // nah bei dir dünner, damit das Geschehen lesbar bleibt
     v.globalAlpha = 1;
     v.globalCompositeOperation = 'destination-out';
-    hole(v, this.px, this.py, see * 1.1, [[0, 0.55], [0.5, 0.4], [1, 0]]);
+    this.clearAroundHull(v, see * 1.1, [[0, 0.55], [0.5, 0.4], [1, 0]], k);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(d.canvas, 0, 0);
@@ -7452,7 +7754,7 @@ export class ShooterGame implements MiniGame {
       for (let i = 0; i < 40; i++) ctx.fillRect(x0 + Math.random() * rw, y0 + Math.random() * rh, 1, 1);
       ctx.strokeStyle = `rgba(228,243,240,${0.3 * this.fog})`;
       ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.arc(cx, cy, this.fogSee * sc, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, (this.fogSee + this.hullReach) * sc, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
     }
     for (const fp of wps) dot(fp, '#5ff0d8', 2.8);

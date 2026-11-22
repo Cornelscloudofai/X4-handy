@@ -13,7 +13,7 @@ type A = {
   wpn: { range: number }; pTur: { w?: { range: number; rail: boolean }; L?: boolean }[];
 };
 const mk = (side: 'pirate' | 'xenon' | 'khaak', level: number, mission: Mission = 'station', lo: Partial<Loadout> = {}) => {
-  const g = new ShooterGame({ level: level as 1, seed: 3, mutator: null, mode: 'normal', mission, loadout: { ...DEFAULT_LOADOUT, ...lo } }, side);
+  const g = new ShooterGame({ level: level as 1, seed: 3, mutator: null, mode: 'normal', mission, fog: false, loadout: { ...DEFAULT_LOADOUT, ...lo } }, side);
   g.resize(390, 780);
   for (let i = 0; i < 60; i++) g.update(DT);
   return { g, a: g as unknown as A };

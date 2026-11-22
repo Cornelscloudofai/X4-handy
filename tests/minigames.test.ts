@@ -32,7 +32,7 @@ function run(g: MiniGame, each: (t: number) => void = () => {}, max = 400): Game
 }
 
 const cfg = (level: Level, seed: number, extra: { mutator?: string | null; mode?: Mode; gear?: 1 | 2 | 3 } = {}) => ({
-  level, seed, mutator: extra.mutator ?? null, mode: extra.mode ?? 'normal' as Mode,
+  level, seed, mutator: extra.mutator ?? null, mode: extra.mode ?? 'normal' as Mode, fog: false,
   gear: extra.gear ? { weapon: extra.gear, shield: extra.gear, engine: extra.gear } : undefined,
 });
 
