@@ -23,6 +23,7 @@ import { MISSION_GOALS, SHOOTER_ENDLESS_GOALS as ENDLESS_GOALS, SHOOTER_GOALS, S
 import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './shooterData';
 import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 import { drawGraded } from '../render/canvasFx';
+import { drawJet, Smoke } from '../render/engineFx';
 import { drawSpecialIcon } from './specialIcons';
 import { hullGap, hullMaskOf, type HullMask } from './hullMask';
 import { FlightSchool, fmtTime, saveSchool, schoolBest, SCHOOL_NAME, type SchoolCtrl, type SchoolHost } from './flightSchool';
@@ -871,6 +872,10 @@ export class ShooterGame implements MiniGame {
   private leads: { e: Enemy; x: number; y: number }[] = [];
   private missileCd = 2;
   private missilesUsed = 0;
+  /** Triebwerksrauch (eigenes Schiff und Staffel); Düsen des eigenen Schiffs in Weltlage (beim Zeichnen ermittelt) */
+  private smoke = new Smoke();
+  private jetPts: { x: number; y: number; w: number; col: string }[] = [];
+  private smokeAcc = 0;
   /** ausgelöste Spezialfähigkeiten (Flugschule) */
   private specials = 0;
   /** Flugschule: Lektion (Steuerung) und Ablauf; neue Bestzeit */
@@ -2466,15 +2471,8 @@ export class ShooterGame implements MiniGame {
     ctx.rotate(w.a + Math.PI / 2);
     if (sp) {
       const moving = Math.hypot(w.vx, w.vy) > 20;
-      ctx.fillStyle = rgba(sp.engines.color, moving ? 0.75 : 0.3);
       const fw = S / 22;
-      for (const fx of sp.engines.xs) {
-        const ex = fx * S, ey = sp.engines.y * S;
-        ctx.beginPath();
-        ctx.moveTo(ex - fw, ey); ctx.lineTo(ex + fw, ey); ctx.lineTo(ex, ey + 2 + (moving ? 8 + Math.random() * 3 : 1) * (Math.min(S, 92) / 40));
-        ctx.closePath();
-        ctx.fill();
-      }
+      for (const [i, fx] of sp.engines.xs.entries()) drawJet(ctx, fx * S, sp.engines.y * S, fw, Math.min(S, 120) * 0.55, sp.engines.color, moving ? 0.85 : 0.1, t, w.id * 3.1 + i);
       ctx.drawImage(sp.img, -S / 2, -S / 2, S, S);
       if (w.flash > 0) {
         ctx.globalCompositeOperation = 'lighter';
@@ -3935,6 +3933,7 @@ export class ShooterGame implements MiniGame {
       this.spawnWave();
     }
     this.updatePlayer(dt);
+    this.emitSmoke(dt);
     // freie Sicht oder Karte ohne Eingabe: Jäger bremsen ab und halten die Stelle (der Träger behält seinen Kurs)
     if ((this.camMode !== 'schiff' || this.tac) && !this.joy) { const k = Math.max(0, 1 - dt * 1.2); this.pvx *= k; this.pvy *= k; }
     this.updateEnemies(dt);
@@ -4190,6 +4189,29 @@ export class ShooterGame implements MiniGame {
     const mg = 40 + (this.ship.aspect ? this.ship.size / 2 : 0);
     this.camX += (clamp(tx, -mg, this.WW - vw + mg) - this.camX) * k;
     this.camY += (clamp(ty, -TOP / Z - mg, this.WH - vh + mg) - this.camY) * k;
+  }
+
+  /**
+   * Triebwerksrauch: aus jeder Düse des eigenen Schiffs, je nach Schub, und hinter fliegenden Begleitern – wenige,
+   * große, sehr durchsichtige Flocken, die nach hinten ausgestoßen werden und mit der Zeit zur Ruhe kommen
+   */
+  private emitSmoke(dt: number): void {
+    this.smoke.update(dt);
+    const p = this.thrust * (1 + this.cruise * 0.5);
+    this.smokeAcc += dt * (4 + 30 * p);
+    const back = this.aimA + Math.PI;
+    while (this.smokeAcc >= 1) {
+      this.smokeAcc -= 1;
+      for (const j of this.jetPts) {
+        const a = back + (Math.random() - 0.5) * 0.5, v = 50 + 90 * p;
+        this.smoke.emit(j.x, j.y, Math.cos(a) * v + this.pvx * 0.4, Math.sin(a) * v + this.pvy * 0.4, j.w * (1.8 + Math.random()) + 4, j.col);
+      }
+    }
+    for (const w of this.wings) {
+      if (w.state !== 'fly' || Math.hypot(w.vx, w.vy) < 20 || Math.random() > dt * 9) continue;
+      const S = w.def.size, bx = w.x - Math.cos(w.a) * S * 0.42, by = w.y - Math.sin(w.a) * S * 0.42;
+      this.smoke.emit(bx, by, -Math.cos(w.a) * 60 + w.vx * 0.4, -Math.sin(w.a) * 60 + w.vy * 0.4, S / 14 + 3, '#ffb070');
+    }
   }
 
   private updatePlayer(dt: number): void {
@@ -6012,6 +6034,7 @@ export class ShooterGame implements MiniGame {
     for (const m of this.mines) this.drawMine(ctx, m, t);
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
+    this.smoke.draw(ctx);
     this.school?.drawWorld(ctx);
     // ganz unten die Großkampfschiffe der Gegner (Xenon K, Träger, Nester samt Türmen) – auch unter dem Frachter
     for (const e of this.enemies) if (this.inBack(e)) this.drawEnemy(ctx, e, t);
@@ -7078,14 +7101,8 @@ export class ShooterGame implements MiniGame {
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
       const size = e.r * spr.scale;
-      ctx.fillStyle = rgba(spr.engines.color, 0.5 + 0.3 * Math.random());
-      for (const fx of spr.engines.xs) {
-        const ex = fx * size, ey = spr.engines.y * size;
-        ctx.beginPath();
-        ctx.moveTo(ex - 1.6, ey); ctx.lineTo(ex + 1.6, ey); ctx.lineTo(ex, ey + 5 + Math.random() * 4);
-        ctx.closePath();
-        ctx.fill();
-      }
+      const ep = e.parent ? 0 : 0.35 + 0.65 * Math.min(1, Math.hypot(e.vx, e.vy) / Math.max(1, SPEC[e.kind].speed));
+      if (ep > 0) for (const [i, fx] of spr.engines.xs.entries()) drawJet(ctx, fx * size, spr.engines.y * size, Math.max(1.5, size / 26), Math.min(size, 100) * 0.42, spr.engines.color, ep, t, i * 1.3 + e.orbit * 5);
       const top = -size / 2 - spr.oy * size;
       // Elite: leuchtende Umrandung in der Farbe der Eigenschaft (Silhouette des Bilds, dahinter gezeichnet)
       if (e.elite) {
@@ -7296,14 +7313,12 @@ export class ShooterGame implements MiniGame {
       // Jäger: KI-Bilder füllen das Bild fast ganz aus, die gerenderten haben mehr Rand – daher kleiner gezeichnet.
       const size = this.ship.size === 40 ? (shipArt() === 'ai' ? SPRITE_SIZE * 0.86 : SPRITE_SIZE) : this.ship.size;
       const { xs, y, color } = sprite.engines;
-      ctx.fillStyle = rgba(color, 0.35 + 0.5 * thrust);
-      const fw = size / 22;
-      for (const fx of xs) {
+      const fw = size / 22, rot = this.aimA + Math.PI / 2, rc = Math.cos(rot), rs = Math.sin(rot);
+      this.jetPts = [];
+      for (const [i, fx] of xs.entries()) {
         const ex = fx * size, ey = y * size;
-        ctx.beginPath();
-        ctx.moveTo(ex - fw, ey); ctx.lineTo(ex + fw, ey); ctx.lineTo(ex, ey + 2 + (thrust * 12 + Math.random() * 3) * (Math.min(size, 92) / 40));
-        ctx.closePath();
-        ctx.fill();
+        drawJet(ctx, ex, ey, fw, Math.min(size, 120) * 0.6, color, thrust, t, i * 1.7);
+        this.jetPts.push({ x: this.px + ex * rc - ey * rs, y: this.py + ex * rs + ey * rc, w: fw, col: color });
       }
       // lange Schiffe (Träger): Bild im eigenen Seitenverhältnis, size ist die Länge
       const sw = size * (asp ?? 1);
@@ -7329,12 +7344,8 @@ export class ShooterGame implements MiniGame {
       }
     } else {
       ctx.scale(this.ship.size / 40, this.ship.size / 40);
+      drawJet(ctx, 0, 10, 2.6, 22, '#9ffff0', thrust, t);
       drawFighterVector(ctx);
-      ctx.fillStyle = rgba('#9ffff0', 0.4 + 0.5 * thrust);
-      ctx.beginPath();
-      ctx.moveTo(-3, 10); ctx.lineTo(3, 10); ctx.lineTo(0, 12 + thrust * 10 + Math.random() * 3);
-      ctx.closePath();
-      ctx.fill();
     }
     ctx.restore();
     // eigene Türme (zielen frei)
