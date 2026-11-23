@@ -95,3 +95,15 @@ describe('Flakturm', () => {
     expect(pts.size).toBe(starts.length);
   });
 });
+
+describe('Gatling-Turm', () => {
+  it('lädt in einer Feuerpause nach, statt mit halbem Magazin in den nächsten Kampf zu gehen', () => {
+    const g = game({ ship: 'cobra', turret: 'neutron' });
+    const t = (g as unknown as { pTur: { mag: number; cd: number }[] }).pTur[0];
+    t.mag = 5; t.cd = 0;
+    for (let i = 0; i < 60 * 4; i++) g.update(DT);
+    expect(t.mag).toBe(5);
+    for (let i = 0; i < 60 * 2; i++) g.update(DT);
+    expect(t.mag).toBe(80);
+  });
+});

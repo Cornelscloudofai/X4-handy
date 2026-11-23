@@ -989,7 +989,7 @@ export class ShooterGame implements MiniGame {
   private tune = enemyTune();
   private tuneVer = enemyTuneVersion();
   /** Türme des eigenen Schiffs: Pause und Richtung; beim Träger je Turm eigene Art (Waffe, Drehtempo, Bild, L-Turm) */
-  private pTur: ({ cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number; /** Raketenturm: noch zu startende Raketen der Salve und Vorrat */ salvo?: number; ammo?: number; /** nächstes Rohr (Mehrlingstürme) */ barrel?: number } & TurretMem)[] = [];
+  private pTur: ({ cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number; /** Raketenturm: noch zu startende Raketen der Salve und Vorrat */ salvo?: number; ammo?: number; /** nächstes Rohr (Mehrlingstürme) */ barrel?: number; /** Sekunden seit dem letzten Schuss (Nachladen in Ruhe) */ idle?: number } & TurretMem)[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
   private turTurn = 5;
   private turType = 'puls';
@@ -4745,6 +4745,9 @@ export class ShooterGame implements MiniGame {
       // Kampfprotokoll: je Turmgruppe (Träger) bzw. alle M-Türme zusammen
       const key = t.g != null ? `g${t.g}` : 'tm';
       if (w.missile) { this.missileTurret(t, x, y, w, range, order, dt, key); continue; }
+      // in Ruhe nachladen wie die Bordwaffen: nach einer Feuerpause von der Länge der Nachladezeit ist das Magazin voll
+      t.idle = (t.idle ?? 0) + dt;
+      if (w.mag && t.mag < w.mag && t.cd <= 0 && t.idle >= w.reload * this.tempo) t.mag = w.mag;
       const aim = this.turretAim(t, x, y, range, order, order === 'alle' || order === 'S', dt);
       if (!aim) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
       const tgt = aim.tgt;
@@ -4765,7 +4768,10 @@ export class ShooterGame implements MiniGame {
         if (Math.random() < 0.3) this.fx.add({ x: tgt.x, y: tgt.y, color: '#bffff6', size: 1.4, max: 0.15 });
         continue;
       }
-      if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < 0.15) {
+      // Dauerfeuer (Gatling) erst, wenn der Turm fast genau auf dem Ziel liegt – sonst geht beim Schwenken die halbe
+      // Garbe ins Leere; Einzelschüsse dürfen schon im Nachführen fallen
+      if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < (w.interval < 0.2 ? 0.035 : 0.15)) {
+        t.idle = 0;
         // Mehrlingsturm: jeder Schuss kommt aus dem nächsten Rohr (Mündung laut Turmbild), mit Mündungsfeuer
         let mx = x, my = y, fwd = 8;
         const mz = turretMuzzles(t.type ?? this.turType, this.ship.sprite);

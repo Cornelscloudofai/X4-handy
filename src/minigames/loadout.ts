@@ -542,8 +542,9 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   // Strahlenturm: wie der Strahlenemitter (M) als Dauerstrahl; trifft sofort, solange er auf dem Ziel liegt
   strahl: { name: 'Strahlenturm', desc: 'Dauerstrahl: trifft sofort, solange er auf dem Ziel liegt – wenig Schaden pro Sekunde, aber nie daneben; gut gegen Jäger und Raketen.', turn: 150, color: '#9ffcff', w: 2, beam: true,
     gun: { dmg: 120, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0 } },
-  neutron: { name: 'Neutronen-Gatling-Turm', desc: 'Langer Dauerstrom, dann acht Sekunden nachladen.', turn: 140, color: '#ff8a3d', w: 2,
-    gun: { dmg: 18, rate: 18, amt: 1, mag: 80, reload: 8, v: 2500, life: 1.4, angle: 0.45 } },
+  neutron: { name: 'Neutronen-Gatling-Turm', desc: 'Langer Dauerstrom, dann fünf Sekunden nachladen; feuert erst, wenn er genau auf dem Ziel liegt.', turn: 140, color: '#ff8a3d', w: 2,
+    // Nachladen kürzer als in den X4-Daten (8): im Spiel 5 s statt 7,5 s – sonst länger stumm als feuernd
+    gun: { dmg: 18, rate: 18, amt: 1, mag: 80, reload: 5.3, v: 2500, life: 1.4, angle: 0.45 } },
   tau: { name: 'Tau-Beschleuniger-Turm', desc: 'Vier Geschosse je Schuss, kurze Reichweite.', turn: 160, color: '#ff5a5a', w: 2.2,
     gun: { dmg: 42, rate: 3, amt: 4, mag: 8, reload: 5, v: 2000, life: 1.235, angle: 1.15 } },
   plasma: { name: 'Plasmaturm', desc: 'Zwei schwere Plasmageschosse, dann sieben Sekunden Pause; schwenkt langsam.', turn: 40, color: '#a6ff6b', w: 4,
