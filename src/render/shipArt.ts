@@ -254,6 +254,8 @@ const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; p
   { name: 'split-turm-boson-hell-ki', type: 'boson', rgb: [194, 44, 26], px: 0.5, py: 0.694, d: 0.51 },
   // Raketen-Vierling (M): dreht um die Mitte des runden Sockels unter dem Gehäuse; etwas breiter als der Sockel
   { name: 'split-turm-rakete-ki', type: 'rakete', rgb: [150, 55, 45], px: 0.5, py: 0.61, d: 0.36 },
+  // Flakturm: vier Rohre im Block, Munitionskästen links und rechts; ein Bild für alle Rumpftöne
+  { name: 'split-turm-flak-ki', type: 'flak', rgb: [150, 58, 44], px: 0.5, py: 0.6, d: 0.7 },
   // Raketensilo (L): fest im Rumpf, Mitte des Bilds auf dem Sockel, so breit wie der Sockel
   { name: 'split-lturm-silo-ki', type: 'silo', rgb: [140, 60, 50], px: 0.5, py: 0.5, d: 0.54 },
 ];
