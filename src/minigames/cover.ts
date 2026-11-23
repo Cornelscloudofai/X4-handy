@@ -210,15 +210,23 @@ export function drawWreck(ctx: CanvasRenderingContext2D, w: Wreck, light: number
   const lx = Math.cos(light), ly = Math.sin(light);
   if (!i) return;
   const [sw, sh] = dims(w);
-  // 1. Schlagschatten: Riss vom Licht weg versetzt, weich, deckt den Hintergrund ab
-  const sh1 = silhouette(src, '#000', 10);
+  // 1. Schattenkeil im Raum: das Wrack verdeckt das Licht, dahinter bleibt ein dunkler Streifen, der vom Licht weg in den
+  //    Raum läuft – leicht auseinanderlaufend (Trichter, die Lichtquelle ist nicht unendlich weit), nach hinten weicher
+  //    und schwächer. Liegt in derselben Ebene wie das Wrack, nicht darunter.
+  const sh1 = silhouette(src, '#000', 6);
   if (sh1) {
-    const off = w.size * 0.16, q = Math.max(sw, sh) / 512;
+    const q = Math.max(sw, sh) / 512, L = w.size * 2.2, N = 28;
     ctx.save();
-    ctx.translate(w.x - lx * off, w.y - ly * off);
-    ctx.rotate(rot);
-    ctx.globalAlpha = 0.62;
-    ctx.drawImage(sh1, -sh1.width * q / 2, -sh1.height * q / 2, sh1.width * q, sh1.height * q);
+    for (let n = N; n >= 1; n--) {
+      const u = n / N, sc = 1 + u * 0.45;
+      ctx.save();
+      ctx.translate(w.x - lx * L * u, w.y - ly * L * u);
+      ctx.rotate(rot);
+      ctx.scale(sc, sc);
+      ctx.globalAlpha = 0.13 * Math.pow(1 - u, 1.2) + 0.015;
+      ctx.drawImage(sh1, -sh1.width * q / 2, -sh1.height * q / 2, sh1.width * q, sh1.height * q);
+      ctx.restore();
+    }
     ctx.restore();
   }
   // 2. Lichtsaum: warm getönter Riss, ein Stück zum Licht hin versetzt – zeigt sich nur als feine Kante auf der Lichtseite
@@ -458,13 +466,14 @@ export function drawWreckIntro(ctx: CanvasRenderingContext2D, w: Wreck, k: numbe
 
 export interface Anomaly { x: number; y: number; R: number; core: number; seed: number }
 /** Sog: Beschleunigung (Spielpunkte/s²) am Rand des Kerns, nach außen bis R auf 0 */
-export const ANOMALY_PULL = 260;
+export const ANOMALY_PULL = 400;
 
 /** Beschleunigung zum Kern hin für einen Punkt (Faktor k: Schiffe 1, Raketen mehr, Geschosse weniger) */
 export function anomalyPull(a: Anomaly, x: number, y: number, k = 1): [number, number] {
   const dx = a.x - x, dy = a.y - y, d = Math.hypot(dx, dy);
   if (d >= a.R || d < 1) return [0, 0];
-  const f = ANOMALY_PULL * k * Math.pow(1 - d / a.R, 1.6) * Math.min(1.6, a.core * 3 / d + 0.4);
+  // im Kern klingt der Zug ab (kein Hin- und Herreißen in der Mitte – dort wirkt die Schleuder)
+  const f = ANOMALY_PULL * k * Math.pow(1 - d / a.R, 1.4) * Math.min(1.8, a.core * 3 / d + 0.45) * Math.min(1, d / a.core);
   return [(dx / d) * f, (dy / d) * f];
 }
 
@@ -485,12 +494,12 @@ export function drawAnomaly(ctx: CanvasRenderingContext2D, a: Anomaly, t: number
   ctx.globalCompositeOperation = 'lighter';
   ctx.lineCap = 'round';
   // Staubschleier: weiche, breite Spiralarme, die sich langsam hineindrehen (keine Linien – nur Dunst)
-  for (let k = 0; k < 5; k++) {
-    const a0 = (k / 5) * Math.PI * 2 + t * 0.25 + a.seed, rMax = a.R * 0.42;
+  for (let k = 0; k < 7; k++) {
+    const a0 = (k / 7) * Math.PI * 2 + t * 0.3 + a.seed, rMax = a.R * 0.5;
     for (let s = 0; s < 28; s++) {
       const u = s / 28, r = core * 1.3 + (rMax - core * 1.3) * (1 - u), ang = a0 + u * 4.2;
       const px = x + Math.cos(ang) * r, py = y + Math.sin(ang) * r, rr = 18 + r * 0.16;
-      const al = 0.075 * Math.sin(u * Math.PI) * (k % 2 ? 1 : 0.8);
+      const al = 0.11 * Math.sin(u * Math.PI) * (k % 2 ? 1 : 0.8);
       const g = ctx.createRadialGradient(px, py, 0, px, py, rr);
       g.addColorStop(0, `rgba(${k % 2 ? '255,150,90' : '170,130,255'},${al})`);
       g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -514,6 +523,13 @@ export function drawAnomaly(ctx: CanvasRenderingContext2D, a: Anomaly, t: number
       }
       ctx.strokeStyle = gr;
     } else ctx.strokeStyle = `rgba(${rgb},${base * 0.6})`;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.stroke();
+  }
+  // Gravitationswellen: helle Ringe laufen langsam nach innen und verlöschen am Kern
+  for (let j = 0; j < 3; j++) {
+    const u = 1 - (((t * 0.22 + j / 3) % 1)), rr = core * 1.4 + (a.R * 0.45 - core * 1.4) * u;
+    ctx.strokeStyle = `rgba(200,170,255,${(0.1 * Math.sin(u * Math.PI)).toFixed(3)})`;
+    ctx.lineWidth = 3 + u * 14;
     ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.stroke();
   }
   // Lichtbrechung: dünner, heller Ring um den Kern

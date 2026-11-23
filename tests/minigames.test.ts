@@ -882,7 +882,7 @@ describe('Kampf', () => {
     }
     // gut ein Drittel der Zusammenstellungen schafft auch der einfache Autopilot (die Türme sind bewusst stark)
     expect(wins).toBeGreaterThanOrEqual(rounds * 0.3);
-  }, 60000);
+  }, 120000); // allein rund 50 s; im vollen Parallellauf deutlich mehr
 
   it('Zwei Sticks: rechts zielen und feuern, links Schub auch rückwärts', () => {
     const g = new ShooterGame({ ...cfg(1, 3), controls: 'zwei' }, 'xenon');

@@ -321,7 +321,7 @@ const KYON_FIRE = 1.7, KYON_SWEEP = 0.32;
 /** Abschnitte einer Welle: Umgebung (Nebel kommt unabhängig dazu) */
 type Section = 'none' | 'rocks' | 'mines' | 'nebel' | 'wracks' | 'anomalie';
 /** Anomalie: Wirkradius, Kern; Schaden beim Hineingeraten (dein Schiff) und Schleuder-Tempo */
-const ANOMALY_R = 900, ANOMALY_CORE = 55, CORE_DMG = 22, CORE_FLING = 460;
+const ANOMALY_R = 1250, ANOMALY_CORE = 78, CORE_DMG = 18, CORE_FLING = 760;
 /** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
 const ZAP_JUMPS = 5, ZAP_HOP = 150, ZAP_CONE = 0.55;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
@@ -3690,7 +3690,9 @@ export class ShooterGame implements MiniGame {
         this.pvx += ax * dt; this.pvy += ay * dt;
         const d = Math.hypot(this.px - an.x, this.py - an.y);
         if (d < an.core + this.ship.r * 0.3 && this.coreCd <= 0 && this.outcome !== 'player') {
-          const nx = (this.px - an.x) / (d || 1), ny = (this.py - an.y) / (d || 1);
+          // Schleuder: in Flugrichtung hinausgeschossen (kein Abprallen); wer fast steht, fliegt vom Kern weg
+          const v = Math.hypot(this.pvx, this.pvy);
+          const nx = v > 60 ? this.pvx / v : (this.px - an.x) / (d || 1), ny = v > 60 ? this.pvy / v : (this.py - an.y) / (d || 1);
           this.pvx = nx * CORE_FLING; this.pvy = ny * CORE_FLING;
           this.coreCd = 0.8;
           this.damagePlayer(CORE_DMG * this.enemyDmg, 1, [this.px - nx * this.ship.r * 0.5, this.py - ny * this.ship.r * 0.5]);
@@ -3709,9 +3711,11 @@ export class ShooterGame implements MiniGame {
             // in den Kern geraten: zerrissen bzw. schwer beschädigt
             this.logSrc = 'other';
             this.damageEnemy(e, (e.max + e.shMax) * 0.7, 1, 0.5);
-            const nx = (e.x - an.x) / (de || 1), ny = (e.y - an.y) / (de || 1);
+            // in Flugrichtung hinausgeschleudert
+            const mvx = e.vx + (e.gvx ?? 0), mvy = e.vy + (e.gvy ?? 0), mv = Math.hypot(mvx, mvy);
+            const nx = mv > 40 ? mvx / mv : (e.x - an.x) / (de || 1), ny = mv > 40 ? mvy / mv : (e.y - an.y) / (de || 1);
             e.x = an.x + nx * (an.core + e.r + 4); e.y = an.y + ny * (an.core + e.r + 4);
-            e.vx = nx * CORE_FLING; e.vy = ny * CORE_FLING;
+            e.vx = nx * CORE_FLING; e.vy = ny * CORE_FLING; e.gvx = e.gvy = 0;
           }
         }
       }
