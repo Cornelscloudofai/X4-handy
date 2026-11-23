@@ -3644,15 +3644,16 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Wrackfeld: sechs Wracks voraus bzw. rund um das Schutzziel – nie auf der Route des Frachters, nicht auf dir. Sie
-   * bleiben für die Runde liegen; ein späteres Wrackfeld kommt dazu.
+   * Wrackfeld: vier große Wracks voraus bzw. rund um das Schutzziel – nie auf der Route des Frachters, nicht auf dir.
+   * Einmal angelegt, bleiben sie für die Runde liegen; spätere Wellen bringen keine weiteren.
    */
   private spawnCover(): void {
+    if (this.cover.length) return;
     const lanes = this.wards.map((w) => this.wx(w));
     const ok = (x: number, y: number, s: number) =>
       (!this.moving || lanes.every((lx) => Math.abs(x - lx) > 240 + s * 0.5)) && Math.hypot(x - this.fX, y - this.fY) > 280 + s * 0.5
       && Math.hypot(x - this.px, y - this.py) > 160 + s * 0.5 && this.cover.every((w) => Math.hypot(w.x - x, w.y - y) > (w.size + s) * 0.55);
-    for (let n = 0; n < 6; n++) {
+    for (let n = 0; n < 4; n++) {
       const w = makeWreck(0, 0, this.r);
       for (let k = 0; k < 40; k++) {
         let x: number, y: number;
@@ -3764,11 +3765,11 @@ export class ShooterGame implements MiniGame {
   private spawnWreckField(): void {
     const cx = this.fX, cy = this.fY - 930;
     // die Wracks sind echte Deckung (wie im Wrackfeld-Abschnitt): Schüsse bleiben hängen, Schiffe gleiten ab
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 5; i++) {
       const w = makeWreck(0, 0, this.r);
       w.size *= 0.8;
       for (let k = 0; k < 30; k++) {
-        const a = (i / 7) * Math.PI * 2 + this.r() * 0.8, d = 260 + this.r() * 560;
+        const a = (i / 5) * Math.PI * 2 + this.r() * 0.8, d = 260 + this.r() * 560;
         const x = clamp(cx + Math.cos(a) * d * 1.3, 160, this.WW - 160), y = clamp(cy + Math.sin(a) * d * 0.75, 180, this.fY - 320);
         if (this.cover.every((q) => Math.hypot(q.x - x, q.y - y) > (q.size + w.size) * 0.55)) { w.x = x; w.y = y; this.cover.push(w); break; }
       }
@@ -6439,7 +6440,9 @@ export class ShooterGame implements MiniGame {
     if (this.crates.length) this.drawSalvage(ctx, t);
     this.smoke.draw(ctx);
     // Wracks auf der Spielebene: belichtet, mit Schlagschatten; frisch erschienen leuchten sie kurz auf
-    for (const w of this.cover) drawWreck(ctx, w, this.lightA, this.zoom);
+    // nur was im Bild liegt (mit Platz für den Schattenkeil)
+    const vx0 = this.camX, vy0 = this.camY, vx1 = vx0 + this.w / this.zoom, vy1 = vy0 + this.h / this.zoom;
+    for (const w of this.cover) { const m = w.size * 2.6; if (w.x + m > vx0 && w.x - m < vx1 && w.y + m > vy0 && w.y - m < vy1) drawWreck(ctx, w, this.lightA, this.zoom); }
     if (this.coverIntro > 0) for (const w of this.cover) drawWreckIntro(ctx, w, Math.min(1, this.coverIntro) * (0.6 + 0.4 * Math.sin(t * 6)));
     this.school?.drawWorld(ctx);
     // ganz unten die Großkampfschiffe der Gegner (Xenon K, Träger, Nester samt Türmen) – auch unter dem Frachter

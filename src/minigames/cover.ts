@@ -32,22 +32,22 @@ interface WreckLight { x: number; y: number; r: number; kind: 'glut' | 'funke' |
 /** Bilder der Deckungswracks (Länge im Spiel je Bild: min … max); frames[0] ist das Grundbild */
 interface WreckArt { frames: string[]; min: number; max: number; lights: WreckLight[] }
 const WRECK_ART: WreckArt[] = [
-  { frames: [ringRost1, ringRost2, ringRost3, ringRost4, ringRost5], min: 330, max: 430, lights: [
+  { frames: [ringRost1, ringRost2, ringRost3, ringRost4, ringRost5], min: 440, max: 580, lights: [
     { x: 0.35, y: 0.19, r: 0.04, kind: 'glut', color: '255,170,80' },
     { x: 0.154, y: 0.49, r: 0.05, kind: 'glut', color: '255,170,80' },
     { x: 0.6, y: 0.835, r: 0.04, kind: 'glut', color: '255,170,80' },
     { x: 0.845, y: 0.205, r: 0.035, kind: 'funke', color: '170,200,255' },
   ] },
-  { frames: [triebwerk1, triebwerk2, triebwerk3, triebwerk4], min: 250, max: 330, lights: [
+  { frames: [triebwerk1, triebwerk2, triebwerk3, triebwerk4], min: 340, max: 440, lights: [
     { x: 0.33, y: 0.33, r: 0.06, kind: 'glut', color: '255,120,60' },
     { x: 0.627, y: 0.379, r: 0.04, kind: 'funke', color: '200,220,255' },
   ] },
-  { frames: [frachter1, frachter2, frachter3, frachter4, frachter5], min: 360, max: 460, lights: [
+  { frames: [frachter1, frachter2, frachter3, frachter4, frachter5], min: 480, max: 620, lights: [
     { x: 0.27, y: 0.54, r: 0.2, kind: 'glut', color: '255,80,30' },
     { x: 0.74, y: 0.3, r: 0.17, kind: 'blitz', color: '140,180,255' },
   ] },
-  { frames: [ringGrau], min: 300, max: 400, lights: [] },
-  { frames: [geruest], min: 280, max: 360, lights: [] },
+  { frames: [ringGrau], min: 400, max: 530, lights: [] },
+  { frames: [geruest], min: 380, max: 480, lights: [] },
 ];
 
 const IMGS = new Map<string, HTMLImageElement>();
@@ -197,12 +197,18 @@ function silhouette(src: string, color: string, blurPx: number): HTMLCanvasEleme
   return out;
 }
 
-/** Zwischenfläche je Wrack für die Beleuchtung (wird jedes Bild neu belichtet) */
-const LIT = new WeakMap<Wreck, HTMLCanvasElement>();
+/**
+ * Zwischenflächen je Wrack: belichtetes Bild (im Bildraum des Wracks) und Schattenkeil (in Weltrichtung). Beide werden nur
+ * neu berechnet, wenn sich das Wrack merklich gedreht hat oder die Auflösung eine Stufe wechselt – nicht jedes Bild.
+ */
+interface WreckCache { lit: HTMLCanvasElement; litRot: number; litPx: number; shade: HTMLCanvasElement | null; shadeRot: number; shadeK: number }
+const CACHE = new WeakMap<Wreck, WreckCache>();
+/** Schattenkeil: Länge (Anteil der Größe), Öffnung des Trichters */
+const SHADE_LEN = 2.2, SHADE_OPEN = 0.45;
 
 /**
- * Wrack zeichnen (im Weltmaßstab). light: Richtung, aus der das Licht kommt (rad, Welt); shadowK: Länge des Schattens als
- * Anteil der Größe; z: Zoom (für die Auflösung der Belichtung).
+ * Wrack zeichnen (im Weltmaßstab). light: Richtung, aus der das Licht kommt (rad, Welt); z: Zoom (für die Auflösung der
+ * Belichtung).
  */
 export function drawWreck(ctx: CanvasRenderingContext2D, w: Wreck, light: number, z: number): void {
   const src = WRECK_ART[w.art].frames[0], i = img(src);
@@ -210,66 +216,82 @@ export function drawWreck(ctx: CanvasRenderingContext2D, w: Wreck, light: number
   const lx = Math.cos(light), ly = Math.sin(light);
   if (!i) return;
   const [sw, sh] = dims(w);
-  // 1. Schattenkeil im Raum: das Wrack verdeckt das Licht, dahinter bleibt ein dunkler Streifen, der vom Licht weg in den
-  //    Raum läuft – leicht auseinanderlaufend (Trichter, die Lichtquelle ist nicht unendlich weit), nach hinten weicher
-  //    und schwächer. Liegt in derselben Ebene wie das Wrack, nicht darunter.
-  const sh1 = silhouette(src, '#000', 6);
-  if (sh1) {
-    const q = Math.max(sw, sh) / 512, L = w.size * 2.2, N = 28;
-    ctx.save();
-    for (let n = N; n >= 1; n--) {
-      const u = n / N, sc = 1 + u * 0.45;
-      ctx.save();
-      ctx.translate(w.x - lx * L * u, w.y - ly * L * u);
-      ctx.rotate(rot);
-      ctx.scale(sc, sc);
-      ctx.globalAlpha = 0.13 * Math.pow(1 - u, 1.2) + 0.015;
-      ctx.drawImage(sh1, -sh1.width * q / 2, -sh1.height * q / 2, sh1.width * q, sh1.height * q);
-      ctx.restore();
+  const S = Math.max(sw, sh);
+  let c = CACHE.get(w);
+  if (!c) { c = { lit: document.createElement('canvas'), litRot: NaN, litPx: 0, shade: null, shadeRot: NaN, shadeK: 0 }; CACHE.set(w, c); }
+  // 1. Schattenkeil im Raum: das Wrack verdeckt das Licht, dahinter läuft ein dunkler Streifen vom Licht weg, leicht
+  //    auseinander (Trichter), nach hinten weicher und schwächer – in derselben Ebene wie das Wrack, nicht darunter
+  const sil = silhouette(src, '#000', 6);
+  if (sil) {
+    const K = 128 / S; // Schatten ist weich: geringe Auflösung genügt
+    if (!c.shade || Math.abs(c.shadeRot - rot) > 0.03 || c.shadeK !== K) {
+      const span = S * (SHADE_LEN + 1 + SHADE_OPEN) * 1.1, n = Math.ceil(span * 2 * K);
+      const cv = c.shade ?? document.createElement('canvas');
+      cv.width = cv.height = n;
+      const g = cv.getContext('2d')!;
+      g.clearRect(0, 0, n, n);
+      const q = (S / 512) * K, N = 28;
+      for (let k = N; k >= 1; k--) {
+        const u = k / N, sc = 1 + u * SHADE_OPEN;
+        g.save();
+        g.translate(n / 2 - lx * S * SHADE_LEN * u * K, n / 2 - ly * S * SHADE_LEN * u * K);
+        g.rotate(rot);
+        g.scale(sc, sc);
+        g.globalAlpha = 0.13 * Math.pow(1 - u, 1.2) + 0.015;
+        g.drawImage(sil, (-sil.width * q) / 2, (-sil.height * q) / 2, sil.width * q, sil.height * q);
+        g.restore();
+      }
+      c.shade = cv; c.shadeRot = rot; c.shadeK = K;
     }
-    ctx.restore();
+    const m = c.shade.width / K;
+    ctx.drawImage(c.shade, w.x - m / 2, w.y - m / 2, m, m);
   }
-  // 2. Lichtsaum: warm getönter Riss, ein Stück zum Licht hin versetzt – zeigt sich nur als feine Kante auf der Lichtseite
-  const rim = silhouette(src, '#ffe2bc', 1.5);
-  if (rim) {
-    const off = Math.max(1.2, 1.6 / z), q = Math.max(sw, sh) / 512;
-    ctx.save();
-    ctx.translate(w.x + lx * off, w.y + ly * off);
-    ctx.rotate(rot);
-    ctx.globalAlpha = 0.55;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(rim, -rim.width * q / 2, -rim.height * q / 2, rim.width * q, rim.height * q);
-    ctx.restore();
+  // 2. das Wrack selbst, belichtet: Lichtseite etwas wärmer, abgewandte Seite dunkel; insgesamt in den Ton des Raums
+  //    gedämpft, damit es zwischen Staub und Nebel liegt und nicht aufgeklebt wirkt
+  const want = Math.min(1400, Math.max(64, Math.ceil(S * z * 2)));
+  const px = Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2) | 0; // Stufen (Faktor √2), damit Zoomen nicht ständig neu rechnet
+  if (c.litPx !== px || Math.abs(c.litRot - rot) > 0.01) {
+    const cv = c.lit;
+    cv.width = px; cv.height = px;
+    const g = cv.getContext('2d')!;
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    const k = px / S;
+    g.translate(px / 2, px / 2);
+    g.drawImage(i, (-sw / 2) * k, (-sh / 2) * k, sw * k, sh * k);
+    const la = light - rot, gx = Math.cos(la) * px * 0.5, gy = Math.sin(la) * px * 0.5;
+    const gr = g.createLinearGradient(gx, gy, -gx, -gy);
+    gr.addColorStop(0, 'rgba(255,232,205,0.1)');
+    gr.addColorStop(0.45, 'rgba(255,232,205,0)');
+    gr.addColorStop(0.55, 'rgba(4,6,16,0.05)');
+    gr.addColorStop(1, 'rgba(4,6,16,0.55)');
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = gr;
+    g.fillRect(-px / 2, -px / 2, px, px);
+    // Dämpfung: etwas dunkler und kühler, wie aus der Entfernung im Restlicht
+    g.fillStyle = 'rgba(14,18,34,0.3)';
+    g.fillRect(-px / 2, -px / 2, px, px);
+    c.litPx = px; c.litRot = rot;
   }
-  // 3. das Wrack selbst, belichtet: Lichtseite heller und wärmer, abgewandte Seite dunkel
-  const px = Math.min(1400, Math.max(64, Math.ceil(Math.max(sw, sh) * z * 2)));
-  let c = LIT.get(w);
-  if (!c) { c = document.createElement('canvas'); LIT.set(w, c); }
-  if (c.width !== px) { c.width = px; c.height = px; }
-  const g = c.getContext('2d')!;
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.globalCompositeOperation = 'source-over';
-  g.clearRect(0, 0, px, px);
-  g.imageSmoothingEnabled = true;
-  g.imageSmoothingQuality = 'high';
-  const k = px / Math.max(sw, sh);
-  g.translate(px / 2, px / 2);
-  g.drawImage(i, (-sw / 2) * k, (-sh / 2) * k, sw * k, sh * k);
-  // Licht im Bildraum des Wracks (gegen seine Drehung)
-  const la = light - rot, gx = Math.cos(la) * px * 0.5, gy = Math.sin(la) * px * 0.5;
-  const gr = g.createLinearGradient(gx, gy, -gx, -gy);
-  gr.addColorStop(0, 'rgba(255,236,210,0.26)');
-  gr.addColorStop(0.45, 'rgba(255,236,210,0)');
-  gr.addColorStop(0.6, 'rgba(0,0,12,0)');
-  gr.addColorStop(1, 'rgba(0,0,12,0.5)');
-  g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = gr;
-  g.fillRect(-px / 2, -px / 2, px, px);
   ctx.save();
   ctx.translate(w.x, w.y);
   ctx.rotate(rot);
-  const s = Math.max(sw, sh);
-  ctx.drawImage(c, -s / 2, -s / 2, s, s);
+  // Lichtsaum (vor dem Wrack gezeichnet, ragt nur auf der Lichtseite als feine Kante hervor)
+  const rim = silhouette(src, '#ffe2bc', 1.5);
+  if (rim) {
+    const off = Math.max(1, 1.2 / z), q = S / 512, la = light - rot;
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(rim, Math.cos(la) * off - (rim.width * q) / 2, Math.sin(la) * off - (rim.height * q) / 2, rim.width * q, rim.height * q);
+    ctx.restore();
+  }
+  // gedreht wird das zwischengespeicherte Bild um den kleinen Rest seit dem letzten Belichten
+  ctx.save();
+  ctx.rotate(c.litRot - rot);
+  ctx.drawImage(c.lit, -S / 2, -S / 2, S, S);
+  ctx.restore();
+  const s = S;
   if (w.fx) drawWreckLights(ctx, w, s);
   ctx.restore();
   // Einschläge: kurzes Glühen und Funken an der Stelle
@@ -457,7 +479,7 @@ export function drawWreckIntro(ctx: CanvasRenderingContext2D, w: Wreck, k: numbe
   ctx.translate(w.x, w.y);
   ctx.rotate(w.rot);
   ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.35 * k;
+  ctx.globalAlpha = 0.12 * k;
   ctx.drawImage(glow, -glow.width * q / 2, -glow.height * q / 2, glow.width * q, glow.height * q);
   ctx.restore();
 }

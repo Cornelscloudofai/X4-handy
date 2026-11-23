@@ -861,8 +861,12 @@ describe('Kampf', () => {
   });
 
   it('Endlos-Modus: mehrere Wellen, Wertung nach Wellen', () => {
-    // Endlos dauert, bis der Frachter fällt – mit Schadensbremse und vollen Verbesserungen kann das 30+ Wellen dauern
-    const { r, g } = play('pirate', 1, 3, true, 3, 'endless', null, 2400);
+    // Endlos dauert, bis der Frachter fällt – mit Schadensbremse und vollen Verbesserungen je nach Zufall 20 bis 60+
+    // Wellen. Geprüft wird nur der Ablauf: ab der dritten Welle fällt der Frachter, dann muss nach Wellen gewertet werden.
+    const g = new ShooterGame(cfg(1, 3, { gear: 3, mode: 'endless' }), 'pirate');
+    g.resize(W, H);
+    const wards = (g as unknown as { wards: { hull: number }[] }).wards;
+    const r = run(g, () => { g.autopilot(); if (g.state.wave >= 3) for (const w of wards) w.hull = 0; }, 2400);
     expect(g.state.wave).toBeGreaterThanOrEqual(3);
     expect(r.lines[0][0]).toBe('Wellen');
   });
