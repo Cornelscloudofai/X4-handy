@@ -3655,10 +3655,11 @@ export class ShooterGame implements MiniGame {
       && Math.hypot(x - this.px, y - this.py) > 160 + s * 0.5 && this.cover.every((w) => Math.hypot(w.x - x, w.y - y) > (w.size + s) * 0.55);
     for (let n = 0; n < 4; n++) {
       const w = makeWreck(0, 0, this.r);
-      for (let k = 0; k < 40; k++) {
+      for (let k = 0; k < 80; k++) {
+        // Abstand wächst mit der Größe (die Station ist riesig und braucht Platz neben der Route)
         let x: number, y: number;
-        if (this.moving) { x = this.fX + (this.r() < 0.5 ? -1 : 1) * (300 + this.r() * 1000); y = this.fY - LEG * 0.3 - this.r() * LEG * 1.5; }
-        else { const a = this.r() * Math.PI * 2, d = 380 + this.r() * 1000; x = this.fX + Math.cos(a) * d; y = this.fY + Math.sin(a) * d; }
+        if (this.moving) { x = this.fX + (this.r() < 0.5 ? -1 : 1) * (300 + w.size * 0.5 + this.r() * 1000); y = this.fY - LEG * 0.3 - this.r() * LEG * 1.8; }
+        else { const a = this.r() * Math.PI * 2, d = 380 + w.size * 0.5 + this.r() * 1000; x = this.fX + Math.cos(a) * d; y = this.fY + Math.sin(a) * d; }
         x = clamp(x, 120, this.WW - 120); y = clamp(y, 120, this.WH - 120);
         if (ok(x, y, w.size)) { w.x = x; w.y = y; this.cover.push(w); break; }
       }

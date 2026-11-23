@@ -57,9 +57,12 @@ describe('Wrackfeld im Kampf', () => {
   it('Test-Schalter: schon ab Welle 1 Wracks, nie auf der Route des Frachters', () => {
     const g = game('wracks');
     expect(g.sectionPlan.slice(0, 3)).toEqual(['wracks', 'wracks', 'wracks']);
-    expect(g.cover.length).toBeGreaterThanOrEqual(4);
+    // drei bis vier (neben einer riesigen Station ist nicht immer Platz für vier); spätere Wellen bringen keine dazu
+    const n = g.cover.length;
+    expect(n).toBeGreaterThanOrEqual(3);
+    expect(n).toBeLessThanOrEqual(4);
     g.spawnCover();
-    expect(g.cover.length).toBeGreaterThanOrEqual(4);
+    expect(g.cover.length).toBe(n);
     const lane = g.wx(g.wards[0]);
     for (const w of g.cover) expect(Math.abs(w.x - lane)).toBeGreaterThan(200);
   });

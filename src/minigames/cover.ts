@@ -32,7 +32,7 @@ interface WreckLight { x: number; y: number; r: number; kind: 'glut' | 'funke' |
 /** Bilder der Deckungswracks (Länge im Spiel je Bild: min … max); frames[0] ist das Grundbild */
 interface WreckArt { frames: string[]; min: number; max: number; lights: WreckLight[] }
 const WRECK_ART: WreckArt[] = [
-  { frames: [ringRost1, ringRost2, ringRost3, ringRost4, ringRost5], min: 440, max: 580, lights: [
+  { frames: [ringRost1, ringRost2, ringRost3, ringRost4, ringRost5], min: 980, max: 1250, lights: [
     { x: 0.35, y: 0.19, r: 0.04, kind: 'glut', color: '255,170,80' },
     { x: 0.154, y: 0.49, r: 0.05, kind: 'glut', color: '255,170,80' },
     { x: 0.6, y: 0.835, r: 0.04, kind: 'glut', color: '255,170,80' },
@@ -46,8 +46,8 @@ const WRECK_ART: WreckArt[] = [
     { x: 0.27, y: 0.54, r: 0.2, kind: 'glut', color: '255,80,30' },
     { x: 0.74, y: 0.3, r: 0.17, kind: 'blitz', color: '140,180,255' },
   ] },
-  { frames: [ringGrau], min: 400, max: 530, lights: [] },
-  { frames: [geruest], min: 380, max: 480, lights: [] },
+  { frames: [ringGrau], min: 900, max: 1150, lights: [] },
+  { frames: [geruest], min: 600, max: 760, lights: [] },
 ];
 
 const IMGS = new Map<string, HTMLImageElement>();
