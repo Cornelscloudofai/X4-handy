@@ -1043,6 +1043,28 @@ export function setFogTest(on: boolean): void {
   try { if (on) globalThis.localStorage?.setItem(FOG_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(FOG_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
 }
 
+/** Test-Schalter: Umgebung ab Welle 2 erzwingen ('' = wie sonst); gemerkt im Browser */
+export type EnvTest = '' | 'wracks' | 'anomalie' | 'rocks' | 'mines';
+const ENV_TEST_KEY = 'x4-sektorbau-umgebung-test';
+export function envTest(): EnvTest {
+  try { const v = globalThis.localStorage?.getItem(ENV_TEST_KEY) ?? ''; return (['wracks', 'anomalie', 'rocks', 'mines'] as string[]).includes(v) ? (v as EnvTest) : ''; } catch { return ''; }
+}
+export function setEnvTest(v: EnvTest): void {
+  try { if (v) globalThis.localStorage?.setItem(ENV_TEST_KEY, v); else globalThis.localStorage?.removeItem(ENV_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
+/** Test-Schalter: Kulisse im Kampf blasser und weicher (zum Vergleich mit dem bisherigen Stand) */
+const PALE_KEY = 'x4-sektorbau-kulisse-blass';
+let pale: boolean | null = null;
+export function paleBackdrop(): boolean {
+  if (pale != null) return pale;
+  try { pale = globalThis.localStorage?.getItem(PALE_KEY) === '1'; } catch { pale = false; }
+  return pale;
+}
+export function setPaleBackdrop(on: boolean): void {
+  pale = on;
+  try { if (on) globalThis.localStorage?.setItem(PALE_KEY, '1'); else globalThis.localStorage?.removeItem(PALE_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
+
 /** Test-Schalter: in Kha'ak-Runden liegt ab Welle 1 ein Brutschiff am Kartenrand; gemerkt im Browser */
 const BROOD_TEST_KEY = 'x4-sektorbau-brut-test';
 export function broodTest(): boolean {

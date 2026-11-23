@@ -45,6 +45,8 @@ import methan from '../assets/szenen/cascade/methan.webp';
 import wasserstoff from '../assets/szenen/cascade/wasserstoff.webp';
 import nebelGlut from '../assets/szenen/f-glut1/nebel.webp';
 import { rgba } from './common';
+import { paleBackdrop } from './loadout';
+import { drawBlurred } from '../render/canvasFx';
 import type { Mission } from './missions';
 
 export type BattleSide = 'pirate' | 'xenon' | 'khaak';
@@ -370,7 +372,9 @@ export class BattleBackdrop {
       const k = this.seed * 31 + li;
       if (hash(i, j, k, 0) > L.fill) continue;
       const piece = L.pieces[Math.floor(hash(i, j, k, 1) * L.pieces.length)];
-      const c = L.blend ? soft(piece.src) : tinted(piece.src, L.light, L.tint);
+      // Test „Kulisse blasser“: feste Körper dunkler, weich gezeichnet und dunstig – je näher die Ebene, desto mehr
+      const pale = !L.blend && paleBackdrop(), pk = pale ? Math.min(1, 6 / Math.max(1, L.E)) : 0;
+      const c = L.blend ? soft(piece.src) : tinted(piece.src, pale ? L.light * (1 - 0.4 * pk) : L.light, L.tint);
       if (!c) continue;
       const wx = (i + 0.1 + hash(i, j, k, 2) * 0.8) * L.cell, wy = (j + 0.1 + hash(i, j, k, 3) * 0.8) * L.cell;
       const size = piece.size * (0.7 + hash(i, j, k, 4) * 0.6) * s;
@@ -382,8 +386,9 @@ export class BattleBackdrop {
       ctx.translate(sx, sy);
       ctx.rotate(rot);
       // Nebel und Staub leuchten nur schwach hinein, feste Körper decken
-      ctx.globalAlpha = L.blend ? L.light : 1;
-      ctx.drawImage(c, -size / 2, -ih / 2, size, ih);
+      ctx.globalAlpha = L.blend ? L.light : pale ? 1 - 0.35 * pk : 1;
+      if (pale && size > 40) drawBlurred(ctx, c, -size / 2, -ih / 2, size, ih, Math.max(1, size * 0.006 * pk));
+      else ctx.drawImage(c, -size / 2, -ih / 2, size, ih);
       ctx.restore();
     }
     ctx.restore();

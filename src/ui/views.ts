@@ -2279,6 +2279,8 @@ function tuneSection(level: 1 | 2 | 3 | 4 | 5): string {
     reset: act('mg-tune-reset'),
     fog: act('mg-fog-test'),
     brood: act('mg-brood-test'),
+    env: (v: string) => act('mg-env-test', { env: v }),
+    pale: act('mg-pale-test'),
     note: 'Gilt sofort, auch mitten im Kampf: im Pausenmenü stehen dieselben Regler. Im Endlos-Modus kommen je Welle +6 % dazu (Boss +5 %). Der Schild lädt nach 3 s ohne Treffer mit 25 % je Sekunde nach.',
   });
 }

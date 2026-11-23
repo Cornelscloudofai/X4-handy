@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { broodTest, fogTest, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { broodTest, envTest, fogTest, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -24,6 +24,7 @@ import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './s
 import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 import { drawGraded } from '../render/canvasFx';
 import { drawJet, Smoke } from '../render/engineFx';
+import { anomalyPull, coverHit, drawAnomaly, drawWreck, drawWreckIntro, makeWreck, markHit, preloadCover, pushOut, steerAround, updateWrecks, wreckAt, type Anomaly, type Wreck as CoverWreck } from './cover';
 import { drawSpecialIcon } from './specialIcons';
 import { hullGap, hullMaskOf, type HullMask } from './hullMask';
 import { FlightSchool, fmtTime, saveSchool, schoolBest, SCHOOL_NAME, type SchoolCtrl, type SchoolHost } from './flightSchool';
@@ -197,6 +198,10 @@ interface Enemy {
   beamDur?: number; beamTgt?: 'p' | 'f';
   /** Kyon: Reichweite und Stärke des Strahls (sonst LASER_LEN bzw. 1) */
   beamLen?: number; beamK?: number;
+  /** Strahl endet heute an einem Wrack (Länge) */
+  beamCut?: number;
+  /** Drift durch den Sog der Gravitationsanomalie */
+  gvx?: number; gvy?: number;
   /** Test „Brutschiff ab Welle 1“: bleibt am Kartenrand liegen */
   hold?: boolean;
   /** Späher aus einer Brutkammer des Brutschiffs (zählt für deren Obergrenze) */
@@ -315,6 +320,10 @@ const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DP
  * langsam (KYON_SWEEP rad/s) dem Ziel nach – wer nur kurz ausweicht, wird eingeholt
  */
 const KYON_FIRE = 1.7, KYON_SWEEP = 0.32;
+/** Abschnitte einer Welle: Umgebung (Nebel kommt unabhängig dazu) */
+type Section = 'none' | 'rocks' | 'mines' | 'nebel' | 'wracks' | 'anomalie';
+/** Anomalie: Wirkradius, Kern; Schaden beim Hineingeraten (dein Schiff) und Schleuder-Tempo */
+const ANOMALY_R = 900, ANOMALY_CORE = 55, CORE_DMG = 22, CORE_FLING = 460;
 /** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
 const ZAP_JUMPS = 5, ZAP_HOP = 150, ZAP_CONE = 0.55;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
@@ -1034,8 +1043,15 @@ export class ShooterGame implements MiniGame {
   private pickups: Pickup[] = [];
   private rocks: Rock[] = [];
   private mines: Mine[] = [];
-  private section: 'none' | 'rocks' | 'mines' | 'nebel' = 'none';
-  private sectionPlan: ('none' | 'rocks' | 'mines' | 'nebel')[] = [];
+  private section: Section = 'none';
+  private sectionPlan: Section[] = [];
+  /** Wrackfeld (Deckung für alle) und Gravitationsanomalie; Licht kommt aus dieser Richtung (rad); Aufleuchten neuer Wracks */
+  private cover: CoverWreck[] = [];
+  private anomaly: (Anomaly & { fade: number }) | null = null;
+  private lightA = -2.3;
+  private coverIntro = 0;
+  /** Sperre nach einem Stoß aus dem Kern der Anomalie */
+  private coreCd = 0;
   /** Nebel: Dichte 0–1 (blendet beim Abschnittswechsel weich ein und aus) und Zeichenfläche für den Schleier */
   private fog = 0;
   private fogCv: HTMLCanvasElement[] = [];
@@ -1238,6 +1254,16 @@ export class ShooterGame implements MiniGame {
     if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
     for (let i = 0; i < 40; i++) this.sectionPlan.push(this.mutator?.id === 'mines' ? 'mines' : i === 0 ? 'none' : this.r() < 0.45 ? (this.r() < 0.5 ? 'rocks' : 'mines') : 'none');
+    // Wrackfeld und Gravitationsanomalie: je die Hälfte der Asteroiden- bzw. Minenabschnitte (eigener Zufall, damit sich
+    // die übrige Abfolge nicht verschiebt); Test-Schalter erzwingt eine Umgebung ab Welle 2
+    const er = rng(cfg.seed ^ 0xe11);
+    this.lightA = -2.3 + (er() - 0.5) * 1.4;
+    this.sectionPlan = this.sectionPlan.map((q, i) => {
+      const forced = envTest();
+      if (forced && i > 0 && this.mutator?.id !== 'mines') return forced;
+      return q === 'rocks' ? (er() < 0.5 ? 'wracks' : 'rocks') : q === 'mines' && this.mutator?.id !== 'mines' ? (er() < 0.5 ? 'anomalie' : 'mines') : q;
+    });
+    preloadCover();
     // Nebel gilt für die ganze Runde: ab Welle 1 und auch zwischen den Wellen (etwa jede dritte Runde; nicht im
     // Wrackfeld, am Nest und beim Überfall). Eigener Zufall, damit sich die übrige Abfolge nicht verschiebt.
     const fr = rng(cfg.seed ^ 0x4e45);
@@ -3100,6 +3126,10 @@ export class ShooterGame implements MiniGame {
     if (this.wave === 0 && (this.mission === 'bergung' || this.mission === 'flucht')) this.spawnMissionPlats();
     if (this.section === 'rocks') this.spawnRocks();
     if (this.section === 'mines') this.spawnMines();
+    if (this.section === 'wracks') this.spawnCover();
+    // die Anomalie hält nur ihre Welle: danach fällt sie in sich zusammen
+    if (this.anomaly && this.section !== 'anomalie') this.anomaly.fade = Math.min(this.anomaly.fade, 2);
+    if (this.section === 'anomalie') this.spawnAnomaly();
     const boss = this.isBossWave(this.wave);
     if (boss) {
       this.spawnBoss();
@@ -3153,7 +3183,7 @@ export class ShooterGame implements MiniGame {
       if (this.wave === 0 && this.place) this.bannerSub = `${this.place.name} · ${this.bannerSub}`;
       if (this.wave === 0 && this.mission === 'ueberfall') this.bannerText = 'PIRATENKONVOI';
       if (this.wave === 0 && this.mission === 'nest') this.bannerText = this.side === 'khaak' ? 'KHA’AK-NEST' : 'XENON-NEST';
-      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : this.fogged && this.wave === 0 ? ' · Nebelfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
+      this.bannerSub = [...new Set(kinds.map((k) => SPEC[k].name))].join(' · ') + (jCl.length ? ` · Jäger-Cluster ${jCl.join(' + ')}` : '') + (sw ? this.side === 'khaak' ? ` · Späher-Cluster ${swarms.join(' + ')}` : ` · ${swarms.length > 1 ? `${swarms.length} Schwärme` : 'Schwarm'} aus ${sw} ${this.side === 'pirate' ? 'Jägern' : 'Xenon N'}` : '') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : this.section === 'wracks' ? ' · Wrackfeld (Deckung)' : this.section === 'anomalie' ? ' · Gravitationsanomalie' : this.fogged && this.wave === 0 ? ' · Nebelfeld' : '') + (eliteN ? ` · ${eliteN} Elite` : '');
     }
     if (this.wave > 0) { if (this.isBossWave(this.wave)) sfx.boss(); else sfx.alarm(); }
     // Nachschub vom Frachter nach jeder überstandenen Welle: ein Viertel des Raketenlagers
@@ -3616,6 +3646,97 @@ export class ShooterGame implements MiniGame {
     return [x, y];
   }
 
+  /**
+   * Wrackfeld: sechs Wracks voraus bzw. rund um das Schutzziel – nie auf der Route des Frachters, nicht auf dir. Sie
+   * bleiben für die Runde liegen; ein späteres Wrackfeld kommt dazu.
+   */
+  private spawnCover(): void {
+    const lanes = this.wards.map((w) => this.wx(w));
+    const ok = (x: number, y: number, s: number) =>
+      (!this.moving || lanes.every((lx) => Math.abs(x - lx) > 240 + s * 0.5)) && Math.hypot(x - this.fX, y - this.fY) > 280 + s * 0.5
+      && Math.hypot(x - this.px, y - this.py) > 160 + s * 0.5 && this.cover.every((w) => Math.hypot(w.x - x, w.y - y) > (w.size + s) * 0.55);
+    for (let n = 0; n < 6; n++) {
+      const w = makeWreck(0, 0, this.r);
+      for (let k = 0; k < 40; k++) {
+        let x: number, y: number;
+        if (this.moving) { x = this.fX + (this.r() < 0.5 ? -1 : 1) * (300 + this.r() * 1000); y = this.fY - LEG * 0.3 - this.r() * LEG * 1.5; }
+        else { const a = this.r() * Math.PI * 2, d = 380 + this.r() * 1000; x = this.fX + Math.cos(a) * d; y = this.fY + Math.sin(a) * d; }
+        x = clamp(x, 120, this.WW - 120); y = clamp(y, 120, this.WH - 120);
+        if (ok(x, y, w.size)) { w.x = x; w.y = y; this.cover.push(w); break; }
+      }
+    }
+    this.coverIntro = 2.4;
+  }
+
+  /** Gravitationsanomalie: seitlich voraus der Route bzw. ein Stück neben dem Schutzziel */
+  private spawnAnomaly(): void {
+    const side = this.r() < 0.5 ? -1 : 1;
+    let x: number, y: number;
+    if (this.moving) { x = this.fX + side * (650 + this.r() * 350); y = this.fY - LEG * (0.7 + this.r() * 0.5); }
+    else { const a = this.r() * Math.PI * 2, d = 700 + this.r() * 300; x = this.fX + Math.cos(a) * d; y = this.fY + Math.sin(a) * d; }
+    this.anomaly = { x: clamp(x, 200, this.WW - 200), y: clamp(y, 200, this.WH - 200), R: ANOMALY_R, core: ANOMALY_CORE, seed: this.r() * 6, fade: Infinity };
+  }
+
+  /**
+   * Umgebung je Bild: Wracks drehen sich langsam; Schiffe gleiten an Wracks ab; die Anomalie zieht dich und die Gegner
+   * an, wer in den Kern gerät, nimmt Schaden und wird hinausgeschleudert
+   */
+  private updateEnv(dt: number): void {
+    updateWrecks(this.cover, dt);
+    this.coverIntro = Math.max(0, this.coverIntro - dt);
+    this.coreCd = Math.max(0, this.coreCd - dt);
+    const an = this.anomaly;
+    if (an) {
+      if (an.fade !== Infinity) { an.fade -= dt; an.core = ANOMALY_CORE * Math.max(0, an.fade / 2); an.R = ANOMALY_R * Math.max(0, an.fade / 2); if (an.fade <= 0) this.anomaly = null; }
+      if (this.anomaly) {
+        const [ax, ay] = anomalyPull(an, this.px, this.py, this.bigPlayer ? 0.25 : 1);
+        this.pvx += ax * dt; this.pvy += ay * dt;
+        const d = Math.hypot(this.px - an.x, this.py - an.y);
+        if (d < an.core + this.ship.r * 0.3 && this.coreCd <= 0 && this.outcome !== 'player') {
+          const nx = (this.px - an.x) / (d || 1), ny = (this.py - an.y) / (d || 1);
+          this.pvx = nx * CORE_FLING; this.pvy = ny * CORE_FLING;
+          this.coreCd = 0.8;
+          this.damagePlayer(CORE_DMG * this.enemyDmg, 1, [this.px - nx * this.ship.r * 0.5, this.py - ny * this.ship.r * 0.5]);
+          this.fx.burst(this.px, this.py, '#c8a8ff', 14, 260, 1.4, 'spark', 0.4);
+          sfx.hull();
+        }
+        for (const e of this.enemies) {
+          if (e.parent || e.nest || e.plat || e.hive || e.boje) continue;
+          const k = e.kind === 'boss' || e.kind === 'cargo' ? 0.08 : FIGHTERS.has(e.kind) ? 0.9 : 0.5;
+          // Sog als eigene Drift (die Steuerung der Gegner hebt ihn sonst gleich wieder auf); klingt außerhalb ab
+          const [ex, ey] = anomalyPull(an, e.x, e.y, k), damp = Math.exp(-0.9 * dt);
+          e.gvx = (e.gvx ?? 0) * damp + ex * dt; e.gvy = (e.gvy ?? 0) * damp + ey * dt;
+          e.x += e.gvx * dt; e.y += e.gvy * dt;
+          const de = Math.hypot(e.x - an.x, e.y - an.y);
+          if (de < an.core + e.r * 0.5 && e.kind !== 'boss' && e.kind !== 'cargo') {
+            // in den Kern geraten: zerrissen bzw. schwer beschädigt
+            this.logSrc = 'other';
+            this.damageEnemy(e, (e.max + e.shMax) * 0.7, 1, 0.5);
+            const nx = (e.x - an.x) / (de || 1), ny = (e.y - an.y) / (de || 1);
+            e.x = an.x + nx * (an.core + e.r + 4); e.y = an.y + ny * (an.core + e.r + 4);
+            e.vx = nx * CORE_FLING; e.vy = ny * CORE_FLING;
+          }
+        }
+      }
+    }
+    if (this.cover.length) {
+      const p = pushOut(this.cover, this.px, this.py, this.pvx, this.pvy, this.ship.r * (this.bigPlayer ? 0.5 : 0.8));
+      if (p) { this.px = p.x; this.py = p.y; this.pvx = p.vx; this.pvy = p.vy; }
+      for (const e of this.enemies) {
+        if (e.parent || e.nest || e.plat || e.hive || e.boje) continue;
+        const q = pushOut(this.cover, e.x, e.y, e.vx, e.vy, e.r * 0.8);
+        if (q) { e.x = q.x; e.y = q.y; e.vx = q.vx; e.vy = q.vy; }
+      }
+    }
+  }
+
+  /** Strecke durch ein Wrack verdeckt? Länge bis zum Wrack (oder null) */
+  private coverStop(x0: number, y0: number, a: number, len: number): number | null {
+    if (!this.cover.length) return null;
+    const t = coverHit(this.cover, x0, y0, x0 + Math.cos(a) * len, y0 + Math.sin(a) * len);
+    return t == null ? null : t * len;
+  }
+
   private spawnRocks(): void {
     const n = 16 + Math.floor(this.r() * 6);
     for (let i = 0; i < n; i++) {
@@ -3994,6 +4115,7 @@ export class ShooterGame implements MiniGame {
       this.spawnWave();
     }
     this.updatePlayer(dt);
+    this.updateEnv(dt);
     this.emitSmoke(dt);
     // freie Sicht oder Karte ohne Eingabe: Jäger bremsen ab und halten die Stelle (der Träger behält seinen Kurs)
     if ((this.camMode !== 'schiff' || this.tac) && !this.joy) { const k = Math.max(0, 1 - dt * 1.2); this.pvx *= k; this.pvy *= k; }
@@ -4474,7 +4596,9 @@ export class ShooterGame implements MiniGame {
    */
   private fireRail(ox: number, oy: number, a: number, dmg: number, range: number, color: string, heavy = false, pierce = 0): void {
     const c = Math.cos(a), sn = Math.sin(a);
-    let hitT = range, hitM: EMissile | null = null, hitMine: (typeof this.mines)[number] | null = null;
+    // Wrack im Weg: die Lanze endet dort
+    const cs = this.coverStop(ox, oy, a, range);
+    let hitT = cs ?? range, hitM: EMissile | null = null, hitMine: (typeof this.mines)[number] | null = null;
     const along = (x: number, y: number, r: number): number | null => {
       const t = (x - ox) * c + (y - oy) * sn;
       if (t < 0 || t > hitT) return null;
@@ -4509,7 +4633,8 @@ export class ShooterGame implements MiniGame {
     if (hitMine) { hitMine.hp -= dmg; if (hitMine.hp <= 0) this.detonate(hitMine); }
     // Fels im Weg: die Lanze trägt ihn ab
     if (hitRock) this.damageRock(hitRock, dmg);
-    if (hitE || hitM || hitMine || hitRock) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
+    if (hitE || hitM || hitMine || hitRock || (cs != null && hitT === cs)) this.fx.burst(x2, y2, '#f2e6ff', 6, 160, 1.6, 'spark', 0.25);
+    if (cs != null && hitT === cs) { const w = wreckAt(this.cover, x2, y2, 4); if (w) markHit(w, x2, y2); }
     // schwere L-Lanze glüht lange nach, M-Lanze blitzt nur kurz auf
     this.rails.push({ x1: ox, y1: oy, x2, y2, t: heavy ? 1.8 : 0.16, max: heavy ? 1.8 : 0.16, heavy, seed: Math.random() * 100, color });
   }
@@ -4534,7 +4659,7 @@ export class ShooterGame implements MiniGame {
       // jeder Strahl auf den gemeinsamen Punkt geschwenkt
       const ag = this.gunAngle(ox, oy, ba, conv), c = Math.cos(ag), sn = Math.sin(ag);
       // Hindernisse (Rakete, Fels) und Gegner entlang des Strahls; Durchschlag: der Strahl geht durch weitere Gegner
-      let hitT = range, hitM: EMissile | null = null;
+      let hitT = this.coverStop(ox, oy, ag, range) ?? range, hitM: EMissile | null = null;
       const along = (x: number, y: number, r: number): number | null => {
         const t = (x - ox) * c + (y - oy) * sn;
         if (t < 0 || t > hitT) return null;
@@ -5080,6 +5205,8 @@ export class ShooterGame implements MiniGame {
       if (e.hold) sp = 0;
       if (e.elite === 'gepanzert') sp *= 0.7;
       else if (e.elite === 'flink') sp *= 1.25;
+      // Wracks: Jäger und Boote biegen ab, statt hineinzufliegen
+      if (this.cover.length && e.kind !== 'boss') { const dv = steerAround(this.cover, e.x, e.y, want, 70 + e.r * 3); if (dv) { want += dv; if (fighter) face = want; } }
       // am Kartenrand umkehren
       if (e.x < 60 || e.x > this.WW - 60 || e.y < 60 || e.y > this.WH - 60) {
         want = Math.atan2(clamp(e.y, 200, this.WH - 200) - e.y, clamp(e.x, 200, this.WW - 200) - e.x);
@@ -5151,9 +5278,15 @@ export class ShooterGame implements MiniGame {
       m.vy += (dy / d) * acc * dt;
       const v = Math.hypot(m.vx, m.vy);
       if (v > vmax) { m.vx *= vmax / v; m.vy *= vmax / v; }
+      if (this.cover.length) {
+        const dv = steerAround(this.cover, m.x, m.y, Math.atan2(m.vy, m.vx), 110);
+        if (dv) { const v0 = Math.hypot(m.vx, m.vy), a0 = Math.atan2(m.vy, m.vx) + clamp(dv, -1, 1) * 4 * dt; m.vx = Math.cos(a0) * v0; m.vy = Math.sin(a0) * v0; }
+      }
+      if (this.anomaly) { const [ax, ay] = anomalyPull(this.anomaly, m.x, m.y, 2.2); m.vx += ax * dt; m.vy += ay * dt; }
       m.x += m.vx * dt;
       m.y += m.vy * dt;
       m.life -= dt;
+      if (this.cover.length && wreckAt(this.cover, m.x, m.y)) { m.life = 0; this.explode(m.x, m.y, '#ff8a5c', 0.4, false); continue; }
       if (Math.random() < 0.6) this.fx.add({ x: m.x, y: m.y, color: '#ff8a5c', size: m.small ? 0.9 : 1.2, max: m.small ? 0.22 : 0.3 });
       const hw = this.wardAt(m.x, m.y, 2), boom = m.small ? 0.35 : 0.6;
       if (hw) { this.hitWard(hw, m.dmg * this.enemyDmg * this.fScale, m.x, m.y); m.life = 0; this.explode(m.x, m.y, '#ff8a5c', boom, false); }
@@ -5224,11 +5357,13 @@ export class ShooterGame implements MiniGame {
   private fireKyon(e: Enemy, a: number, dmg: number, len = KYON_LEN, start: [number, number] = [e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r], color = '#b45cff', vsShield = KYON_SHIELD, pulse = false): void {
     const cx = Math.cos(a), cy = Math.sin(a);
     const [x0, y0] = start;
+    // Wrack im Weg: der Strahl endet dort (dahinter ist man sicher)
+    const lim = this.coverStop(x0, y0, a, len) ?? len;
     const dist = (x: number, y: number): number => {
-      const t = clamp((x - x0) * cx + (y - y0) * cy, 0, len);
+      const t = clamp((x - x0) * cx + (y - y0) * cy, 0, lim);
       return Math.hypot(x0 + cx * t - x, y0 + cy * t - y);
     };
-    let end = len;
+    let end = lim;
     const kyonAt = this.beamOnHull(dist, 2);
     if (kyonAt) {
       this.damagePlayer(dmg * this.enemyDmg, vsShield, kyonAt);
@@ -5280,7 +5415,7 @@ export class ShooterGame implements MiniGame {
       for (const e of this.enemies) {
         if (!ok(e)) continue;
         const d = Math.hypot(e.x - ox, e.y - oy), off = Math.abs(wrapA(Math.atan2(e.y - oy, e.x - ox) - a0));
-        if (d > range + e.r || off > ZAP_CONE) continue;
+        if (d > range + e.r || off > ZAP_CONE || (this.cover.length && coverHit(this.cover, ox, oy, e.x, e.y) != null)) continue;
         const sc = d * (1 + off * 2);
         if (sc < bd) { bd = sc; cur = e; }
       }
@@ -5310,7 +5445,7 @@ export class ShooterGame implements MiniGame {
         for (const e of this.enemies) {
           if (hit.has(e) || !ok(e)) continue;
           const d = Math.hypot(e.x - to[0], e.y - to[1]) - e.r;
-          if (d < hop && d < nd) { nd = d; next = e; }
+          if (d < hop && d < nd && (!this.cover.length || coverHit(this.cover, to[0], to[1], e.x, e.y) == null)) { nd = d; next = e; }
         }
         cur = next;
       }
@@ -5470,8 +5605,11 @@ export class ShooterGame implements MiniGame {
           e.beamA = turnTo(e.beamA!, Math.atan2(ty - e.y, tx - e.x), KYON_SWEEP * (this.level <= 2 ? 0.75 : 1) * dt);
         }
         const a = e.beamA!, cx = Math.cos(a), cy = Math.sin(a);
+        // Wrack im Weg: der Strahl endet dort (auch gezeichnet)
+        e.beamCut = this.coverStop(e.x, e.y, a, beamLen(e)) ?? undefined;
+        const lim = e.beamCut ?? beamLen(e);
         const dist = (x: number, y: number): number => {
-          const t = clamp((x - e.x) * cx + (y - e.y) * cy, 0, beamLen(e));
+          const t = clamp((x - e.x) * cx + (y - e.y) * cy, 0, lim);
           return Math.hypot(e.x + cx * t - x, e.y + cy * t - y);
         };
         const laserAt = this.beamOnHull(dist, -3);
@@ -5526,9 +5664,25 @@ export class ShooterGame implements MiniGame {
   private updateShots(dt: number): void {
     const keep: Bullet[] = [];
     for (const b of this.bullets) {
+      const bx0 = b.x, by0 = b.y;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.life -= dt;
+      if (this.anomaly) { const [ax, ay] = anomalyPull(this.anomaly, b.x, b.y, 0.35); b.vx += ax * dt; b.vy += ay * dt; }
+      // Wrack im Weg: Geschoss bleibt hängen (alle Seiten), Flak zerplatzt dort
+      if (this.cover.length) {
+        const ht = coverHit(this.cover, bx0, by0, b.x, b.y);
+        if (ht != null) {
+          const hx = bx0 + (b.x - bx0) * ht, hy = by0 + (b.y - by0) * ht;
+          b.x = hx; b.y = hy;
+          if (b.flak) { this.flakBurst(b); continue; }
+          if (b.pflak) { this.pflakBurst(b); continue; }
+          const w = wreckAt(this.cover, hx, hy, 3);
+          if (w) markHit(w, hx, hy);
+          this.fx.burst(hx, hy, '#ffd0a0', 3, 110, 1.2, 'spark', 0.25);
+          continue;
+        }
+      }
       // Flak: Annäherungszünder – zündet nahe dem Ziel oder spätestens am Ende der Flugbahn
       if (b.flak && (b.life <= 0 || this.flakFuse(b.x, b.y))) { this.flakBurst(b); continue; }
       if (b.pflak && (b.life <= 0 || this.pflakFuse(b.x, b.y))) { this.pflakBurst(b); continue; }
@@ -5644,8 +5798,15 @@ export class ShooterGame implements MiniGame {
         this.fx.burst(m.x, m.y, '#ffd27a', 6, 120, 1.2, 'spark', 0.2);
         continue;
       }
+      // Wracks: im Bogen herum; Anomalie: zieht kräftig
+      if (this.cover.length) {
+        const dv = steerAround(this.cover, m.x, m.y, Math.atan2(m.vy, m.vx), 120);
+        if (dv) { const v0 = Math.hypot(m.vx, m.vy), a0 = Math.atan2(m.vy, m.vx) + clamp(dv, -1, 1) * 4 * dt; m.vx = Math.cos(a0) * v0; m.vy = Math.sin(a0) * v0; }
+      }
+      if (this.anomaly) { const [ax, ay] = anomalyPull(this.anomaly, m.x, m.y, 2.2); m.vx += ax * dt; m.vy += ay * dt; }
       m.x += m.vx * dt;
       m.y += m.vy * dt;
+      if (this.cover.length && wreckAt(this.cover, m.x, m.y)) { this.explode(m.x, m.y, '#ffb070', 0.5, false); continue; }
       // Rauchspur hinter dem Heck
       const v = Math.hypot(m.vx, m.vy) || 1;
       if (Math.random() < 0.8) this.fx.add({ x: m.x - (m.vx / v) * 12, y: m.y - (m.vy / v) * 12, color: fighterKind() === 'argon' ? '#7fe8ff' : '#ffb070', size: 1.3, max: 0.3 });
@@ -6264,11 +6425,15 @@ export class ShooterGame implements MiniGame {
     ctx.strokeRect(0, 0, this.WW, this.WH);
     ctx.setLineDash([]);
     if (this.gateT >= 0) this.drawGate(ctx, t);
+    if (this.anomaly) drawAnomaly(ctx, this.anomaly, t);
     for (const k of this.rocks) this.drawRock(ctx, k);
     for (const m of this.mines) this.drawMine(ctx, m, t);
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
     if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
     this.smoke.draw(ctx);
+    // Wracks auf der Spielebene: belichtet, mit Schlagschatten; frisch erschienen leuchten sie kurz auf
+    for (const w of this.cover) drawWreck(ctx, w, this.lightA, this.zoom);
+    if (this.coverIntro > 0) for (const w of this.cover) drawWreckIntro(ctx, w, Math.min(1, this.coverIntro) * (0.6 + 0.4 * Math.sin(t * 6)));
     this.school?.drawWorld(ctx);
     // ganz unten die Großkampfschiffe der Gegner (Xenon K, Träger, Nester samt Türmen) – auch unter dem Frachter
     for (const e of this.enemies) if (this.inBack(e)) this.drawEnemy(ctx, e, t);
@@ -6401,7 +6566,7 @@ export class ShooterGame implements MiniGame {
     for (const e of this.enemies) {
       if (!e.beamT || e.beamT <= 0) continue;
       const c = Math.cos(e.beamA!), sn = Math.sin(e.beamA!);
-      const ex = e.x + c * beamLen(e), ey = e.y + sn * beamLen(e);
+      const ex = e.x + c * (e.beamCut ?? beamLen(e)), ey = e.y + sn * (e.beamCut ?? beamLen(e));
       ctx.beginPath();
       // ab der Spitze des Laserrohrs
       ctx.moveTo(e.x + c * 26, e.y + sn * 26);
@@ -6440,7 +6605,7 @@ export class ShooterGame implements MiniGame {
     const dur = e.beamDur ?? KYON_FIRE, a = e.beamA!, c = Math.cos(a), sn = Math.sin(a);
     const env = Math.min(1, e.beamT! / 0.15, (dur - e.beamT!) / 0.1);
     if (env <= 0) return;
-    const x0 = e.x + c * 26, y0 = e.y + sn * 26, L = beamLen(e) - 26, x1 = x0 + c * L, y1 = y0 + sn * L;
+    const x0 = e.x + c * 26, y0 = e.y + sn * 26, L = Math.max(0, (e.beamCut ?? beamLen(e)) - 26), x1 = x0 + c * L, y1 = y0 + sn * L;
     // stärkere Strahlen (Brutschiff) sind breiter
     const fl = (0.85 + 0.15 * Math.sin(t * 47 + e.x) * Math.sin(t * 29)) * ((e.beamK ?? 1) > 1 ? 1.3 : 1);
     ctx.save();
@@ -8330,7 +8495,7 @@ export class ShooterGame implements MiniGame {
     for (const e of this.enemies) {
       if (!e.beamDur || !e.beamT || e.beamT > e.beamDur) continue;
       const c = Math.cos(e.beamA!), sn = Math.sin(e.beamA!), env = Math.min(1, e.beamT / 0.15, (e.beamDur - e.beamT) / 0.1);
-      for (let d = 60; d < beamLen(e); d += 160) light(e.x + c * d, e.y + sn * d, 260, '176,110,255', 0.55 * env);
+      for (let d = 60; d < (e.beamCut ?? beamLen(e)); d += 160) light(e.x + c * d, e.y + sn * d, 260, '176,110,255', 0.55 * env);
     }
     // nah bei dir dünner, damit das Geschehen lesbar bleibt
     v.globalAlpha = 1;
@@ -8381,6 +8546,9 @@ export class ShooterGame implements MiniGame {
     for (const c of this.crates) if (!c.done) dot(pos(c.x, c.y), c.tow ? '#9ffff0' : '#ffd27a', 1.6);
     if (this.mission === 'ueberfall') dot(pos(this.gateX, this.gateCy, true), '#9fe6ff', 3);
     for (const k of this.rocks) dot(pos(k.x, k.y), 'rgba(168,154,138,0.6)', 1.2);
+    // Wracks als graue Flecken in ihrer Größe, die Anomalie als Ring
+    for (const w of this.cover) { const p = pos(w.x, w.y); if (p) { ctx.fillStyle = 'rgba(150,150,160,0.55)'; ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(1.5, w.size * 0.3 * sc), 0, Math.PI * 2); ctx.fill(); } }
+    if (this.anomaly) { const p = pos(this.anomaly.x, this.anomaly.y, true); if (p) { ctx.strokeStyle = 'rgba(200,170,255,0.6)'; ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(2, this.anomaly.R * sc * 0.5), 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(p[0], p[1], 1.6, 0, Math.PI * 2); ctx.fill(); } }
     for (const m of this.mines) dot(pos(m.x, m.y), 'rgba(255,181,71,0.7)', 1);
     for (const p of this.pickups) dot(pos(p.x, p.y), '#6be38f', 1.4);
     for (const e of this.enemies) if (!e.parent && this.seen(e.x, e.y, e.r)) dot(pos(e.x, e.y, true), e.kind === 'boss' ? '#ff5c6c' : SPEC[e.kind].color, e.kind === 'boss' || e.kind === 'cargo' ? 3 : 1.7);
