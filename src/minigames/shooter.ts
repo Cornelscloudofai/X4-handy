@@ -324,7 +324,9 @@ interface Card { id: string; name: string; desc: string; max: number }
  * Zielbindung eines Turms: gewähltes Ziel, geglättete Zielgeschwindigkeit (für einen ruhigen Vorhalt), Zeit bis zur
  * nächsten Prüfung, ob ein Ziel passender zum Turmbefehl wäre
  */
-interface TurretMem { tgt?: Enemy | EMissile | null; lvx?: number; lvy?: number; reT?: number }
+interface TurretMem { tgt?: Enemy | EMissile | null; lvx?: number; lvy?: number; reT?: number; /** Zielbindung nach einem Wechsel, Takt der Neuprüfung (s) */ lock?: number; chk?: number }
+/** Turm für die Zielwahl: Rohrrichtung, Schwenktempo (rad/s), Geschosstempo (0 = Strahl/Lanze), Feuerfreigabe (rad) */
+interface TurretGun { a: number; turn: number; speed: number; tol: number }
 
 /** Laserturm der Xenon: Reichweite, Aufladezeit, Brenndauer, Schaden pro Sekunde */
 const LASER_LEN = 600 * RANGE_X, LASER_CHARGE = 0.9, LASER_FIRE = 0.55, LASER_DPS = 34;
@@ -2676,7 +2678,25 @@ export class ShooterGame implements MiniGame {
    * unterbricht ein Schiffsziel nur, wenn sie schon nah ist (60 % der Reichweite); passt das Ziel nicht zum Turmbefehl,
    * wird einmal je Sekunde nach einem passenden gesucht. Für den Vorhalt gibt es die geglättete Zielgeschwindigkeit
    */
-  private turretAim(t: TurretMem, x: number, y: number, range: number, order: TurretOrder, missiles: boolean, dt: number, ok: (e: Enemy, d: number) => boolean = () => true):
+  /**
+   * Zeit bis zum Treffer: Schwenken bis zur Abfangrichtung plus Flugzeit; Infinity, wenn das Ziel schneller über den
+   * Himmel zieht, als der Turm drehen kann (und er noch nicht darauf liegt)
+   */
+  private timeToHit(g: TurretGun, x: number, y: number, e: { x: number; y: number; vx: number; vy: number; r?: number }): number {
+    const dx = e.x - x, dy = e.y - y, d = Math.hypot(dx, dy) || 1;
+    const lt = g.speed ? interceptTime(dx, dy, e.vx, e.vy, g.speed) : 0;
+    const off = Math.abs(wrapA(Math.atan2(dy + e.vy * lt, dx + e.vx * lt) - g.a));
+    const omega = Math.abs(dx * e.vy - dy * e.vx) / (d * d); // Winkeltempo des Ziels aus Sicht des Turms
+    if (off > g.tol && omega > g.turn * 0.9) return Infinity;
+    return Math.max(0, off - g.tol) / g.turn + lt;
+  }
+
+  /** Feuerfreigabe für Dauerfeuer: Abweichung kleiner als die halbe Breite des Ziels aus Sicht des Turms, mindestens 2° */
+  private streamTol(x: number, y: number, e: { x: number; y: number; r?: number }): number {
+    return Math.max(0.035, Math.atan2((e.r ?? 4) * 0.8, Math.hypot(e.x - x, e.y - y) || 1));
+  }
+
+  private turretAim(t: TurretMem, x: number, y: number, range: number, order: TurretOrder, missiles: boolean, dt: number, ok: (e: Enemy, d: number) => boolean = () => true, gun?: TurretGun):
     { tgt: Enemy | EMissile; d: number; vx: number; vy: number } | null {
     const dist = (q: { x: number; y: number }) => Math.hypot(q.x - x, q.y - y);
     let cur = t.tgt ?? null;
@@ -2694,8 +2714,25 @@ export class ShooterGame implements MiniGame {
       const fits = (e: Enemy) => (order === 'struktur' ? isStructure(e) : ECLASS[e.kind] === order);
       if (!fits(cur)) { const p = this.pickTarget(x, y, range, order, ok); if (p && fits(p)) cur = p; }
     }
-    if (!cur) cur = (missiles ? nearMissile(range) : null) ?? this.pickTarget(x, y, range, order, ok);
-    if (cur !== t.tgt) { t.lvx = cur?.vx ?? 0; t.lvy = cur?.vy ?? 0; t.reT = 1; }
+    // Zielwahl nach „wie schnell kann ich treffen“ (Schwenken + Flug) statt nach Abstand; Neuprüfung alle 0,5 s, aber nie,
+    // solange der Turm auf seinem Ziel liegt, frühestens 1 s nach einem Wechsel und nur bei deutlichem Vorteil – ein Ziel,
+    // das er nicht nachführen kann, gibt er sofort ab
+    t.lock = (t.lock ?? 0) - dt; t.chk = (t.chk ?? 0) - dt;
+    if (gun && cur && !isM(cur)) {
+      const e = cur as Enemy, onIt = Math.abs(wrapA(Math.atan2(e.y - y, e.x - x) - gun.a)) < Math.max(gun.tol, this.streamTol(x, y, e)) * 2;
+      const tc = this.timeToHit(gun, x, y, e);
+      if (!onIt && (tc === Infinity || (t.lock <= 0 && t.chk <= 0))) {
+        t.chk = 0.5;
+        const p = this.pickTarget(x, y, range, order, ok, gun);
+        if (p && p !== e) {
+          const tp = this.timeToHit(gun, x, y, p), fits = order === 'alle' || (order === 'struktur' ? isStructure(p) : ECLASS[p.kind] === order) || !(order === 'struktur' ? isStructure(e) : ECLASS[e.kind] === order);
+          const turnT = (q: Enemy) => Math.abs(wrapA(Math.atan2(q.y - y, q.x - x) - gun.a)) / gun.turn;
+          if (fits && tp < Infinity && (tc === Infinity || (tp < tc - 0.5 && turnT(p) <= turnT(e) * 0.5))) cur = p;
+        }
+      }
+    }
+    if (!cur) cur = (missiles ? nearMissile(range) : null) ?? this.pickTarget(x, y, range, order, ok, gun);
+    if (cur !== t.tgt) { t.lvx = cur?.vx ?? 0; t.lvy = cur?.vy ?? 0; t.reT = 1; t.lock = 1; }
     t.tgt = cur;
     if (!cur) return null;
     const k = Math.min(1, dt * 2.5);
@@ -2704,12 +2741,15 @@ export class ShooterGame implements MiniGame {
     return { tgt: cur, d: dist(cur), vx: t.lvx, vy: t.lvy };
   }
 
-  private pickTarget(x: number, y: number, range: number, order: TurretOrder, ok: (e: Enemy, d: number) => boolean = () => true): Enemy | null {
-    let best: Enemy | null = null, bd = range, pref: Enemy | null = null, pd = range;
+  /** Ziel nach Befehl: das nächste – bzw. mit Turmangaben das am schnellsten zu treffende (nachführbare zuerst) */
+  private pickTarget(x: number, y: number, range: number, order: TurretOrder, ok: (e: Enemy, d: number) => boolean = () => true, gun?: TurretGun): Enemy | null {
+    let best: Enemy | null = null, bd = Infinity, pref: Enemy | null = null, pd = Infinity;
     for (const e of this.enemies) {
       if ((e.kind === 'boss' && e.shielded) || e.boje) continue;
-      const d = Math.hypot(e.x - x, e.y - y);
-      if (d >= range || !ok(e, d)) continue;
+      const dist = Math.hypot(e.x - x, e.y - y);
+      if (dist >= range || !ok(e, dist)) continue;
+      // ohne Turmangaben: Abstand; sonst Zeit bis zum Treffer (nicht nachführbare ganz hinten, dort nach Abstand)
+      const d = gun ? (() => { const th = this.timeToHit(gun, x, y, e); return th === Infinity ? 1e6 + dist : th; })() : dist;
       if (d < bd) { bd = d; best = e; }
       if (order !== 'alle' && (order === 'struktur' ? isStructure(e) : ECLASS[e.kind] === order) && d < pd) { pd = d; pref = e; }
     }
@@ -4748,7 +4788,8 @@ export class ShooterGame implements MiniGame {
       // in Ruhe nachladen wie die Bordwaffen: nach einer Feuerpause von der Länge der Nachladezeit ist das Magazin voll
       t.idle = (t.idle ?? 0) + dt;
       if (w.mag && t.mag < w.mag && t.cd <= 0 && t.idle >= w.reload * this.tempo) t.mag = w.mag;
-      const aim = this.turretAim(t, x, y, range, order, order === 'alle' || order === 'S', dt);
+      const gunAim: TurretGun = { a: t.a, turn, speed: w.beam || w.rail ? 0 : w.speed, tol: w.beam ? 0.08 : w.interval < 0.2 ? 0.035 : 0.15 };
+      const aim = this.turretAim(t, x, y, range, order, order === 'alle' || order === 'S', dt, undefined, gunAim);
       if (!aim) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
       const tgt = aim.tgt;
       // Vorhalt: exakter Abfangpunkt (Strahlen und Lanzen treffen sofort)
@@ -4770,7 +4811,7 @@ export class ShooterGame implements MiniGame {
       }
       // Dauerfeuer (Gatling) erst, wenn der Turm fast genau auf dem Ziel liegt – sonst geht beim Schwenken die halbe
       // Garbe ins Leere; Einzelschüsse dürfen schon im Nachführen fallen
-      if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < (w.interval < 0.2 ? 0.035 : 0.15)) {
+      if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < (w.interval < 0.2 ? this.streamTol(x, y, tgt) : 0.15)) {
         t.idle = 0;
         // Mehrlingsturm: jeder Schuss kommt aus dem nächsten Rohr (Mündung laut Turmbild), mit Mündungsfeuer
         let mx = x, my = y, fwd = 8;
