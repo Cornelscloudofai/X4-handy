@@ -241,7 +241,7 @@ const HULL: Record<string, [number, number, number]> = {
  * Turmart, gemessener Rotton, Drehpunkt (Mitte des runden Sockels, Anteile des Bilds) und Durchmesser
  * des Sockels (Anteil der Bildbreite). Das Rohr zeigt im Bild nach oben.
  */
-const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; px: number; py: number; d: number }[] = [
+const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; px: number; py: number; d: number; /** Rohrmündungen im Bild (Anteile, Schussreihenfolge) */ muzzles?: [number, number][] }[] = [
   { name: 'split-turm-puls-mittel-ki', type: 'puls', rgb: [138, 55, 39], px: 0.5, py: 0.658, d: 0.5 },
   { name: 'split-turm-puls-hell-ki', type: 'puls', rgb: [182, 59, 37], px: 0.5, py: 0.62, d: 0.54 },
   { name: 'split-turm-neutron-mittel2-ki', type: 'neutron', rgb: [141, 61, 44], px: 0.5, py: 0.576, d: 0.66 },
@@ -255,7 +255,8 @@ const TURRET_ART: { name: string; type: string; rgb: [number, number, number]; p
   // Raketen-Vierling (M): dreht um die Mitte des runden Sockels unter dem Gehäuse; etwas breiter als der Sockel
   { name: 'split-turm-rakete-ki', type: 'rakete', rgb: [150, 55, 45], px: 0.5, py: 0.61, d: 0.36 },
   // Flakturm: vier Rohre im Block, Munitionskästen links und rechts; ein Bild für alle Rumpftöne
-  { name: 'split-turm-flak-ki', type: 'flak', rgb: [150, 58, 44], px: 0.5, py: 0.6, d: 0.7 },
+  // Mündungen der vier Rohre (gemessen), gefeuert wird über Kreuz: außen links, innen rechts, innen links, außen rechts
+  { name: 'split-turm-flak-ki', type: 'flak', rgb: [150, 58, 44], px: 0.5, py: 0.6, d: 0.7, muzzles: [[0.388, 0.015], [0.537, 0.015], [0.463, 0.015], [0.612, 0.015]] },
   // Raketensilo (L): fest im Rumpf, Mitte des Bilds auf dem Sockel, so breit wie der Sockel
   { name: 'split-lturm-silo-ki', type: 'silo', rgb: [140, 60, 50], px: 0.5, py: 0.5, d: 0.54 },
 ];
@@ -272,6 +273,16 @@ export function turretArtName(type: string, shipBase: string): string | null {
     if (d < bd) { bd = d; best = t.name; }
   }
   return best;
+}
+
+/**
+ * Rohrmündungen eines Turms relativ zum Drehpunkt, in Vielfachen der Bildbreite: [seitlich (rechts +), nach vorn]; null,
+ * wenn das Bild keine hat. Ohne Laden – gilt auch in Tests und in der Vektordarstellung (dann aus der Turmmitte).
+ */
+export function turretMuzzles(type: string, shipBase: string): { pts: [number, number][]; d: number } | null {
+  if (art === 'vector') return null;
+  const def = TURRET_ART.find((t) => t.name === turretArtName(type, shipBase));
+  return def?.muzzles ? { pts: def.muzzles.map(([u, v]) => [u - def.px, def.py - v]), d: def.d } : null;
 }
 
 /** Turmbild passend zum Schiff (Drehpunkt und Sockeldurchmesser als Anteile), sonst null (dann per Code zeichnen) */

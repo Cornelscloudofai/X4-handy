@@ -6,7 +6,7 @@ import { DEFAULT_LOADOUT, type Loadout } from '../src/minigames/loadout';
 type E = { kind: string; x: number; y: number; hp: number; max: number; sh: number; parent?: unknown };
 type G = {
   update(dt: number): void; resize(w: number, h: number): void;
-  px: number; py: number; aimA: number; enemies: E[]; clusters: Map<unknown, unknown>; bullets: { pflak?: boolean }[];
+  px: number; py: number; aimA: number; enemies: E[]; clusters: Map<unknown, unknown>; bullets: { pflak?: boolean; x: number; y: number }[]; pTur: { a: number }[];
   makeEnemy(k: string, x: number, y: number): E; fireChain(x: number, y: number, a: number): void; spawnBoss(mini?: boolean): void;
   cardFits(c: { id: string; name: string; desc: string; max: number; need?: string[] }): boolean; zaps: unknown[];
 };
@@ -66,5 +66,22 @@ describe('Flakturm', () => {
     expect(flak).toBe(true);
     // ohne Zutun der Bordwaffen: die vier Flaktürme holen in vier Sekunden mindestens die Hälfte herunter
     expect(swarm.filter((e) => g.enemies.includes(e)).length).toBeLessThanOrEqual(6);
+  });
+
+  it('jede Granate kommt aus dem nächsten der vier Rohre, vor dem Turm', () => {
+    const g = game({ ship: 'cobra', turret: 'flak' });
+    const e = g.makeEnemy('jaeger', g.px, g.py - 500);
+    g.enemies.push(e);
+    const starts: { x: number; y: number }[] = [];
+    const seen = new Set<object>();
+    for (let i = 0; i < 60 * 8 && starts.length < 8; i++) {
+      e.x = g.px; e.y = g.py - 500; e.hp = e.max;
+      g.update(DT);
+      for (const b of g.bullets) if (b.pflak && !seen.has(b)) { seen.add(b); starts.push({ x: b.x - g.px, y: b.y - g.py }); }
+    }
+    expect(starts.length).toBeGreaterThanOrEqual(8);
+    // aus der Turmmitte gefeuert, startete jede zweite Granate eines Turms an derselben Stelle – aus den Rohren nie
+    const pts = new Set(starts.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
+    expect(pts.size).toBe(starts.length);
   });
 });

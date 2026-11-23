@@ -10,7 +10,7 @@ import { sfx } from '../ui/sound';
 import { sustain } from '../audio/ambience';
 import { playGameTrack, type GameTrack } from '../audio/music';
 import invasionUrl from '../assets/music/kampf-invasion.mp3';
-import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretSprite } from '../render/shipArt';
+import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretMuzzles, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
 import { broodTest, envTest, fogTest, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
@@ -974,7 +974,7 @@ export class ShooterGame implements MiniGame {
   private tune = enemyTune();
   private tuneVer = enemyTuneVersion();
   /** Türme des eigenen Schiffs: Pause und Richtung; beim Träger je Turm eigene Art (Waffe, Drehtempo, Bild, L-Turm) */
-  private pTur: ({ cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number; /** Raketenturm: noch zu startende Raketen der Salve und Vorrat */ salvo?: number; ammo?: number } & TurretMem)[] = [];
+  private pTur: ({ cd: number; a: number; mag: number; w?: GameGun; turn?: number; type?: string; L?: boolean; g?: number; /** Raketenturm: noch zu startende Raketen der Salve und Vorrat */ salvo?: number; ammo?: number; /** nächstes Rohr (Mehrlingstürme) */ barrel?: number } & TurretMem)[] = [];
   /** Drehtempo der Türme (rad/s) und Turmart (für das Bild) */
   private turTurn = 5;
   private turType = 'puls';
@@ -4749,14 +4749,26 @@ export class ShooterGame implements MiniGame {
         continue;
       }
       if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < 0.15) {
+        // Mehrlingsturm: jeder Schuss kommt aus dem nächsten Rohr (Mündung laut Turmbild), mit Mündungsfeuer
+        let mx = x, my = y, fwd = 8;
+        const mz = turretMuzzles(t.type ?? this.turType, this.ship.sprite);
+        if (mz) {
+          const Wt = (this.ship.size * ((t.L ? this.ship.turretDL : undefined) ?? this.ship.turretD ?? 0.1)) / mz.d;
+          const [side, ahead] = mz.pts[(t.barrel = ((t.barrel ?? -1) + 1) % mz.pts.length)];
+          const ca = Math.cos(t.a), sa = Math.sin(t.a);
+          mx = x + ca * ahead * Wt - sa * side * Wt; my = y + sa * ahead * Wt + ca * side * Wt; fwd = 0;
+          this.fx.add({ x: mx, y: my, vx: ca * 30, vy: sa * 30, color: '#ffe0a0', size: 3.2, max: 0.07 });
+          this.fx.add({ x: mx + ca * 3, y: my + sa * 3, vx: ca * 25, vy: sa * 25, color: '#ff9a4a', size: 2.4, kind: 'fire', max: 0.12, drag: 4 });
+          this.fx.add({ x: mx, y: my, vx: ca * 18 + this.pvx * 0.5, vy: sa * 18 + this.pvy * 0.5, color: '#4a4440', size: 3.5, kind: 'smoke', max: 0.5, drag: 2 });
+        }
         for (let p = 0; p < w.pellets; p++) {
           const a = t.a + (this.r() - 0.5) * 2 * w.jitter;
           // L-Türme des Trägers: schwere Lanze (orange, dick, langes Nachglühen)
           this.logSrc = key; this.logShot();
           if (w.rail) { this.fireRail(x + Math.cos(a) * 8, y + Math.sin(a) * 8, a, this.tDmg * w.dmg, range, w.color, !!t.L); continue; }
           // Flak: Zeitzünder knapp hinter dem Ziel, dazu der Annäherungszünder (siehe updateShots)
-          const life = w.flak ? Math.min(w.life * this.tRangeMul, (bd + 30) / w.speed) : w.life * this.tRangeMul;
-          this.bullets.push({ x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined });
+          const life = w.flak ? Math.min(w.life * this.tRangeMul, (Math.hypot(tgt.x + aim.vx * lt - mx, tgt.y + aim.vy * lt - my) + 30) / w.speed) : w.life * this.tRangeMul;
+          this.bullets.push({ x: mx + Math.cos(a) * fwd, y: my + Math.sin(a) * fwd, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined });
         }
         t.cd = (w.interval * this.tempo) / this.tRateMul;
         if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
