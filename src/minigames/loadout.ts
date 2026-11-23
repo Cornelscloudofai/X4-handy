@@ -557,7 +557,9 @@ export const TURRETS: Record<TurretId, TurretDef> = {
     gun: { dmg: 0, rate: 1, amt: 4, mag: 0, reload: 0, v: 400, life: 6.5, angle: 0 } },
   // Flakturm: Sprenggranaten mit Annäherungszünder – zerplatzen zwischen kleinen Schiffen und Raketen
   flak: { name: 'Flakturm', desc: 'Sprenggranaten mit Annäherungszünder: zerplatzen zwischen kleinen Schiffen und treffen alles im Umkreis – stark gegen Schwärme und Raketen, schwach gegen große Ziele.', turn: 170, color: '#ffb070', w: 2.2, flak: true,
-    gun: { dmg: 30, rate: 2.2, amt: 1, mag: 6, reload: 3, v: 1400, life: 2.4, angle: 0.3 } },
+    // vier Rohre, vier Granaten je Magazin; Nachladen so gewählt, dass die mittlere Feuerrate wie mit sechs bleibt
+    // (6 Schuss in 5 Takten + 3 s ≙ 4 Schuss in 3 Takten + 2,25 s)
+    gun: { dmg: 30, rate: 2.2, amt: 1, mag: 4, reload: 2.25, v: 1400, life: 2.4, angle: 0.3 } },
 };
 export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
 
