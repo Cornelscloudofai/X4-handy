@@ -54,9 +54,10 @@ describe('Wrack als Deckung (Formel)', () => {
 });
 
 describe('Wrackfeld im Kampf', () => {
-  it('Test-Schalter: ab Welle 2 Wracks, nie auf der Route des Frachters', () => {
+  it('Test-Schalter: schon ab Welle 1 Wracks, nie auf der Route des Frachters', () => {
     const g = game('wracks');
-    expect(g.sectionPlan.slice(1, 4)).toEqual(['wracks', 'wracks', 'wracks']);
+    expect(g.sectionPlan.slice(0, 3)).toEqual(['wracks', 'wracks', 'wracks']);
+    expect(g.cover.length).toBeGreaterThanOrEqual(4);
     g.spawnCover();
     expect(g.cover.length).toBeGreaterThanOrEqual(4);
     const lane = g.wx(g.wards[0]);

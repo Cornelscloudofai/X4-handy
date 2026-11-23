@@ -38,7 +38,7 @@ export function tunePanel(level: Level, o: { levelPicker?: string; reset: string
     ${o.brood ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Brutschiff ab Welle 1</div>
       <div class="sub wrap">Kha'ak-Runden: ein Brutschiff liegt von Anfang an am Kartenrand und brütet sofort. Gilt ab dem nächsten Start.</div></div>
       <div class="toggle"><button class="plain ${broodTest() ? 'on' : ''}" ${o.brood}>${broodTest() ? 'An' : 'Aus'}</button></div></div>` : ''}
-    ${o.env ? `<div class="title" style="font-weight:500;margin-top:12px">Test: Umgebung in jeder Welle ab Welle 2</div>
+    ${o.env ? `<div class="title" style="font-weight:500;margin-top:12px">Test: Umgebung in jeder Welle ab Welle 1</div>
       <div class="segment" style="margin-top:6px">${([['', 'Zufall'], ['wracks', 'Wracks'], ['anomalie', 'Anomalie'], ['rocks', 'Felsen'], ['mines', 'Minen']] as const).map(([v, l]) => `<button class="${envTest() === v ? 'on' : ''}" ${o.env!(v)}>${l}</button>`).join('')}</div>` : ''}
     ${o.pale ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Kulisse blasser</div>
       <div class="sub wrap">Hintergrund-Objekte im Kampf dunkler, weicher und dunstiger – zum Vergleich, ob sich die Spielebene besser abhebt.</div></div>

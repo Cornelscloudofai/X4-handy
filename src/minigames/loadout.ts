@@ -1043,7 +1043,7 @@ export function setFogTest(on: boolean): void {
   try { if (on) globalThis.localStorage?.setItem(FOG_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(FOG_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
 }
 
-/** Test-Schalter: Umgebung ab Welle 2 erzwingen ('' = wie sonst); gemerkt im Browser */
+/** Test-Schalter: Umgebung ab Welle 1 erzwingen ('' = wie sonst); gemerkt im Browser */
 export type EnvTest = '' | 'wracks' | 'anomalie' | 'rocks' | 'mines';
 const ENV_TEST_KEY = 'x4-sektorbau-umgebung-test';
 export function envTest(): EnvTest {

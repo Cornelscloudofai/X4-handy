@@ -1255,12 +1255,12 @@ export class ShooterGame implements MiniGame {
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
     for (let i = 0; i < 40; i++) this.sectionPlan.push(this.mutator?.id === 'mines' ? 'mines' : i === 0 ? 'none' : this.r() < 0.45 ? (this.r() < 0.5 ? 'rocks' : 'mines') : 'none');
     // Wrackfeld und Gravitationsanomalie: je die Hälfte der Asteroiden- bzw. Minenabschnitte (eigener Zufall, damit sich
-    // die übrige Abfolge nicht verschiebt); Test-Schalter erzwingt eine Umgebung ab Welle 2
+    // die übrige Abfolge nicht verschiebt); Test-Schalter erzwingt eine Umgebung schon ab Welle 1
     const er = rng(cfg.seed ^ 0xe11);
     this.lightA = -2.3 + (er() - 0.5) * 1.4;
-    this.sectionPlan = this.sectionPlan.map((q, i) => {
+    this.sectionPlan = this.sectionPlan.map((q) => {
       const forced = envTest();
-      if (forced && i > 0 && this.mutator?.id !== 'mines') return forced;
+      if (forced && this.mutator?.id !== 'mines') return forced;
       return q === 'rocks' ? (er() < 0.5 ? 'wracks' : 'rocks') : q === 'mines' && this.mutator?.id !== 'mines' ? (er() < 0.5 ? 'anomalie' : 'mines') : q;
     });
     preloadCover();
