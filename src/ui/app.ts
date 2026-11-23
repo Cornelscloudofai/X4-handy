@@ -50,7 +50,7 @@ import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
-import { SHIPS, broodTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
+import { SHIPS, applyLoadout, deleteLoadout, editLoadout, savedLoadouts, storeLoadout, type LoTag, broodTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode, Place } from '../minigames/common';
 import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
@@ -1470,6 +1470,35 @@ function onClick(e: MouseEvent): void {
         sfx.tap();
         refresh();
       } break;
+      // Loadouts: einbauen (wechselt auch das Schiff), speichern bzw. überschreiben, Kennzeichen, löschen (zweimal tippen)
+      case 'lo-apply': if (ui.modal?.type === 'loadout') {
+        const before = loadout(), q = savedLoadouts().list[Number(d.i)];
+        if (!q) break;
+        ui.modal = { ...ui.modal, prev: hangarStats(), undo: { ...before }, delArm: undefined };
+        const lo = applyLoadout(Number(d.i));
+        if (lo && lo.ship !== before.ship) setShipArt(shipArt(), lo.ship === 'argon' ? 'argon' : 'split');
+        sfx.build();
+        toast(`Loadout „${q.name}“ eingebaut`, 'good');
+        refresh();
+      } break;
+      case 'lo-save': {
+        const i = storeLoadout(d.i != null ? Number(d.i) : undefined);
+        if (i < 0) { toast('Alle Plätze belegt – im Menü „···“ einen überschreiben oder löschen', 'warn'); break; }
+        sfx.chime();
+        toast(d.i != null ? `Loadout „${savedLoadouts().list[i]!.name}“ gespeichert` : `Als Loadout „${savedLoadouts().list[i]!.name}“ gespeichert – Name und Kennzeichen unter „···“`, 'good');
+        if (ui.modal?.type === 'loadout') ui.modal = { ...ui.modal, delArm: undefined };
+        refresh();
+        break;
+      }
+      case 'lo-tag': editLoadout(Number(d.i), { tag: d.tag as LoTag }); sfx.tap(); refresh(); break;
+      case 'lo-del': if (ui.modal?.type === 'loadout') {
+        const i = Number(d.i);
+        if (ui.modal.delArm !== i) { ui.modal = { ...ui.modal, delArm: i }; refresh(); break; }
+        deleteLoadout(i);
+        ui.modal = { ...ui.modal, delArm: undefined };
+        refresh();
+      } break;
+      case 'lo-sort': if (ui.modal?.type === 'loadout') { ui.modal = { ...ui.modal, sort: d.sort === 'feuer' ? 'feuer' : 'rolle' }; refresh(); } break;
       case 'lo-undo': if (ui.modal?.type === 'loadout' && ui.modal.undo) {
         setLoadout(ui.modal.undo);
         ui.modal = { ...ui.modal, prev: hangarStats(), undo: undefined };
@@ -2033,6 +2062,11 @@ function onChange(e: Event): void {
   if (field === 'auto-buy-build') {
     const st = stationById(state, el.dataset.st ?? '');
     if (st) st.autoBuyBuild = (el as unknown as HTMLInputElement).checked;
+    refresh();
+    return;
+  }
+  if (field === 'lo-name') {
+    editLoadout(Number(el.dataset.i), { name: (el as unknown as HTMLInputElement).value });
     refresh();
     return;
   }

@@ -2088,3 +2088,34 @@ button.crumb svg { margin-left: 6px; opacity: 0.8; flex: none; }
 @keyframes pvAim { 0%, 100% { transform: translate(-9px, -9px); } 50% { transform: translate(9px, -9px); } 80% { transform: translate(0, -15px); } }
 @keyframes pvSteer { 0%, 100% { transform: translate(-16px, 0); } 45% { transform: translate(16px, 0); } 70%, 85% { transform: translate(4px, -14px); } }
 @media (prefers-reduced-motion: reduce) { .ctrl-prev * { animation: none !important; } }
+
+/* Loadouts im Hangar: Leiste unter den Modi, Stand darunter, Verwaltung in der Schublade; Rollen auf den Karten */
+.hgr-los { position: absolute; z-index: 6; top: calc(var(--safe-top) + 104px); left: 12px; right: 12px; display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; padding: 2px 0; transition: opacity 0.2s; }
+.hgr-los::-webkit-scrollbar { display: none; }
+.hgr-los-l { flex: none; font: 600 10.5px "Chakra Petch", Barlow, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber, #ffb547); text-shadow: 0 1px 6px #000; }
+.hgr-lo { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 170px; min-height: 32px; padding: 4px 11px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--c, var(--teal)) 45%, transparent); background: rgba(6, 16, 24, 0.82); backdrop-filter: blur(4px); color: var(--text); font: 500 12.5px Barlow, sans-serif; }
+.hgr-lo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hgr-lo i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
+.hgr-lo.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 22%, rgba(6, 16, 24, 0.85)); box-shadow: 0 0 0 1px var(--c) inset; }
+.hgr-lo.add { color: var(--teal); border-style: dashed; border-color: color-mix(in srgb, var(--teal) 50%, transparent); }
+.hgr-lo.more { padding: 4px 10px; letter-spacing: 0.1em; }
+.hgr-lostate { position: absolute; z-index: 6; top: calc(var(--safe-top) + 142px); left: 12px; right: 12px; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted, #a9c3c6); text-shadow: 0 1px 6px #000; transition: opacity 0.2s; }
+.hgr-lostate.changed span { color: var(--amber, #ffb547); }
+.hgr-lostate button { border: 1px solid var(--line-2); background: rgba(6, 16, 24, 0.82); color: var(--text); border-radius: 999px; padding: 3px 10px; font: 500 12px Barlow, sans-serif; }
+.hgr.open .hgr-los, .hgr.open .hgr-lostate { opacity: 0; pointer-events: none; }
+.hgr-mods .hgr-lostate { display: none; }
+.lo-row { display: grid; gap: 8px; border-left: 3px solid var(--c, var(--line-2)); }
+.lo-row.on { box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent) inset; }
+.lo-row.empty { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-left-color: var(--line-2); }
+.lo-head { display: flex; gap: 10px; align-items: center; }
+.lo-name { flex: 1; display: grid; gap: 2px; }
+.lo-name small { color: var(--muted, #a9c3c6); font-size: 11px; }
+.lo-name input { width: 100%; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); padding: 6px 8px; font: 500 14px Barlow, sans-serif; }
+.lo-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.hgr-sort { margin: 0 14px 10px; }
+.hgr-role { position: absolute; top: 6px; left: 6px; z-index: 1; padding: 1px 7px; border-radius: 999px; font: 600 10px "Chakra Petch", Barlow, sans-serif; letter-spacing: 0.04em; color: var(--r); background: color-mix(in srgb, var(--r) 16%, rgba(0, 0, 0, 0.55)); border: 1px solid color-mix(in srgb, var(--r) 45%, transparent); }
+
+.mg-ctrl-chip[style*="--c"] svg { color: var(--c); }
+.lo-pick { grid-template-columns: 1fr auto; border-left: 3px solid var(--c); }
+.lo-pick .ctrl-txt b { display: flex; align-items: center; gap: 6px; }
+.lo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }

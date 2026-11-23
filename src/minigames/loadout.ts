@@ -799,11 +799,31 @@ export function turretOf(lo: Loadout, d: ShipDef, i: number): { id: string; def:
 
 let current: Loadout | null = null;
 
-/** Gewählte Ausrüstung (gemerkt im Browser) */
+/**
+ * Ausrüstung je Schiff: jedes Schiff behält, was zuletzt in ihm eingebaut war – wer zur Mamba wechselt und zurück zur
+ * Cobra, findet die Cobra so vor, wie er sie verlassen hat (gemerkt im Browser)
+ */
+const SHIP_MEM_KEY = 'x4-sektorbau-ausruestung-je-schiff';
+let shipMem: Partial<Record<ShipId, Loadout>> | null = null;
+function memory(): Partial<Record<ShipId, Loadout>> {
+  if (shipMem) return shipMem;
+  shipMem = {};
+  try {
+    const raw = JSON.parse(globalThis.localStorage?.getItem(SHIP_MEM_KEY) ?? 'null') as Record<string, unknown> | null;
+    for (const [id, l] of Object.entries(raw ?? {})) if (id in SHIPS) shipMem[id as ShipId] = valid({ ...(l as object), ship: id } as Parameters<typeof valid>[0]);
+  } catch { /* nichts gemerkt */ }
+  return shipMem;
+}
+function saveMemory(): void {
+  try { globalThis.localStorage?.setItem(SHIP_MEM_KEY, JSON.stringify(memory())); } catch { /* Speicher nicht verfügbar */ }
+}
+/** zuletzt eingebaute Ausrüstung dieses Schiffs (oder null) */
+export function shipLoadout(ship: ShipId): Loadout | null { return memory()[ship] ?? null; }
+
 /** Gespeicherte Ausrüstung, aber mit diesem Schiff (z. B. das eigene Großkampfschiff aus dem Sektor) */
 export function loadoutFor(ship: ShipId): Loadout {
   const l = loadout();
-  return l.ship === ship ? l : valid({ ...l, ship } as Parameters<typeof valid>[0]);
+  return l.ship === ship ? l : memory()[ship] ?? valid({ ...l, ship } as Parameters<typeof valid>[0]);
 }
 
 export function loadout(): Loadout {
@@ -818,14 +838,123 @@ export function loadout(): Loadout {
 }
 
 export function setLoadout(patch: Partial<Loadout>): Loadout {
-  current = valid({ ...loadout(), ...patch });
+  // Schiffswechsel: das neue Schiff bringt seine eigene zuletzt eingebaute Ausrüstung mit
+  const cur = loadout(), mem = memory();
+  mem[cur.ship] = cur;
+  const base = patch.ship && patch.ship !== cur.ship && mem[patch.ship] ? mem[patch.ship]! : cur;
+  current = valid({ ...base, ...patch });
+  mem[current.ship] = current;
   try {
     globalThis.localStorage?.setItem(KEY, JSON.stringify(current));
   } catch {
     /* Speicher nicht verfügbar */
   }
+  saveMemory();
   return current;
 }
+
+// ---------- Loadouts: gespeicherte Zusammenstellungen aus Schiff und kompletter Ausrüstung ----------
+
+/** Rolle einer Waffe, eines Turms, einer Rakete – und Kennzeichen eines Loadouts */
+export type Role = 'schwarm' | 'gross' | 'allround' | 'abwehr' | 'geleit';
+export const ROLES: Record<Role, { name: string; color: string }> = {
+  schwarm: { name: 'Schwarm', color: '#c77dff' },
+  gross: { name: 'Großziel', color: '#ff8a5c' },
+  allround: { name: 'Allround', color: '#3fe0c5' },
+  abwehr: { name: 'Raketenabwehr', color: '#7fd8ff' },
+  geleit: { name: 'Geleit', color: '#ffd27a' },
+};
+/** Kennzeichen, die ein Loadout tragen kann */
+export const LO_TAGS = ['schwarm', 'gross', 'allround', 'geleit'] as const;
+export type LoTag = (typeof LO_TAGS)[number];
+/** Wofür Waffen, Türme und Raketen taugen (Kennzeichen auf den Karten im Hangar) */
+export const WEAPON_ROLE: Record<WeaponId, Role> = {
+  puls: 'allround', bolzen: 'allround', schrot: 'schwarm', strahl: 'abwehr', plasma: 'gross', neutron: 'schwarm', tau: 'schwarm',
+  thermal: 'gross', boson: 'gross', massdriver: 'gross', blitz: 'schwarm', schnellplasma: 'gross', plasmasalve: 'gross',
+};
+export const TURRET_ROLE: Record<TurretId, Role> = { puls: 'abwehr', strahl: 'abwehr', neutron: 'schwarm', tau: 'schwarm', plasma: 'gross', boson: 'gross', rakete: 'gross', flak: 'schwarm' };
+export const LTURRET_ROLE: Record<LTurretId, Role> = { plasma: 'gross', tau: 'schwarm', boson: 'gross', neutron: 'schwarm', silo: 'gross' };
+export const MISSILE_ROLE: Record<MissileId, Role> = { lenk: 'allround', schwer: 'gross', schwarm: 'schwarm', stoer: 'allround' };
+
+export interface SavedLoadout { name: string; tag: LoTag; lo: Loadout }
+/** Plätze für Loadouts */
+export const LOADOUT_SLOTS = 6;
+const LOADOUTS_KEY = 'x4-sektorbau-loadouts';
+interface LoadoutStore { list: (SavedLoadout | null)[]; active: number | null }
+let loStore: LoadoutStore | null = null;
+function store(): LoadoutStore {
+  if (loStore) return loStore;
+  loStore = { list: new Array(LOADOUT_SLOTS).fill(null), active: null };
+  try {
+    const raw = JSON.parse(globalThis.localStorage?.getItem(LOADOUTS_KEY) ?? 'null') as { list?: unknown[]; active?: unknown } | null;
+    (raw?.list ?? []).slice(0, LOADOUT_SLOTS).forEach((q, i) => {
+      const v = q as Partial<SavedLoadout> | null;
+      if (v && v.lo) loStore!.list[i] = { name: String(v.name ?? '').slice(0, 40) || suggestLoadoutName(valid(v.lo as Parameters<typeof valid>[0])), tag: (LO_TAGS as readonly string[]).includes(v.tag as string) ? (v.tag as LoTag) : 'allround', lo: valid(v.lo as Parameters<typeof valid>[0]) };
+    });
+    const a = Number(raw?.active);
+    loStore.active = Number.isInteger(a) && loStore.list[a] ? a : null;
+  } catch { /* keine Loadouts */ }
+  return loStore;
+}
+function saveStore(): void {
+  try { globalThis.localStorage?.setItem(LOADOUTS_KEY, JSON.stringify(store())); } catch { /* Speicher nicht verfügbar */ }
+}
+/** alle Plätze (null = frei) und das zuletzt eingebaute Loadout */
+export function savedLoadouts(): { list: (SavedLoadout | null)[]; active: number | null } { return store(); }
+/** Vorschlag für den Namen: Schiff, Bordwaffe (bzw. Türme) und Raketen */
+export function suggestLoadoutName(l: Loadout): string {
+  const s = SHIPS[l.ship];
+  const main = s.x4.weapons ? WEAPONS[l.weapon].name : s.turrets.length ? TURRETS[l.turret].name : '';
+  return [s.name, main, s.x4.launchers ? MISSILES[l.missile ?? 'lenk'].name : ''].filter(Boolean).join(' · ');
+}
+/** Kennzeichen-Vorschlag aus der Ausrüstung (die häufigste Rolle von Bordwaffe, Türmen und Raketen) */
+export function suggestLoadoutTag(l: Loadout): LoTag {
+  const s = SHIPS[l.ship], roles: Role[] = [];
+  if (s.x4.weapons) roles.push(WEAPON_ROLE[l.weapon], WEAPON_ROLE[l.weapon]);
+  if (s.turrets.length && !s.groups) roles.push(TURRET_ROLE[l.turret]);
+  if (s.x4.launchers) roles.push(MISSILE_ROLE[l.missile ?? 'lenk']);
+  const n = (r: Role) => roles.filter((q) => q === r).length;
+  return n('schwarm') > n('gross') ? 'schwarm' : n('gross') > n('schwarm') ? 'gross' : 'allround';
+}
+/** aktuelle Ausrüstung als Loadout speichern: auf Platz i (sonst den ersten freien); gibt den Platz zurück oder -1 */
+export function storeLoadout(i?: number, name?: string, tag?: LoTag): number {
+  const st = store(), lo = loadout();
+  const at = i ?? st.list.findIndex((q) => !q);
+  if (at < 0 || at >= LOADOUT_SLOTS) return -1;
+  const old = st.list[at];
+  st.list[at] = { name: name ?? old?.name ?? suggestLoadoutName(lo), tag: tag ?? old?.tag ?? suggestLoadoutTag(lo), lo: { ...lo } };
+  st.active = at;
+  saveStore();
+  return at;
+}
+/** Loadout einbauen (wechselt auch das Schiff) */
+export function applyLoadout(i: number): Loadout | null {
+  const st = store(), q = st.list[i];
+  if (!q) return null;
+  st.active = i;
+  saveStore();
+  return setLoadout(q.lo);
+}
+export function editLoadout(i: number, p: { name?: string; tag?: LoTag }): void {
+  const q = store().list[i];
+  if (!q) return;
+  if (p.name != null) q.name = p.name.trim().slice(0, 40) || suggestLoadoutName(q.lo);
+  if (p.tag) q.tag = p.tag;
+  saveStore();
+}
+export function deleteLoadout(i: number): void {
+  const st = store();
+  st.list[i] = null;
+  if (st.active === i) st.active = null;
+  saveStore();
+}
+/** weicht die eingebaute Ausrüstung vom zuletzt eingebauten Loadout ab? */
+export function loadoutChanged(): boolean {
+  const st = store(), q = st.active != null ? st.list[st.active] : null;
+  return !!q && JSON.stringify(valid(q.lo as Parameters<typeof valid>[0])) !== JSON.stringify(loadout());
+}
+/** für Tests: gemerkte Zustände verwerfen (neu aus dem Speicher lesen) */
+export function resetLoadoutCache(): void { current = null; shipMem = null; loStore = null; }
 
 /** Kurzbeschreibung für das Menü */
 export function loadoutLabel(l: Loadout = loadout()): string {

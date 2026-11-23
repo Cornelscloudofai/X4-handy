@@ -6,6 +6,7 @@
 import {
   LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
   WING_IDS, X4_LENGTH, loadout, sustainedDps, turretOf, weaponGun, wingCount, wingGearOf, wingOptions, wingRoom, type Loadout, type ShipId, type X4Gun,
+  LO_TAGS, LOADOUT_SLOTS, LTURRET_ROLE, MISSILE_ROLE, ROLES, TURRET_ROLE, WEAPON_ROLE, loadoutChanged, savedLoadouts, type Role,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, shipMods, shipSlots, type ModSlot, type ModStat } from '../minigames/mods';
 import { fighterKind, shipArt, spriteUrl } from '../render/shipArt';
@@ -16,7 +17,7 @@ import grossDock from '../assets/hangar/grossdock.jpg';
 import { esc } from './dom';
 import { icon } from './icons';
 
-export type LoView = 'home' | 'ship' | 'weapon' | 'turret' | 'lturret' | 'missile' | 'shield' | 'wing' | 'mod' | 'art';
+export type LoView = 'home' | 'ship' | 'weapon' | 'turret' | 'lturret' | 'missile' | 'shield' | 'wing' | 'mod' | 'art' | 'loadouts';
 export type LoMode = 'gear' | 'mods';
 export interface HangarStats { fire: number; hull: number; shield: number; speed: number; range: number }
 export interface LoModal {
@@ -29,6 +30,17 @@ export interface LoModal {
   prev?: HangarStats;
   /** Ausrüstung vor dem letzten Einbau (Rückgängig) */
   undo?: Partial<Loadout>;
+  /** Schublade: Karten nach Rolle oder nach Feuerkraft ordnen */
+  sort?: 'rolle' | 'feuer';
+  /** Loadout-Platz, dessen Löschen gerade bestätigt werden muss */
+  delArm?: number;
+}
+
+/** Reihenfolge der Rollen beim Sortieren */
+const ROLE_ORDER: Role[] = ['schwarm', 'gross', 'allround', 'abwehr', 'geleit'];
+/** Karten ordnen: nach Rolle (darin nach Feuerkraft) oder nur nach Feuerkraft */
+function ordered<T extends string>(ids: T[], role: (id: T) => Role, fire: (id: T) => number, sort: 'rolle' | 'feuer'): T[] {
+  return [...ids].sort((a, b) => (sort === 'rolle' ? ROLE_ORDER.indexOf(role(a)) - ROLE_ORDER.indexOf(role(b)) : 0) || fire(b) - fire(a));
 }
 
 const act = (a: string, data: Record<string, string | number> = {}) =>
@@ -219,11 +231,13 @@ export function loadoutView(m: LoModal): string {
   }).join('') + (compact ? '' : '');
 
   // ---------- Schublade ----------
-  const card = (o: { key: string; value: string; on: boolean; name: string; big: string; sm: string; ds?: string; ic?: string; color?: string; img?: string }) =>
+  const card = (o: { key: string; value: string; on: boolean; name: string; big: string; sm: string; ds?: string; ic?: string; color?: string; img?: string; role?: Role }) =>
     `<button class="hgr-card ${o.on ? 'on' : ''}" style="--c:${o.color ?? 'var(--teal)'}" ${act('loadout-set', { key: o.key, value: o.value })}>
-      ${o.on ? '<span class="hgr-badge">Eingebaut</span>' : ''}<span class="hgr-art">${o.img ? `<img src="${o.img}" alt=""${o.key === 'ship' ? '' : ' class="item"'}>` : glyph(o.ic ?? 'gun', 34)}</span>
+      ${o.role ? `<span class="hgr-role" style="--r:${ROLES[o.role].color}">${esc(ROLES[o.role].name)}</span>` : ''}${o.on ? '<span class="hgr-badge">Eingebaut</span>' : ''}<span class="hgr-art">${o.img ? `<img src="${o.img}" alt=""${o.key === 'ship' ? '' : ' class="item"'}>` : glyph(o.ic ?? 'gun', 34)}</span>
       <span class="hgr-nm">${esc(o.name)}</span><span class="hgr-big">${esc(o.big)}</span><span class="hgr-sm">${esc(o.sm)}</span><span class="hgr-ds">${o.on ? '' : o.ds ?? ''}</span></button>`;
   let title = '', sub = '', body = '';
+  const sort = m.sort ?? 'rolle';
+  const sortBar = `<div class="segment hgr-sort">${(['rolle', 'feuer'] as const).map((s) => `<button class="${sort === s ? 'on' : ''}" ${act('lo-sort', { sort: s })}>${s === 'rolle' ? 'Nach Rolle' : 'Nach Feuerkraft'}</button>`).join('')}</div>`;
   if (view === 'ship') {
     const cur = hangarStats(lo);
     title = 'Schiff'; sub = 'Feuerkraft mit deiner Bewaffnung · seitlich blättern';
@@ -236,11 +250,11 @@ export function loadoutView(m: LoModal): string {
   } else if (view === 'weapon') {
     const n = ship.x4.weapons, size = ship.gunSize, curDps = n * sustainedDps(g, wd.beam), curKm = wd.beam ? 1.6 : km(g);
     title = 'Bordkanonen'; sub = `${n} × ${size.toUpperCase()}-Waffenplatz · Werte aus X4 9.0`;
-    const ids = WEAPON_IDS.filter((id) => WEAPONS[id].group !== 'schwer' || size === 'l');
-    body = `<div class="hgr-cards">${ids.map((id) => {
+    const ids = ordered(WEAPON_IDS.filter((id) => WEAPONS[id].group !== 'schwer' || size === 'l'), (id) => WEAPON_ROLE[id], (id) => sustainedDps(weaponGun(WEAPONS[id], size), WEAPONS[id].beam), sort);
+    body = `${sortBar}<div class="hgr-cards">${ids.map((id) => {
       const d = WEAPONS[id], gg = weaponGun(d, size), dps = n * sustainedDps(gg, d.beam), r = d.beam ? 1.6 : km(gg);
       const [ic, col] = WEAPON_LOOK[id] ?? ['gun', '#3fe0c5'];
-      return card({ key: 'weapon', value: id, on: lo.weapon === id, name: d.name, big: `${num(dps)}/s`, sm: d.beam ? 'Dauerstrahl' : `${num(r, 1)} km`, ic, color: col, img: spriteUrl(`waffe-${id}-ki`), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(r, curKm, (x) => `${num(x, 1)} km`)}` });
+      return card({ key: 'weapon', value: id, on: lo.weapon === id, name: d.name, big: `${num(dps)}/s`, sm: d.beam ? 'Dauerstrahl' : `${num(r, 1)} km`, ic, color: col, img: spriteUrl(`waffe-${id}-ki`), role: WEAPON_ROLE[id], ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(r, curKm, (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(wd.name)}:</b> ${esc(wd.desc)}<small>${esc(gunData(g, wd.beam))}</small></div>`;
   } else if (view === 'turret' && ship.groups) {
     // Träger: je Gruppe (vom Bug zum Heck) die Turmart wählen – Cluster links und rechts gleich
@@ -256,25 +270,25 @@ export function loadoutView(m: LoModal): string {
   } else if (view === 'turret') {
     const n = ship.turrets.length, curDps = n * sustainedDps(td.gun, td.beam);
     title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;
-    body = `<div class="hgr-cards">${TURRET_IDS.map((id) => {
+    body = `${sortBar}<div class="hgr-cards">${ordered(TURRET_IDS, (id) => TURRET_ROLE[id], (id) => sustainedDps(TURRETS[id].gun, TURRETS[id].beam), sort).map((id) => {
       const t = TURRETS[id], dps = n * sustainedDps(t.gun, t.beam);
-      return card({ key: 'turret', value: id, on: lo.turret === id, name: t.name, big: `${num(dps)}/s`, sm: `schwenkt ${t.turn}°/s`, ic: 'turret', color: WEAPON_LOOK[id]?.[1], img: spriteUrl(t.missile ? 'split-turm-rakete-ki' : `waffe-${id}-ki`), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}` });
+      return card({ key: 'turret', value: id, on: lo.turret === id, name: t.name, big: `${num(dps)}/s`, sm: `schwenkt ${t.turn}°/s`, ic: 'turret', color: WEAPON_LOOK[id]?.[1], img: spriteUrl(t.missile ? 'split-turm-rakete-ki' : `waffe-${id}-ki`), role: TURRET_ROLE[id], ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(t.turn, td.turn, (x) => `${num(x)}°/s`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(td.name)}:</b> ${esc(td.desc)}<small>${esc(gunData(td.gun, td.beam))}</small></div>`;
   } else if (view === 'lturret') {
     const n = ship.lMounts?.length ?? 0, curDps = n * sustainedDps(ltd.gun);
     title = 'Schwere Türme'; sub = `${n} × L an den Schultern · Werte angenommen`;
     // das Silo braucht einen Sockel im Rumpf (Träger), nicht für die Schulterrohre
-    body = `<div class="hgr-cards">${LTURRET_IDS.filter((id) => id !== 'silo').map((id) => {
+    body = `${sortBar}<div class="hgr-cards">${ordered(LTURRET_IDS.filter((id) => id !== 'silo'), (id) => LTURRET_ROLE[id], (id) => sustainedDps(LTURRETS[id].gun), sort).map((id) => {
       const t = LTURRETS[id], dps = n * sustainedDps(t.gun);
-      return card({ key: 'lturret', value: id, on: (lo.lturret ?? 'plasma') === id, name: t.name, big: `${num(dps)}/s`, sm: `${num(km(t.gun), 1)} km · ${t.turn}°/s`, img: spriteUrl(t.barrel), ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(km(t.gun), km(ltd.gun), (x) => `${num(x, 1)} km`)}` });
+      return card({ key: 'lturret', value: id, on: (lo.lturret ?? 'plasma') === id, name: t.name, big: `${num(dps)}/s`, sm: `${num(km(t.gun), 1)} km · ${t.turn}°/s`, img: spriteUrl(t.barrel), role: LTURRET_ROLE[id], ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(km(t.gun), km(ltd.gun), (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(ltd.name)}:</b> ${esc(ltd.desc)}<small>${esc(gunData(ltd.gun))}</small></div>`;
   } else if (view === 'missile') {
     const dmgOf = (d: typeof missile) => MISSILE_DMG * d.dmg * (d.split ?? 1);
     const reach = (d: typeof missile) => (d.v * d.life + (d.split ? 120 : 0)) / 1000;
     title = 'Raketen'; sub = `${ship.x4.launchers} × Werfer, Lager ${ship.x4.missiles} · Nachladen ${ship.missileReload && ship.missileReload < 1 ? Math.round(8 * ship.missileReload) : 8} s`;
-    body = `<div class="hgr-cards">${MISSILE_IDS.map((id) => {
+    body = `${sortBar}<div class="hgr-cards">${ordered(MISSILE_IDS, (id) => MISSILE_ROLE[id], (id) => dmgOf(MISSILES[id]), sort).map((id) => {
       const d = MISSILES[id];
-      return card({ key: 'missile', value: id, on: (lo.missile ?? 'lenk') === id, name: d.name, big: `${d.split ? `${d.split} × ${Math.round(MISSILE_DMG * d.dmg)}` : Math.round(MISSILE_DMG * d.dmg)} Schaden`, sm: `${num(reach(d), 1)} km · ${d.slots > 1 ? `${d.slots} Plätze` : '1 Platz'}`, ic: 'rocket', color: MISSILE_LOOK[id], ds: `${delta(dmgOf(d), dmgOf(missile), (x) => `${Math.round(x)}`)}${delta(reach(d), reach(missile), (x) => `${num(x, 1)} km`)}` });
+      return card({ key: 'missile', value: id, on: (lo.missile ?? 'lenk') === id, role: MISSILE_ROLE[id], name: d.name, big: `${d.split ? `${d.split} × ${Math.round(MISSILE_DMG * d.dmg)}` : Math.round(MISSILE_DMG * d.dmg)} Schaden`, sm: `${num(reach(d), 1)} km · ${d.slots > 1 ? `${d.slots} Plätze` : '1 Platz'}`, ic: 'rocket', color: MISSILE_LOOK[id], ds: `${delta(dmgOf(d), dmgOf(missile), (x) => `${Math.round(x)}`)}${delta(reach(d), reach(missile), (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(missile.name)}</b> – ${esc(missile.role)}. ${esc(missile.desc)}</div>`;
   } else if (view === 'wing') {
     // Staffel: je Schiffstyp die Anzahl – Träger nach Hangarplätzen (S und M getrennt), sonst bis zu vier Flügelleute
@@ -320,6 +334,16 @@ export function loadoutView(m: LoModal): string {
         <span class="mod-qrow">${([1, 2, 3] as const).map((qq) => { const Q = QUALITY[qq], ok = ms.parts >= Q.cost; return `<button class="mod-qbtn2" style="--q:${Q.color}" ${ok ? act('mod-craft', { id, q: String(qq), idx }) : 'disabled'} title="${Q.name}"><b>${short[qq]}</b><span>${esc(fmtRange(id, qq))}</span><em>${Q.cost} ${icon('gift', 12)}</em></button>`; }).join('')}</span></div>`;
     }).join('');
     body = `${tabs}${now}<div class="hgr-cards">${cards}</div>`;
+  } else if (view === 'loadouts') {
+    const sv = savedLoadouts(), used = sv.list.filter(Boolean).length;
+    title = 'Loadouts'; sub = `${used} von ${LOADOUT_SLOTS} belegt · Schiff und komplette Ausrüstung (ohne Mods)`;
+    body = `<div class="hgr-groups">${sv.list.map((q, i) => q ? `<div class="hgr-grp lo-row ${sv.active === i ? 'on' : ''}" style="--c:${ROLES[q.tag].color}">
+        <div class="lo-head"><span class="hgr-wing-img">${pic(q.lo.ship) ? `<img src="${pic(q.lo.ship)}" alt="">` : glyph('ship', 22)}</span>
+          <label class="lo-name"><small>Name</small><input type="text" value="${esc(q.name)}" maxlength="40" data-change="lo-name" data-i="${i}" aria-label="Name des Loadouts"></label></div>
+        <div class="hgr-chips">${LO_TAGS.map((t) => `<button class="hgr-chip ${q.tag === t ? 'on' : ''}" style="--c:${ROLES[t].color}" ${act('lo-tag', { i, tag: t })}>${esc(ROLES[t].name)}</button>`).join('')}</div>
+        <div class="lo-acts"><button class="btn small primary" ${act('lo-apply', { i })}>Einbauen</button><button class="btn small" ${act('lo-save', { i })}>Überschreiben</button><button class="btn small ${m.delArm === i ? 'danger' : 'ghost'}" ${act('lo-del', { i })}>${m.delArm === i ? 'Wirklich löschen?' : 'Löschen'}</button></div></div>`
+      : `<div class="hgr-grp lo-row empty"><span class="small muted">Platz ${i + 1} frei</span><button class="btn small" ${act('lo-save', { i })}>Aktuelle Ausrüstung hier speichern</button></div>`).join('')}</div>
+      <div class="hgr-desc">Ein Loadout merkt sich das Schiff und alles, was eingebaut ist: Bordwaffe, Türme, Raketen, Schild und Staffel. Antippen in der Leiste baut es ein. Weichst du danach ab, steht dort „geändert“ – mit Zurücksetzen oder Überschreiben. Mods bleiben am Schiff und gehören nicht dazu.</div>`;
   } else if (view === 'art') {
     title = 'Darstellung'; sub = 'wie dein Schiff im Kampf aussieht';
     body = `<div class="segment" style="margin:0 14px">${(['ai', 'render', 'vector'] as const).map((a) => `<button class="${shipArt() === a ? 'on' : ''}" ${act('ship-art', { art: a, kind: fighterKind() })}>${a === 'ai' ? 'KI-Bild' : a === 'render' ? 'Gerendert' : 'Gezeichnet'}</button>`).join('')}</div>
@@ -357,6 +381,7 @@ export function loadoutView(m: LoModal): string {
       <button class="${mode === 'gear' ? 'on' : ''}" ${act('lo-mode', { mode: 'gear' })}>Ausrüstung</button>
       <button class="${mode === 'mods' ? 'on' : ''}" ${act('lo-mode', { mode: 'mods' })}>Werkstatt</button>
     </div>
+    ${mode === 'gear' ? loStrip() : ''}
     <div class="hgr-stage">
       ${oldShip}<div class="hgr-ship" data-key="ship-${lo.ship}">${pic(lo.ship) ? `<img src="${pic(lo.ship)}" alt="${esc(ship.name)}">` : ''}</div>
       ${scale}
@@ -378,6 +403,16 @@ export function loadoutView(m: LoModal): string {
       <div class="hgr-dbody">${body}</div>
     </div>
   </div>`;
+}
+
+/** Leiste „Loadouts“ im Hangar: gespeicherte Loadouts zum Antippen, Speichern, Verwalten; darunter der Stand */
+function loStrip(): string {
+  const sv = savedLoadouts(), cur = sv.active != null ? sv.list[sv.active] : null, changed = loadoutChanged();
+  const chips = sv.list.map((q, i) => q ? `<button class="hgr-lo ${sv.active === i ? 'on' : ''}" style="--c:${ROLES[q.tag].color}" ${act('lo-apply', { i })} title="${esc(q.name)}"><i></i><span>${esc(q.name)}</span></button>` : '').join('');
+  const add = sv.list.some((q) => !q) ? `<button class="hgr-lo add" ${act('lo-save')}>+ Speichern</button>` : '';
+  // weicht die Ausrüstung vom markierten Loadout ab: kurz „Geändert“ mit Zurücksetzen und Überschreiben (der Name steht im Knopf)
+  const state = cur && changed ? `<div class="hgr-lostate changed"><span>Geändert</span><button ${act('lo-apply', { i: sv.active! })}>Zurücksetzen</button><button ${act('lo-save', { i: sv.active! })}>Überschreiben</button></div>` : '';
+  return `<div class="hgr-los"><span class="hgr-los-l">Loadouts</span>${chips}${add}<button class="hgr-lo more" ${act('lo-view', { view: 'loadouts' })} aria-label="Loadouts verwalten">···</button></div>${state}`;
 }
 
 const swiped = new WeakSet<HTMLElement>();

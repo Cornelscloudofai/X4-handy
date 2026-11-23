@@ -8,7 +8,7 @@ import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, t
 import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
 import { earnParts, modStats, partsFor } from './mods';
 import { recordKey, type Mission } from './missions';
-import { controlMode, fogTest, setControlMode, setEnemyTune, setFogTest, type ControlMode, type Loadout } from './loadout';
+import { ROLES, SHIPS, applyLoadout, controlMode, fogTest, loadout, loadoutChanged, loadoutLabel, savedLoadouts, setControlMode, setEnemyTune, setFogTest, type ControlMode, type Loadout } from './loadout';
 import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
 import { hudScale } from '../ui/hudScale';
@@ -371,6 +371,8 @@ function bindInput(s: Session): void {
         break;
       }
       case 'ctrl': showChooser(s); break;
+      case 'lo': showLoadouts(s); break;
+      case 'lo-pick': pickLoadout(s, Number(b.dataset.i)); break;
       case 'ctrl-back': setPhase('intro'); break;
       case 'ctrl-pick': pickControls(s, b.dataset.c as SchoolCtrl); break;
       case 'ctrl-try': tryControls(s, b.dataset.c as SchoolCtrl); break;
@@ -424,6 +426,37 @@ function ctrlPick(s: Session): string {
   return `<div class="mg-ctrl-pick"><small>Steuerung wählen</small><div class="ctrl-tiles">${SCHOOL_CTRLS.filter((c) => c !== 'pc').map((c) => `<button class="ctrl-tile ${c === cur ? 'on' : ''}" data-mg="ctrl-pick" data-c="${c}" aria-pressed="${c === cur}">${ctrlPreview(c)}<b>${esc(SCHOOL_NAME[c])}</b></button>`).join('')}</div>
     <p class="small muted">${esc(SCHOOL_SUB[cur])}. Am PC gelten Tastatur und Maus von selbst. <button class="linkish" data-mg="ctrl-try" data-c="${cur}">In der Flugschule üben</button></p>
     <label class="mg-ask"><input type="checkbox" data-mg="ask-toggle" ${askChecked ? 'checked' : ''}> Nicht mehr fragen – später über „Steuerung“ auf dieser Karte</label></div>`;
+}
+
+/** Knopf „Ausrüstung: …“ auf der Startkarte: Name des eingebauten Loadouts, sonst das Schiff */
+function loChip(): string {
+  const sv = savedLoadouts(), q = sv.active != null ? sv.list[sv.active] : null, changed = loadoutChanged();
+  const name = q ? `${q.name}${changed ? ' (geändert)' : ''}` : SHIPS[loadout().ship].name;
+  return `<button class="mg-ctrl-chip" data-mg="lo"${q ? ` style="--c:${ROLES[q.tag].color}"` : ''}>${LO_ICON}Ausrüstung: ${esc(name)}<em>wechseln</em></button>`;
+}
+const LO_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 9 5 4-9 3-9-3 5-4z"/></svg>';
+
+/** Liste der Loadouts vor dem Start: antippen baut ein und lädt den Kampf neu */
+function showLoadouts(s: Session): void {
+  const layer = s.root.querySelector<HTMLElement>('.mg-layer')!;
+  const sv = savedLoadouts(), list = sv.list.map((q, i) => [q, i] as const).filter(([q]) => !!q);
+  layer.hidden = false;
+  layer.innerHTML = `<div class="mg-card mg-chooser"><small class="eyebrow">Ausrüstung</small><h2>Loadout wählen</h2>
+    <p class="small muted">Eingebaut: ${esc(loadoutLabel())}</p>
+    ${list.length ? `<div class="ctrl-cards">${list.map(([q, i]) => `<div class="ctrl-card lo-pick ${sv.active === i ? 'on' : ''}" style="--c:${ROLES[q!.tag].color}">
+      <div class="ctrl-txt"><b><i class="lo-dot"></i>${esc(q!.name)}</b><small>${esc(ROLES[q!.tag].name)} · ${esc(loadoutLabel(q!.lo))}</small></div>
+      <div class="ctrl-btns"><button class="btn small ${sv.active === i ? 'primary' : ''}" data-mg="lo-pick" data-i="${i}">${sv.active === i && !loadoutChanged() ? 'Eingebaut' : 'Einbauen'}</button></div></div>`).join('')}</div>`
+      : '<p>Noch keine Loadouts gespeichert. Im Hangar oben unter „Loadouts“ mit „+ Speichern“ anlegen – Schiff und komplette Ausrüstung auf einen Tipp.</p>'}
+    <div class="mg-actions"><button class="btn primary" data-mg="ctrl-back">Zurück</button></div></div>`;
+}
+
+/** Loadout einbauen und den Kampf damit neu aufbauen */
+function pickLoadout(s: Session, i: number): void {
+  if (!applyLoadout(i)) return;
+  const { kind, opts, onDone, replay } = s;
+  s.onDone = undefined;
+  close(null);
+  openMinigame(kind, opts, onDone, replay);
 }
 
 function showChooser(s: Session): void {
@@ -544,7 +577,9 @@ function setPhase(p: Phase): void {
       return;
     }
     const ask = combat(s.kind) && askControls();
-    const chip = !combat(s.kind) ? '' : ask ? ctrlPick(s) : `<button class="mg-ctrl-chip" data-mg="ctrl">${CTRL_ICON}Steuerung: ${esc(SCHOOL_NAME[s.cfg.controls ?? controlMode()])}<em>ändern</em></button>`;
+    const ctrlChip = !combat(s.kind) ? '' : ask ? ctrlPick(s) : `<button class="mg-ctrl-chip" data-mg="ctrl">${CTRL_ICON}Steuerung: ${esc(SCHOOL_NAME[s.cfg.controls ?? controlMode()])}<em>ändern</em></button>`;
+    // Simulator: Loadout vor dem Start wechseln (Einsätze mit eigenem Schiff aus dem Sektor haben ihre feste Ausrüstung)
+    const chip = ctrlChip + (combat(s.kind) && !s.cfg.loadout && !s.cfg.school ? loChip() : '');
     layer.innerHTML = `<div class="mg-card">${artPic(s.kind, 'mg-intro-art')}<small class="eyebrow">${esc(g.eyebrow)}${MODE_LABEL[mode] ? ' · ' + MODE_LABEL[mode] : ''} · Stufe ${s.cfg.level}</small><h2>${esc(g.title)}</h2>${chip}<p>${esc(g.intro)}</p>
       ${mutatorBox(g.mutator)}
       <ul class="mg-controls">${g.controls.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
