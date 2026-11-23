@@ -1,6 +1,6 @@
 // Waffen gegen Schwärme: Kettenblitz (Bordwaffe), Flakturm, Karten für Schrotwaffen und den Kettenblitz
 import { describe, expect, it } from 'vitest';
-import { ShooterGame } from '../src/minigames/shooter';
+import { ShooterGame, interceptTime } from '../src/minigames/shooter';
 import { DEFAULT_LOADOUT, type Loadout } from '../src/minigames/loadout';
 
 type E = { kind: string; x: number; y: number; hp: number; max: number; sh: number; parent?: unknown };
@@ -53,6 +53,16 @@ describe('Kettenblitz', () => {
 });
 
 describe('Flakturm', () => {
+  it('Vorhalt: Abfangzeit exakt – auch gegen anfliegende Ziele bei langsamem Geschoss', () => {
+    // frontal anfliegend: Granate 339/s, Ziel 300/s auf den Turm zu, 600 entfernt → Treffen nach 600 / 639 s
+    expect(interceptTime(0, -600, 0, 300, 339)).toBeCloseTo(600 / 639, 4);
+    // wegfliegend: 600 / (339 − 300)
+    expect(interceptTime(0, -600, 0, -300, 339)).toBeCloseTo(600 / 39, 3);
+    // quer: Ziel 600 voraus, 200/s seitwärts → |(200t, −600)| = 339t
+    const t = interceptTime(0, -600, 200, 0, 339);
+    expect(Math.hypot(200 * t, 600)).toBeCloseTo(339 * t, 3);
+  });
+
   it('Granaten zerplatzen in einem Schwarm und dünnen ihn aus', () => {
     const g = game({ ship: 'cobra', turret: 'flak' });
     const swarm: E[] = [];

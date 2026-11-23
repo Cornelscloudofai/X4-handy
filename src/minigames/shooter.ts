@@ -263,6 +263,21 @@ export function leadTime(w: { beam?: boolean; rail?: boolean; speed: number }, d
   return w.beam || w.rail ? 0 : d / Math.max(1, w.speed);
 }
 
+/**
+ * Abfangzeit: wann ein Geschoss (Tempo s, vom Punkt aus) ein Ziel mit Abstand (dx, dy) und Geschwindigkeit (vx, vy)
+ * trifft – exakt gelöst. Die einfache Schätzung „Abstand ÷ Tempo“ liegt bei langsamen Geschossen gegen anfliegende Ziele
+ * weit zu kurz (die Flakgranate zerplatzte vor dem Schwarm). Ohne Lösung (Ziel zu schnell): die einfache Schätzung.
+ */
+export function interceptTime(dx: number, dy: number, vx: number, vy: number, s: number): number {
+  const a = vx * vx + vy * vy - s * s, b = 2 * (dx * vx + dy * vy), c = dx * dx + dy * dy;
+  if (Math.abs(a) < 1e-6) return b < 0 ? -c / b : Math.sqrt(c) / Math.max(1, s);
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return Math.sqrt(c) / Math.max(1, s);
+  const r = Math.sqrt(disc), t1 = (-b - r) / (2 * a), t2 = (-b + r) / (2 * a);
+  const t = Math.min(t1 > 0 ? t1 : Infinity, t2 > 0 ? t2 : Infinity);
+  return Number.isFinite(t) ? t : Math.sqrt(c) / Math.max(1, s);
+}
+
 function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
@@ -278,7 +293,7 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -2385,7 +2400,8 @@ export class ShooterGame implements MiniGame {
         const want = Math.atan2(dy, dx);
         w.a = wrapA(turnTo(w.a, want, turn * dt));
         // ohne Ziel in der Formation abbremsen; sonst volle Fahrt in Blickrichtung
-        const sp = tgt || w.state === 'home' ? speed : Math.min(speed, dist * 2.2 + Math.hypot(this.pvx, this.pvy));
+        // heimwärts: vor dem Andockpunkt abbremsen (sonst kreisen träge Schiffe wie die Dragon endlos um ihn herum)
+        const sp = tgt ? speed : Math.min(speed, dist * 2.2 + Math.hypot(this.pvx, this.pvy));
         const k = Math.min(1, dt * 2.5);
         w.vx += (Math.cos(w.a) * sp - w.vx) * k;
         w.vy += (Math.sin(w.a) * sp - w.vy) * k;
@@ -4731,8 +4747,9 @@ export class ShooterGame implements MiniGame {
       if (w.missile) { this.missileTurret(t, x, y, w, range, order, dt, key); continue; }
       const aim = this.turretAim(t, x, y, range, order, order === 'alle' || order === 'S', dt);
       if (!aim) { t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); continue; }
-      const tgt = aim.tgt, bd = aim.d;
-      const lt = leadTime(w, bd);
+      const tgt = aim.tgt;
+      // Vorhalt: exakter Abfangpunkt (Strahlen und Lanzen treffen sofort)
+      const lt = w.beam || w.rail ? 0 : interceptTime(tgt.x - x, tgt.y - y, aim.vx, aim.vy, w.speed);
       const want = Math.atan2(tgt.y + aim.vy * lt - y, tgt.x + aim.vx * lt - x);
       t.a = wrapA(turnTo(t.a, want, dt * turn));
       if (w.beam) {
@@ -4767,7 +4784,8 @@ export class ShooterGame implements MiniGame {
           this.logSrc = key; this.logShot();
           if (w.rail) { this.fireRail(x + Math.cos(a) * 8, y + Math.sin(a) * 8, a, this.tDmg * w.dmg, range, w.color, !!t.L); continue; }
           // Flak: Zeitzünder knapp hinter dem Ziel, dazu der Annäherungszünder (siehe updateShots)
-          const life = w.flak ? Math.min(w.life * this.tRangeMul, (Math.hypot(tgt.x + aim.vx * lt - mx, tgt.y + aim.vy * lt - my) + 30) / w.speed) : w.life * this.tRangeMul;
+          // Flak: Zeitzünder knapp hinter dem Abfangpunkt; vorher zündet meist schon der Annäherungszünder
+          const life = w.flak ? Math.min(w.life * this.tRangeMul, (Math.hypot(tgt.x + aim.vx * lt - mx, tgt.y + aim.vy * lt - my) + 20) / w.speed) : w.life * this.tRangeMul;
           this.bullets.push({ x: mx + Math.cos(a) * fwd, y: my + Math.sin(a) * fwd, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined });
         }
         t.cd = (w.interval * this.tempo) / this.tRateMul;
@@ -5530,10 +5548,19 @@ export class ShooterGame implements MiniGame {
     ctx.restore();
   }
 
-  /** eigene Flakgranate zündet nahe einem Gegner oder einer feindlichen Rakete */
-  private pflakFuse(x: number, y: number): boolean {
-    if (this.eMissiles.some((m) => Math.hypot(m.x - x, m.y - y) < PFLAK_FUSE + 6)) return true;
-    return this.enemies.some((e) => !(e.kind === 'boss' && e.shielded) && !e.parent && Math.hypot(e.x - x, e.y - y) < PFLAK_FUSE + e.r);
+  /**
+   * Annäherungszünder der eigenen Flakgranate: zündet dicht an einem Gegner oder einer feindlichen Rakete – und sonst im
+   * Moment des geringsten Abstands, wenn sie an einem Gegner innerhalb gut der halben Wolkenweite vorbeifliegt
+   */
+  private pflakFuse(b: Bullet): boolean {
+    const { x, y } = b;
+    let near = Infinity;
+    for (const m of this.eMissiles) near = Math.min(near, Math.hypot(m.x - x, m.y - y) - 6);
+    for (const e of this.enemies) if (!(e.kind === 'boss' && e.shielded) && !e.parent) near = Math.min(near, Math.hypot(e.x - x, e.y - y) - e.r);
+    if (near < PFLAK_FUSE) return true;
+    const passing = b.near != null && b.near < PFLAK_R * 0.55 && near > b.near + 0.5;
+    b.near = Math.min(b.near ?? Infinity, near);
+    return passing;
   }
 
   /**
@@ -5706,7 +5733,7 @@ export class ShooterGame implements MiniGame {
       }
       // Flak: Annäherungszünder – zündet nahe dem Ziel oder spätestens am Ende der Flugbahn
       if (b.flak && (b.life <= 0 || this.flakFuse(b.x, b.y))) { this.flakBurst(b); continue; }
-      if (b.pflak && (b.life <= 0 || this.pflakFuse(b.x, b.y))) { this.pflakBurst(b); continue; }
+      if (b.pflak && (b.life <= 0 || this.pflakFuse(b))) { this.pflakBurst(b); continue; }
       if (b.life <= 0) continue;
       // Asteroiden bieten Deckung vor gegnerischem Feuer; eigene Waffen tragen sie ab
       const rock = this.rocks.length ? this.rockAt(b.x, b.y) : undefined;
