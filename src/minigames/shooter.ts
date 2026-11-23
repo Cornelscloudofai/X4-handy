@@ -24,7 +24,7 @@ import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './s
 import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 import { drawGraded } from '../render/canvasFx';
 import { drawJet, Smoke } from '../render/engineFx';
-import { anomalyPull, coverHit, drawAnomaly, drawWreck, drawWreckIntro, makeWreck, markHit, preloadCover, pushOut, steerAround, updateWrecks, wreckAt, type Anomaly, type Wreck as CoverWreck } from './cover';
+import { anomalyPull, coverHit, drawAnomaly, drawWreck, drawWreckIntro, crystalGlow, makeWreck, spriteFill, markHit, preloadCover, pushOut, steerAround, updateWrecks, wreckAt, type Anomaly, type Wreck as CoverWreck } from './cover';
 import { drawSpecialIcon } from './specialIcons';
 import { hullGap, hullMaskOf, type HullMask } from './hullMask';
 import { FlightSchool, fmtTime, saveSchool, schoolBest, SCHOOL_NAME, type SchoolCtrl, type SchoolHost } from './flightSchool';
@@ -137,8 +137,6 @@ const PLATS: Record<'dreifach' | 'zwilling' | 'lanze' | 'strahl' | 'xgatling' | 
 /** Bergungscontainer im Wrackfeld (Einsatz „Bergung“): treibt, wird geschleppt oder ist abgeliefert/verloren */
 interface Crate { x: number; y: number; vx: number; vy: number; rot: number; hp: number; tow: boolean; done: boolean }
 /** Wrack (Deko und Deckung im Wrackfeld) */
-interface Wreck { x: number; y: number; rot: number; size: number }
-
 interface Enemy {
   kind: EKind; x: number; y: number; vx: number; vy: number;
   hp: number; max: number; cd: number; r: number;
@@ -295,7 +293,7 @@ interface EMissile { x: number; y: number; vx: number; vy: number; hp: number; l
 /** Fundstücke; „ammo“ = Munitionskiste (selten): füllt das Raketenlager ganz */
 interface Pickup { x: number; y: number; kind: 'repair' | 'shield' | 'missile' | 'ammo'; life: number }
 interface Rock {
-  x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches der vier Asteroidenbilder */ v: number;
+  x: number; y: number; r: number; vx: number; vy: number; rot: number; vr: number; pts: number[]; /** welches Asteroidenbild (Gestein; bei den Kha'ak Gestein mit lila Kristallen) */ v: number;
   /** Festigkeit (eigene Waffen tragen sie ab), Aufblitzen bei Treffern, Stöße eines M-Schiffs, Sperre nach einem Stoß */
   hp: number; max: number; flash: number; bumps: number; bumpCd: number;
 }
@@ -1021,7 +1019,6 @@ export class ShooterGame implements MiniGame {
   // Einsätze: Ladung des Sprungantriebs (Flucht, 0…1), Container und Wracks (Bergung), Piratenfrachter (Überfall)
   private charge = 0;
   private crates: Crate[] = [];
-  private wrecks: Wreck[] = [];
   private crateLost = 0;
   private crateDone = 0;
   private cargoTotal = 0;
@@ -3745,7 +3742,7 @@ export class ShooterGame implements MiniGame {
       for (let k = 0; k < 9; k++) pts.push(0.75 + this.r() * 0.35);
       const [x, y] = this.fieldPoint();
       const hp = ROCK_HP * (r / ROCK_R);
-      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts, v: Math.floor(r * 7) % 4, hp, max: hp, flash: 0, bumps: 0, bumpCd: 0 });
+      this.rocks.push({ x, y, r, vx: (this.r() - 0.5) * 16, vy: (this.r() - 0.5) * 16, rot: this.r() * 6, vr: (this.r() - 0.5) * 0.6, pts, v: Math.floor(this.r() * (this.side === 'khaak' ? 6 : 5)), hp, max: hp, flash: 0, bumps: 0, bumpCd: 0 });
     }
   }
 
@@ -3762,16 +3759,22 @@ export class ShooterGame implements MiniGame {
   /** Wrackfeld mit Containern zwischen den Wracks (Bergung) */
   private spawnWreckField(): void {
     const cx = this.fX, cy = this.fY - 930;
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + this.r() * 0.6, d = 180 + this.r() * 620;
-      this.wrecks.push({ x: clamp(cx + Math.cos(a) * d * 1.3, 140, this.WW - 140), y: clamp(cy + Math.sin(a) * d * 0.75, 160, this.fY - 280), rot: this.r() * Math.PI * 2, size: 90 + this.r() * 90 });
+    // die Wracks sind echte Deckung (wie im Wrackfeld-Abschnitt): Schüsse bleiben hängen, Schiffe gleiten ab
+    for (let i = 0; i < 7; i++) {
+      const w = makeWreck(0, 0, this.r);
+      w.size *= 0.8;
+      for (let k = 0; k < 30; k++) {
+        const a = (i / 7) * Math.PI * 2 + this.r() * 0.8, d = 260 + this.r() * 560;
+        const x = clamp(cx + Math.cos(a) * d * 1.3, 160, this.WW - 160), y = clamp(cy + Math.sin(a) * d * 0.75, 180, this.fY - 320);
+        if (this.cover.every((q) => Math.hypot(q.x - x, q.y - y) > (q.size + w.size) * 0.55)) { w.x = x; w.y = y; this.cover.push(w); break; }
+      }
     }
     for (let i = 0; i < CRATES; i++) {
       let x = 0, y = 0;
       for (let k = 0; k < 20; k++) {
         x = cx + (this.r() - 0.5) * 1700;
         y = cy + (this.r() - 0.5) * 900;
-        if (this.wrecks.every((w) => Math.hypot(w.x - x, w.y - y) > w.size * 0.45 + 20) && this.crates.every((c) => Math.hypot(c.x - x, c.y - y) > 120)) break;
+        if (this.cover.every((w) => Math.hypot(w.x - x, w.y - y) > w.size * 0.55 + 30) && this.crates.every((c) => Math.hypot(c.x - x, c.y - y) > 120)) break;
       }
       this.crates.push({ x, y, vx: (this.r() - 0.5) * 8, vy: (this.r() - 0.5) * 8, rot: this.r() * 6, hp: 60, tow: false, done: false });
     }
@@ -6426,10 +6429,10 @@ export class ShooterGame implements MiniGame {
     ctx.setLineDash([]);
     if (this.gateT >= 0) this.drawGate(ctx, t);
     if (this.anomaly) drawAnomaly(ctx, this.anomaly, t);
-    for (const k of this.rocks) this.drawRock(ctx, k);
+    for (const k of this.rocks) this.drawRock(ctx, k, t);
     for (const m of this.mines) this.drawMine(ctx, m, t);
     for (const p of this.pickups) this.drawPickup(ctx, p, t);
-    if (this.wrecks.length || this.crates.length) this.drawSalvage(ctx, t);
+    if (this.crates.length) this.drawSalvage(ctx, t);
     this.smoke.draw(ctx);
     // Wracks auf der Spielebene: belichtet, mit Schlagschatten; frisch erschienen leuchten sie kurz auf
     for (const w of this.cover) drawWreck(ctx, w, this.lightA, this.zoom);
@@ -6810,17 +6813,24 @@ export class ShooterGame implements MiniGame {
     }
   }
 
-  private drawRock(ctx: CanvasRenderingContext2D, k: Rock): void {
+  private drawRock(ctx: CanvasRenderingContext2D, k: Rock, t: number): void {
     ctx.save();
     ctx.translate(k.x, k.y);
     ctx.rotate(k.rot);
-    const img = projectileSprite(`asteroid-${k.v + 1}-ki`);
+    // Gestein; bei den Kha'ak wachsen lila Kristalle darauf (nur dort)
+    const kh = this.side === 'khaak', img = projectileSprite(kh ? `asteroid-kristall-${(k.v % 6) + 1}` : `asteroid-stein-${(k.v % 5) + 1}`);
     if (img) {
-      // Bild-Grafik: der Brocken füllt rund 70 % des Bildes – so passt er zum Kollisionsradius
-      const size = k.r * 2.9;
+      // so groß, dass die deckende Fläche des Bilds der Trefferfläche entspricht
+      const size = (k.r * 1.05) / Math.sqrt(spriteFill(img) / Math.PI);
       ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      ctx.globalCompositeOperation = 'lighter';
+      if (kh) {
+        // Kristalle glimmen in eigenem Takt
+        const cg = crystalGlow(img);
+        if (cg) { ctx.globalAlpha = 0.22 + 0.2 * Math.sin(t * 1.6 + k.x * 0.01 + k.v); ctx.drawImage(cg, -size / 2, -size / 2, size, size); }
+      }
       // Treffer: der Fels leuchtet kurz auf
-      if (k.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, k.flash / 0.08) * 0.45; ctx.drawImage(img, -size / 2, -size / 2, size, size); }
+      if (k.flash > 0) { ctx.globalAlpha = Math.min(1, k.flash / 0.08) * 0.45; ctx.drawImage(img, -size / 2, -size / 2, size, size); }
       ctx.restore();
       return;
     }
@@ -7176,26 +7186,8 @@ export class ShooterGame implements MiniGame {
     ctx.fillRect(x - width / 2, y, width * f, 4);
   }
 
-  /** Wracks (dunkel, langsam drehend) und Container im Wrackfeld; geschleppt mit leuchtendem Traktorstrahl */
+  /** Container im Wrackfeld; geschleppt mit leuchtendem Traktorstrahl (die Wracks zeichnet die Deckung) */
   private drawSalvage(ctx: CanvasRenderingContext2D, t: number): void {
-    const imgs = ['frachter-m-ki', 'pirat-fregatte-ki', 'split-dock-ki'];
-    for (const [i, wr] of this.wrecks.entries()) {
-      const img = projectileSprite(imgs[i % imgs.length]);
-      ctx.save();
-      ctx.translate(wr.x, wr.y);
-      ctx.rotate(wr.rot + t * 0.01 * (i % 2 ? 1 : -1));
-      if (img) {
-        ctx.globalAlpha = 0.42;
-        ctx.drawImage(img, -wr.size / 2, -wr.size / 2, wr.size, wr.size);
-      } else {
-        ctx.strokeStyle = 'rgba(168,154,138,0.35)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-wr.size * 0.15, -wr.size * 0.4, wr.size * 0.3, wr.size * 0.8);
-      }
-      ctx.restore();
-      // ab und zu sprüht ein Funke aus dem Wrack
-      if (Math.random() < 0.02) this.fx.burst(wr.x + (Math.random() - 0.5) * wr.size * 0.4, wr.y + (Math.random() - 0.5) * wr.size * 0.4, '#ffb070', 3, 60, 1, 'spark', 0.3);
-    }
     for (const c of this.crates) {
       if (c.done) continue;
       if (c.tow) {

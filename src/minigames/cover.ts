@@ -4,16 +4,50 @@
 // man das Wrack sieht (Form aus dem Bild, siehe hullMask). Geschosse und Strahlen bleiben hängen, Raketen steuern herum.
 import { hullGap, hullMaskOf, type HullMask } from './hullMask';
 import { drawBlurred } from '../render/canvasFx';
-// Platzhalter, bis die eigenen Bilder der Deckungswracks da sind
-import wrackBruecke from '../assets/szenen/zhin/wrack-bruecke.webp';
-import wrackHeck from '../assets/szenen/zhin/wrack-heck.webp';
-import wrackMitte from '../assets/szenen/zhin/wrack-mitte.webp';
+// Deckungswracks: eigene KI-Bilder; animierte Wracks haben mehrere Bilder derselben Ansicht (Bild 1 dunkel, die weiteren
+// mit glimmenden Fenstern, Glut oder Blitzen)
+import ringGrau from '../assets/sprites/wrack-ring-grau.webp';
+import geruest from '../assets/sprites/wrack-geruest.webp';
+import ringRost1 from '../assets/sprites/wrack-ring-rost-1.webp';
+import ringRost2 from '../assets/sprites/wrack-ring-rost-2.webp';
+import ringRost3 from '../assets/sprites/wrack-ring-rost-3.webp';
+import ringRost4 from '../assets/sprites/wrack-ring-rost-4.webp';
+import ringRost5 from '../assets/sprites/wrack-ring-rost-5.webp';
+import triebwerk1 from '../assets/sprites/wrack-triebwerk-1.webp';
+import triebwerk2 from '../assets/sprites/wrack-triebwerk-2.webp';
+import triebwerk3 from '../assets/sprites/wrack-triebwerk-3.webp';
+import triebwerk4 from '../assets/sprites/wrack-triebwerk-4.webp';
+import frachter1 from '../assets/sprites/wrack-frachter-1.webp';
+import frachter2 from '../assets/sprites/wrack-frachter-2.webp';
+import frachter3 from '../assets/sprites/wrack-frachter-3.webp';
+import frachter4 from '../assets/sprites/wrack-frachter-4.webp';
+import frachter5 from '../assets/sprites/wrack-frachter-5.webp';
 
-/** Bilder der Deckungswracks (Länge im Spiel je Bild: min … max) */
-const WRECK_ART: { src: string; min: number; max: number }[] = [
-  { src: wrackBruecke, min: 260, max: 380 },
-  { src: wrackHeck, min: 240, max: 340 },
-  { src: wrackMitte, min: 180, max: 280 },
+/**
+ * Lichtstelle im Bild (x, y, r als Anteil der Bildgröße, gemessen mit scripts/wreck-lights.mjs):
+ * glut – glimmt (Fenster, Kabel, Brandherd) und wirft warmes Licht auf die Umgebung; funke – kurzes Sprühen aus einer
+ * Bruchstelle; blitz – Entladung im offenen Gerüst: zuckende Lichtbögen, die das Wrack kurz blau erhellen
+ */
+interface WreckLight { x: number; y: number; r: number; kind: 'glut' | 'funke' | 'blitz'; color: string }
+/** Bilder der Deckungswracks (Länge im Spiel je Bild: min … max); frames[0] ist das Grundbild */
+interface WreckArt { frames: string[]; min: number; max: number; lights: WreckLight[] }
+const WRECK_ART: WreckArt[] = [
+  { frames: [ringRost1, ringRost2, ringRost3, ringRost4, ringRost5], min: 330, max: 430, lights: [
+    { x: 0.35, y: 0.19, r: 0.04, kind: 'glut', color: '255,170,80' },
+    { x: 0.154, y: 0.49, r: 0.05, kind: 'glut', color: '255,170,80' },
+    { x: 0.6, y: 0.835, r: 0.04, kind: 'glut', color: '255,170,80' },
+    { x: 0.845, y: 0.205, r: 0.035, kind: 'funke', color: '170,200,255' },
+  ] },
+  { frames: [triebwerk1, triebwerk2, triebwerk3, triebwerk4], min: 250, max: 330, lights: [
+    { x: 0.33, y: 0.33, r: 0.06, kind: 'glut', color: '255,120,60' },
+    { x: 0.627, y: 0.379, r: 0.04, kind: 'funke', color: '200,220,255' },
+  ] },
+  { frames: [frachter1, frachter2, frachter3, frachter4, frachter5], min: 360, max: 460, lights: [
+    { x: 0.27, y: 0.54, r: 0.2, kind: 'glut', color: '255,80,30' },
+    { x: 0.74, y: 0.3, r: 0.17, kind: 'blitz', color: '140,180,255' },
+  ] },
+  { frames: [ringGrau], min: 300, max: 400, lights: [] },
+  { frames: [geruest], min: 280, max: 360, lights: [] },
 ];
 
 const IMGS = new Map<string, HTMLImageElement>();
@@ -23,7 +57,7 @@ function img(src: string): HTMLImageElement | null {
   if (!i) { i = new Image(); i.decoding = 'async'; i.src = src; IMGS.set(src, i); }
   return i.complete && i.naturalWidth ? i : null;
 }
-export function preloadCover(): void { for (const a of WRECK_ART) img(a.src); }
+export function preloadCover(): void { for (const a of WRECK_ART) for (const f of a.frames) img(f); }
 
 export interface Wreck {
   x: number; y: number; rot: number; vr: number;
@@ -31,23 +65,38 @@ export interface Wreck {
   size: number; art: number;
   /** Treffer-Aufblitzen am Wrack (Ort und Restzeit) */
   hits: { x: number; y: number; t: number }[];
+  /** Lichtspiel animierter Wracks (Glut, Funken, Blitze) */
+  fx?: WreckFx;
+}
+
+interface WreckFx {
+  /** eigene Uhr, Phase der Glut */
+  t: number; seed: number;
+  /** laufende Entladung: welche Lichtstelle, Restzeit, Stärke (flackert), Bild mit dem Blitz */
+  light: number; left: number; k: number; frame: number; flick: number;
+  /** Pause bis zur nächsten Entladung */
+  wait: number;
+  /** Lichtbögen der aktuellen Entladung (Punkte im Bild, 0…1) */
+  bolts: number[][];
 }
 
 /** Bildgröße eines Wracks in Spielpunkten (Breite, Höhe) */
 function dims(w: Wreck): [number, number] {
-  const i = img(WRECK_ART[w.art].src);
+  const i = img(WRECK_ART[w.art].frames[0]);
   if (!i) return [w.size, w.size];
   const k = w.size / Math.max(i.naturalWidth, i.naturalHeight);
   return [i.naturalWidth * k, i.naturalHeight * k];
 }
 function mask(w: Wreck): HullMask | null {
-  const i = img(WRECK_ART[w.art].src);
+  const i = img(WRECK_ART[w.art].frames[0]);
   return i ? hullMaskOf(i) : null;
 }
 
 export function makeWreck(x: number, y: number, r: () => number): Wreck {
   const art = Math.floor(r() * WRECK_ART.length), a = WRECK_ART[art];
-  return { x, y, rot: r() * Math.PI * 2, vr: (r() - 0.5) * 0.03, size: a.min + r() * (a.max - a.min), art, hits: [] };
+  const w: Wreck = { x, y, rot: r() * Math.PI * 2, vr: (r() - 0.5) * 0.03, size: a.min + r() * (a.max - a.min), art, hits: [] };
+  if (a.frames.length > 1 || a.lights.length) w.fx = { t: 0, seed: r() * 50, light: -1, left: 0, k: 0, frame: 1, flick: 0, wait: 1 + r() * 3, bolts: [] };
+  return w;
 }
 
 /** Abstand eines Punkts zur sichtbaren Hülle des Wracks (0 = darauf bzw. darin); ohne Bild: Kreis */
@@ -156,7 +205,7 @@ const LIT = new WeakMap<Wreck, HTMLCanvasElement>();
  * Anteil der Größe; z: Zoom (für die Auflösung der Belichtung).
  */
 export function drawWreck(ctx: CanvasRenderingContext2D, w: Wreck, light: number, z: number): void {
-  const src = WRECK_ART[w.art].src, i = img(src);
+  const src = WRECK_ART[w.art].frames[0], i = img(src);
   const rot = w.rot;
   const lx = Math.cos(light), ly = Math.sin(light);
   if (!i) return;
@@ -213,6 +262,7 @@ export function drawWreck(ctx: CanvasRenderingContext2D, w: Wreck, light: number
   ctx.rotate(rot);
   const s = Math.max(sw, sh);
   ctx.drawImage(c, -s / 2, -s / 2, s, s);
+  if (w.fx) drawWreckLights(ctx, w, s);
   ctx.restore();
   // Einschläge: kurzes Glühen und Funken an der Stelle
   if (w.hits.length) {
@@ -235,7 +285,9 @@ export function markHit(w: Wreck, x: number, y: number): void {
   if (w.hits.length < 24) w.hits.push({ x, y, t: 0.25 });
 }
 export function updateWrecks(wrecks: Wreck[], dt: number): void {
+  emitBudget = 1;
   for (const w of wrecks) {
+    if (w.fx) animateWreck(w, w.fx, dt);
     // langsame Eigendrehung (die Trefferform dreht mit)
     w.rot += w.vr * dt;
     for (const h of w.hits) h.t -= dt;
@@ -243,10 +295,154 @@ export function updateWrecks(wrecks: Wreck[], dt: number): void {
   }
 }
 
+// ---------- Lichtspiel: Glut, Funken, Blitze ----------
+
+/**
+ * Leuchten eines Bilds gegenüber dem dunklen Grundbild (nur was dort heller ist, leichte Unterschiede der Bilder
+ * herausgefiltert). part 'glut': alles außer den Funken- und Blitzstellen; 'blitz': nur dort.
+ */
+const EMIT = new Map<string, HTMLCanvasElement | null>();
+let emitBudget = 1;
+function emission(art: WreckArt, j: number, part: 'glut' | 'blitz'): HTMLCanvasElement | null {
+  const key = `${art.frames[j]}|${part}`;
+  if (EMIT.has(key)) return EMIT.get(key)!;
+  const a = img(art.frames[j]), b = img(art.frames[0]);
+  if (!a || !b || typeof document === 'undefined' || emitBudget <= 0) return null;
+  emitBudget--; // höchstens eine Berechnung je Bild, damit das Spiel nicht ruckelt
+  const W = a.naturalWidth, H = a.naturalHeight;
+  const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+  const ca = mk(), cb = mk(), ga = ca.getContext('2d', { willReadFrequently: true })!, gb = cb.getContext('2d', { willReadFrequently: true })!;
+  ga.drawImage(a, 0, 0); gb.drawImage(b, 0, 0);
+  const da = ga.getImageData(0, 0, W, H), db = gb.getImageData(0, 0, W, H).data, p = da.data;
+  const spots = art.lights.filter((l) => l.kind !== 'glut');
+  let any = false;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const o = (y * W + x) * 4;
+    const inSpot = spots.some((l) => Math.hypot(x / W - l.x, y / H - l.y) < l.r * 1.5);
+    const dr = p[o] - db[o], dg = p[o + 1] - db[o + 1], dbl = p[o + 2] - db[o + 2], d = Math.max(dr, dg, dbl);
+    const k = (part === 'blitz') === inSpot ? Math.max(0, Math.min(1, (d - 22) / 50)) : 0;
+    if (k > 0) any = true;
+    p[o] = Math.max(0, dr) * 1.5 * k; p[o + 1] = Math.max(0, dg) * 1.5 * k; p[o + 2] = Math.max(0, dbl) * 1.5 * k; p[o + 3] = 255 * k;
+  }
+  if (!any) { EMIT.set(key, null); return null; }
+  ga.putImageData(da, 0, 0);
+  EMIT.set(key, ca);
+  return ca;
+}
+
+/** Lichtbogen: gezackte Linie zwischen zwei Punkten, mit kleinen Abzweigen */
+function bolt(x0: number, y0: number, x1: number, y1: number, jag: number): number[] {
+  const out = [x0, y0], n = 9;
+  for (let i = 1; i < n; i++) {
+    const t = i / n, nx = -(y1 - y0), ny = x1 - x0, off = (Math.random() - 0.5) * jag;
+    out.push(x0 + (x1 - x0) * t + nx * off, y0 + (y1 - y0) * t + ny * off);
+  }
+  out.push(x1, y1);
+  return out;
+}
+
+function animateWreck(w: Wreck, f: WreckFx, dt: number): void {
+  f.t += dt;
+  const art = WRECK_ART[w.art];
+  if (f.left > 0) {
+    f.left -= dt;
+    f.flick -= dt;
+    if (f.flick <= 0) {
+      // neues Aufzucken: Stärke, Blitzbild und Bögen wechseln
+      f.flick = 0.03 + Math.random() * 0.06;
+      f.k = Math.random() < 0.25 ? 0.15 : 0.55 + Math.random() * 0.45;
+      f.frame = 1 + Math.floor(Math.random() * (art.frames.length - 1));
+      const l = art.lights[f.light];
+      f.bolts = [];
+      if (l?.kind === 'blitz') {
+        for (let i = 0, n = 2 + Math.floor(Math.random() * 2); i < n; i++) {
+          const a0 = Math.random() * Math.PI * 2, a1 = a0 + Math.PI * (0.6 + Math.random() * 0.8), r0 = l.r * (0.5 + Math.random() * 0.5);
+          f.bolts.push(bolt(l.x + Math.cos(a0) * r0, l.y + Math.sin(a0) * r0, l.x + Math.cos(a1) * l.r * 0.8, l.y + Math.sin(a1) * l.r * 0.8, 0.22));
+        }
+      } else if (l) {
+        // Funke: kurze Strahlen aus der Bruchstelle
+        for (let i = 0, n = 4 + Math.floor(Math.random() * 4); i < n; i++) {
+          const a = Math.random() * Math.PI * 2, len = l.r * (0.6 + Math.random() * 1.4);
+          f.bolts.push([l.x, l.y, l.x + Math.cos(a) * len, l.y + Math.sin(a) * len]);
+        }
+      }
+    }
+    if (f.left <= 0) { f.k = 0; f.bolts = []; f.light = -1; }
+  } else if (art.lights.some((l) => l.kind !== 'glut')) {
+    f.wait -= dt;
+    if (f.wait <= 0) {
+      const cand = art.lights.map((l, i) => (l.kind !== 'glut' ? i : -1)).filter((i) => i >= 0);
+      f.light = cand[Math.floor(Math.random() * cand.length)];
+      const blitz = art.lights[f.light].kind === 'blitz';
+      f.left = blitz ? 0.25 + Math.random() * 0.55 : 0.12 + Math.random() * 0.2;
+      f.flick = 0;
+      // Blitze kommen gern in Folgen, Funken unregelmäßig
+      f.wait = blitz ? (Math.random() < 0.35 ? 0.3 + Math.random() * 0.5 : 2 + Math.random() * 4) : 1.2 + Math.random() * 3.5;
+    }
+  }
+}
+
+/** Glut (zwischen den Bildern überblendet, flackernd), Lichtschein auf die Umgebung, Funken und Blitze; im Bildraum, S = Bildgröße */
+function drawWreckLights(ctx: CanvasRenderingContext2D, w: Wreck, S: number): void {
+  const f = w.fx!, art = WRECK_ART[w.art], t = f.t + f.seed;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.imageSmoothingQuality = 'high';
+  // Glut: jedes leuchtende Bild schwillt in eigenem Takt an und ab, mit leichtem Flackern
+  let glow = 0;
+  for (let j = 1; j < art.frames.length; j++) {
+    const e = Math.pow(Math.max(0, Math.sin(t * (0.45 + 0.23 * j) + j * 2.1)), 2) * (0.82 + 0.18 * Math.sin(t * (11 + j * 3.7)));
+    glow = Math.max(glow, e);
+    if (e < 0.02) continue;
+    const em = emission(art, j, 'glut');
+    if (!em) continue;
+    ctx.globalAlpha = Math.min(1, e * 0.9);
+    ctx.drawImage(em, -S / 2, -S / 2, S, S);
+  }
+  // warmer Schein der Glutstellen auf Rumpf und Raum
+  for (const l of art.lights) {
+    if (l.kind !== 'glut') continue;
+    const x = (l.x - 0.5) * S, y = (l.y - 0.5) * S, R = l.r * S * 2.6, k = 0.1 + glow * 0.22;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, `rgba(${l.color},${k})`);
+    g.addColorStop(1, `rgba(${l.color},0)`);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+  }
+  // Entladung
+  const l = art.lights[f.light];
+  if (l && f.k > 0) {
+    const em = emission(art, f.frame, 'blitz');
+    if (em) { ctx.globalAlpha = f.k; ctx.drawImage(em, -S / 2, -S / 2, S, S); }
+    const x = (l.x - 0.5) * S, y = (l.y - 0.5) * S, blitz = l.kind === 'blitz', R = l.r * S * (blitz ? 3.2 : 2.2);
+    // Licht der Entladung erhellt das Wrack ringsum
+    const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, `rgba(${l.color},${(blitz ? 0.42 : 0.5) * f.k})`);
+    g.addColorStop(0.35, `rgba(${l.color},${0.14 * f.k})`);
+    g.addColorStop(1, `rgba(${l.color},0)`);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+    // Bögen bzw. Funkenstrahlen: breiter Schein, heller Kern
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const [wd, col] of [[blitz ? S * 0.014 : S * 0.006, `rgba(${l.color},${0.35 * f.k})`], [blitz ? S * 0.0035 : S * 0.002, `rgba(235,245,255,${0.95 * f.k})`]] as const) {
+      ctx.lineWidth = wd;
+      ctx.strokeStyle = col;
+      for (const b of f.bolts) {
+        ctx.beginPath();
+        for (let i = 0; i < b.length; i += 2) { const px = (b[i] - 0.5) * S, py = (b[i + 1] - 0.5) * S; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
 /** Einmaliges Aufleuchten des Umrisses beim Erscheinen (zeigt: das gehört zur Spielebene) – weicher Lichtschein, kein Strich */
 export function drawWreckIntro(ctx: CanvasRenderingContext2D, w: Wreck, k: number): void {
   if (k <= 0.01) return;
-  const src = WRECK_ART[w.art].src, glow = silhouette(src, '#ffd9a8', 8);
+  const src = WRECK_ART[w.art].frames[0], glow = silhouette(src, '#ffd9a8', 8);
   if (!glow) return;
   const [sw, sh] = dims(w), q = Math.max(sw, sh) / 512;
   ctx.save();
@@ -336,4 +532,52 @@ export function drawAnomaly(ctx: CanvasRenderingContext2D, a: Anomaly, t: number
   ctx.fillStyle = cg;
   ctx.beginPath(); ctx.arc(x, y, core * 1.05, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
+}
+
+// ---------- Asteroiden-Bilder ----------
+
+/** Anteil der deckenden Fläche eines Bilds (0…1), einmal gemessen – damit ein Brocken so groß gezeichnet wird, wie er trifft */
+const FILL = new WeakMap<HTMLImageElement, number>();
+export function spriteFill(i: HTMLImageElement): number {
+  let v = FILL.get(i);
+  if (v != null) return v;
+  if (typeof document === 'undefined') return 0.5;
+  const N = 128, c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.drawImage(i, 0, 0, N, N);
+  const d = g.getImageData(0, 0, N, N).data;
+  let n = 0;
+  for (let p = 3; p < d.length; p += 4) n += d[p] / 255;
+  v = Math.max(0.1, n / (N * N));
+  FILL.set(i, v);
+  return v;
+}
+
+/** Leuchten der lila Kristalle (nur die Kristallpunkte, weich), einmal erzeugt – pulsiert über dem Bild */
+const CRYST = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
+export function crystalGlow(i: HTMLImageElement): HTMLCanvasElement | null {
+  const got = CRYST.get(i);
+  if (got) return got;
+  if (typeof document === 'undefined') return null;
+  const N = 512, c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.drawImage(i, 0, 0, N, N);
+  const im = g.getImageData(0, 0, N, N), d = im.data;
+  for (let p = 0; p < d.length; p += 4) {
+    const r = d[p], gr = d[p + 1], b = d[p + 2];
+    // lila: Blau und Rot deutlich über Grün
+    const k = Math.max(0, Math.min(1, (Math.min(r, b) - gr - 18) / 50)) * (d[p + 3] / 255);
+    d[p] = r * k; d[p + 1] = gr * k * 0.6; d[p + 2] = b * k; d[p + 3] = 255 * k;
+  }
+  g.putImageData(im, 0, 0);
+  const out = document.createElement('canvas');
+  out.width = out.height = N;
+  const og = out.getContext('2d')!;
+  drawBlurred(og, c, 0, 0, N, N, 3);
+  og.globalCompositeOperation = 'lighter';
+  og.drawImage(c, 0, 0);
+  CRYST.set(i, out);
+  return out;
 }

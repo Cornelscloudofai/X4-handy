@@ -9,3 +9,4 @@ Originale vom Nutzer, unverändert. Einbau erst auf Ansage.
   links oben; 5325 zusätzlich weißer Funke rechts
 - `frachter/` – diagonaler Frachterrumpf, 5 Bilder: 5323 dunkel; 5320 schwache Glut; 5322 starke rote Glut;
   5321 Glut + blaue Blitze im offenen Gerüst; 5319 starke Glut + blaue Blitze
+- `geruest/` – Rumpfgerüst mit offenen Decks, Einzelbild (5306); wenige orange Lämpchen im Inneren
