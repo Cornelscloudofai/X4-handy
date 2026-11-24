@@ -54,8 +54,8 @@ export interface TurretGroup { name: string; kind: 'M' | 'L' }
 
 export interface ShipDef {
   name: string;
-  /** Blitzwaffen auf diesem Schiff: Feuerrate (Faktor) und Sprünge (zusätzlich, auch negativ) */
-  chainK?: { rate: number; jumps: number };
+  /** Blitzwaffen auf diesem Schiff: Feuerrate (Faktor; die Sprünge wachsen mit der Zahl der Bordkanonen) */
+  chainK?: { rate: number };
   /** Klasse für die Anzeige */
   cls: 'S' | 'M' | 'L' | 'XL';
   /** Seitenverhältnis des Bilds (Breite : Länge) bei langen Schiffen; size ist dann die Länge (sonst quadratisch) */
@@ -260,7 +260,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     gunWidth: 28, gunPos: [-14.5, -12.3, -8.9, 8.9, 12.3, 14.5], turrets: [[-5.9, 4.4], [5.9, 4.4]], turretGroup: [0, 1], groups: [{ name: 'Turm links', kind: 'M' }, { name: 'Turm rechts', kind: 'M' }], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
   }),
   cobra: ship('M', {
-    chainK: { rate: 0.85, jumps: -1 },
+    chainK: { rate: 0.85 },
     name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
     x4: { hull: 33000, engines: 3, shields: 2, weapons: 3, launchers: 0, turrets: 4, missiles: 0, v: 518, dragYaw: 11 },
     gunWidth: 16, gunPos: [-3.7, 0, 3.7], turrets: [[-7.2, -0.4], [7.2, -0.4], [-7.2, 18.5], [7.2, 18.5]],
@@ -490,7 +490,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   blitz: {
     // nur M: auf Jägern mit einem Waffenplatz wäre er fast immer die beste Wahl (Schwärme ×3–4 gegenüber jeder Kanone)
     name: 'Kettenblitz', group: 'allgemein', color: '#bfe4ff', w: 2, chain: true, mOnly: true,
-    desc: 'Nur für M-Waffenplätze. Entladung, die von Ziel zu Ziel springt (6 Sprünge, auf der Cobra 5 und etwas langsamer): in der Grundausrüstung zerstört jeder Treffer einen Kha’ak-Späher der Stufe 1 – auf höheren Stufen braucht es mehr; gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
+    desc: 'Nur für M-Waffenplätze. Entladung, die von Ziel zu Ziel springt (2 Sprünge plus einer je Bordkanone: Cobra 5, Drache 8; auf der Cobra etwas langsamer): in der Grundausrüstung zerstört jeder Treffer einen Kha’ak-Späher der Stufe 1 – auf höheren Stufen braucht es mehr; gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
     s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.16, angle: 0 },
     m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.18, angle: 0 },
   },
@@ -498,7 +498,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   stoerblitz: {
     // nur M wie der Kettenblitz (auf der Cobra ebenso etwas langsamer und ein Sprung weniger)
     name: 'Störblitz', group: 'allgemein', color: '#a8f4ff', w: 2, chain: true, emp: true, mOnly: true,
-    desc: 'Nur für M-Waffenplätze. Entladung ohne Schaden, weiter und mit mehr Sprüngen als der Kettenblitz (9, auf der Cobra 8 und etwas langsamer): S- und M-Schiffe werden vom Schiff weggestoßen und sind 1,5 s lahmgelegt – sie schießen nicht und nehmen 50 % mehr Schaden. Trifft er ein schon gelähmtes Ziel, brennt dessen Elektrik durch (geringer Schaden: ein Späher der Stufe 1 hält vier solche Treffer aus). Am Einschlag bleibt 2,5 s eine Ionenwolke, die jeden lähmt, der hineinfliegt. L-Schiffen und Strukturen nimmt jeder Treffer 15 % Schild und ionisiert sie: 1,5 s lang 25 % mehr Schaden.',
+    desc: 'Nur für M-Waffenplätze. Entladung ohne Schaden, weiter und mit mehr Sprüngen als der Kettenblitz (5 plus einer je Bordkanone: Cobra 8, Drache 11; auf der Cobra etwas langsamer): S- und M-Schiffe werden vom Schiff weggestoßen und sind 1,5 s lahmgelegt – sie schießen nicht und nehmen 50 % mehr Schaden. Trifft er ein schon gelähmtes Ziel, brennt dessen Elektrik durch (geringer Schaden: ein Späher der Stufe 1 hält vier solche Treffer aus). Am Einschlag bleibt 2,5 s eine Ionenwolke, die jeden lähmt, der hineinfliegt. L-Schiffen und Strukturen nimmt jeder Treffer 15 % Schild und ionisiert sie: 1,5 s lang 25 % mehr Schaden.',
     // gut ein Drittel weiter als der Kettenblitz
     s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.22, angle: 0 },
     m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.245, angle: 0 },

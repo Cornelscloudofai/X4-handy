@@ -22,26 +22,26 @@ const game = (lo: Partial<Loadout>, level = 3): G => {
 };
 
 describe('Kettenblitz', () => {
-  it('springt durch eine Reihe Späher (Drache: 6 Sprünge, 7 Ziele) und zerstört auf Stufe 1 jeden mit einem Treffer', () => {
+  it('springt durch eine Reihe Späher (Drache: 8 Sprünge, 9 Ziele) und zerstört auf Stufe 1 jeden mit einem Treffer', () => {
     const g = game({ ship: 'dragon', weapon: 'blitz' }, 1);
     g.aimA = -Math.PI / 2;
-    for (let k = 0; k < 8; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
+    for (let k = 0; k < 10; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
     g.fireChain(g.px, g.py - 20, -Math.PI / 2);
     expect(g.enemies.filter((e) => e.kind === 'ks').length).toBe(1);
     expect(g.zaps.length).toBe(1);
   });
 
-  it('nur auf M-Schiffen; auf der Cobra ein Sprung weniger und etwas langsamer als auf der Drache', () => {
+  it('nur auf M-Schiffen; Sprünge 2 + je Bordkanone einer (Cobra 5, Drache 8), auf der Cobra etwas langsamer', () => {
     expect((game({ ship: 'mamba', weapon: 'blitz' }) as unknown as { wpnId: string }).wpnId).not.toBe('blitz');
     expect((game({ ship: 'mamba', weapon: 'stoerblitz' }) as unknown as { wpnId: string }).wpnId).not.toBe('stoerblitz');
     const count = (ship: 'dragon' | 'cobra') => {
       const g = game({ ship, weapon: 'blitz' }, 1);
-      for (let k = 0; k < 10; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
+      for (let k = 0; k < 12; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
       g.fireChain(g.px, g.py - 20, -Math.PI / 2);
-      return { hit: 10 - g.enemies.filter((e) => e.kind === 'ks').length, every: (g as unknown as { wpn: { interval: number } }).wpn.interval };
+      return { hit: 12 - g.enemies.filter((e) => e.kind === 'ks').length, every: (g as unknown as { wpn: { interval: number } }).wpn.interval };
     };
     const d = count('dragon'), c = count('cobra');
-    expect(d.hit).toBe(7);
+    expect(d.hit).toBe(9);
     expect(c.hit).toBe(6);
     expect(c.every).toBeGreaterThan(d.every * 1.1);
   });
@@ -79,7 +79,7 @@ describe('Kettenblitz', () => {
 
 describe('Störblitz', () => {
   it('legt eine Reihe Späher lahm, ohne Schaden: weggestoßen, gelähmt, Ionenwolke; danach geht es weiter', () => {
-    const g = game({ ship: 'cobra', weapon: 'stoerblitz' });
+    const g = game({ ship: 'dragon', weapon: 'stoerblitz' });
     const row: E[] = [];
     for (let k = 0; k < 6; k++) row.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
     g.enemies.push(...row);
@@ -101,6 +101,33 @@ describe('Störblitz', () => {
     // Wolken und Lähmung klingen ab
     for (let i = 0; i < 60 * 5; i++) g.update(DT);
     expect(e0.stun ?? 0).toBeLessThanOrEqual(0);
+  });
+
+  it('Sperre gegen Dauerlähmung: höchstens 3 s am Stück, danach 2,5 s unempfindlich (auch in der Ionenwolke)', () => {
+    const g = game({ ship: 'dragon', weapon: 'stoerblitz' }) as G & { ions: { x: number; y: number; t: number; seed: number }[] };
+    const e = g.makeEnemy('ks', g.px, g.py - 300) as E & { stunLock?: number };
+    // die Türme der Drache sollen ihn nicht abschießen
+    e.hp = e.max = 1e9;
+    g.enemies.push(e);
+    let stunned = 0, longest = 0;
+    for (let i = 0; i < 60 * 6; i++) {
+      // eine Wolke, die nie verblasst, und ein Späher, der darin festsitzt
+      g.ions.length = 0; g.ions.push({ x: e.x, y: e.y, t: 2.5, seed: 0 });
+      e.x = g.px; e.y = g.py - 300;
+      // zwischen den Wellen wartet das Spiel auf eine Karte
+      const c = g as unknown as { state: { choosing: boolean }; chooseCard(i: number): void };
+      if (c.state.choosing) c.chooseCard(0);
+      g.update(DT);
+      if ((e.stun ?? 0) > 0) { stunned += DT; longest = Math.max(longest, stunned); } else stunned = 0;
+      if (i === 60 * 3 + 30) {
+        // gerade erwacht: der Störblitz prallt ab
+        expect(e.stun ?? 0).toBeLessThanOrEqual(0);
+        g.fireChain(g.px, g.py - 20, -Math.PI / 2);
+        expect(e.stun ?? 0).toBeLessThanOrEqual(0);
+      }
+    }
+    expect(longest).toBeGreaterThan(2.9);
+    expect(longest).toBeLessThanOrEqual(3.05);
   });
 
   it('Überladung: ein gelähmter Späher der Stufe 1 fällt nach vier weiteren Treffern, nicht nach drei', () => {

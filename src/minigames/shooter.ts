@@ -141,6 +141,8 @@ interface Enemy {
   kind: EKind; x: number; y: number; vx: number; vy: number;
   /** Störblitz: lahmgelegt (Restzeit, s) – treibt antriebslos und trudelnd (Drehtempo), schießt nicht */
   stun?: number; stunSpin?: number;
+  /** Sperre gegen Dauerlähmung: Lähmung am Stück bisher (s) und Restzeit der Unempfindlichkeit danach (s) */
+  stunT?: number; stunLock?: number;
   /** Störblitz bei L-Schiffen und Strukturen: ionisiert (Restzeit, s) – nimmt mehr Schaden */
   ion?: number;
   hp: number; max: number; cd: number; r: number;
@@ -355,9 +357,14 @@ type Section = 'none' | 'rocks' | 'mines' | 'nebel' | 'wracks' | 'anomalie';
 /** Anomalie: Wirkradius, Kern; Schaden beim Hineingeraten (dein Schiff) und Schleuder-Tempo */
 const ANOMALY_R = 1250, ANOMALY_CORE = 78, CORE_DMG = 18, CORE_FLING = 760;
 /** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
-const ZAP_JUMPS = 4, ZAP_HOP = 150, ZAP_CONE = 0.55;
+/** Sprünge der Blitzwaffen: Grundwert plus einer je Bordkanone (Cobra 3, Drache 6) – wer mehr Kanonen aufgibt, bekommt
+ * einen längeren Blitz */
+const ZAP_JUMPS = 2, ZAP_HOP = 150, ZAP_CONE = 0.55;
 /** Störblitz: Lähmung je Treffer (s) für S- und M-Schiffe; Schildverlust je Treffer bei L-Schiffen und Strukturen (Anteil) */
 const EMP_STUN = 1.5, EMP_SHIELD = 0.15;
+/** Sperre gegen Dauerlähmung: höchstens STUN_MAX s am Stück gelähmt (Ionenwolken verlängern sonst endlos), danach
+ * STUN_LOCK s unempfindlich – die Bordelektrik fährt neu hoch und ist abgeschirmt */
+const STUN_MAX = 3, STUN_LOCK = 2.5;
 /** Störblitz bei L-Schiffen und Strukturen: ionisiert für diese Zeit, nimmt so viel mehr Schaden */
 const ION_VULN = 1.25;
 /** Störblitz: Ionenstoß (Anfangstempo vom Schiff weg; bremst binnen einer Sekunde, ≈ 150 Punkte Weg) und Ionenwolke am Einschlag (Radius, Dauer) */
@@ -367,7 +374,7 @@ const EMP_BUBBLE = 400;
 /** Störblitz-Überladung: ein Treffer auf ein schon gelähmtes Ziel macht diesen Anteil des Kettenblitz-Schadens (Späher Stufe 1: 4 Treffer) */
 const EMP_OVERLOAD = 0.25;
 /** Störblitz: mehr Sprünge und weitere Sprünge als der Kettenblitz (Sicherheitsblase); gelähmte Ziele nehmen mehr Schaden */
-const EMP_JUMPS = 7, EMP_HOP = 190, EMP_VULN = 1.5;
+const EMP_JUMPS = 5, EMP_HOP = 190, EMP_VULN = 1.5;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
 const PFLAK_FUSE = 16, PFLAK_R = 62;
 /** Wirkung von Kettenblitz und Flak nach Schiffsklasse des Ziels (S = voll; Türme und Großkampfschiffe kaum) */
@@ -5251,8 +5258,13 @@ export class ShooterGame implements MiniGame {
         continue;
       }
       // Störblitz: lahmgelegt – kein Antrieb, keine Waffen; kommt binnen einer Sekunde zum Stehen und trudelt
+      if (e.stunLock) e.stunLock = Math.max(0, e.stunLock - dt);
       if (e.stun && e.stun > 0) {
         e.stun -= dt;
+        // Sperre: nach STUN_MAX s am Stück ist Schluss, danach eine Weile unempfindlich
+        e.stunT = (e.stunT ?? 0) + dt;
+        if (e.stunT >= STUN_MAX) e.stun = 0;
+        if (e.stun <= 0) { e.stun = 0; e.stunT = 0; e.stunLock = STUN_LOCK; }
         if (e.beamT && e.beamT > 0) e.beamT = 0; // laufender Strahl bricht ab
         const k = Math.exp(-5 * dt);
         e.vx *= k; e.vy *= k;
@@ -5627,7 +5639,7 @@ export class ShooterGame implements MiniGame {
   private fireChain(ox: number, oy: number, a0: number): void {
     const emp = !!WEAPONS[this.wpnId as WeaponId]?.emp;
     const range = this.wpn.range, hop = (emp ? EMP_HOP : ZAP_HOP) * (1 + 0.15 * this.c('zap'));
-    const jumps = (emp ? EMP_JUMPS : ZAP_JUMPS) + (this.ship.gunSize === 'm' ? 2 : 0) + (this.ship.chainK?.jumps ?? 0) + 2 * this.c('zap');
+    const jumps = (emp ? EMP_JUMPS : ZAP_JUMPS) + this.ship.x4.weapons + 2 * this.c('zap');
     const ok = (e: Enemy) => !(e.kind === 'boss' && e.shielded);
     let cur: Enemy | null = this.lock?.e && ok(this.lock.e) && Math.hypot(this.lock.e.x - ox, this.lock.e.y - oy) < range + this.lock.e.r ? this.lock.e : null;
     if (!cur) {
@@ -5704,6 +5716,8 @@ export class ShooterGame implements MiniGame {
       // verlängert die Lähmung nicht und hinterlässt keine neue Wolke – sonst ließe sich ein Ziel dauerhaft lahmhalten
       return;
     }
+    // gerade erst aus einer Lähmung erwacht: abgeschirmt – kein Stoß, keine Lähmung, keine Wolke
+    if (e.stunLock && e.stunLock > 0) { this.fx.burst(e.x, e.y, '#a8f4ff', 3, 70, 1, 'spark', 0.2); return; }
     this.stunEnemy(e);
     // Ionenstoß: vom eigenen Schiff weg, nur im Nahbereich (Sicherheitsblase) – je näher, desto kräftiger; weiter
     // entfernte Ziele bleiben stehen, wo sie sind (in Reichweite der Türme). Die Lähmung bremst ihn binnen 1 s ab
@@ -5716,6 +5730,7 @@ export class ShooterGame implements MiniGame {
 
   /** S- oder M-Schiff lahmlegen (Störblitz, Ionenwolke) */
   private stunEnemy(e: Enemy, t = EMP_STUN): void {
+    if (e.stunLock && e.stunLock > 0) return;
     if (!e.stun || e.stun <= 0) { e.stunSpin = (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random() * 2.5); e.flash = 0.08; }
     e.stun = Math.max(e.stun ?? 0, t);
     if (e.cl != null) this.breakCluster(e.cl);
