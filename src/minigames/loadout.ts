@@ -568,10 +568,10 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   plasma: { name: 'Plasmaturm', desc: 'Schwere Plasmakugeln in ruhigem Takt, ohne Nachladen. Das Plasma schlägt zum Teil durch den Schild und verbrennt beim Einschlag auch, was daneben fliegt.', turn: 70, color: '#a6ff6b', w: 4, hullPierce: 0.4, splash: 60,
     gun: { dmg: 240, rate: 0.8, amt: 1, mag: 0, reload: 0, v: 1600, life: 3.44, angle: 0.8 } },
   // M-Lanze: blasses Blaulila, kurzer schmaler Blitz (die schwere L-Lanze ist orange, dick und glüht lange nach)
-  boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, etwa ein Schuss pro Sekunde; schwenkt langsam.', turn: 40, color: '#c9d6ff', w: 3, rail: true,
+  boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, ein schwerer Schuss alle zwei Sekunden; schwenkt langsam. Gegen Großkampfschiffe verheerend, gegen Schwärme zu langsam.', turn: 40, color: '#c9d6ff', w: 3, rail: true,
     // im Spiel abgeschwächt: halber Schaden, Reichweite gut 4 km statt 8 (war doppelt so weit wie alle M-Türme und
     // zerlegte Großkampfschiffe in Sekunden)
-    gun: { dmg: 420, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.3, angle: 0.18 } },
+    gun: { dmg: 700, rate: 0.5, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.3, angle: 0.18 } },
   // Raketen-Vierling (M): vier Lenkraketen auf einmal, dann Pause; Schaden und Takt für die Wertung unten aus der Lenkrakete
   // halber Raketenschaden und längere Pause: stark gegen große Ziele, gegen Wellen ohne Vorteil (alle vier Raketen
   // einer Salve fliegen auf dasselbe Ziel – gegen kleine Schiffe ist das viel Verschwendung)
