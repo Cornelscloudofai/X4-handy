@@ -88,6 +88,19 @@ describe('Störblitz', () => {
     expect(e0.stun ?? 0).toBeLessThanOrEqual(0);
   });
 
+  it('Überladung: ein gelähmter Späher der Stufe 1 fällt nach vier weiteren Treffern, nicht nach drei', () => {
+    const g = game({ weapon: 'stoerblitz' }, 1);
+    const e = g.makeEnemy('ks', g.px, g.py - 300);
+    g.enemies.push(e);
+    const zap = () => { e.x = g.px; e.y = g.py - 300; g.fireChain(g.px, g.py - 20, -Math.PI / 2); };
+    zap();
+    expect(e.hp + e.sh).toBe(e.max + e.shMax);
+    for (let k = 0; k < 3; k++) zap();
+    expect(g.enemies.includes(e)).toBe(true);
+    zap();
+    expect(g.enemies.includes(e)).toBe(false);
+  });
+
   it('senkt den Schild von Großkampfschiffen und Türmen, ohne sie lahmzulegen', () => {
     const g = game({ weapon: 'stoerblitz' });
     g.spawnBoss(false);

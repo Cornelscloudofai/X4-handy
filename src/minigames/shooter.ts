@@ -356,6 +356,8 @@ const EMP_STUN = 1.5, EMP_SHIELD = 0.15;
 const EMP_KNOCK = 750, ION_R = 55, ION_T = 2.5;
 /** Störblitz: Radius der Sicherheitsblase – nur darin stößt der Blitz Gegner weg */
 const EMP_BUBBLE = 400;
+/** Störblitz-Überladung: ein Treffer auf ein schon gelähmtes Ziel macht diesen Anteil des Kettenblitz-Schadens (Späher Stufe 1: 4 Treffer) */
+const EMP_OVERLOAD = 0.25;
 /** Störblitz: mehr Sprünge und weitere Sprünge als der Kettenblitz (Sicherheitsblase); gelähmte Ziele nehmen mehr Schaden */
 const EMP_JUMPS = 7, EMP_HOP = 190, EMP_VULN = 1.5;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
@@ -5619,6 +5621,13 @@ export class ShooterGame implements MiniGame {
       e.sh = Math.max(0, e.sh - e.shMax * EMP_SHIELD);
       e.shT = 0; e.shFlash = 0.35;
       return;
+    }
+    // Überladung: schon gelähmt – die Bordelektrik brennt durch, geringer Schaden (der Aufschlag für gelähmte Ziele ist
+    // herausgerechnet: ein Späher der Stufe 1 in der Grundausrüstung fällt nach genau vier solchen Treffern)
+    if (e.stun && e.stun > 0) {
+      this.damageEnemy(e, (this.swarmDmg * EMP_OVERLOAD * SWARM_K[cls]) / EMP_VULN, 0, 0);
+      this.fx.burst(e.x, e.y, '#d8fff8', 4, 110, 1.2, 'spark', 0.25);
+      if (!this.enemies.includes(e)) return;
     }
     this.stunEnemy(e);
     // Ionenstoß: vom eigenen Schiff weg, nur im Nahbereich (Sicherheitsblase) – je näher, desto kräftiger; weiter
