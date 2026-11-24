@@ -20,8 +20,11 @@
 - Gestuft testen (Ergebnis immer am Exit-Code prüfen, nicht nur die Ausgabe überfliegen):
   - Während der Arbeit: `npx tsc --noEmit -p .` und nur die betroffenen Testdateien (`npx vitest run tests/<datei>`).
   - Vor jedem Commit: `npx vitest run` komplett.
-  - `npm run e2e` bei Änderungen an Oberfläche, Menüs, Speichern/Laden oder Spielstart – dann im Hintergrund laufen
-    lassen und weiterarbeiten; schlägt er fehl, sofort beheben. **Vor jedem `[live]`-Release immer** `npm run e2e`.
+  - Bei Änderungen an Oberfläche, Menüs, Speichern/Laden oder Spielstart: `npm run e2e:changed` – führt nur die
+    Browserprüfungen aus, die die seit dem letzten erfolgreichen Lauf geänderten Dateien betreffen (Zuordnung in
+    `scripts/e2e-changed.mjs`; `-- --list` zeigt nur die Auswahl). Reine Kampfwerte und -logik ohne Oberfläche: kein e2e.
+    Im Hintergrund laufen lassen und weiterarbeiten; schlägt er fehl, sofort beheben.
+  - **Vor jedem `[live]`-Release immer** die volle Reihe `npm run e2e`.
   - Achtung: `npm run build` prüft auch die Tests auf Typfehler – schlägt er fehl, ist `dist/` veraltet.
 - Bild-Prompts immer als Codeblock (```text … ```) ausgeben, damit sie per Kopieren-Knopf übernommen werden können – nicht als Zitat.
 - **Texte glaubwürdig, nicht generisch.** Story, Beschreibungen, Kapitel, Fundstücke: konkret und aus der Spielwelt heraus
