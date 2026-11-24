@@ -19,7 +19,9 @@
   Keine KI-Funktionen von Netlify nutzen oder auslösen.
 - Gestuft testen (Ergebnis immer am Exit-Code prüfen, nicht nur die Ausgabe überfliegen):
   - Während der Arbeit: `npx tsc --noEmit -p .` und nur die betroffenen Testdateien (`npx vitest run tests/<datei>`).
-  - Vor jedem Commit: `npx vitest run` komplett.
+  - Vor einem Commit genügen die betroffenen Testdateien. `npx vitest run` komplett nur bei Änderungen mit breiter
+    Wirkung (Ausgleich und Werte, die viele Tests berühren, gemeinsame Kernteile wie Spielzustand, Speichern, Loadout,
+    Gegnerverhalten) und **vor jedem `[live]`-Release**.
   - Bei Änderungen an Oberfläche, Menüs, Speichern/Laden oder Spielstart: `npm run e2e:changed` – führt nur die
     Browserprüfungen aus, die die seit dem letzten erfolgreichen Lauf geänderten Dateien betreffen (Zuordnung in
     `scripts/e2e-changed.mjs`; `-- --list` zeigt nur die Auswahl). Reine Kampfwerte und -logik ohne Oberfläche: kein e2e.
