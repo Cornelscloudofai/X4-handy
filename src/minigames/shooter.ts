@@ -369,7 +369,7 @@ const PFLAK_FUSE = 16, PFLAK_R = 62;
 /** Wirkung von Kettenblitz und Flak nach Schiffsklasse des Ziels (S = voll; Türme und Großkampfschiffe kaum) */
 const SWARM_K: Record<'S' | 'M' | 'L', number> = { S: 1, M: 0.3, L: 0.1 };
 /** Flak gegen größere Ziele: weniger stark abgeschwächt als der Kettenblitz (Splitter treffen auch große Rümpfe) */
-const FLAK_K: Record<'S' | 'M' | 'L', number> = { S: 1, M: 0.4, L: 0.25 };
+const FLAK_K: Record<'S' | 'M' | 'L', number> = { S: 1, M: 0.5, L: 0.4 };
 /**
  * Reichweite der Kyon-Strahlen: Zerstörer 30 % weiter als der Xenon-Laser, das größere Brutschiff 55 % weiter. Das
  * Brutschiff hat nur zwei Kyon-Türme statt vier – jeder brennt doppelt so stark, zusammen also wie der Zerstörer
@@ -6985,11 +6985,19 @@ export class ShooterGame implements MiniGame {
         ctx.fill();
         continue;
       }
-      const v = Math.hypot(b.vx, b.vy) || 1, L = b.from === 'p' ? 12 : 8;
+      const v = Math.hypot(b.vx, b.vy) || 1, L = b.pflak ? 22 : b.from === 'p' ? 12 : 8;
+      // Flakgranate: glühender Kopf und lange, warme Leuchtspur (gut zu sehen, wohin die Granaten fliegen)
+      if (b.pflak) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = rgba('#ffd28a', 0.35);
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.w * 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
       ctx.beginPath();
       ctx.moveTo(b.x, b.y);
       ctx.lineTo(b.x - (b.vx / v) * L, b.y - (b.vy / v) * L);
-      ctx.strokeStyle = rgba(b.color, 0.3);
+      ctx.strokeStyle = rgba(b.color, b.pflak ? 0.45 : 0.3);
       ctx.lineWidth = b.w * 3;
       ctx.stroke();
       ctx.strokeStyle = b.color;

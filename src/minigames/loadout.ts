@@ -564,7 +564,9 @@ export const TURRETS: Record<TurretId, TurretDef> = {
     gun: { dmg: 750, rate: 1, amt: 1, mag: 2, reload: 7, v: 1000, life: 5.5, angle: 0.8 } },
   // M-Lanze: blasses Blaulila, kurzer schmaler Blitz (die schwere L-Lanze ist orange, dick und glüht lange nach)
   boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, etwa ein Schuss pro Sekunde; schwenkt langsam.', turn: 40, color: '#c9d6ff', w: 3, rail: true,
-    gun: { dmg: 800, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.57, angle: 0.18 } },
+    // im Spiel abgeschwächt: halber Schaden, Reichweite gut 4 km statt 8 (war doppelt so weit wie alle M-Türme und
+    // zerlegte Großkampfschiffe in Sekunden)
+    gun: { dmg: 420, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.3, angle: 0.18 } },
   // Raketen-Vierling (M): vier Lenkraketen auf einmal, dann Pause; Schaden und Takt für die Wertung unten aus der Lenkrakete
   rakete: { name: 'Raketen-Vierling', desc: 'Schwenkt auf das Ziel und schickt vier Lenkraketen zugleich los, dann fünf Sekunden Pause. Große Reichweite, trifft fast immer – gegen Raketen wirkungslos. Vorrat: 80 Raketen je Turm.', turn: 90, color: '#ffb070', w: 2,
     missile: { n: 4, gap: 0, reload: 5, dmg: 1, range: 1, salvos: 20 },
@@ -573,7 +575,8 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   flak: { name: 'Flakturm', desc: 'Sprenggranaten mit Annäherungszünder: zerplatzen zwischen kleinen Schiffen und treffen alles im Umkreis – stark gegen Schwärme und Raketen, schwach gegen große Ziele.', turn: 170, color: '#ffb070', w: 2.2, flak: true,
     // vier Rohre, vier Granaten je Magazin; Nachladen so gewählt, dass die mittlere Feuerrate wie mit sechs bleibt
     // (6 Schuss in 5 Takten + 3 s ≙ 4 Schuss in 3 Takten + 2,25 s)
-    gun: { dmg: 30, rate: 2.2, amt: 1, mag: 4, reload: 2.25, v: 1400, life: 2.4, angle: 0.3 } },
+    // schnellere Granaten (wie die Gatling) und gut 4 km Reichweite – Flugbahnen und Sprengwolken weiter draußen
+    gun: { dmg: 30, rate: 2.2, amt: 1, mag: 4, reload: 2.25, v: 2500, life: 1.68, angle: 0.3 } },
 };
 export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
 
