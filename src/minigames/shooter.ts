@@ -243,6 +243,8 @@ interface GameGun {
   w: number;
   /** Flakturm: Sprenggranaten mit Annäherungszünder */
   flak?: boolean;
+  /** Flächenschaden beim Einschlag (Plasmaturm): halber Schaden im Umkreis */
+  splash?: number;
   /** Raketenturm: feuert Lenkraketen statt Geschossen */
   missile?: TurretMissile;
 }
@@ -289,7 +291,7 @@ function segDist(x0: number, y0: number, x1: number, y1: number, px: number, py:
   return Math.hypot(x0 + dx * t - px, y0 + dy * t - py);
 }
 
-function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean }): GameGun {
+function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean; splash?: number }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
     const md = MISSILES.lenk, range = md.v * md.life * 0.85 * o.missile.range;
@@ -300,7 +302,7 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   return {
     dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME * RELOAD,
     speed, life: beam ? 0 : range / speed, range, pellets: g.amt, jitter: g.angle * JITTER,
-    beam, hullPierce: o.hullPierce ?? 0, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w, flak: o.flak || undefined,
+    beam, hullPierce: o.hullPierce ?? 0, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w, flak: o.flak || undefined, splash: o.splash,
   };
 }
 
@@ -4906,7 +4908,7 @@ export class ShooterGame implements MiniGame {
           // Flak: Zeitzünder knapp hinter dem Ziel, dazu der Annäherungszünder (siehe updateShots)
           // Flak: Zeitzünder knapp hinter dem Abfangpunkt; vorher zündet meist schon der Annäherungszünder
           const life = w.flak ? Math.min(w.life * this.tRangeMul, (Math.hypot(tgt.x + aim.vx * lt - mx, tgt.y + aim.vy * lt - my) + 20) / w.speed) : w.life * this.tRangeMul;
-          this.bullets.push({ x: mx + Math.cos(a) * fwd, y: my + Math.sin(a) * fwd, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined });
+          this.bullets.push({ x: mx + Math.cos(a) * fwd, y: my + Math.sin(a) * fwd, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined, hullPierce: w.hullPierce || undefined, splash: w.splash });
         }
         t.cd = (w.interval * this.tempo) / this.tRateMul;
         if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
@@ -5977,7 +5979,7 @@ export class ShooterGame implements MiniGame {
           this.logHit();
           this.damageEnemy(e, b.dmg, 0.3, b.hullPierce ?? 0);
           // Thermal: glühende Funken, wo die Hitze durch den Schild auf die Hülle schlägt
-          if (b.hullPierce) this.fx.burst(b.x, b.y, '#ff9d2e', 4, 90, 1.4, 'spark', 0.3);
+          if (b.hullPierce) this.fx.burst(b.x, b.y, b.color, 4, 90, 1.4, 'spark', 0.3);
           if (b.splash) {
             // Torpedo: Flächenschaden in der Umgebung
             for (const q of [...this.enemies]) if (q !== e && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < b.splash + q.r) this.damageEnemy(q, b.dmg * 0.5);

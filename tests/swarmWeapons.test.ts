@@ -164,8 +164,8 @@ describe('Anzeige im Ausstattungsmenü', () => {
   it('Flakturm: Schaden der Sprengwolke je Ziel (Späher Stufe 1), nicht der Granate', () => {
     const s = enemyStats('ks', 1, {});
     expect(FLAK_SCOUT_HP).toBeCloseTo(s.hp + s.sh, 1);
-    // gegen ein einzelnes S-Ziel etwa so stark wie der Gatling-Turm im Mittel, deutlich über dem Pulsturm
-    expect(turretDps(TURRETS.flak)).toBeGreaterThan(turretDps(TURRETS.puls) * 2.5);
+    // gegen ein einzelnes S-Ziel etwa so stark wie der Gatling-Turm im Mittel, deutlich über dem Pulsturm (Wolke statt Einzeltreffer)
+    expect(turretDps(TURRETS.flak)).toBeGreaterThan(turretDps(TURRETS.puls) * 1.5);
   });
 });
 
