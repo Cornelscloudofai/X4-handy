@@ -555,7 +555,7 @@ export interface TurretMissile { n: number; gap: number; reload: number; dmg: nu
 export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile; /** Flak: Sprenggranaten mit Annäherungszünder */ flak?: boolean; /** Anteil, der den Schild umgeht */ hullPierce?: number; /** Flächenschaden beim Einschlag (Radius) */ splash?: number }
 export const TURRETS: Record<TurretId, TurretDef> = {
   puls: { name: 'Pulsturm', desc: 'Dauerfeuer ohne Nachladen, schwenkt schnell und trifft genau – wendige Jäger entkommen ihm kaum, gegen dicke Panzerung fehlt die Wucht.', turn: 180, color: '#7ffff0', w: 2,
-    gun: { dmg: 36, rate: 3.8, amt: 1, mag: 0, reload: 0, v: 5000, life: 0.7, angle: 0.17 } },
+    gun: { dmg: 44, rate: 3.8, amt: 1, mag: 0, reload: 0, v: 9000, life: 0.39, angle: 0.17 } },
   // Strahlenturm: wie der Strahlenemitter (M) als Dauerstrahl; trifft sofort, solange er auf dem Ziel liegt
   strahl: { name: 'Strahlenturm', desc: 'Dauerstrahl: trifft sofort, solange er auf dem Ziel liegt – wenig Schaden pro Sekunde, aber nie daneben; gut gegen Jäger und Raketen.', turn: 150, color: '#9ffcff', w: 2, beam: true,
     gun: { dmg: 120, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0 } },
