@@ -2726,6 +2726,11 @@ export class ShooterGame implements MiniGame {
     return Math.max(0, off - g.tol) / g.turn + lt;
   }
 
+  /** Gemeinsames Ziel der Türme gegen L-Schiffe und Strukturen (siehe updateTurrets) */
+  private focusL: Enemy | null = null;
+  /** L-Schiff oder Struktur (Türme, Bauteile, Brutstätten, Plattformen) */
+  private isBig(e: Enemy): boolean { return !!(e.parent || e.nest || e.plat || e.hive) || isStructure(e) || ECLASS[e.kind] === 'L'; }
+
   /** Liegt ein Gegner (in Reichweite) genau vor den Rohren eines Turms? */
   private enemyAlong(x: number, y: number, a: number, range: number): boolean {
     for (const e of this.enemies) {
@@ -2763,6 +2768,12 @@ export class ShooterGame implements MiniGame {
     // solange der Turm auf seinem Ziel liegt, frühestens 1 s nach einem Wechsel und nur bei deutlichem Vorteil – ein Ziel,
     // das er nicht nachführen kann, gibt er sofort ab
     t.lock = (t.lock ?? 0) - dt; t.chk = (t.chk ?? 0) - dt;
+    // großes Ziel, aber nicht das gemeinsame: zum gemeinsamen wechseln, wenn es erreichbar ist und zum Befehl passt
+    const fl = this.focusL;
+    if (gun && cur && !isM(cur) && fl && cur !== fl && this.isBig(cur as Enemy) && t.lock <= 0 && this.enemies.includes(fl)) {
+      const d = dist(fl), fitsF = order === 'alle' || (order === 'struktur' ? isStructure(fl) : ECLASS[fl.kind] === order);
+      if (d < range && fitsF && ok(fl, d) && this.timeToHit(gun, x, y, fl) < Infinity) cur = fl;
+    }
     if (gun && cur && !isM(cur)) {
       const e = cur as Enemy, onIt = Math.abs(wrapA(Math.atan2(e.y - y, e.x - x) - gun.a)) < Math.max(gun.tol, this.streamTol(x, y, e)) * 2;
       const tc = this.timeToHit(gun, x, y, e);
@@ -2796,7 +2807,7 @@ export class ShooterGame implements MiniGame {
       // ohne Turmangaben: Abstand; sonst Zeit bis zum Treffer (nicht nachführbare ganz hinten, dort nach Abstand)
       // Feuer bündeln: angeschlagene Ziele zuerst (Treffer, die sich auf viele verteilen, verpuffen, weil die Schilde
       // nachladen), gelähmte ebenso (stehen still) – je bis gut eine halbe Sekunde Schwenkzeit Vorsprung
-      const d = gun ? (() => { const th = this.timeToHit(gun, x, y, e); if (th === Infinity) return 1e6 + dist; return th + 0.6 * ((e.hp + e.sh) / Math.max(1, e.max + e.shMax)) - (e.stun && e.stun > 0 ? 0.4 : 0); })() : dist;
+      const d = gun ? (() => { const th = this.timeToHit(gun, x, y, e); if (th === Infinity) return 1e6 + dist; return th + 0.6 * ((e.hp + e.sh) / Math.max(1, e.max + e.shMax)) - (e.stun && e.stun > 0 ? 0.4 : 0) - (e === this.focusL ? 1.5 : 0); })() : dist;
       if (d < bd) { bd = d; best = e; }
       if (order !== 'alle' && (order === 'struktur' ? isStructure(e) : ECLASS[e.kind] === order) && d < pd) { pd = d; pref = e; }
     }
@@ -4820,6 +4831,17 @@ export class ShooterGame implements MiniGame {
   private updateTurrets(dt: number): void {
     this.tBeams = [];
     if (!this.pTur.length) return;
+    // Feuer bündeln gegen L-Schiffe und Strukturen: unter den großen Zielen, die gerade beschossen werden, das am
+    // stärksten angeschlagene – dorthin wechseln die anderen Türme, die ein großes Ziel bekämpfen (gegen S und M bleibt
+    // die Abwehr verteilt)
+    this.focusL = null;
+    let fk = Infinity;
+    for (const t of this.pTur) {
+      const e = t.tgt as Enemy | null | undefined;
+      if (!e || !this.enemies.includes(e) || !this.isBig(e)) continue;
+      const k = (e.hp + e.sh) / Math.max(1, e.max + e.shMax);
+      if (k < fk) { fk = k; this.focusL = e; }
+    }
     const c = Math.cos(this.aimA + Math.PI / 2), sn = Math.sin(this.aimA + Math.PI / 2);
     for (const [i, t] of this.pTur.entries()) {
       const [tx0, ty0] = this.ship.turrets[i];
