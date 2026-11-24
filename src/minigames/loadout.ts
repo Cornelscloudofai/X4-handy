@@ -572,8 +572,10 @@ export const TURRETS: Record<TurretId, TurretDef> = {
     // zerlegte Großkampfschiffe in Sekunden)
     gun: { dmg: 420, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.3, angle: 0.18 } },
   // Raketen-Vierling (M): vier Lenkraketen auf einmal, dann Pause; Schaden und Takt für die Wertung unten aus der Lenkrakete
-  rakete: { name: 'Raketen-Vierling', desc: 'Schwenkt auf das Ziel und schickt vier Lenkraketen zugleich los, dann fünf Sekunden Pause. Große Reichweite, trifft fast immer – gegen Raketen wirkungslos. Vorrat: 80 Raketen je Turm.', turn: 90, color: '#ffb070', w: 2,
-    missile: { n: 4, gap: 0, reload: 5, dmg: 1, range: 1, salvos: 20 },
+  // halber Raketenschaden und längere Pause: stark gegen große Ziele, gegen Wellen ohne Vorteil (alle vier Raketen
+  // einer Salve fliegen auf dasselbe Ziel – gegen kleine Schiffe ist das viel Verschwendung)
+  rakete: { name: 'Raketen-Vierling', desc: 'Schwenkt auf das Ziel und schickt vier Lenkraketen zugleich los, dann acht Sekunden Pause. Große Reichweite, trifft fast immer – stark gegen große Ziele, gegen viele kleine verschwendet. Vorrat: 80 Raketen je Turm.', turn: 90, color: '#ffb070', w: 2,
+    missile: { n: 4, gap: 0, reload: 8, dmg: 0.5, range: 1, salvos: 20 },
     gun: { dmg: 0, rate: 1, amt: 4, mag: 0, reload: 0, v: 400, life: 6.5, angle: 0 } },
   // Flakturm: Sprenggranaten mit Annäherungszünder – zerplatzen zwischen kleinen Schiffen und Raketen
   flak: { name: 'Flakturm', desc: 'Sprenggranaten mit Annäherungszünder: zerplatzen zwischen kleinen Schiffen und treffen alles im Umkreis – stark gegen Schwärme und Raketen, schwach gegen große Ziele.', turn: 170, color: '#ffb070', w: 2.2, flak: true,
