@@ -280,6 +280,13 @@ export function interceptTime(dx: number, dy: number, vx: number, vy: number, s:
   return Number.isFinite(t) ? t : Math.sqrt(c) / Math.max(1, s);
 }
 
+/** Abstand eines Punkts (px, py) zur Strecke (x0, y0) → (x1, y1) */
+function segDist(x0: number, y0: number, x1: number, y1: number, px: number, py: number): number {
+  const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / l2)) : 0;
+  return Math.hypot(x0 + dx * t - px, y0 + dy * t - py);
+}
+
 function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
@@ -2702,6 +2709,16 @@ export class ShooterGame implements MiniGame {
     return Math.max(0, off - g.tol) / g.turn + lt;
   }
 
+  /** Liegt ein Gegner (in Reichweite) genau vor den Rohren eines Turms? */
+  private enemyAlong(x: number, y: number, a: number, range: number): boolean {
+    for (const e of this.enemies) {
+      if ((e.kind === 'boss' && e.shielded) || e.boje) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d < range && Math.abs(wrapA(Math.atan2(e.y - y, e.x - x) - a)) < this.streamTol(x, y, e)) return true;
+    }
+    return false;
+  }
+
   /** Feuerfreigabe für Dauerfeuer: Abweichung kleiner als die halbe Breite des Ziels aus Sicht des Turms, mindestens 2° */
   private streamTol(x: number, y: number, e: { x: number; y: number; r?: number }): number {
     return Math.max(0.035, Math.atan2((e.r ?? 4) * 0.8, Math.hypot(e.x - x, e.y - y) || 1));
@@ -2760,7 +2777,9 @@ export class ShooterGame implements MiniGame {
       const dist = Math.hypot(e.x - x, e.y - y);
       if (dist >= range || !ok(e, dist)) continue;
       // ohne Turmangaben: Abstand; sonst Zeit bis zum Treffer (nicht nachführbare ganz hinten, dort nach Abstand)
-      const d = gun ? (() => { const th = this.timeToHit(gun, x, y, e); return th === Infinity ? 1e6 + dist : th; })() : dist;
+      // Feuer bündeln: angeschlagene Ziele zuerst (Treffer, die sich auf viele verteilen, verpuffen, weil die Schilde
+      // nachladen), gelähmte ebenso (stehen still) – je bis gut eine halbe Sekunde Schwenkzeit Vorsprung
+      const d = gun ? (() => { const th = this.timeToHit(gun, x, y, e); if (th === Infinity) return 1e6 + dist; return th + 0.6 * ((e.hp + e.sh) / Math.max(1, e.max + e.shMax)) - (e.stun && e.stun > 0 ? 0.4 : 0); })() : dist;
       if (d < bd) { bd = d; best = e; }
       if (order !== 'alle' && (order === 'struktur' ? isStructure(e) : ECLASS[e.kind] === order) && d < pd) { pd = d; pref = e; }
     }
@@ -4822,7 +4841,10 @@ export class ShooterGame implements MiniGame {
       }
       // Dauerfeuer (Gatling) erst, wenn der Turm fast genau auf dem Ziel liegt – sonst geht beim Schwenken die halbe
       // Garbe ins Leere; Einzelschüsse dürfen schon im Nachführen fallen
-      if (t.cd <= 0 && Math.abs(wrapA(want - t.a)) < (w.interval < 0.2 ? this.streamTol(x, y, tgt) : 0.15)) {
+      // Sperrfeuer: Dauerfeuer auch, wenn gerade ein anderer Gegner vor den Rohren vorbeizieht (gegen einen Schwarm, der
+      // zu dicht und zu schnell um das Schiff kreist, um ihn nachzuführen)
+      const stream = w.interval < 0.2;
+      if (t.cd <= 0 && (Math.abs(wrapA(want - t.a)) < (stream ? this.streamTol(x, y, tgt) : 0.15) || (stream && this.enemyAlong(x, y, t.a, range)))) {
         t.idle = 0;
         // Mehrlingsturm: jeder Schuss kommt aus dem nächsten Rohr (Mündung laut Turmbild), mit Mündungsfeuer
         let mx = x, my = y, fwd = 8;
@@ -5837,7 +5859,9 @@ export class ShooterGame implements MiniGame {
         const mine = this.mines.find((m) => Math.hypot(m.x - b.x, m.y - b.y) < 10);
         if (mine) { mine.hp -= b.dmg; if (mine.hp <= 0) this.detonate(mine); continue; }
         // Der geschützte Boss-Rumpf lässt Geschosse durch – so erreicht man auch die Türme dahinter
-        const e = this.enemies.find((q) => !b.hit?.has(q) && !(q.kind === 'boss' && q.shielded) && Math.hypot(q.x - b.x, q.y - b.y) < q.r + 3);
+        // Treffer entlang der Flugstrecke dieses Bilds (nicht nur am Endpunkt): sonst fliegen Geschosse durch Ziele, die
+        // dicht am eigenen Schiff kleben, oder an schnellen Querfliegern vorbei
+        const e = this.enemies.find((q) => !b.hit?.has(q) && !(q.kind === 'boss' && q.shielded) && segDist(bx0, by0, b.x, b.y, q.x, q.y) < q.r + 3);
         if (e) {
           this.logSrc = b.src ?? 'other';
           this.logHit();
