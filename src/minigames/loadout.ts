@@ -496,8 +496,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
   // Störblitz: Takt und Reichweite wie der Kettenblitz; statt Schaden lähmt er (Kombination mit Türmen)
   stoerblitz: {
-    name: 'Störblitz', group: 'allgemein', color: '#a8f4ff', w: 2, chain: true, emp: true,
-    desc: 'Entladung ohne Schaden, weiter und mit mehr Sprüngen als der Kettenblitz (7, auf M-Plätzen 9): S- und M-Schiffe werden vom Schiff weggestoßen und sind 1,5 s lahmgelegt – sie schießen nicht und nehmen 50 % mehr Schaden. Trifft er ein schon gelähmtes Ziel, brennt dessen Elektrik durch (geringer Schaden: ein Späher der Stufe 1 hält vier solche Treffer aus). Am Einschlag bleibt 2,5 s eine Ionenwolke, die jeden lähmt, der hineinfliegt. L-Schiffen und Strukturen nimmt jeder Treffer 15 % Schild und ionisiert sie: 1,5 s lang 25 % mehr Schaden.',
+    // nur M wie der Kettenblitz (auf der Cobra ebenso etwas langsamer und ein Sprung weniger)
+    name: 'Störblitz', group: 'allgemein', color: '#a8f4ff', w: 2, chain: true, emp: true, mOnly: true,
+    desc: 'Nur für M-Waffenplätze. Entladung ohne Schaden, weiter und mit mehr Sprüngen als der Kettenblitz (9, auf der Cobra 8 und etwas langsamer): S- und M-Schiffe werden vom Schiff weggestoßen und sind 1,5 s lahmgelegt – sie schießen nicht und nehmen 50 % mehr Schaden. Trifft er ein schon gelähmtes Ziel, brennt dessen Elektrik durch (geringer Schaden: ein Späher der Stufe 1 hält vier solche Treffer aus). Am Einschlag bleibt 2,5 s eine Ionenwolke, die jeden lähmt, der hineinfliegt. L-Schiffen und Strukturen nimmt jeder Treffer 15 % Schild und ionisiert sie: 1,5 s lang 25 % mehr Schaden.',
     // gut ein Drittel weiter als der Kettenblitz
     s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.22, angle: 0 },
     m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.245, angle: 0 },

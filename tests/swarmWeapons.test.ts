@@ -33,6 +33,7 @@ describe('Kettenblitz', () => {
 
   it('nur auf M-Schiffen; auf der Cobra ein Sprung weniger und etwas langsamer als auf der Drache', () => {
     expect((game({ ship: 'mamba', weapon: 'blitz' }) as unknown as { wpnId: string }).wpnId).not.toBe('blitz');
+    expect((game({ ship: 'mamba', weapon: 'stoerblitz' }) as unknown as { wpnId: string }).wpnId).not.toBe('stoerblitz');
     const count = (ship: 'dragon' | 'cobra') => {
       const g = game({ ship, weapon: 'blitz' }, 1);
       for (let k = 0; k < 10; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
@@ -78,7 +79,7 @@ describe('Kettenblitz', () => {
 
 describe('Störblitz', () => {
   it('legt eine Reihe Späher lahm, ohne Schaden: weggestoßen, gelähmt, Ionenwolke; danach geht es weiter', () => {
-    const g = game({ weapon: 'stoerblitz' });
+    const g = game({ ship: 'cobra', weapon: 'stoerblitz' });
     const row: E[] = [];
     for (let k = 0; k < 6; k++) row.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
     g.enemies.push(...row);
@@ -103,7 +104,7 @@ describe('Störblitz', () => {
   });
 
   it('Überladung: ein gelähmter Späher der Stufe 1 fällt nach vier weiteren Treffern, nicht nach drei', () => {
-    const g = game({ weapon: 'stoerblitz' }, 1);
+    const g = game({ ship: 'dragon', weapon: 'stoerblitz' }, 1);
     const e = g.makeEnemy('ks', g.px, g.py - 300);
     g.enemies.push(e);
     const zap = () => { e.x = g.px; e.y = g.py - 300; g.fireChain(g.px, g.py - 20, -Math.PI / 2); };
@@ -116,7 +117,7 @@ describe('Störblitz', () => {
   });
 
   it('senkt den Schild von Großkampfschiffen und Türmen, ohne sie lahmzulegen', () => {
-    const g = game({ weapon: 'stoerblitz' });
+    const g = game({ ship: 'dragon', weapon: 'stoerblitz' });
     g.spawnBoss(false);
     const t = g.enemies.find((e) => e.parent)!;
     t.sh = t.shMax;

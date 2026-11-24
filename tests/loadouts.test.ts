@@ -15,18 +15,18 @@ afterEach(() => { delete (globalThis as { localStorage?: unknown }).localStorage
 
 describe('Ausrüstung je Schiff', () => {
   it('jedes Schiff behält seine zuletzt eingebaute Ausrüstung', () => {
-    setLoadout({ ship: 'mamba', weapon: 'stoerblitz', missile: 'schwarm' });
+    setLoadout({ ship: 'mamba', weapon: 'schrot', missile: 'schwarm' });
     setLoadout({ ship: 'cobra' });
     setLoadout({ turret: 'flak', weapon: 'boson' });
     setLoadout({ ship: 'mamba' });
-    expect(loadout().weapon).toBe('stoerblitz');
+    expect(loadout().weapon).toBe('schrot');
     expect(loadout().missile).toBe('schwarm');
     setLoadout({ ship: 'cobra' });
     expect(loadout().turret).toBe('flak');
     expect(loadout().weapon).toBe('boson');
     // auch nach einem Neustart (aus dem Speicher gelesen) und für Einsätze mit diesem Schiff
     resetLoadoutCache();
-    expect(loadoutFor('mamba').weapon).toBe('stoerblitz');
+    expect(loadoutFor('mamba').weapon).toBe('schrot');
   });
 
   it('ein Schiff ohne gemerkte Ausrüstung übernimmt, was passt', () => {
@@ -39,12 +39,12 @@ describe('Ausrüstung je Schiff', () => {
 
 describe('Loadouts', () => {
   it('speichern, abweichen, zurücksetzen – auch mit Schiffswechsel', () => {
-    setLoadout({ ship: 'mamba', weapon: 'stoerblitz', missile: 'schwarm' });
+    setLoadout({ ship: 'mamba', weapon: 'schrot', missile: 'schwarm' });
     const i = storeLoadout();
     expect(i).toBe(0);
     const q = savedLoadouts().list[0]!;
     expect(q.name).toContain('Mamba');
-    expect(q.name).toContain('Störblitz');
+    expect(q.name).toContain('Schrotbatterie');
     expect(q.tag).toBe('schwarm');
     expect(loadoutChanged()).toBe(false);
     setLoadout({ weapon: 'puls' });
@@ -52,7 +52,7 @@ describe('Loadouts', () => {
     setLoadout({ ship: 'cobra' });
     applyLoadout(0);
     expect(loadout().ship).toBe('mamba');
-    expect(loadout().weapon).toBe('stoerblitz');
+    expect(loadout().weapon).toBe('schrot');
     expect(loadoutChanged()).toBe(false);
   });
 
