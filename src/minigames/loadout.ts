@@ -594,6 +594,19 @@ export function sustainedDps(g: X4Gun, beam = false): number {
 }
 
 /**
+ * Flakturm: die Granate trifft nie direkt, sie zerplatzt zu einer Sprengwolke, die je Ziel gut 70 % eines Spähers trifft
+ * (Hülle + Schild, siehe pflakBurst). Für die Anzeige in X4-Werten umgerechnet – Späher Stufe 1 (31), Grundausrüstung
+ * (Schaden 6 je X4-Punkt × DMG_SCALE) –, damit die Zahl mit den anderen Türmen vergleichbar ist; gilt je Ziel in der Wolke.
+ */
+export const FLAK_SCOUT_HP = 30.6;
+export const flakX4Dmg = (): number => (FLAK_SCOUT_HP * 1.02 * 0.7) / (6 * DMG_SCALE);
+
+/** Schaden pro Sekunde eines Turms für die Anzeige (Flak: Sprengwolke je Ziel statt der Granate selbst) */
+export function turretDps(t: { gun: X4Gun; beam?: boolean; flak?: boolean }): number {
+  return t.flak ? sustainedDps({ ...t.gun, dmg: flakX4Dmg() }) : sustainedDps(t.gun, t.beam);
+}
+
+/**
  * Wirksame Dauerleistung für den Ausgleich: Schaden über die Hülle eines typischen Gegners hinaus verpufft
  * (eine Bosonenlanze trifft einen Jäger nicht stärker als nötig) – je Geschoss zählen höchstens 400 Punkte.
  */

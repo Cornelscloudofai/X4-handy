@@ -1,7 +1,8 @@
 // Waffen gegen Schwärme: Kettenblitz (Bordwaffe), Flakturm, Karten für Schrotwaffen und den Kettenblitz
 import { describe, expect, it } from 'vitest';
 import { ShooterGame, interceptTime } from '../src/minigames/shooter';
-import { DEFAULT_LOADOUT, type Loadout } from '../src/minigames/loadout';
+import { DEFAULT_LOADOUT, FLAK_SCOUT_HP, TURRETS, turretDps, type Loadout } from '../src/minigames/loadout';
+import { enemyStats } from '../src/minigames/shooterData';
 
 type E = { kind: string; x: number; y: number; hp: number; max: number; sh: number; parent?: unknown };
 type G = {
@@ -93,6 +94,15 @@ describe('Flakturm', () => {
     // aus der Turmmitte gefeuert, startete jede zweite Granate eines Turms an derselben Stelle – aus den Rohren nie
     const pts = new Set(starts.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
     expect(pts.size).toBe(starts.length);
+  });
+});
+
+describe('Anzeige im Ausstattungsmenü', () => {
+  it('Flakturm: Schaden der Sprengwolke je Ziel (Späher Stufe 1), nicht der Granate', () => {
+    const s = enemyStats('ks', 1, {});
+    expect(FLAK_SCOUT_HP).toBeCloseTo(s.hp + s.sh, 1);
+    // gegen ein einzelnes S-Ziel etwa so stark wie der Gatling-Turm im Mittel, deutlich über dem Pulsturm
+    expect(turretDps(TURRETS.flak)).toBeGreaterThan(turretDps(TURRETS.puls) * 2.5);
   });
 });
 
