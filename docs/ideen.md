@@ -134,8 +134,12 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
   am Ende Zahlen wie bei den Messungen zu Flak und Gatling: Schaden, Abschüsse, Feuerpausen mit Ziel, erlittener
   Schaden. Erst Entwicklerwerkzeug, später ggf. für Spieler.
 - Gatling-Turm: Streuung (±1,35°) ggf. um ein Drittel senken – nach weiteren Tests mit der neuen Zielwahl.
-- Störblitz: falls zu schwach – Lähmung 1,5 s oder gelähmte Ziele nehmen mehr Schaden (z. B. +25 %); Dauerlähmung
-  ggf. begrenzen (Sperre nach 3 s Lähmung).
+- Störblitz, vorgemerkt zum Testen:
+  - **Fächer statt Kette:** trifft alles in einem Kegel vor dem Bug (Schockwelle).
+  - **Überladung:** Treffer auf ein schon gelähmtes Ziel macht geringen Schaden – auf Stufe 1 braucht ein Späher
+    eher 3 als 2 solcher Treffer.
+  - **Kollisionen:** prallt ein Schwarmmitglied auf ein gelähmtes, werden beide kurz gelähmt.
+  - Dauerlähmung ggf. begrenzen (Sperre nach einigen Sekunden Lähmung).
 - Kettenblitz, offene Punkte: Beschreibung nennt 7/9 Sprünge statt 5/7; „Schwere Ladung“ wirkt beim Kettenblitz, bei
   der Flak nicht; Ausrüstungsstufe ändert seinen Schaden nicht (gewollt, aber nirgends erklärt); Schuss ins Leere
   verpufft.

@@ -63,22 +63,28 @@ describe('Kettenblitz', () => {
 });
 
 describe('Störblitz', () => {
-  it('legt eine Reihe Späher lahm, ohne Schaden: sie treiben und schießen nicht, nach 1 s geht es weiter', () => {
+  it('legt eine Reihe Späher lahm, ohne Schaden: weggestoßen, gelähmt, Ionenwolke; danach geht es weiter', () => {
     const g = game({ weapon: 'stoerblitz' });
     const row: E[] = [];
     for (let k = 0; k < 6; k++) row.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
     g.enemies.push(...row);
     for (const e of row) { e.vx = 0; e.vy = 120; }
     g.fireChain(g.px, g.py - 20, -Math.PI / 2);
-    expect(row.every((e) => (e.stun ?? 0) > 0.9)).toBe(true);
+    expect(row.every((e) => (e.stun ?? 0) > 1.4)).toBe(true);
     expect(row.every((e) => e.hp === e.max && e.sh === e.shMax)).toBe(true);
-    const e0 = row[0], y0 = e0.y;
-    for (let i = 0; i < 30; i++) g.update(DT);
-    // bremst binnen einer Sekunde bis zum Stillstand, schießt nicht
-    expect(e0.y).toBeGreaterThan(y0);
-    expect(Math.hypot(e0.vx, e0.vy)).toBeLessThan(120 * 0.1);
+    const e0 = row[0], d0 = Math.hypot(e0.x - g.px, e0.y - g.py);
+    for (let i = 0; i < 60; i++) g.update(DT);
+    // vom Schiff weggestoßen (gut 100 Punkte), steht dann fast still, schießt nicht
+    expect(Math.hypot(e0.x - g.px, e0.y - g.py)).toBeGreaterThan(d0 + 100);
+    expect(Math.hypot(e0.vx, e0.vy)).toBeLessThan(40);
     expect(g.bullets.filter((b) => (b as { from?: string }).from === 'e').length).toBe(0);
-    for (let i = 0; i < 40; i++) g.update(DT);
+    // ein frischer Späher, der in die Ionenwolke fliegt, wird ebenfalls gelähmt
+    const late = g.makeEnemy('ks', g.px - 40, g.py - 150);
+    g.enemies.push(late);
+    g.update(DT);
+    expect(late.stun ?? 0).toBeGreaterThan(0);
+    // Wolken und Lähmung klingen ab
+    for (let i = 0; i < 60 * 5; i++) g.update(DT);
     expect(e0.stun ?? 0).toBeLessThanOrEqual(0);
   });
 

@@ -351,7 +351,11 @@ const ANOMALY_R = 1250, ANOMALY_CORE = 78, CORE_DMG = 18, CORE_FLING = 760;
 /** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
 const ZAP_JUMPS = 4, ZAP_HOP = 150, ZAP_CONE = 0.55;
 /** Störblitz: Lähmung je Treffer (s) für S- und M-Schiffe; Schildverlust je Treffer bei L-Schiffen und Strukturen (Anteil) */
-const EMP_STUN = 1, EMP_SHIELD = 0.15;
+const EMP_STUN = 1.5, EMP_SHIELD = 0.15;
+/** Störblitz: Ionenstoß (Anfangstempo vom Schiff weg; bremst binnen einer Sekunde, ≈ 150 Punkte Weg) und Ionenwolke am Einschlag (Radius, Dauer) */
+const EMP_KNOCK = 750, ION_R = 55, ION_T = 2.5;
+/** Störblitz: Radius der Sicherheitsblase – nur darin stößt der Blitz Gegner weg */
+const EMP_BUBBLE = 400;
 /** Störblitz: mehr Sprünge und weitere Sprünge als der Kettenblitz (Sicherheitsblase); gelähmte Ziele nehmen mehr Schaden */
 const EMP_JUMPS = 7, EMP_HOP = 190, EMP_VULN = 1.5;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
@@ -942,6 +946,8 @@ export class ShooterGame implements MiniGame {
   private missileCd = 2;
   private missilesUsed = 0;
   /** Kettenblitze im Bild: Pfade (je Sprung eine gezackte Linie), Restzeit */
+  /** Störblitz: Ionenwolken an den Einschlägen – wer hineinfliegt, ist gelähmt */
+  private ions: { x: number; y: number; t: number; seed: number }[] = [];
   private zaps: { paths: [number, number][][]; fil: [number, number][][]; forks: [number, number][][]; hits: [number, number][]; t: number; max: number; /** Störblitz (andere Farbe) */ emp?: boolean }[] = [];
   /** Triebwerksrauch (eigenes Schiff und Staffel); Düsen des eigenen Schiffs in Weltlage (beim Zeichnen ermittelt) */
   private smoke = new Smoke();
@@ -4612,6 +4618,7 @@ export class ShooterGame implements MiniGame {
     this.rails = this.rails.filter((r) => r.t > 0);
     for (const z of this.zaps) z.t -= dt;
     this.zaps = this.zaps.filter((z) => z.t > 0);
+    this.updateIons(dt);
     const w = this.wpn;
     // Magazin bzw. Salve: nach einer Pause ohne Feuern ist es wieder voll (wie in X4)
     if (this.fireId === null) {
@@ -5613,10 +5620,64 @@ export class ShooterGame implements MiniGame {
       e.shT = 0; e.shFlash = 0.35;
       return;
     }
-    if (!e.stun || e.stun <= 0) e.stunSpin = (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random() * 2.5);
-    e.stun = EMP_STUN;
-    e.flash = 0.08;
+    this.stunEnemy(e);
+    // Ionenstoß: vom eigenen Schiff weg, nur im Nahbereich (Sicherheitsblase) – je näher, desto kräftiger; weiter
+    // entfernte Ziele bleiben stehen, wo sie sind (in Reichweite der Türme). Die Lähmung bremst ihn binnen 1 s ab
+    const dx = e.x - this.px, dy = e.y - this.py, d = Math.hypot(dx, dy) || 1, kn = EMP_KNOCK * clamp((EMP_BUBBLE - d) / 250, 0, 1);
+    e.vx = (dx / d) * kn; e.vy = (dy / d) * kn;
+    // Ionenwolke am Einschlag (höchstens 16 zugleich, die älteste weicht)
+    this.ions.push({ x: e.x, y: e.y, t: ION_T, seed: Math.random() * 10 });
+    if (this.ions.length > 16) this.ions.shift();
+  }
+
+  /** S- oder M-Schiff lahmlegen (Störblitz, Ionenwolke) */
+  private stunEnemy(e: Enemy, t = EMP_STUN): void {
+    if (!e.stun || e.stun <= 0) { e.stunSpin = (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random() * 2.5); e.flash = 0.08; }
+    e.stun = Math.max(e.stun ?? 0, t);
     if (e.cl != null) this.breakCluster(e.cl);
+  }
+
+  /** Ionenwolken: verblassen; S- und M-Schiffe darin sind gelähmt (Neuankömmlinge voll, wer drin bleibt, mindestens kurz) */
+  private updateIons(dt: number): void {
+    if (!this.ions.length) return;
+    for (const c of this.ions) c.t -= dt;
+    this.ions = this.ions.filter((c) => c.t > 0);
+    for (const e of this.enemies) {
+      if (e.parent || e.nest || e.plat || e.hive || e.boje || e.kind === 'boss' || ECLASS[e.kind] === 'L') continue;
+      const c = this.ions.find((q) => Math.hypot(q.x - e.x, q.y - e.y) < ION_R * Math.min(1, q.t / 0.5) + e.r);
+      if (!c) continue;
+      if (!e.stun || e.stun <= 0) this.stunEnemy(e);
+      else e.stun = Math.max(e.stun, 0.3);
+    }
+  }
+
+  /** Ionenwolken zeichnen: türkiser, wabernder Schleier mit feinen Funken (k: Stärke, im Nebel schwächer) */
+  private drawIons(ctx: CanvasRenderingContext2D, k = 1): void {
+    if (!this.ions.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const c of this.ions) {
+      const life = Math.min(1, c.t / 0.5) * Math.min(1, (ION_T - c.t) / 0.15 + 0.3), tt = this.time + c.seed;
+      for (let j = 0; j < 3; j++) {
+        const ox = Math.sin(tt * (0.9 + j * 0.4) + j * 2) * ION_R * 0.25, oy = Math.cos(tt * (0.7 + j * 0.5) + j) * ION_R * 0.25;
+        const r = ION_R * (0.75 + 0.2 * Math.sin(tt * 1.3 + j));
+        const g = ctx.createRadialGradient(c.x + ox, c.y + oy, 0, c.x + ox, c.y + oy, r);
+        g.addColorStop(0, `rgba(120,255,240,${(0.13 * life * k).toFixed(3)})`);
+        g.addColorStop(0.6, `rgba(60,200,220,${(0.06 * life * k).toFixed(3)})`);
+        g.addColorStop(1, 'rgba(40,160,200,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(c.x + ox, c.y + oy, r, 0, Math.PI * 2); ctx.fill();
+      }
+      // feine Entladungsfunken im Schleier
+      if (Math.random() < 0.25 * life) {
+        const a = Math.random() * Math.PI * 2, r0 = Math.random() * ION_R * 0.7;
+        ctx.strokeStyle = `rgba(210,255,250,${(0.7 * life * k).toFixed(3)})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(c.x + Math.cos(a) * r0, c.y + Math.sin(a) * r0);
+        ctx.lineTo(c.x + Math.cos(a + 0.4) * (r0 + 10), c.y + Math.sin(a + 0.4) * (r0 + 10)); ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   /** Kettenblitze zeichnen: weiter blauer Schein, heller Kern, weißer Faden (k: Stärke, im Nebel schwächer) */
@@ -6629,6 +6690,7 @@ export class ShooterGame implements MiniGame {
     this.drawRocketLocks(ctx, t);
     this.drawBlasts(ctx, t);
     this.drawBeams(ctx, t);
+    this.drawIons(ctx);
     this.drawZaps(ctx);
     // Geschosse über den Schiffen: die Türme liegen oben auf dem Rumpf, ihre Schüsse fliegen darüber hinweg
     this.drawShots(ctx);
@@ -8461,6 +8523,7 @@ export class ShooterGame implements MiniGame {
     for (const e of this.enemies) if (e.beamDur && e.beamT && e.beamT <= e.beamDur) this.drawKyonBeam(ctx, e, this.time, 0.35 + this.fog, true);
     // Triebwerke der Jäger und Späher: als leuchtende Punkte auch im Nebel zu sehen
     this.drawEngineGlows(ctx, this.fog);
+    this.drawIons(ctx, 0.5 * this.fog);
     this.drawZaps(ctx, 0.5 * this.fog);
     ctx.globalCompositeOperation = 'lighter';
     // Blitze: feine gezackte Linien mit weichem Leuchtsaum (Breite in Bildschirmpunkten), Äste schwächer

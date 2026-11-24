@@ -487,7 +487,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // Störblitz: Takt und Reichweite wie der Kettenblitz; statt Schaden lähmt er (Kombination mit Türmen)
   stoerblitz: {
     name: 'Störblitz', group: 'allgemein', color: '#a8f4ff', w: 2, chain: true, emp: true,
-    desc: 'Entladung ohne Schaden, weiter und mit mehr Sprüngen als der Kettenblitz (7, auf M-Plätzen 9): S- und M-Schiffe sind 1 s lahmgelegt – sie bleiben stehen, schießen nicht und nehmen 50 % mehr Schaden. L-Schiffen und Strukturen nimmt jeder Treffer 15 % Schild. Hält Schwärme auf Abstand, bis die Türme sie erledigen.',
+    desc: 'Entladung ohne Schaden, weiter und mit mehr Sprüngen als der Kettenblitz (7, auf M-Plätzen 9): S- und M-Schiffe werden vom Schiff weggestoßen und sind 1,5 s lahmgelegt – sie schießen nicht und nehmen 50 % mehr Schaden. Am Einschlag bleibt 2,5 s eine Ionenwolke, die jeden lähmt, der hineinfliegt. L-Schiffen und Strukturen nimmt jeder Treffer 15 % Schild.',
     // gut ein Drittel weiter als der Kettenblitz
     s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.22, angle: 0 },
     m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.245, angle: 0 },
