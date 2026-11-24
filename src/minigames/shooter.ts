@@ -5627,7 +5627,8 @@ export class ShooterGame implements MiniGame {
     if (e.stun && e.stun > 0) {
       this.damageEnemy(e, (this.swarmDmg * EMP_OVERLOAD * SWARM_K[cls]) / EMP_VULN, 0, 0);
       this.fx.burst(e.x, e.y, '#d8fff8', 4, 110, 1.2, 'spark', 0.25);
-      if (!this.enemies.includes(e)) return;
+      // verlängert die Lähmung nicht und hinterlässt keine neue Wolke – sonst ließe sich ein Ziel dauerhaft lahmhalten
+      return;
     }
     this.stunEnemy(e);
     // Ionenstoß: vom eigenen Schiff weg, nur im Nahbereich (Sicherheitsblase) – je näher, desto kräftiger; weiter
