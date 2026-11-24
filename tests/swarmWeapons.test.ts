@@ -65,8 +65,9 @@ describe('Störblitz', () => {
     expect(row.every((e) => e.hp === e.max && e.sh === e.shMax)).toBe(true);
     const e0 = row[0], y0 = e0.y;
     for (let i = 0; i < 30; i++) g.update(DT);
-    // treibt mit der alten Fahrt weiter (gebremst), schießt nicht
-    expect(e0.y).toBeGreaterThan(y0 + 40);
+    // bremst binnen einer Sekunde bis zum Stillstand, schießt nicht
+    expect(e0.y).toBeGreaterThan(y0);
+    expect(Math.hypot(e0.vx, e0.vy)).toBeLessThan(120 * 0.1);
     expect(g.bullets.filter((b) => (b as { from?: string }).from === 'e').length).toBe(0);
     for (let i = 0; i < 40; i++) g.update(DT);
     expect(e0.stun ?? 0).toBeLessThanOrEqual(0);

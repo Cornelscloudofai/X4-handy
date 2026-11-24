@@ -5138,11 +5138,11 @@ export class ShooterGame implements MiniGame {
         }
         continue;
       }
-      // Störblitz: lahmgelegt – kein Antrieb, keine Waffen; treibt mit der alten Fahrt weiter (leicht gebremst) und trudelt
+      // Störblitz: lahmgelegt – kein Antrieb, keine Waffen; kommt binnen einer Sekunde zum Stehen und trudelt
       if (e.stun && e.stun > 0) {
         e.stun -= dt;
         if (e.beamT && e.beamT > 0) e.beamT = 0; // laufender Strahl bricht ab
-        const k = Math.exp(-0.5 * dt);
+        const k = Math.exp(-5 * dt);
         e.vx *= k; e.vy *= k;
         e.ang = wrapA(e.ang + (e.stunSpin ?? 1) * dt);
         e.x = clamp(e.x + e.vx * dt, 20, this.WW - 20);
