@@ -2,7 +2,7 @@
 // Vorerst frei wählbar (im Kampfmenü); später kommen Schiffe und Teile aus Werft und eigener Produktion.
 
 export type ShipId = 'jaguar' | 'mamba' | 'asp' | 'balaur' | 'chimera' | 'wolf' | 'dragon' | 'cobra' | 'klapperschlange' | 'raptor' | 'argon';
-export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'massdriver' | 'blitz' | 'schnellplasma' | 'plasmasalve';
+export type WeaponId = 'puls' | 'bolzen' | 'schrot' | 'strahl' | 'plasma' | 'neutron' | 'tau' | 'thermal' | 'boson' | 'massdriver' | 'blitz' | 'stoerblitz' | 'schnellplasma' | 'plasmasalve';
 export type TurretId = 'puls' | 'strahl' | 'neutron' | 'tau' | 'plasma' | 'boson' | 'rakete' | 'flak';
 /** Schwere L-Türme (Zerstörer): je Waffe ein eigenes Kanonenrohr-Bild */
 export type LTurretId = 'plasma' | 'tau' | 'boson' | 'neutron' | 'silo';
@@ -398,6 +398,11 @@ export interface WeaponDef {
    * gegen größere Schiffe und Türme fast wirkungslos (Waffe gegen Schwärme)
    */
   chain?: boolean;
+  /**
+   * Störblitz (mit chain): springt wie der Kettenblitz, macht aber keinen Schaden – legt S- und M-Schiffe kurz lahm
+   * (treiben antriebslos, schießen nicht) und senkt bei L-Schiffen und Strukturen den Schild
+   */
+  emp?: boolean;
   /** Zielhilfe im Verhältnis zu sonst (Bosonenlanze: kleiner Schwenkbereich) */
   gimbal?: number;
   color: string;
@@ -476,6 +481,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   blitz: {
     name: 'Kettenblitz', group: 'allgemein', color: '#bfe4ff', w: 2, chain: true,
     desc: 'Entladung, die von Ziel zu Ziel springt (7 Sprünge, auf M-Plätzen 9): jeder Treffer genau so stark, dass ein Kha’ak-Späher vergeht – gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
+    s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.16, angle: 0 },
+    m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.18, angle: 0 },
+  },
+  // Störblitz: Takt und Reichweite wie der Kettenblitz; statt Schaden lähmt er (Kombination mit Türmen)
+  stoerblitz: {
+    name: 'Störblitz', group: 'allgemein', color: '#a8f4ff', w: 2, chain: true, emp: true,
+    desc: 'Entladung wie der Kettenblitz, aber ohne Schaden: S- und M-Schiffe sind 1 s lahmgelegt – sie treiben antriebslos und schießen nicht, die Türme treffen sie leicht. L-Schiffen und Strukturen senkt jeder Treffer den Schild.',
     s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.16, angle: 0 },
     m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.18, angle: 0 },
   },
@@ -886,7 +898,7 @@ export type LoTag = (typeof LO_TAGS)[number];
 /** Wofür Waffen, Türme und Raketen taugen (Kennzeichen auf den Karten im Hangar) */
 export const WEAPON_ROLE: Record<WeaponId, Role> = {
   puls: 'allround', bolzen: 'allround', schrot: 'schwarm', strahl: 'abwehr', plasma: 'gross', neutron: 'schwarm', tau: 'schwarm',
-  thermal: 'gross', boson: 'gross', massdriver: 'gross', blitz: 'schwarm', schnellplasma: 'gross', plasmasalve: 'gross',
+  thermal: 'gross', boson: 'gross', massdriver: 'gross', blitz: 'schwarm', stoerblitz: 'allround', schnellplasma: 'gross', plasmasalve: 'gross',
 };
 export const TURRET_ROLE: Record<TurretId, Role> = { puls: 'abwehr', strahl: 'abwehr', neutron: 'schwarm', tau: 'schwarm', plasma: 'gross', boson: 'gross', rakete: 'gross', flak: 'schwarm' };
 export const LTURRET_ROLE: Record<LTurretId, Role> = { plasma: 'gross', tau: 'schwarm', boson: 'gross', neutron: 'schwarm', silo: 'gross' };

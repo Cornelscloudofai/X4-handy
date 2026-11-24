@@ -4,7 +4,7 @@ import { ShooterGame, interceptTime } from '../src/minigames/shooter';
 import { DEFAULT_LOADOUT, FLAK_SCOUT_HP, TURRETS, turretDps, type Loadout } from '../src/minigames/loadout';
 import { enemyStats } from '../src/minigames/shooterData';
 
-type E = { kind: string; x: number; y: number; hp: number; max: number; sh: number; parent?: unknown };
+type E = { kind: string; x: number; y: number; hp: number; max: number; sh: number; shMax: number; parent?: unknown; stun?: number; vx: number; vy: number };
 type G = {
   update(dt: number): void; resize(w: number, h: number): void;
   px: number; py: number; aimA: number; enemies: E[]; clusters: Map<unknown, unknown>; bullets: { pflak?: boolean; x: number; y: number }[]; pTur: { a: number }[];
@@ -50,6 +50,38 @@ describe('Kettenblitz', () => {
     expect(s.cardFits(multi)).toBe(true);
     expect(p.cardFits(multi)).toBe(false);
     expect(p.cardFits(zap)).toBe(false);
+  });
+});
+
+describe('Störblitz', () => {
+  it('legt eine Reihe Späher lahm, ohne Schaden: sie treiben und schießen nicht, nach 1 s geht es weiter', () => {
+    const g = game({ weapon: 'stoerblitz' });
+    const row: E[] = [];
+    for (let k = 0; k < 6; k++) row.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
+    g.enemies.push(...row);
+    for (const e of row) { e.vx = 0; e.vy = 120; }
+    g.fireChain(g.px, g.py - 20, -Math.PI / 2);
+    expect(row.every((e) => (e.stun ?? 0) > 0.9)).toBe(true);
+    expect(row.every((e) => e.hp === e.max && e.sh === e.shMax)).toBe(true);
+    const e0 = row[0], y0 = e0.y;
+    for (let i = 0; i < 30; i++) g.update(DT);
+    // treibt mit der alten Fahrt weiter (gebremst), schießt nicht
+    expect(e0.y).toBeGreaterThan(y0 + 40);
+    expect(g.bullets.filter((b) => (b as { from?: string }).from === 'e').length).toBe(0);
+    for (let i = 0; i < 40; i++) g.update(DT);
+    expect(e0.stun ?? 0).toBeLessThanOrEqual(0);
+  });
+
+  it('senkt den Schild von Großkampfschiffen und Türmen, ohne sie lahmzulegen', () => {
+    const g = game({ weapon: 'stoerblitz' });
+    g.spawnBoss(false);
+    const t = g.enemies.find((e) => e.parent)!;
+    t.sh = t.shMax;
+    const hp = t.hp;
+    g.fireChain(t.x, t.y + 60, -Math.PI / 2);
+    expect(t.sh).toBeLessThan(t.shMax);
+    expect(t.hp).toBe(hp);
+    expect(t.stun ?? 0).toBe(0);
   });
 });
 

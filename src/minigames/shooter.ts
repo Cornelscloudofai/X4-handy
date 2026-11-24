@@ -139,6 +139,8 @@ interface Crate { x: number; y: number; vx: number; vy: number; rot: number; hp:
 /** Wrack (Deko und Deckung im Wrackfeld) */
 interface Enemy {
   kind: EKind; x: number; y: number; vx: number; vy: number;
+  /** Störblitz: lahmgelegt (Restzeit, s) – treibt antriebslos und trudelnd (Drehtempo), schießt nicht */
+  stun?: number; stunSpin?: number;
   hp: number; max: number; cd: number; r: number;
   target: 'f' | 'p'; orbit: number; flash: number; dir: number;
   /** Schutzziel, auf das der Gegner es abgesehen hat (target 'f') */
@@ -341,6 +343,8 @@ type Section = 'none' | 'rocks' | 'mines' | 'nebel' | 'wracks' | 'anomalie';
 const ANOMALY_R = 1250, ANOMALY_CORE = 78, CORE_DMG = 18, CORE_FLING = 760;
 /** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
 const ZAP_JUMPS = 5, ZAP_HOP = 150, ZAP_CONE = 0.55;
+/** Störblitz: Lähmung je Treffer (s) für S- und M-Schiffe; Schildverlust je Treffer bei L-Schiffen und Strukturen (Anteil) */
+const EMP_STUN = 1, EMP_SHIELD = 0.08;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
 const PFLAK_FUSE = 16, PFLAK_R = 62;
 /** Wirkung von Kettenblitz und Flak nach Schiffsklasse des Ziels (S = voll; Türme und Großkampfschiffe kaum) */
@@ -929,7 +933,7 @@ export class ShooterGame implements MiniGame {
   private missileCd = 2;
   private missilesUsed = 0;
   /** Kettenblitze im Bild: Pfade (je Sprung eine gezackte Linie), Restzeit */
-  private zaps: { paths: [number, number][][]; fil: [number, number][][]; forks: [number, number][][]; hits: [number, number][]; t: number; max: number }[] = [];
+  private zaps: { paths: [number, number][][]; fil: [number, number][][]; forks: [number, number][][]; hits: [number, number][]; t: number; max: number; /** Störblitz (andere Farbe) */ emp?: boolean }[] = [];
   /** Triebwerksrauch (eigenes Schiff und Staffel); Düsen des eigenen Schiffs in Weltlage (beim Zeichnen ermittelt) */
   private smoke = new Smoke();
   private jetPts: { x: number; y: number; w: number; col: string }[] = [];
@@ -5134,6 +5138,19 @@ export class ShooterGame implements MiniGame {
         }
         continue;
       }
+      // Störblitz: lahmgelegt – kein Antrieb, keine Waffen; treibt mit der alten Fahrt weiter (leicht gebremst) und trudelt
+      if (e.stun && e.stun > 0) {
+        e.stun -= dt;
+        if (e.beamT && e.beamT > 0) e.beamT = 0; // laufender Strahl bricht ab
+        const k = Math.exp(-0.5 * dt);
+        e.vx *= k; e.vy *= k;
+        e.ang = wrapA(e.ang + (e.stunSpin ?? 1) * dt);
+        e.x = clamp(e.x + e.vx * dt, 20, this.WW - 20);
+        e.y = clamp(e.y + e.vy * dt, 20, this.WH - 20);
+        // Funken aus der überlasteten Bordelektrik
+        if (Math.random() < dt * 6) this.fx.add({ x: e.x + (Math.random() - 0.5) * e.r * 1.4, y: e.y + (Math.random() - 0.5) * e.r * 1.4, color: '#bff8ff', size: 1.6, kind: 'spark', vx: (Math.random() - 0.5) * 60, vy: (Math.random() - 0.5) * 60, max: 0.18 });
+        continue;
+      }
       // Kha'ak-Turmplattformen und Nebennester (Nest-Einsatz) stehen fest
       if (e.plat) { this.updatePlat(e, dt); continue; }
       if (e.hive) { this.updateHive(e, dt); continue; }
@@ -5494,6 +5511,7 @@ export class ShooterGame implements MiniGame {
   private fireChain(ox: number, oy: number, a0: number): void {
     const range = this.wpn.range, hop = ZAP_HOP * (1 + 0.15 * this.c('zap'));
     const jumps = ZAP_JUMPS + (this.ship.gunSize === 'm' ? 2 : 0) + 2 * this.c('zap');
+    const emp = !!WEAPONS[this.wpnId as WeaponId]?.emp;
     const ok = (e: Enemy) => !(e.kind === 'boss' && e.shielded);
     let cur: Enemy | null = this.lock?.e && ok(this.lock.e) && Math.hypot(this.lock.e.x - ox, this.lock.e.y - oy) < range + this.lock.e.r ? this.lock.e : null;
     if (!cur) {
@@ -5524,8 +5542,9 @@ export class ShooterGame implements MiniGame {
         const cls = cur.parent || cur.nest || cur.plat || cur.hive ? 'L' : ECLASS[cur.kind];
         this.logHit();
         hits.push(to);
-        this.fx.burst(to[0], to[1], '#d8ecff', 3, 140, 1.1, 'spark', 0.2);
-        this.damageEnemy(cur, dmg * SWARM_K[cls], 0, 0);
+        this.fx.burst(to[0], to[1], emp ? '#c8fff6' : '#d8ecff', 3, 140, 1.1, 'spark', 0.2);
+        if (emp) this.empHit(cur, cls);
+        else this.damageEnemy(cur, dmg * SWARM_K[cls], 0, 0);
         from = to;
         let next: Enemy | null = null, nd = Infinity;
         for (const e of this.enemies) {
@@ -5544,9 +5563,25 @@ export class ShooterGame implements MiniGame {
       const [x, y] = p[i], a = Math.random() * Math.PI * 2, l = 12 + Math.random() * 22;
       forks.push(jagged([x, y], [x + Math.cos(a) * l, y + Math.sin(a) * l], l * 0.4, 2));
     }
-    this.zaps.push({ paths, fil, forks, hits, t: 0.22, max: 0.22 });
+    this.zaps.push({ paths, fil, forks, hits, t: 0.22, max: 0.22, emp });
     if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: ox, y: oy, r: 120, color: '#9fc8ff', t: 0, max: 0.2 });
-    sfx.zap(1, this.panAt(ox));
+    sfx.zap(emp ? 0.2 : 1, this.panAt(ox));
+  }
+
+  /**
+   * Störblitz-Treffer: S- und M-Schiffe sind EMP_STUN Sekunden lahmgelegt (ein Späher-Cluster zerfällt); L-Schiffe und
+   * Strukturen verlieren je Treffer einen Teil ihres Schilds, der so lange nicht nachlädt
+   */
+  private empHit(e: Enemy, cls: 'S' | 'M' | 'L'): void {
+    if (cls === 'L') {
+      e.sh = Math.max(0, e.sh - e.shMax * EMP_SHIELD);
+      e.shT = 0; e.shFlash = 0.35;
+      return;
+    }
+    if (!e.stun || e.stun <= 0) e.stunSpin = (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random() * 2.5);
+    e.stun = EMP_STUN;
+    e.flash = 0.08;
+    if (e.cl != null) this.breakCluster(e.cl);
   }
 
   /** Kettenblitze zeichnen: weiter blauer Schein, heller Kern, weißer Faden (k: Stärke, im Nebel schwächer) */
@@ -5568,7 +5603,11 @@ export class ShooterGame implements MiniGame {
       const u = z.t / z.max, flick = 0.7 + 0.3 * Math.abs(Math.sin(u * 19));
       const a = u ** 0.6 * k * flick;
       // Tiefe in Schichten: weiter, sehr blasser Schein – kühler Mantel – heller Kern – weißer Faden
-      for (const [w, col, al] of [[11, '60,90,230', 0.1], [5.5, '110,160,255', 0.28], [2.4, '185,220,255', 0.7], [0.9, '255,255,255', 1]] as const) {
+      // Störblitz: kälter, ins Türkise (Ionenentladung), sonst gleich aufgebaut
+      const layers = z.emp
+        ? [[11, '40,170,190', 0.1], [5.5, '90,230,240', 0.28], [2.4, '190,255,250', 0.7], [0.9, '255,255,255', 1]] as const
+        : [[11, '60,90,230', 0.1], [5.5, '110,160,255', 0.28], [2.4, '185,220,255', 0.7], [0.9, '255,255,255', 1]] as const;
+      for (const [w, col, al] of layers) {
         ctx.globalAlpha = Math.min(1, a * al);
         ctx.strokeStyle = `rgb(${col})`;
         ctx.lineWidth = lw(w);
@@ -7713,6 +7752,18 @@ export class ShooterGame implements MiniGame {
       ctx.strokeStyle = rgba(ELITES.kommandant.color, 0.28);
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.cmdBy.x, e.cmdBy.y); ctx.stroke();
+    }
+    // Störblitz: lahmgelegt – flackernder, türkiser Ionenschimmer um das Schiff, verblasst zum Ende hin
+    if (e.stun && e.stun > 0) {
+      const k = Math.min(1, e.stun / 0.3), fl = 0.55 + 0.45 * Math.abs(Math.sin(this.time * 37 + e.orbit * 5));
+      const g = ctx.createRadialGradient(e.x, e.y, e.r * 0.3, e.x, e.y, e.r * 1.5);
+      g.addColorStop(0, `rgba(150,255,245,${(0.18 * k * fl).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(150,255,245,0)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     }
     // Schild-Aufblitzen: Treffer auf den Schild zeigen eine dünne Blase
     if (e.shFlash > 0) {
