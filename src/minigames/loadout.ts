@@ -54,6 +54,8 @@ export interface TurretGroup { name: string; kind: 'M' | 'L' }
 
 export interface ShipDef {
   name: string;
+  /** Blitzwaffen auf diesem Schiff: Feuerrate (Faktor) und Sprünge (zusätzlich, auch negativ) */
+  chainK?: { rate: number; jumps: number };
   /** Klasse für die Anzeige */
   cls: 'S' | 'M' | 'L' | 'XL';
   /** Seitenverhältnis des Bilds (Breite : Länge) bei langen Schiffen; size ist dann die Länge (sonst quadratisch) */
@@ -254,10 +256,11 @@ export const SHIPS: Record<ShipId, ShipDef> = {
   }),
   dragon: ship('M', {
     name: 'Dragon', role: 'Korvette', desc: 'Furchteinflößende Korvette: sechs M-Waffenplätze, ein M-Raketenwerfer, zwei Türme, nur ein Schild. Torpedo: langsamer, schwerer Schuss mit großem Flächenschaden.',
-    x4: { hull: 21000, engines: 1, shields: 1, weapons: 6, launchers: 1, turrets: 2, missiles: 2, v: 478, dragYaw: 11.298 },
+    x4: { hull: 21000, engines: 1, shields: 1, weapons: 6, launchers: 1, turrets: 2, missiles: 12, v: 478, dragYaw: 11.298 },
     gunWidth: 28, gunPos: [-14.5, -12.3, -8.9, 8.9, 12.3, 14.5], turrets: [[-5.9, 4.4], [5.9, 4.4]], turretGroup: [0, 1], groups: [{ name: 'Turm links', kind: 'M' }, { name: 'Turm rechts', kind: 'M' }], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
   }),
   cobra: ship('M', {
+    chainK: { rate: 0.85, jumps: -1 },
     name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
     x4: { hull: 33000, engines: 3, shields: 2, weapons: 3, launchers: 0, turrets: 4, missiles: 0, v: 518, dragYaw: 11 },
     gunWidth: 16, gunPos: [-3.7, 0, 3.7], turrets: [[-7.2, -0.4], [7.2, -0.4], [-7.2, 18.5], [7.2, 18.5]],
@@ -382,6 +385,8 @@ export interface X4Gun { dmg: number; rate: number; amt: number; mag: number; re
 
 export interface WeaponDef {
   name: string;
+  /** nur auf M-Waffenplätzen (Korvette, Fregatte) */
+  mOnly?: boolean;
   /** Split-eigene Waffe, allgemeine Waffe (von vielen Völkern gebaut) oder schwere Waffe nur für L-Waffenplätze */
   group: 'split' | 'allgemein' | 'schwer';
   desc: string;
@@ -483,8 +488,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
   // Kettenblitz: die Werte zählen nur für Takt und Reichweite (rund 530 Spielpunkte) – den Schaden bestimmt das Ziel
   blitz: {
-    name: 'Kettenblitz', group: 'allgemein', color: '#bfe4ff', w: 2, chain: true,
-    desc: 'Entladung, die von Ziel zu Ziel springt (4 Sprünge, auf M-Plätzen 6): in der Grundausrüstung zerstört jeder Treffer einen Kha’ak-Späher der Stufe 1 – auf höheren Stufen braucht es mehr; gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
+    // nur M: auf Jägern mit einem Waffenplatz wäre er fast immer die beste Wahl (Schwärme ×3–4 gegenüber jeder Kanone)
+    name: 'Kettenblitz', group: 'allgemein', color: '#bfe4ff', w: 2, chain: true, mOnly: true,
+    desc: 'Nur für M-Waffenplätze. Entladung, die von Ziel zu Ziel springt (6 Sprünge, auf der Cobra 5 und etwas langsamer): in der Grundausrüstung zerstört jeder Treffer einen Kha’ak-Späher der Stufe 1 – auf höheren Stufen braucht es mehr; gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
     s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.16, angle: 0 },
     m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.18, angle: 0 },
   },
@@ -542,6 +548,7 @@ export function weaponGun(w: WeaponDef, size: GunSize): X4Gun {
 
 /** Waffe passt auf diesen Waffenplatz (schwere Waffen nur auf L-Plätze) */
 export function weaponFits(w: WeaponDef, size: GunSize): boolean {
+  if (w.mOnly) return size === 'm';
   return w.group !== 'schwer' || size === 'l';
 }
 

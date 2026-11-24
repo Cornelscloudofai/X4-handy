@@ -1206,6 +1206,8 @@ export class ShooterGame implements MiniGame {
     // eigenes Schiff aus dem Sektor: kommt mit seinen Schäden ins Gefecht
     if (cfg.startHull != null) this.hull = clamp(cfg.startHull * 100, 5, 100);
     this.wpnBase = gameGun(weaponGun(wd, this.ship.gunSize), wd);
+    // Blitzwaffen je Schiff abgestimmt (Cobra: vier Türme decken große Ziele, der Blitz ist dort etwas schwächer)
+    if (wd.chain && this.ship.chainK) this.wpnBase.interval /= this.ship.chainK.rate;
     this.wpnId = wOk ? lo.weapon : 'puls';
     this.wpn = this.wpnMods();
     this.tw = gameGun(td.gun, td);
@@ -5625,7 +5627,7 @@ export class ShooterGame implements MiniGame {
   private fireChain(ox: number, oy: number, a0: number): void {
     const emp = !!WEAPONS[this.wpnId as WeaponId]?.emp;
     const range = this.wpn.range, hop = (emp ? EMP_HOP : ZAP_HOP) * (1 + 0.15 * this.c('zap'));
-    const jumps = (emp ? EMP_JUMPS : ZAP_JUMPS) + (this.ship.gunSize === 'm' ? 2 : 0) + 2 * this.c('zap');
+    const jumps = (emp ? EMP_JUMPS : ZAP_JUMPS) + (this.ship.gunSize === 'm' ? 2 : 0) + (this.ship.chainK?.jumps ?? 0) + 2 * this.c('zap');
     const ok = (e: Enemy) => !(e.kind === 'boss' && e.shielded);
     let cur: Enemy | null = this.lock?.e && ok(this.lock.e) && Math.hypot(this.lock.e.x - ox, this.lock.e.y - oy) < range + this.lock.e.r ? this.lock.e : null;
     if (!cur) {

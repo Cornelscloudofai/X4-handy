@@ -1,7 +1,7 @@
 // Prüft die zuletzt zugesagten Kampf-Änderungen direkt im Spiel (X4-Maßstab), so wie der Spieler sie sieht
 import { afterAll, describe, expect, it } from 'vitest';
 import { ShooterGame } from '../src/minigames/shooter';
-import { DEFAULT_LOADOUT, RANGE_X, SHIPS, setSizeScale, type Loadout } from '../src/minigames/loadout';
+import { DEFAULT_LOADOUT, LTURRETS, RANGE_X, SHIPS, TURRETS, setSizeScale, type Loadout } from '../src/minigames/loadout';
 import type { Mission } from '../src/minigames/missions';
 
 const DT = 1 / 60;
@@ -324,15 +324,17 @@ describe('Zusagen im Spiel nachgeprüft', () => {
     expect(counts[Math.round(1 / DT)]).toBeLessThanOrEqual(8 * 4);
     // fest im Rumpf: Silo dreht nicht mit dem Ziel, sondern liegt in Schiffsrichtung
     for (const t of silos) expect(t.a).toBeCloseTo(R.aimA, 5);
-    // schwerer (×1,4) und doppelte Flugzeit (Reichweite) gegenüber den Vierling-Raketen
-    expect(R.missiles[0].dmg / G.missiles[0].dmg).toBeCloseTo(1.4, 5);
+    // schwerer (Silo 1,4-facher, Vierling halber Raketenschaden) und doppelte Flugzeit (Reichweite)
+    expect(R.missiles[0].dmg / G.missiles[0].dmg).toBeCloseTo(LTURRETS.silo.missile!.dmg / TURRETS.rakete.missile!.dmg, 5);
+    expect(LTURRETS.silo.missile!.dmg / TURRETS.rakete.missile!.dmg).toBeCloseTo(2.8, 5);
     // Vorrat: 20 Salven je Turm – Silo 160, Vierling 80 Raketen; leer feuert er nicht mehr
     // (im Anlauf kann schon eine Rakete gestartet sein)
     const sa = (silos[0] as unknown as { ammo: number }).ammo;
     expect(sa).toBeLessThanOrEqual(160 - 8);
     expect(sa).toBeGreaterThanOrEqual(160 - 16);
     const va = G.pTur.map((t) => (t as unknown as { ammo: number }).ammo);
-    expect(va.every((x) => x <= 80 && x % 4 === 0), `Vierlinge: ${va}`).toBe(true);
+    // (Salven nur so groß, wie das Ziel braucht – im Anlauf auch einzelne Raketen auf schwache Gegner)
+    expect(va.every((x) => x <= 80), `Vierlinge: ${va}`).toBe(true);
     expect(va.reduce((p, q) => p + q, 0)).toBeLessThan(80 * va.length);
     for (const t of silos) { (t as unknown as { ammo: number }).ammo = 0; t.cd = 0; }
     const before = R.missiles.length;

@@ -22,17 +22,31 @@ const game = (lo: Partial<Loadout>, level = 3): G => {
 };
 
 describe('Kettenblitz', () => {
-  it('springt durch eine Reihe Späher (4 Sprünge, 5 Ziele) und zerstört auf Stufe 1 jeden mit einem Treffer', () => {
-    const g = game({ weapon: 'blitz' }, 1);
+  it('springt durch eine Reihe Späher (Drache: 6 Sprünge, 7 Ziele) und zerstört auf Stufe 1 jeden mit einem Treffer', () => {
+    const g = game({ ship: 'dragon', weapon: 'blitz' }, 1);
     g.aimA = -Math.PI / 2;
-    for (let k = 0; k < 6; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
+    for (let k = 0; k < 8; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
     g.fireChain(g.px, g.py - 20, -Math.PI / 2);
     expect(g.enemies.filter((e) => e.kind === 'ks').length).toBe(1);
     expect(g.zaps.length).toBe(1);
   });
 
+  it('nur auf M-Schiffen; auf der Cobra ein Sprung weniger und etwas langsamer als auf der Drache', () => {
+    expect((game({ ship: 'mamba', weapon: 'blitz' }) as unknown as { wpnId: string }).wpnId).not.toBe('blitz');
+    const count = (ship: 'dragon' | 'cobra') => {
+      const g = game({ ship, weapon: 'blitz' }, 1);
+      for (let k = 0; k < 10; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
+      g.fireChain(g.px, g.py - 20, -Math.PI / 2);
+      return { hit: 10 - g.enemies.filter((e) => e.kind === 'ks').length, every: (g as unknown as { wpn: { interval: number } }).wpn.interval };
+    };
+    const d = count('dragon'), c = count('cobra');
+    expect(d.hit).toBe(7);
+    expect(c.hit).toBe(6);
+    expect(c.every).toBeGreaterThan(d.every * 1.1);
+  });
+
   it('fester Schaden wie alle Waffen: auf Stufe 3 reicht ein Treffer nicht mehr', () => {
-    const g = game({ weapon: 'blitz' }, 3);
+    const g = game({ ship: 'dragon', weapon: 'blitz' }, 3);
     const e = g.makeEnemy('ks', g.px, g.py - 150);
     g.enemies.push(e);
     g.fireChain(g.px, g.py - 20, -Math.PI / 2);
@@ -41,7 +55,7 @@ describe('Kettenblitz', () => {
   });
 
   it('gegen Großkampfschiffe und Türme fast wirkungslos', () => {
-    const g = game({ weapon: 'blitz' });
+    const g = game({ ship: 'dragon', weapon: 'blitz' });
     g.spawnBoss(false);
     const t = g.enemies.find((e) => e.parent)!;
     const before = t.hp + t.sh;
@@ -53,7 +67,7 @@ describe('Kettenblitz', () => {
 
   it('Karte „Kettenreaktion“ nur mit Kettenblitz, Schrot-Karten nur mit mehreren Geschossen je Schuss', () => {
     const zap = { id: 'zap', name: '', desc: '', max: 2, need: ['zap'] }, multi = { id: 'pellets', name: '', desc: '', max: 2, need: ['multi'] }, guns = { id: 'spread', name: '', desc: '', max: 2, need: ['guns'] };
-    const b = game({ weapon: 'blitz' }), s = game({ weapon: 'schrot' }), p = game({ weapon: 'puls' });
+    const b = game({ ship: 'dragon', weapon: 'blitz' }), s = game({ weapon: 'schrot' }), p = game({ weapon: 'puls' });
     expect(b.cardFits(zap)).toBe(true);
     expect(b.cardFits(guns)).toBe(false);
     expect(s.cardFits(multi)).toBe(true);
