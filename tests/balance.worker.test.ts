@@ -1,5 +1,5 @@
 // Messlauf für scripts/balance.mjs (nicht Teil der normalen Testreihe: ohne BALANCE wird er übersprungen).
-// Spielt feste Testlagen mit einem Loadout und einer Liste von Zufallsstarts und schreibt die Messwerte als JSON.
+// Spielt im Überlebensmodus (kein Frachter) feste Testlagen mit einem Loadout und einer Liste von Zufallsstarts und schreibt die Messwerte als JSON.
 import { it } from 'vitest';
 // @ts-expect-error – Node-Typen sind im Projekt nicht eingebunden (läuft nur unter vitest/Node)
 import { writeFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ type G = {
   update(d: number): void; resize(w: number, h: number): void; px: number; py: number; enemies: En[]; clusters: Map<unknown, unknown>;
   hull: number; shield: number; fireChain(x: number, y: number, a: number): void; wpn: { interval: number; range: number; chain?: boolean };
   tempo: number; spawnBoss(m?: boolean): void; makeEnemy(k: string, x: number, y: number): En; state: { choosing: boolean }; chooseCard(i: number): void;
-  chainGun: boolean; wards: { hull: number; max: number }[];
+  chainGun: boolean;
 };
 const env = process.env;
 const DT = 1 / 60;
@@ -23,7 +23,7 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
   const o = JSON.parse(env.BALANCE!) as { lagen: string[]; seeds: number[]; ship: string; turret: string; groups?: string[]; weapon: string; gear: 1 | 2 | 3; level: 1 | 2 | 3 | 4 | 5; secs: number; out: string };
   const lo = { ...DEFAULT_LOADOUT, wing: {}, ship: o.ship, turret: o.turret, weapon: o.weapon, ...(o.groups ? { groups: o.groups } : {}) };
   const make = (seed: number, side: string): G => {
-    const g = new ShooterGame({ level: o.level, seed, mutator: null, mode: 'normal', fog: false, mods: {}, gear: { weapon: o.gear, shield: o.gear, engine: o.gear }, loadout: lo } as never, side as never) as unknown as G;
+    const g = new ShooterGame({ level: o.level, seed, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, mods: {}, gear: { weapon: o.gear, shield: o.gear, engine: o.gear }, loadout: lo } as never, side as never) as unknown as G;
     g.resize(390, 780);
     return g;
   };
@@ -57,7 +57,7 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
           // zwischen den Wellen wartet das Spiel auf eine Verbesserungskarte (sonst steht die Zeit still)
           if (g.state.choosing) g.chooseCard(0);
           fire(g, i, every, (e) => e === boss || e.parent === boss);
-          g.update(DT); g.hull = 100; g.shield = 100; for (const w of g.wards) w.hull = w.max; // Messung: eigenes Schiff und Frachter halten
+          g.update(DT); g.hull = 100; g.shield = 100; // Messung im Überlebensmodus (ohne Frachter): das eigene Schiff hält
         }
         res[lage].push({ sekunden: i / 60 });
       } else {
@@ -86,7 +86,7 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
           fire(g, i, every, small);
           const h0 = g.hull + g.shield;
           g.update(DT);
-          taken += Math.max(0, h0 - (g.hull + g.shield)); g.hull = 100; g.shield = 100; for (const w of g.wards) w.hull = w.max; // Messung: eigenes Schiff und Frachter halten
+          taken += Math.max(0, h0 - (g.hull + g.shield)); g.hull = 100; g.shield = 100; // Messung im Überlebensmodus (ohne Frachter): das eigene Schiff hält
           const now = new Set(g.enemies.filter(small));
           for (const e of prev) if (!now.has(e)) kills++;
           prev = now;

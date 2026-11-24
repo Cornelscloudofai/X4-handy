@@ -5,7 +5,7 @@
 // Lagen – Wellen (Abschüsse/min, erlittener Schaden/min): brut (Brutschiff ab Welle 1), spaeher (16 Kha'ak-Späher),
 // jaeger (8 Piraten-Jäger), piraten (6 Jäger, 2 Kanonenboote, 1 Raketenboot), xenon (10 N, 3 M), je von allen Seiten.
 // Großkampfschiffe samt Türmen (Sekunden bis zur Zerstörung): zerstoerer (Kha'ak), fregatte (Piraten), xenonk (Xenon K).
-// Ohne Mods; Blitzwaffen feuern im Takt auf den nächsten Gegner, andere Bordwaffen schweigen (gemessen werden die Türme).
+// Überlebensmodus (kein Frachter), ohne Mods; Blitzwaffen feuern im Takt auf den nächsten Gegner, andere Bordwaffen schweigen (gemessen werden die Türme).
 // Für Vorher/Nachher zweimal laufen lassen – dieselben Zufallsstarts, also gepaarter Vergleich.
 import { spawn } from 'node:child_process';
 import { cpus, tmpdir } from 'node:os';
