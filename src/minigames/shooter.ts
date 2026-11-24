@@ -953,7 +953,7 @@ export class ShooterGame implements MiniGame {
    * der Cobra (Bild, Turmplätze, Trefferzone und Anzeigen wachsen mit)
    */
   private readonly fk: number;
-  private readonly wpn: GameGun;
+  private wpn: GameGun;
   /** Waffenart (für den Schussklang) */
   private readonly wpnId: string;
   private readonly tw: GameGun;
@@ -1175,17 +1175,12 @@ export class ShooterGame implements MiniGame {
     // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
     const wOk = weaponFits(WEAPONS[lo.weapon], SHIPS[lo.ship].gunSize);
     const wd = WEAPONS[wOk ? lo.weapon : 'puls'], td = TURRETS[lo.turret];
-    // Test-Schalter „Mods aus“: Grundwerte der Ausrüstung, die eingebauten Mods wirken nicht
-    this.mods = modsOff() ? {} : cfg.mods ?? (cfg.loadout ? {} : modStats(lo.ship));
+    this.mods = cfg.mods ?? (cfg.loadout ? {} : modStats(lo.ship));
     // eigenes Schiff aus dem Sektor: kommt mit seinen Schäden ins Gefecht
     if (cfg.startHull != null) this.hull = clamp(cfg.startHull * 100, 5, 100);
-    this.wpn = gameGun(weaponGun(wd, this.ship.gunSize), wd);
+    this.wpnBase = gameGun(weaponGun(wd, this.ship.gunSize), wd);
     this.wpnId = wOk ? lo.weapon : 'puls';
-    // Mods: schnellere Geschosse fliegen weiter (gleiche Flugzeit), Fokussierlinse verengt die Streuung
-    const mv = 1 + this.m('velocity');
-    this.wpn.speed *= mv;
-    this.wpn.range *= mv;
-    this.wpn.jitter *= 1 - this.m('spread');
+    this.wpn = this.wpnMods();
     this.tw = gameGun(td.gun, td);
     // Drehtempo der Türme aus den Daten (Pulsturm 180°/s = bisheriges Tempo)
     this.turTurn = (5 * td.turn) / 180;
@@ -1457,7 +1452,18 @@ export class ShooterGame implements MiniGame {
     return a0 + clamp(wrapA(Math.atan2(ty - oy, tx - ox) - a0), -GUN_GIMBAL, GUN_GIMBAL);
   }
   /** Effekt der Schiffsmodifikationen */
-  private m(id: keyof ModStats): number { return this.mods[id] ?? 0; }
+  /** Wert eines Mods; mit dem Test-Schalter „Mods aus“ (auch mitten im Kampf umschaltbar) wirkt keiner */
+  private m(id: keyof ModStats): number { return modsOff() ? 0 : this.mods[id] ?? 0; }
+  /** Bordwaffe ohne Mods (Grundlage für wpnMods) */
+  private wpnBase!: GameGun;
+  /** Bordwaffe mit Mods: schnellere Geschosse fliegen weiter (gleiche Flugzeit), Fokussierlinse verengt die Streuung */
+  private wpnMods(): GameGun {
+    const w = { ...this.wpnBase }, mv = 1 + this.m('velocity');
+    w.speed *= mv; w.range *= mv; w.jitter *= 1 - this.m('spread');
+    return w;
+  }
+  /** Test-Schalter „Mods aus“ wurde umgelegt (Pausenmenü): die Bordwaffe neu berechnen, alles andere wirkt sofort */
+  modsChanged(): void { this.wpn = this.wpnMods(); }
   private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (1 + this.m('speed')) * (this.sprintT > 0 ? 1.7 : 1) * (this.towing ? 0.82 : 1); }
   private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn * (1 + this.m('turn')) * (this.sprintT > 0 ? 1.3 : 1); }
   /** Drohnen: aus Verbesserungen, dazu der Begleitjäger der Cobra (immer der letzte) */

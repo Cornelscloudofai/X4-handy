@@ -44,7 +44,7 @@ export function tunePanel(level: Level, o: { levelPicker?: string; reset: string
       <div class="sub wrap">Hintergrund-Objekte im Kampf dunkler, weicher und dunstiger – zum Vergleich, ob sich die Spielebene besser abhebt.</div></div>
       <div class="toggle"><button class="plain ${paleBackdrop() ? 'on' : ''}" ${o.pale}>${paleBackdrop() ? 'An' : 'Aus'}</button></div></div>` : ''}
     ${o.mods ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Mods aus</div>
-      <div class="sub wrap">Eingebaute Mods wirken im Kampf nicht (bleiben eingebaut) – Waffen und Türme mit ihren Grundwerten vergleichen. Gilt ab dem nächsten Kampf.</div></div>
+      <div class="sub wrap">Eingebaute Mods wirken im Kampf nicht (bleiben eingebaut) – Waffen und Türme mit ihren Grundwerten vergleichen. Wirkt sofort, auch mitten im Kampf.</div></div>
       <div class="toggle"><button class="plain ${modsOff() ? 'on' : ''}" ${o.mods}>${modsOff() ? 'An' : 'Aus'}</button></div></div>` : ''}</div>`;
 }
 

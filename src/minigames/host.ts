@@ -8,7 +8,7 @@ import { daySeed, rng, type GameCfg, type GameResult, type Gear, type GoalDef, t
 import { CARGO_GOALS, CARGO_MUTATORS, GAS_GOALS, GAS_MUTATORS, HIGHWAY_GOALS, HIGHWAY_MUTATORS, ORBIT_GOALS, ORBIT_MUTATORS, ORE_GOALS, ORE_MUTATORS, PIPES_GOALS, PIPES_MUTATORS, SHOOTER_GOALS, SHOOTER_MUTATORS } from './menuInfo';
 import { earnParts, modStats, partsFor } from './mods';
 import { recordKey, type Mission } from './missions';
-import { ROLES, SHIPS, applyLoadout, controlMode, fogTest, loadout, loadoutChanged, loadoutLabel, savedLoadouts, setControlMode, setEnemyTune, setFogTest, type ControlMode, type Loadout } from './loadout';
+import { ROLES, SHIPS, applyLoadout, controlMode, fogTest, modsOff, setModsOff, loadout, loadoutChanged, loadoutLabel, savedLoadouts, setControlMode, setEnemyTune, setFogTest, type ControlMode, type Loadout } from './loadout';
 import { refreshTunePanel, tuneFromSlider, tunePanel, tuneToSlider } from './tunePanel';
 import { artPic } from '../ui/menuArt';
 import { hudScale } from '../ui/hudScale';
@@ -363,6 +363,14 @@ function bindInput(s: Session): void {
         b.textContent = on ? 'An' : 'Aus';
         break;
       }
+      case 'mods-test': {
+        const on = !modsOff();
+        setModsOff(on);
+        (s.game as unknown as { modsChanged?: () => void }).modsChanged?.();
+        b.classList.toggle('on', on);
+        b.textContent = on ? 'An' : 'Aus';
+        break;
+      }
       case 'tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
         if (retunable(s.game)) s.game.retune();
@@ -589,7 +597,7 @@ function setPhase(p: Phase): void {
       <div class="mg-actions"><button class="btn ghost" data-mg="quit">Zurück</button><button class="btn primary" data-mg="start">Start</button></div></div>`;
   } else if (p === 'pause') {
     layer.innerHTML = `<div class="mg-card"><small class="eyebrow">Pause</small><h2>${esc(g.title)}</h2>
-      ${retunable(g) ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', fog: 'data-mg="fog-test"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
+      ${retunable(g) ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', fog: 'data-mg="fog-test"', mods: 'data-mg="mods-test"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
       ${rulesBox(g.rules, s.kind, mode, true, !!s.cfg.mission && s.cfg.mission !== 'geleit')}
       <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button>${feedbackHook ? '<button class="btn ghost" data-mg="feedback">Feedback geben</button>' : ''}</div></div>`;
