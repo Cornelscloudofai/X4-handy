@@ -1080,6 +1080,18 @@ export function envTest(): EnvTest {
 export function setEnvTest(v: EnvTest): void {
   try { if (v) globalThis.localStorage?.setItem(ENV_TEST_KEY, v); else globalThis.localStorage?.removeItem(ENV_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
 }
+/** Test-Schalter: Mods wirken im Kampf nicht (bleiben eingebaut) – Waffen mit ihren Grundwerten vergleichen */
+const NO_MODS_KEY = 'x4-sektorbau-mods-aus';
+let noMods: boolean | null = null;
+export function modsOff(): boolean {
+  if (noMods != null) return noMods;
+  try { noMods = globalThis.localStorage?.getItem(NO_MODS_KEY) === '1'; } catch { noMods = false; }
+  return noMods;
+}
+export function setModsOff(on: boolean): void {
+  noMods = on;
+  try { if (on) globalThis.localStorage?.setItem(NO_MODS_KEY, '1'); else globalThis.localStorage?.removeItem(NO_MODS_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
 /** Test-Schalter: Kulisse im Kampf blasser und weicher (zum Vergleich mit dem bisherigen Stand) */
 const PALE_KEY = 'x4-sektorbau-kulisse-blass';
 let pale: boolean | null = null;

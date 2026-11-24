@@ -125,6 +125,21 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
 - Verdoppelte L-Schadensstufe der Schnellfeuerwaffen ggf. zurücknehmen.
 - Eigenes Bild für den Strahlenturm (Prompt schreiben).
 
+## Waffen testen und Ausrüstung (vorgemerkt)
+
+- **Mods an Loadouts binden:** Ein Loadout merkt sich auch die eingebauten Mods des Schiffs. Offen: Darf ein Mod in
+  mehreren Loadouts stecken (er ist ein einzelnes, gefundenes Teil)? Was passiert beim Zerlegen eines Mods, der in
+  einem Loadout steckt? Bauen sich Mods beim Wechsel automatisch um?
+- **Schießstand:** feste Testlage im Simulator (z. B. 16 Späher von allen Seiten, eine Fregatte, ein Raketenhagel),
+  am Ende Zahlen wie bei den Messungen zu Flak und Gatling: Schaden, Abschüsse, Feuerpausen mit Ziel, erlittener
+  Schaden. Erst Entwicklerwerkzeug, später ggf. für Spieler.
+- Gatling-Turm: Streuung (±1,35°) ggf. um ein Drittel senken – nach weiteren Tests mit der neuen Zielwahl.
+- Störblitz: falls zu schwach – Lähmung 1,5 s oder gelähmte Ziele nehmen mehr Schaden (z. B. +25 %); Dauerlähmung
+  ggf. begrenzen (Sperre nach 3 s Lähmung).
+- Kettenblitz, offene Punkte: Beschreibung nennt 7/9 Sprünge statt 5/7; „Schwere Ladung“ wirkt beim Kettenblitz, bei
+  der Flak nicht; Ausrüstungsstufe ändert seinen Schaden nicht (gewollt, aber nirgends erklärt); Schuss ins Leere
+  verpufft.
+
 ## Musik in den Minispielen
 
 - Gasströme: Musik mit Takt-Effekten (Taktkarte, scripts/analyze-beats.mjs) – erste Probe mit „Celestial Drift“.

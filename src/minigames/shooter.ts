@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretMuzzles, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { broodTest, envTest, fogTest, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -1175,7 +1175,8 @@ export class ShooterGame implements MiniGame {
     // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
     const wOk = weaponFits(WEAPONS[lo.weapon], SHIPS[lo.ship].gunSize);
     const wd = WEAPONS[wOk ? lo.weapon : 'puls'], td = TURRETS[lo.turret];
-    this.mods = cfg.mods ?? (cfg.loadout ? {} : modStats(lo.ship));
+    // Test-Schalter „Mods aus“: Grundwerte der Ausrüstung, die eingebauten Mods wirken nicht
+    this.mods = modsOff() ? {} : cfg.mods ?? (cfg.loadout ? {} : modStats(lo.ship));
     // eigenes Schiff aus dem Sektor: kommt mit seinen Schäden ins Gefecht
     if (cfg.startHull != null) this.hull = clamp(cfg.startHull * 100, 5, 100);
     this.wpn = gameGun(weaponGun(wd, this.ship.gunSize), wd);

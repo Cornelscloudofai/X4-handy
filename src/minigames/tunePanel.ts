@@ -2,7 +2,7 @@
 // die im Spiel herauskommen. Steht im Minispiel-Menü (Reiter Kampf) und im Pausenmenü eines laufenden Kampfs.
 import { esc } from '../ui/dom';
 import type { Level } from './common';
-import { broodTest, envTest, paleBackdrop, enemyTune, fogTest, tuneToSlider, type EnemyTune } from './loadout';
+import { broodTest, envTest, modsOff, paleBackdrop, enemyTune, fogTest, tuneToSlider, type EnemyTune } from './loadout';
 export { tuneFromSlider, tuneToSlider } from './loadout';
 import { enemyStatTable } from './shooterData';
 
@@ -21,7 +21,7 @@ export function tuneValue(v: number): string {
  * Ganzer Abschnitt; levelPicker: Knöpfe zur Wahl der Stufe (Menü) oder leer (Pause: Stufe der laufenden Runde);
  * reset: Attribut für den Zurücksetzen-Knopf; note: Hinweis unter der Tabelle
  */
-export function tunePanel(level: Level, o: { levelPicker?: string; reset: string; fog: string; brood?: string; env?: (v: string) => string; pale?: string; note: string }): string {
+export function tunePanel(level: Level, o: { levelPicker?: string; reset: string; fog: string; brood?: string; env?: (v: string) => string; pale?: string; mods?: string; note: string }): string {
   const t = enemyTune();
   const slider = (key: 'hull' | 'shield', label: string) => `<div class="tune-row"><span class="tune-label">${label}</span>
     <input type="range" min="0" max="1000" step="1" value="${tuneToSlider(t[key])}" data-change="enemy-tune" data-key="${key}" aria-label="${label}-Faktor">
@@ -42,7 +42,10 @@ export function tunePanel(level: Level, o: { levelPicker?: string; reset: string
       <div class="segment" style="margin-top:6px">${([['', 'Zufall'], ['wracks', 'Wracks'], ['anomalie', 'Anomalie'], ['rocks', 'Felsen'], ['mines', 'Minen']] as const).map(([v, l]) => `<button class="${envTest() === v ? 'on' : ''}" ${o.env!(v)}>${l}</button>`).join('')}</div>` : ''}
     ${o.pale ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Kulisse blasser</div>
       <div class="sub wrap">Hintergrund-Objekte im Kampf dunkler, weicher und dunstiger – zum Vergleich, ob sich die Spielebene besser abhebt.</div></div>
-      <div class="toggle"><button class="plain ${paleBackdrop() ? 'on' : ''}" ${o.pale}>${paleBackdrop() ? 'An' : 'Aus'}</button></div></div>` : ''}</div>`;
+      <div class="toggle"><button class="plain ${paleBackdrop() ? 'on' : ''}" ${o.pale}>${paleBackdrop() ? 'An' : 'Aus'}</button></div></div>` : ''}
+    ${o.mods ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Mods aus</div>
+      <div class="sub wrap">Eingebaute Mods wirken im Kampf nicht (bleiben eingebaut) – Waffen und Türme mit ihren Grundwerten vergleichen. Gilt ab dem nächsten Kampf.</div></div>
+      <div class="toggle"><button class="plain ${modsOff() ? 'on' : ''}" ${o.mods}>${modsOff() ? 'An' : 'Aus'}</button></div></div>` : ''}</div>`;
 }
 
 /** Regler bewegt: Faktorangabe, Tabelle und Zurücksetzen-Knopf im selben Abschnitt nachführen */

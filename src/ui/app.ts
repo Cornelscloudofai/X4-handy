@@ -50,7 +50,7 @@ import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
-import { SHIPS, setEnvTest, paleBackdrop, setPaleBackdrop, type EnvTest, applyLoadout, deleteLoadout, editLoadout, savedLoadouts, storeLoadout, type LoTag, broodTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
+import { SHIPS, setEnvTest, modsOff, setModsOff, paleBackdrop, setPaleBackdrop, type EnvTest, applyLoadout, deleteLoadout, editLoadout, savedLoadouts, storeLoadout, type LoTag, broodTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode, Place } from '../minigames/common';
 import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
@@ -1551,6 +1551,7 @@ function onClick(e: MouseEvent): void {
       case 'mg-brood-test': setBroodTest(!broodTest()); refresh(); break;
       case 'mg-env-test': setEnvTest((d.env ?? '') as EnvTest); refresh(); break;
       case 'mg-pale-test': setPaleBackdrop(!paleBackdrop()); refresh(); break;
+      case 'mg-mods-test': setModsOff(!modsOff()); refresh(); break;
       case 'mg-tune-reset': {
         setEnemyTune({ hull: 1, shield: 1 });
         refresh();
