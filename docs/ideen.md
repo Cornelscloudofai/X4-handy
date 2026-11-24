@@ -144,6 +144,16 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
   der Flak nicht; Ausrüstungsstufe ändert seinen Schaden nicht (gewollt, aber nirgends erklärt); Schuss ins Leere
   verpufft.
 
+## Raketen-Vierling und Blitzwaffen je Schiffsklasse (vorgemerkt)
+
+- **Raketen-Vierling später nur auf L/XL:** Auf M-Schiffen nimmt er der Drache (einziges M-Schiff mit Raketenwerfer,
+  Raketen-Mod) ihr Merkmal. Vorerst auf M erlaubt, damit die Türme weiter getestet werden können. Später nur für
+  L/XL, mit Obergrenze je Schiff (Beispielzahlen: Klapperschlange 2 Raketentürme, Raptor 4 Gruppen). Alte Spielstände
+  mit Vierling auf M dann auf einen anderen Turm umstellen.
+- **Blitzwaffen und Zahl der Bordkanonen:** Heute ersetzt der Blitz alle Bordkanonen durch eine Entladung aus dem Bug,
+  gleich stark auf der Cobra (3 Kanonen) und der Drache (6) – die Drache gibt dafür doppelt so viel auf. Vor dem
+  Umsetzen Konzept klären (siehe Antwort im Verlauf): eigene Entladung je Kanone(npaar) oder Stärke je Kanonenplatz.
+
 ## Gemischte Loadouts: Waffen und Türme einzeln wählen (Türme umgesetzt, Frontwaffen vorgemerkt)
 
 - **Turmgruppen für M-Schiffe:** umgesetzt (Cobra 2 × 2, Dragon 2 × 1, Klapperschlange 3 × 4).
