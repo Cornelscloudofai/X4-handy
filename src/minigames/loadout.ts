@@ -480,16 +480,17 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // Kettenblitz: die Werte zählen nur für Takt und Reichweite (rund 530 Spielpunkte) – den Schaden bestimmt das Ziel
   blitz: {
     name: 'Kettenblitz', group: 'allgemein', color: '#bfe4ff', w: 2, chain: true,
-    desc: 'Entladung, die von Ziel zu Ziel springt (7 Sprünge, auf M-Plätzen 9): jeder Treffer genau so stark, dass ein Kha’ak-Späher vergeht – gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
+    desc: 'Entladung, die von Ziel zu Ziel springt (4 Sprünge, auf M-Plätzen 6): in der Grundausrüstung zerstört jeder Treffer einen Kha’ak-Späher der Stufe 1 – auf höheren Stufen braucht es mehr; gegen größere Schiffe und Türme fast wirkungslos. Die Waffe gegen Schwärme.',
     s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.16, angle: 0 },
     m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.18, angle: 0 },
   },
   // Störblitz: Takt und Reichweite wie der Kettenblitz; statt Schaden lähmt er (Kombination mit Türmen)
   stoerblitz: {
     name: 'Störblitz', group: 'allgemein', color: '#a8f4ff', w: 2, chain: true, emp: true,
-    desc: 'Entladung wie der Kettenblitz, aber ohne Schaden: S- und M-Schiffe sind 1 s lahmgelegt – sie treiben antriebslos und schießen nicht, die Türme treffen sie leicht. L-Schiffen und Strukturen senkt jeder Treffer den Schild.',
-    s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.16, angle: 0 },
-    m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.18, angle: 0 },
+    desc: 'Entladung ohne Schaden, weiter und mit mehr Sprüngen als der Kettenblitz (7, auf M-Plätzen 9): S- und M-Schiffe sind 1 s lahmgelegt – sie bleiben stehen, schießen nicht und nehmen 50 % mehr Schaden. L-Schiffen und Strukturen nimmt jeder Treffer 15 % Schild. Hält Schwärme auf Abstand, bis die Türme sie erledigen.',
+    // gut ein Drittel weiter als der Kettenblitz
+    s: { dmg: 14, rate: 2.6, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.22, angle: 0 },
+    m: { dmg: 20, rate: 2.4, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.245, angle: 0 },
   },
   // Mass Driver (Terraner): ballistisch wie eine Kanone, aber mit sehr hoher Mündungsgeschwindigkeit – zwischen
   // Neutronen-Gatling und Bosonenlanze eingeordnet: rund 60 % des Lanzenschadens je Schuss, etwas schnellerer Takt,

@@ -22,13 +22,22 @@ const game = (lo: Partial<Loadout>, level = 3): G => {
 };
 
 describe('Kettenblitz', () => {
-  it('springt durch eine Reihe Späher und zerstört jeden mit einem Treffer', () => {
-    const g = game({ weapon: 'blitz' });
+  it('springt durch eine Reihe Späher (4 Sprünge, 5 Ziele) und zerstört auf Stufe 1 jeden mit einem Treffer', () => {
+    const g = game({ weapon: 'blitz' }, 1);
     g.aimA = -Math.PI / 2;
     for (let k = 0; k < 6; k++) g.enemies.push(g.makeEnemy('ks', g.px + (k % 2 ? 40 : -40), g.py - 150 - k * 110));
     g.fireChain(g.px, g.py - 20, -Math.PI / 2);
-    expect(g.enemies.filter((e) => e.kind === 'ks').length).toBe(0);
+    expect(g.enemies.filter((e) => e.kind === 'ks').length).toBe(1);
     expect(g.zaps.length).toBe(1);
+  });
+
+  it('fester Schaden wie alle Waffen: auf Stufe 3 reicht ein Treffer nicht mehr', () => {
+    const g = game({ weapon: 'blitz' }, 3);
+    const e = g.makeEnemy('ks', g.px, g.py - 150);
+    g.enemies.push(e);
+    g.fireChain(g.px, g.py - 20, -Math.PI / 2);
+    expect(g.enemies.includes(e)).toBe(true);
+    expect(e.hp + e.sh).toBeLessThan(e.max * 0.6);
   });
 
   it('gegen Großkampfschiffe und Türme fast wirkungslos', () => {

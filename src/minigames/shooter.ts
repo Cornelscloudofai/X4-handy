@@ -349,9 +349,11 @@ type Section = 'none' | 'rocks' | 'mines' | 'nebel' | 'wracks' | 'anomalie';
 /** Anomalie: Wirkradius, Kern; Schaden beim Hineingeraten (dein Schiff) und Schleuder-Tempo */
 const ANOMALY_R = 1250, ANOMALY_CORE = 78, CORE_DMG = 18, CORE_FLING = 760;
 /** Kettenblitz: Sprünge (M-Plätze +2, Karte +3 je Stufe), Sprungweite, Kegel für das erste Ziel (rad) */
-const ZAP_JUMPS = 5, ZAP_HOP = 150, ZAP_CONE = 0.55;
+const ZAP_JUMPS = 4, ZAP_HOP = 150, ZAP_CONE = 0.55;
 /** Störblitz: Lähmung je Treffer (s) für S- und M-Schiffe; Schildverlust je Treffer bei L-Schiffen und Strukturen (Anteil) */
-const EMP_STUN = 1, EMP_SHIELD = 0.08;
+const EMP_STUN = 1, EMP_SHIELD = 0.15;
+/** Störblitz: mehr Sprünge und weitere Sprünge als der Kettenblitz (Sicherheitsblase); gelähmte Ziele nehmen mehr Schaden */
+const EMP_JUMPS = 7, EMP_HOP = 190, EMP_VULN = 1.5;
 /** Flakturm (eigen): Zünder-Abstand, Wirkradius der Sprengwolke */
 const PFLAK_FUSE = 16, PFLAK_R = 62;
 /** Wirkung von Kettenblitz und Flak nach Schiffsklasse des Ziels (S = voll; Türme und Großkampfschiffe kaum) */
@@ -5525,10 +5527,14 @@ export class ShooterGame implements MiniGame {
     sfx.phase(this.panAt(e.x));
   }
 
-  /** Schaden je Treffer des Kettenblitzes gegen S-Schiffe: genau ein Späher dieser Stufe (Hülle und Schild) */
+  /**
+   * Schaden je Treffer des Kettenblitzes gegen S-Schiffe: fester Wert – ein Späher der Stufe 1 (Hülle und Schild) in
+   * der Grundausrüstung. Er wächst wie alle Waffen mit Ausrüstungsstufe, Schadens-Mods und -Karten, nicht mit der
+   * Schwierigkeitsstufe (auf höheren Stufen braucht ein Späher dann mehr als einen Treffer)
+   */
   private get swarmDmg(): number {
-    const s = enemyStats('ks', this.level, { tune: this.tune });
-    return (s.hp + s.sh) * 1.02 * (1 + 0.3 * this.c('heavy')) * (1 + this.m('dmg'));
+    const s = enemyStats('ks', 1, {});
+    return (s.hp + s.sh) * 1.02 * (this.baseDmg / 6);
   }
   private get chainGun(): boolean { return !!WEAPONS[this.wpnId as WeaponId]?.chain; }
 
@@ -5538,9 +5544,9 @@ export class ShooterGame implements MiniGame {
    * Drittel, gegen Türme und Großkampfschiffe ein Zehntel.
    */
   private fireChain(ox: number, oy: number, a0: number): void {
-    const range = this.wpn.range, hop = ZAP_HOP * (1 + 0.15 * this.c('zap'));
-    const jumps = ZAP_JUMPS + (this.ship.gunSize === 'm' ? 2 : 0) + 2 * this.c('zap');
     const emp = !!WEAPONS[this.wpnId as WeaponId]?.emp;
+    const range = this.wpn.range, hop = (emp ? EMP_HOP : ZAP_HOP) * (1 + 0.15 * this.c('zap'));
+    const jumps = (emp ? EMP_JUMPS : ZAP_JUMPS) + (this.ship.gunSize === 'm' ? 2 : 0) + 2 * this.c('zap');
     const ok = (e: Enemy) => !(e.kind === 'boss' && e.shielded);
     let cur: Enemy | null = this.lock?.e && ok(this.lock.e) && Math.hypot(this.lock.e.x - ox, this.lock.e.y - oy) < range + this.lock.e.r ? this.lock.e : null;
     if (!cur) {
@@ -5699,7 +5705,8 @@ export class ShooterGame implements MiniGame {
     this.fx.add({ x, y, color: '#2a2420', size: PFLAK_R * 0.85, kind: 'smoke', solid: true, max: 1.3, drag: 0.7 });
     if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x, y, r: 120, color: '#ffa04a', t: 0, max: 0.3 });
     const fall = (d: number) => Math.max(0, 1 - 0.6 * (d / PFLAK_R));
-    const tk = this.tDmg / this.baseDmg, s = this.swarmDmg / (1 + 0.3 * this.c('heavy')) * 0.7 * tk;
+    // Flak: dieselbe Grundlage wie der Kettenblitz, aber mit dem Turmschaden (Ausrüstung, Turm-Mods und -Karten)
+    const s = this.swarmDmg * 0.7 * (this.tDmg / this.baseDmg);
     this.logSrc = b.src ?? 'tm';
     for (const e of [...this.enemies]) {
       if (e.kind === 'boss' && e.shielded) continue;
@@ -6112,6 +6119,8 @@ export class ShooterGame implements MiniGame {
   /** toHull: Anteil, der den eigenen Schild umgeht und sofort die Hülle trifft (Thermal-Desintegrator) */
   private damageEnemy(e: Enemy, dmg: number, bypass = 0.3, toHull = 0): void {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
+    // vom Störblitz gelähmt: Systeme und Schildregelung ausgefallen – nimmt mehr Schaden
+    if (e.stun && e.stun > 0) dmg *= EMP_VULN;
     // Raketenboot unter deinem Beschuss (Schiff, Türme, Raketen, Staffel): Zielerfassung gestört – die Türme des
     // Frachters allein halten es nicht auf, sonst käme nie eine Salve
     if (e.lockT != null && dmg > 0 && this.logSrc !== 'ward') e.jam = 0.4;
