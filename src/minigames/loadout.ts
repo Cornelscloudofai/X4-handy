@@ -554,8 +554,8 @@ export function weaponFits(w: WeaponDef, size: GunSize): boolean {
 export interface TurretMissile { n: number; gap: number; reload: number; dmg: number; range: number; salvos: number; fixed?: boolean }
 export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile; /** Flak: Sprenggranaten mit Annäherungszünder */ flak?: boolean; /** Anteil, der den Schild umgeht */ hullPierce?: number; /** Flächenschaden beim Einschlag (Radius) */ splash?: number }
 export const TURRETS: Record<TurretId, TurretDef> = {
-  puls: { name: 'Pulsturm', desc: 'Schwenkt schnell und trifft genau – wendige Jäger entkommen ihm kaum, gegen dicke Panzerung fehlt die Wucht.', turn: 180, color: '#7ffff0', w: 2,
-    gun: { dmg: 54, rate: 3.8, amt: 1, mag: 8, reload: 2.4, v: 5000, life: 0.7, angle: 0.17 } },
+  puls: { name: 'Pulsturm', desc: 'Dauerfeuer ohne Nachladen, schwenkt schnell und trifft genau – wendige Jäger entkommen ihm kaum, gegen dicke Panzerung fehlt die Wucht.', turn: 180, color: '#7ffff0', w: 2,
+    gun: { dmg: 36, rate: 3.8, amt: 1, mag: 0, reload: 0, v: 5000, life: 0.7, angle: 0.17 } },
   // Strahlenturm: wie der Strahlenemitter (M) als Dauerstrahl; trifft sofort, solange er auf dem Ziel liegt
   strahl: { name: 'Strahlenturm', desc: 'Dauerstrahl: trifft sofort, solange er auf dem Ziel liegt – wenig Schaden pro Sekunde, aber nie daneben; gut gegen Jäger und Raketen.', turn: 150, color: '#9ffcff', w: 2, beam: true,
     gun: { dmg: 120, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0 } },
@@ -565,8 +565,8 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   tau: { name: 'Tau-Beschleuniger-Turm', desc: 'Vier Geschosse je Schuss, kurze Reichweite.', turn: 160, color: '#ff5a5a', w: 2.2,
     gun: { dmg: 42, rate: 3, amt: 4, mag: 8, reload: 5, v: 2000, life: 1.235, angle: 1.15 } },
   // Plasma: heißes Gas schlägt zu 40 % durch den Schild und spritzt beim Einschlag auf Nachbarn (halber Schaden)
-  plasma: { name: 'Plasmaturm', desc: 'Zwei schwere Plasmageschosse, dann sieben Sekunden Pause. Das Plasma schlägt zum Teil durch den Schild und verbrennt beim Einschlag auch, was daneben fliegt.', turn: 70, color: '#a6ff6b', w: 4, hullPierce: 0.4, splash: 60,
-    gun: { dmg: 750, rate: 1, amt: 1, mag: 2, reload: 7, v: 1000, life: 5.5, angle: 0.8 } },
+  plasma: { name: 'Plasmaturm', desc: 'Schwere Plasmakugeln in ruhigem Takt, ohne Nachladen. Das Plasma schlägt zum Teil durch den Schild und verbrennt beim Einschlag auch, was daneben fliegt.', turn: 70, color: '#a6ff6b', w: 4, hullPierce: 0.4, splash: 60,
+    gun: { dmg: 240, rate: 0.8, amt: 1, mag: 0, reload: 0, v: 1600, life: 3.44, angle: 0.8 } },
   // M-Lanze: blasses Blaulila, kurzer schmaler Blitz (die schwere L-Lanze ist orange, dick und glüht lange nach)
   boson: { name: 'Bosonenlanzen-Turm', desc: 'Blitzschneller Lanzenstrahl, etwa ein Schuss pro Sekunde; schwenkt langsam.', turn: 40, color: '#c9d6ff', w: 3, rail: true,
     // im Spiel abgeschwächt: halber Schaden, Reichweite gut 4 km statt 8 (war doppelt so weit wie alle M-Türme und
