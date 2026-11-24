@@ -35,9 +35,10 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
   for (const lage of o.lagen) {
     res[lage] = [];
     for (const seed of o.seeds) {
-      if (lage === 'zerstoerer') {
-        // Kha'ak-Zerstörer samt Türmen in Turmreichweite: Zeit bis zur Zerstörung
-        const g = make(seed, 'khaak');
+      const BOSS: Record<string, string> = { zerstoerer: 'khaak', fregatte: 'pirate', xenonk: 'xenon' };
+      if (BOSS[lage]) {
+        // Großkampfschiff samt Türmen in Turmreichweite (Kha'ak-Zerstörer, Piratenfregatte, Xenon K): Zeit bis zur Zerstörung
+        const g = make(seed, BOSS[lage]);
         for (let i = 0; i < 3000 && !g.enemies.length; i++) g.update(DT);
         g.enemies.length = 0; g.clusters.clear();
         g.spawnBoss(false);
@@ -45,25 +46,36 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
         const every = Math.max(1, Math.round(g.wpn.interval * g.tempo * 60));
         let i = 0;
         for (; i < 60 * 180 && g.enemies.includes(boss); i++) {
-          boss.x = g.px; boss.y = g.py - 420; boss.vx = boss.vy = 0;
+          // wie im Spiel am Schiff entlang: das nächste noch lebende Teil liegt 350 vor dir (alle Teile kommen in Reichweite)
+          const alive = g.enemies.filter((e) => e === boss || e.parent === boss);
+          const near = alive.filter((e) => e !== boss).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0] ?? boss;
+          const ox = near.x - boss.x, oy = near.y - boss.y;
+          boss.x = g.px - ox; boss.y = g.py - 350 - oy; boss.vx = boss.vy = 0;
           for (const e of g.enemies) if (e !== boss && !e.parent) e.x = -9999;
           fire(g, i, every, (e) => e === boss || e.parent === boss);
           g.update(DT); g.hull = 100; g.shield = 100;
         }
         res[lage].push({ sekunden: i / 60 });
       } else {
-        // brut: Brutschiff ab Welle 1; spaeher: 16 Späher von allen Seiten; jaeger: 8 Piraten-Jäger von allen Seiten
-        const side = lage === 'jaeger' ? 'pirate' : 'khaak';
+        // brut: Brutschiff ab Welle 1; spaeher: 16 Späher; jaeger: 8 Piraten-Jäger; piraten: gemischte Piratenwelle
+        // (6 Jäger, 2 Kanonenboote, 1 Raketenboot); xenon: Xenon-Welle (10 N, 3 M) – jeweils von allen Seiten
+        const WAVE: Record<string, string[]> = {
+          spaeher: Array(16).fill('ks'), jaeger: Array(8).fill('jaeger'),
+          piraten: [...Array(6).fill('jaeger'), 'kanone', 'kanone', 'rakete'], xenon: [...Array(10).fill('n'), 'm', 'm', 'm'],
+        };
+        const side = lage === 'jaeger' || lage === 'piraten' ? 'pirate' : lage === 'xenon' ? 'xenon' : 'khaak';
         setBroodTest(lage === 'brut');
         const g = make(seed, side);
         if (lage !== 'brut') {
           for (let i = 0; i < 3000 && !g.enemies.length; i++) g.update(DT);
           g.enemies.length = 0; g.clusters.clear();
-          const kind = lage === 'jaeger' ? 'jaeger' : 'ks', n = lage === 'jaeger' ? 8 : 16;
-          for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2; g.enemies.push(g.makeEnemy(kind, g.px + Math.cos(a) * 500, g.py + Math.sin(a) * 500)); }
+          const wave = WAVE[lage];
+          wave.forEach((kind, k) => { const a = (k / wave.length) * Math.PI * 2; g.enemies.push(g.makeEnemy(kind, g.px + Math.cos(a) * 500, g.py + Math.sin(a) * 500)); });
         }
         const every = Math.max(1, Math.round(g.wpn.interval * g.tempo * 60));
-        const small = (e: En) => e.kind === (lage === 'jaeger' ? 'jaeger' : 'ks');
+        // gezählt werden die Schiffe der Welle (beim Brutschiff die Späher)
+        const kinds = new Set(lage === 'brut' ? ['ks'] : WAVE[lage]);
+        const small = (e: En) => kinds.has(e.kind);
         let kills = 0, taken = 0, prev = new Set<En>();
         for (let i = 0; i < 60 * o.secs; i++) {
           if (g.state.choosing) g.chooseCard(0);
