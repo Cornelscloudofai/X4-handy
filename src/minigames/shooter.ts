@@ -24,7 +24,7 @@ import { SPEC, enemyScale, enemyStats, drawFighterVector, type EKind } from './s
 import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 import { drawGraded } from '../render/canvasFx';
 import { drawJet, Smoke } from '../render/engineFx';
-import { anomalyPull, coverHit, drawAnomaly, drawWreck, drawWreckIntro, crystalGlow, makeWreck, spriteFill, markHit, preloadCover, pushOut, steerAround, updateWrecks, wreckAt, type Anomaly, type Wreck as CoverWreck } from './cover';
+import { anomalyPull, clearHeading, coverHit, drawAnomaly, drawWreck, drawWreckIntro, crystalGlow, makeWreck, spriteFill, markHit, preloadCover, pushOut, steerAround, updateWrecks, wreckAt, type Anomaly, type Wreck as CoverWreck } from './cover';
 import { drawSpecialIcon } from './specialIcons';
 import { hullGap, hullMaskOf, type HullMask } from './hullMask';
 import { FlightSchool, fmtTime, saveSchool, schoolBest, SCHOOL_NAME, type SchoolCtrl, type SchoolHost } from './flightSchool';
@@ -313,7 +313,9 @@ interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: nu
   rise?: number; riseMax?: number; ra?: number;
   /** Eigenart der einzelnen Rakete (beim ersten Takt ausgewürfelt): Wendigkeit, Tempo, Pendeln (Phase, Frequenz),
    * eigener Treffpunkt am Ziel (Anteil des Radius) – so fliegt ein Schwarm nicht wie ein Block */
-  tk?: number; vk?: number; wob?: number; wf?: number; ox?: number; oy?: number }
+  tk?: number; vk?: number; wob?: number; wf?: number; ox?: number; oy?: number;
+  /** Ausweichen um Wracks: gemerkte Seite (−1/1), damit die Rakete nicht hin- und herpendelt */
+  av?: number }
 /** Senkrechtstart aus dem Silo: Steigen und Überkippen (Sekunden) */
 const SILO_RISE = 1.1;
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
@@ -2933,6 +2935,31 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Neues Ziel für eine Rakete: nächster Gegner vor ihr (Kegel ±70°), sonst der nächste überhaupt – in Reichweite */
+  /** Schaden eigener Raketen, die schon zu diesem Ziel unterwegs sind */
+  private incoming(e: Enemy): number {
+    let s = 0;
+    for (const m of this.missiles) if (m.target === e) s += m.dmg * (m.def.vs?.[ECLASS[e.kind]] ?? 1);
+    return s;
+  }
+
+  /** Raketenturm: größter Vorrat dieses Turms (volle Salven) */
+  private turretAmmoMax(t: (typeof this.pTur)[number]): number {
+    const m = (t.w ?? this.tw).missile;
+    return m ? m.salvos * m.n : 0;
+  }
+
+  /** Raketentürme auffüllen (salvos volle Salven, Infinity = voll) */
+  private refillTurrets(salvos: number): number {
+    let added = 0;
+    for (const t of this.pTur) {
+      const m = (t.w ?? this.tw).missile;
+      if (!m || t.ammo == null) continue;
+      const nx = Math.min(this.turretAmmoMax(t), t.ammo + salvos * m.n);
+      added += nx - t.ammo; t.ammo = nx;
+    }
+    return added;
+  }
+
   private missileRetarget(m: Missile): Enemy | null {
     const reach = Math.max(200, Math.hypot(m.vx, m.vy) * m.life + 150), heading = Math.atan2(m.vy, m.vx);
     let ahead: Enemy | null = null, ad = reach, any: Enemy | null = null, nd = reach;
@@ -2940,7 +2967,10 @@ export class ShooterGame implements MiniGame {
       if (e.kind === 'boss' && e.shielded) continue;
       const d = Math.hypot(e.x - m.x, e.y - m.y);
       if (d >= reach) continue;
-      if (d < nd) { nd = d; any = e; }
+      // Ziele, auf die schon genug Raketen zufliegen, nur wenn sonst nichts da ist
+      const covered = this.incoming(e) >= (e.hp + e.sh) * 1.1;
+      if (d < nd && (!covered || !any)) { nd = d; any = e; }
+      if (covered) continue;
       if (d < ad && Math.abs(wrapA(Math.atan2(e.y - m.y, e.x - m.x) - heading)) < 1.2) { ad = d; ahead = e; }
     }
     return ahead ?? any;
@@ -3305,6 +3335,8 @@ export class ShooterGame implements MiniGame {
       this.ammo += add;
       this.floats.add(this.px, this.py - 56, `Nachschub: +${add} Raketen`, '#ffd27a', 13);
     }
+    // Raketentürme: vier Salven je Turm nach jeder Welle
+    if (this.wave > 0) { const add = this.refillTurrets(4); if (add) this.floats.add(this.px, this.py - 74, `Türme: +${add} Raketen`, '#ffd27a', 13); }
     // ohne Träger: Begleiter mit Werfern bekommen nach jeder Welle ebenfalls Nachschub
     if (this.wave > 0 && !this.ship.bays) for (const w of this.wings) if (w.mDef) w.ammo = Math.min(this.wingAmmo(w), w.ammo + Math.max(w.mDef.slots, Math.round(w.def.x4.missiles * 0.5)));
   }
@@ -4968,16 +5000,20 @@ export class ShooterGame implements MiniGame {
     const m = w.missile!;
     if (m.fixed) t.a = this.aimA;
     // gegen Raketen wirkungslos: nur Schiffe und Strukturen als Ziel
-    const aim = this.turretAim(t, x, y, range, order, false, dt);
+    // kein Ziel, das schon genug Raketen im Anflug hat (sonst schicken alle Türme ihre Salven auf denselben Späher)
+    const dmg = MISSILE_DMG * (this.tDmg / 6) * m.dmg, md = MISSILES.lenk;
+    const left = (e: Enemy) => (e.hp + e.sh) * 1.1 - this.incoming(e);
+    const aim = this.turretAim(t, x, y, range, order, false, dt, (e) => left(e) > 0);
     const tgt = aim?.tgt as Enemy | undefined;
-    // Vorrat verschossen (20 Salven je Turm): schweigt bis zum Ende der Runde
+    // Vorrat verschossen: schweigt, bis Nachschub kommt (nach jeder Welle, Munitionskisten)
     const empty = t.ammo != null && t.ammo <= 0;
-    if (!tgt || empty) { if (!m.fixed) t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); t.salvo = 0; return; }
+    // ohne Ziel bleiben die restlichen Raketen der Salve in den Rohren (kein Gratis-Nachladen)
+    if (!tgt || empty) { if (!m.fixed) t.a = wrapA(turnTo(t.a, this.aimA, dt * 3)); if (empty) t.salvo = 0; return; }
     const want = Math.atan2(tgt.y - y, tgt.x - x);
     if (!m.fixed) {
       t.a = wrapA(turnTo(t.a, want, dt * (t.turn ?? this.turTurn) * this.tTurnMul));
       // Lenkraketen finden ihr Ziel selbst: grob ausgerichtet genügt
-      if (!t.salvo && Math.abs(wrapA(want - t.a)) > 0.35) return;
+      if ((m.gap === 0 || !t.salvo) && Math.abs(wrapA(want - t.a)) > 0.35) return;
     }
     if (t.cd > 0) return;
     if (!t.salvo) t.salvo = m.n;
@@ -4989,8 +5025,9 @@ export class ShooterGame implements MiniGame {
     const art = m.fixed ? 0.54 : 0.36;
     const s = (this.ship.size * ((t.L ? this.ship.turretDL : undefined) ?? this.ship.turretD ?? 0.1)) / art;
     const ux = Math.cos(t.a), uy = Math.sin(t.a), rx = -uy, ry = ux;
-    const dmg = MISSILE_DMG * (this.tDmg / 6) * m.dmg, md = MISSILES.lenk;
-    const n = Math.min(m.gap > 0 ? 1 : t.salvo, t.ammo ?? Infinity);
+    // nur so viele Raketen, wie das Ziel braucht (+10 % Spielraum); der Rest bleibt für das nächste Ziel
+    const need = Math.max(1, Math.ceil(left(tgt) / (dmg * (md.vs?.[ECLASS[tgt.kind]] ?? 1))));
+    const n = Math.min(m.gap > 0 ? 1 : t.salvo, need, t.ammo ?? Infinity);
     for (let k = 0; k < n; k++) {
       const [tx, ty] = tubes[(m.n - t.salvo) % tubes.length];
       const ox = x + (rx * tx - ux * ty) * s, oy = y + (ry * tx - uy * ty) * s;
@@ -5005,7 +5042,8 @@ export class ShooterGame implements MiniGame {
     }
     if (t.ammo != null && t.ammo <= 0) t.salvo = 0;
     // Pause leicht schwankend (±12 %): die Türme eines Clusters bleiben gegeneinander versetzt
-    t.cd = ((t.salvo > 0 ? m.gap : m.reload * (0.88 + this.rv() * 0.24)) * this.tempo) / this.tRateMul;
+    // Rest der Salve: nach kurzer Pause aufs nächste Ziel (Vierling), sonst Takt der Schächte (Silo)
+    t.cd = ((t.salvo > 0 ? (m.gap > 0 ? m.gap : 0.3) : m.reload * (0.88 + this.rv() * 0.24)) * this.tempo) / this.tRateMul;
     sfx.missile();
   }
 
@@ -6053,7 +6091,11 @@ export class ShooterGame implements MiniGame {
         const tr = m.target.r * 0.9;
         const ix = m.target.x + m.target.vx * t + (m.ox ?? 0) * tr - m.x, iy = m.target.y + m.target.vy * t + (m.oy ?? 0) * tr - m.y;
         const wob = Math.sin(this.time * (m.wf ?? 4) + (m.wob ?? 0)) * 0.2 * clamp((d - 60) / 360, 0, 1);
-        const cur = Math.atan2(m.vy, m.vx), err = wrapA(Math.atan2(iy, ix) + wob - cur);
+        // Wracks: freien Kurs zum Ziel suchen (so weit voraus, wie sie in gut einer halben Sekunde fliegt, höchstens bis
+        // zum Ziel) – sie fliegt im Bogen herum, statt hineinzusteuern
+        let da = Math.atan2(iy, ix) + wob;
+        if (this.cover.length) { const h = clearHeading(this.cover, m.x, m.y, da, Math.min(d, 120 + v * 0.6), 16, m.av ?? 0); da = h.a; m.av = h.side; }
+        const cur = Math.atan2(m.vy, m.vx), err = wrapA(da - cur);
         const turn = m.def.turn * (m.mini ? 1.3 : 1) * (1 + this.m('mturn')) * (m.tk ?? 1) * dt;
         const na = cur + clamp(err, -turn, turn);
         // weit vom Kurs (Ziel seitlich oder hinter ihr): Gas weg, damit der Wendekreis enger wird
@@ -6076,7 +6118,7 @@ export class ShooterGame implements MiniGame {
         continue;
       }
       // Wracks: im Bogen herum; Anomalie: zieht kräftig
-      if (this.cover.length) {
+      if (this.cover.length && !m.target) {
         const dv = steerAround(this.cover, m.x, m.y, Math.atan2(m.vy, m.vx), 120);
         if (dv) { const v0 = Math.hypot(m.vx, m.vy), a0 = Math.atan2(m.vy, m.vx) + clamp(dv, -1, 1) * 4 * dt; m.vx = Math.cos(a0) * v0; m.vy = Math.sin(a0) * v0; }
       }
@@ -6176,9 +6218,9 @@ export class ShooterGame implements MiniGame {
           this.floats.add(this.px, this.py - 20, broken ? 'Reparatur: Stationsturm instand' : 'Reparatur', '#6be38f', 13);
         }
         else if (p.kind === 'shield') { this.shield = this.shieldMax; this.floats.add(this.px, this.py - 20, 'Schild voll', '#7fd8ff', 13); }
-        else if (p.kind === 'ammo') { this.missileCd = 0; this.ammo = this.ammoMax; this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Munitionskiste: Raketenlager voll' : 'Munition (kein Werfer)', '#ffd27a', 13); }
+        else if (p.kind === 'ammo') { this.refillTurrets(Infinity); this.missileCd = 0; this.ammo = this.ammoMax; this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Munitionskiste: Raketenlager voll' : 'Munition (kein Werfer)', '#ffd27a', 13); }
         // Raketen-Fundstück: die Hälfte des Lagers (mindestens vier), Werfer sofort bereit
-        else { this.missileCd = 0; this.ammo = Math.min(this.ammoMax, this.ammo + Math.max(4, Math.round(this.ammoMax * 0.5))); this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Raketen nachgeladen' : 'Raketen (kein Werfer)', '#ffd27a', 13); }
+        else { this.refillTurrets(10); this.missileCd = 0; this.ammo = Math.min(this.ammoMax, this.ammo + Math.max(4, Math.round(this.ammoMax * 0.5))); this.floats.add(this.px, this.py - 20, this.launchers.length ? 'Raketen nachgeladen' : 'Raketen (kein Werfer)', '#ffd27a', 13); }
         sfx.pickup();
       }
     }

@@ -158,6 +158,28 @@ export function pushOut(wrecks: Wreck[], x: number, y: number, vx: number, vy: n
   return null;
 }
 
+/**
+ * Freier Kurs für Lenkflugkörper: ist der Weg in Richtung a auf look Punkte frei, bleibt es bei a; sonst der nächste
+ * freie Winkel daneben (bevorzugt auf Seite side, damit die Rakete nicht hin- und herpendelt). Gibt Winkel und Seite
+ * zurück; ist gar nichts frei, die steilste Abkehr.
+ */
+export function clearHeading(wrecks: Wreck[], x: number, y: number, a: number, look: number, pad: number, side = 0): { a: number; side: number } {
+  const free = (b: number) => coverHit(wrecks, x, y, x + Math.cos(b) * look, y + Math.sin(b) * look, pad) == null;
+  if (!wrecks.length || free(a)) return { a, side: 0 };
+  // Seite: gemerkte, sonst die, auf der das nächste Wrack weniger im Weg ist
+  let s = side;
+  if (!s) {
+    const w = wrecks.reduce((b, q) => (Math.hypot(q.x - x, q.y - y) - q.size < Math.hypot(b.x - x, b.y - y) - b.size ? q : b));
+    s = -(Math.sign(Math.cos(a) * (w.y - y) - Math.sin(a) * (w.x - x)) || 1);
+  }
+  for (let k = 1; k <= 8; k++) {
+    const d = k * 0.22;
+    if (free(a + s * d)) return { a: a + s * d, side: s };
+    if (free(a - s * d)) return { a: a - s * d, side: -s };
+  }
+  return { a: a + s * 1.8, side: s };
+}
+
 /** Ausweichrichtung vor einem Wrack: liegt eins in `look` Punkten voraus, seitlich weg (Winkeländerung, rad), sonst 0 */
 export function steerAround(wrecks: Wreck[], x: number, y: number, a: number, look: number): number {
   const ex = x + Math.cos(a) * look, ey = y + Math.sin(a) * look;
