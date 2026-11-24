@@ -28,6 +28,8 @@
     Im Hintergrund laufen lassen und weiterarbeiten; schlägt er fehl, sofort beheben.
   - **Vor jedem `[live]`-Release immer** die volle Reihe `npm run e2e`.
   - Achtung: `npm run build` prüft auch die Tests auf Typfehler – schlägt er fehl, ist `dist/` veraltet.
+- Waffen-Ausgleich messen mit `node scripts/balance.mjs` (feste Testlagen, 12 Zufallsstarts parallel auf allen Kernen,
+  Mittel und Spanne, wenige Sekunden). Vorher/Nachher gepaart mit denselben Starts; Ergebnis immer mit Spanne berichten.
 - Bild-Prompts immer als Codeblock (```text … ```) ausgeben, damit sie per Kopieren-Knopf übernommen werden können – nicht als Zitat.
 - **Texte glaubwürdig, nicht generisch.** Story, Beschreibungen, Kapitel, Fundstücke: konkret und aus der Spielwelt heraus
   (Logbucheinträge, Funksprüche, Notizen, Namen, Zahlen, kleine Details). Keine Werbe- und KI-Floskeln wie „am Rand des
