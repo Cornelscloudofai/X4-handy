@@ -144,6 +144,15 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
   der Flak nicht; Ausrüstungsstufe ändert seinen Schaden nicht (gewollt, aber nirgends erklärt); Schuss ins Leere
   verpufft.
 
+## Gemischte Loadouts: Waffen und Türme einzeln wählen (vorgemerkt, Grundsatzentscheidung offen)
+
+- **Turmgruppen auch für M-Schiffe:** wie beim Raptor (Turmgruppen mit eigener Art und eigenem Befehlsknopf) – z. B.
+  Cobra: zwei Gruppen zu je zwei Türmen, Flak vorn, Gatling hinten. Die Technik dafür gibt es schon (Träger).
+- **Frontwaffen einzeln:** jede Bordkanone eigene Waffe (Cobra: drei). Offen: Blitzwaffen bündeln sich heute zu
+  einer Entladung aus dem Bug – bei gemischten Kanonen bräuchte jede Blitzkanone eine eigene, schwächere Entladung
+  (sonst dreifacher Blitz viel zu stark); Feuerknopf, Zielhilfe und Konvergenz bei gemischten Geschossgeschwindigkeiten.
+- Reihenfolge-Empfehlung: erst Turmgruppen (klein, vorhandene Technik), Frontwaffen danach.
+
 ## Musik in den Minispielen
 
 - Gasströme: Musik mit Takt-Effekten (Taktkarte, scripts/analyze-beats.mjs) – erste Probe mit „Celestial Drift“.

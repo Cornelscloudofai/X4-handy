@@ -111,6 +111,8 @@ describe('Störblitz', () => {
     expect(t.sh).toBeLessThan(t.shMax);
     expect(t.hp).toBe(hp);
     expect(t.stun ?? 0).toBe(0);
+    // ionisiert: nimmt eine Weile mehr Schaden
+    expect((t as { ion?: number }).ion ?? 0).toBeGreaterThan(1);
   });
 });
 

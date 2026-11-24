@@ -141,6 +141,8 @@ interface Enemy {
   kind: EKind; x: number; y: number; vx: number; vy: number;
   /** Störblitz: lahmgelegt (Restzeit, s) – treibt antriebslos und trudelnd (Drehtempo), schießt nicht */
   stun?: number; stunSpin?: number;
+  /** Störblitz bei L-Schiffen und Strukturen: ionisiert (Restzeit, s) – nimmt mehr Schaden */
+  ion?: number;
   hp: number; max: number; cd: number; r: number;
   target: 'f' | 'p'; orbit: number; flash: number; dir: number;
   /** Schutzziel, auf das der Gegner es abgesehen hat (target 'f') */
@@ -352,6 +354,8 @@ const ANOMALY_R = 1250, ANOMALY_CORE = 78, CORE_DMG = 18, CORE_FLING = 760;
 const ZAP_JUMPS = 4, ZAP_HOP = 150, ZAP_CONE = 0.55;
 /** Störblitz: Lähmung je Treffer (s) für S- und M-Schiffe; Schildverlust je Treffer bei L-Schiffen und Strukturen (Anteil) */
 const EMP_STUN = 1.5, EMP_SHIELD = 0.15;
+/** Störblitz bei L-Schiffen und Strukturen: ionisiert für diese Zeit, nimmt so viel mehr Schaden */
+const ION_VULN = 1.25;
 /** Störblitz: Ionenstoß (Anfangstempo vom Schiff weg; bremst binnen einer Sekunde, ≈ 150 Punkte Weg) und Ionenwolke am Einschlag (Radius, Dauer) */
 const EMP_KNOCK = 750, ION_R = 55, ION_T = 2.5;
 /** Störblitz: Radius der Sicherheitsblase – nur darin stößt der Blitz Gegner weg */
@@ -364,6 +368,8 @@ const EMP_JUMPS = 7, EMP_HOP = 190, EMP_VULN = 1.5;
 const PFLAK_FUSE = 16, PFLAK_R = 62;
 /** Wirkung von Kettenblitz und Flak nach Schiffsklasse des Ziels (S = voll; Türme und Großkampfschiffe kaum) */
 const SWARM_K: Record<'S' | 'M' | 'L', number> = { S: 1, M: 0.3, L: 0.1 };
+/** Flak gegen größere Ziele: weniger stark abgeschwächt als der Kettenblitz (Splitter treffen auch große Rümpfe) */
+const FLAK_K: Record<'S' | 'M' | 'L', number> = { S: 1, M: 0.4, L: 0.25 };
 /**
  * Reichweite der Kyon-Strahlen: Zerstörer 30 % weiter als der Xenon-Laser, das größere Brutschiff 55 % weiter. Das
  * Brutschiff hat nur zwei Kyon-Türme statt vier – jeder brennt doppelt so stark, zusammen also wie der Zerstörer
@@ -5050,6 +5056,7 @@ export class ShooterGame implements MiniGame {
     for (const e of this.enemies) {
       e.shT += dt;
       e.shFlash = Math.max(0, e.shFlash - dt);
+      if (e.ion) e.ion = Math.max(0, e.ion - dt);
       // Piratenfrachter haben keinen Schildgenerator, der nachlädt
       if (e.shT > 3 && e.sh < e.shMax && e.kind !== 'cargo') e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.25 * dt);
       if (e.dodgeCd) e.dodgeCd = Math.max(0, e.dodgeCd - dt);
@@ -5620,6 +5627,8 @@ export class ShooterGame implements MiniGame {
     if (cls === 'L') {
       e.sh = Math.max(0, e.sh - e.shMax * EMP_SHIELD);
       e.shT = 0; e.shFlash = 0.35;
+      // ionisiert: nimmt eine Weile mehr Schaden (verlängert sich mit jedem Treffer)
+      e.ion = EMP_STUN;
       return;
     }
     // Überladung: schon gelähmt – die Bordelektrik brennt durch, geringer Schaden (der Aufschlag für gelähmte Ziele ist
@@ -5785,7 +5794,7 @@ export class ShooterGame implements MiniGame {
       if (d > PFLAK_R) continue;
       const cls = e.parent || e.nest || e.plat || e.hive ? 'L' : ECLASS[e.kind];
       this.logHit();
-      this.damageEnemy(e, s * SWARM_K[cls] * fall(Math.max(0, d)), 0.3);
+      this.damageEnemy(e, s * FLAK_K[cls] * fall(Math.max(0, d)), 0.3);
     }
     for (const m of this.eMissiles) if (Math.hypot(m.x - x, m.y - y) < PFLAK_R) { m.hp = 0; this.explode(m.x, m.y, '#ff8a5c', 0.5, false); }
     this.eMissiles = this.eMissiles.filter((m) => m.hp > 0);
@@ -6192,6 +6201,7 @@ export class ShooterGame implements MiniGame {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
     // vom Störblitz gelähmt: Systeme und Schildregelung ausgefallen – nimmt mehr Schaden
     if (e.stun && e.stun > 0) dmg *= EMP_VULN;
+    else if (e.ion && e.ion > 0) dmg *= ION_VULN;
     // Raketenboot unter deinem Beschuss (Schiff, Türme, Raketen, Staffel): Zielerfassung gestört – die Türme des
     // Frachters allein halten es nicht auf, sonst käme nie eine Salve
     if (e.lockT != null && dmg > 0 && this.logSrc !== 'ward') e.jam = 0.4;
@@ -7866,8 +7876,8 @@ export class ShooterGame implements MiniGame {
       ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.cmdBy.x, e.cmdBy.y); ctx.stroke();
     }
     // Störblitz: lahmgelegt – flackernder, türkiser Ionenschimmer um das Schiff, verblasst zum Ende hin
-    if (e.stun && e.stun > 0) {
-      const k = Math.min(1, e.stun / 0.3), fl = 0.55 + 0.45 * Math.abs(Math.sin(this.time * 37 + e.orbit * 5));
+    if ((e.stun && e.stun > 0) || (e.ion && e.ion > 0)) {
+      const k = Math.min(1, Math.max(e.stun ?? 0, e.ion ?? 0) / 0.3), fl = 0.55 + 0.45 * Math.abs(Math.sin(this.time * 37 + e.orbit * 5));
       const g = ctx.createRadialGradient(e.x, e.y, e.r * 0.3, e.x, e.y, e.r * 1.5);
       g.addColorStop(0, `rgba(150,255,245,${(0.18 * k * fl).toFixed(3)})`);
       g.addColorStop(1, 'rgba(150,255,245,0)');
