@@ -4,15 +4,15 @@ import { it } from 'vitest';
 // @ts-expect-error – Node-Typen sind im Projekt nicht eingebunden (läuft nur unter vitest/Node)
 import { writeFileSync } from 'node:fs';
 declare const process: { env: Record<string, string | undefined> };
-import { ShooterGame } from '../src/minigames/shooter';
+import { ShooterGame, interceptTime } from '../src/minigames/shooter';
 import { DEFAULT_LOADOUT, setBroodTest } from '../src/minigames/loadout';
 
 type En = { x: number; y: number; kind: string; hp: number; sh: number; max: number; shMax: number; parent?: unknown; vx: number; vy: number };
 type G = {
   update(d: number): void; resize(w: number, h: number): void; px: number; py: number; enemies: En[]; clusters: Map<unknown, unknown>;
-  hull: number; shield: number; fireChain(x: number, y: number, a: number): void; wpn: { interval: number; range: number; chain?: boolean };
+  hull: number; shield: number; fireChain(x: number, y: number, a: number): void; 
   tempo: number; spawnBoss(m?: boolean): void; makeEnemy(k: string, x: number, y: number): En; state: { choosing: boolean }; chooseCard(i: number): void;
-  chainGun: boolean;
+  chainGun: boolean; aimA: number; fireId: number | null; pTur: unknown[]; wpn: { interval: number; range: number; speed: number };
 };
 const env = process.env;
 const DT = 1 / 60;
@@ -20,15 +20,28 @@ const DT = 1 / 60;
 it.skipIf(!env.BALANCE)('Messlauf', () => {
   const store = new Map<string, string>();
   (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) };
-  const o = JSON.parse(env.BALANCE!) as { lagen: string[]; seeds: number[]; ship: string; turret: string; groups?: string[]; weapon: string; gear: 1 | 2 | 3; level: 1 | 2 | 3 | 4 | 5; secs: number; out: string };
+  const o = JSON.parse(env.BALANCE!) as { lagen: string[]; seeds: number[]; ship: string; turret: string; groups?: string[]; weapon: string; gear: 1 | 2 | 3; level: 1 | 2 | 3 | 4 | 5; secs: number; out: string; guns?: boolean; noTurrets?: boolean };
   const lo = { ...DEFAULT_LOADOUT, wing: {}, ship: o.ship, turret: o.turret, weapon: o.weapon, ...(o.groups ? { groups: o.groups } : {}) };
   const make = (seed: number, side: string): G => {
     const g = new ShooterGame({ level: o.level, seed, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, mods: {}, gear: { weapon: o.gear, shield: o.gear, engine: o.gear }, loadout: lo } as never, side as never) as unknown as G;
     g.resize(390, 780);
+    // nur die Bordwaffen messen: Türme abbauen
+    if (o.noTurrets) g.pTur.length = 0;
     return g;
   };
   // Bordwaffe: Blitzwaffen feuern im Takt auf den nächsten Gegner in Reichweite (andere Bordwaffen schweigen)
   const fire = (g: G, i: number, every: number, pick: (e: En) => boolean) => {
+    if (o.guns) {
+      // Bordkanonen wie ein Spieler: Bug mit Vorhalt auf den nächsten Gegner, Feuer halten, solange er in Reichweite ist
+      const n = g.enemies.filter(pick).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0];
+      if (!n) { g.fireId = null; return; }
+      const dx = n.x - g.px, dy = n.y - g.py, sp = g.wpn.speed;
+      const t = sp > 0 && sp < 1e5 ? interceptTime(dx, dy, n.vx, n.vy, sp) : 0;
+      const tt = Number.isFinite(t) && t > 0 ? t : 0;
+      g.aimA = Math.atan2(dy + n.vy * tt, dx + n.vx * tt);
+      g.fireId = Math.hypot(dx, dy) < g.wpn.range * 1.05 ? 1 : null;
+      return;
+    }
     if (!g.chainGun || i % every) return;
     const n = g.enemies.filter(pick).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0];
     if (n && Math.hypot(n.x - g.px, n.y - g.py) < g.wpn.range) g.fireChain(g.px, g.py, Math.atan2(n.y - g.py, n.x - g.px));

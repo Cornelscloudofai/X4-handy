@@ -1,7 +1,8 @@
 // Waffen-Ausgleich messen: feste Testlagen, mehrere Zufallsstarts auf alle Prozessorkerne verteilt, Mittel und Spanne.
 //   node scripts/balance.mjs [--lagen brut,zerstoerer,spaeher,jaeger,piraten,xenon,fregatte,xenonk] [--seeds 12] [--secs 60]
 //                            [--ship cobra] [--turret flak] [--groups flak,neutron] [--weapon stoerblitz]
-//                            [--gear 1] [--level 1]
+//                            [--gear 1] [--level 1] [--guns] [--keine-tuerme]
+// --guns: alle Bordwaffen feuern wie ein Spieler (Bug mit Vorhalt aufs nächste Ziel); --keine-tuerme: Türme abgebaut
 // Lagen – Wellen (Abschüsse/min, erlittener Schaden/min): brut (Brutschiff ab Welle 1), spaeher (16 Kha'ak-Späher),
 // jaeger (8 Piraten-Jäger), piraten (6 Jäger, 2 Kanonenboote, 1 Raketenboot), xenon (10 N, 3 M), je von allen Seiten.
 // Großkampfschiffe samt Türmen (Sekunden bis zur Zerstörung): zerstoerer (Kha'ak), fregatte (Piraten), xenonk (Xenon K).
@@ -18,6 +19,7 @@ const o = {
   lagen: arg('lagen', 'brut,zerstoerer').split(','), seeds: Number(arg('seeds', 12)), secs: Number(arg('secs', 60)),
   ship: arg('ship', 'cobra'), turret: arg('turret', 'neutron'), groups: arg('groups', '') ? arg('groups').split(',') : undefined,
   weapon: arg('weapon', 'stoerblitz'), gear: Number(arg('gear', 1)), level: Number(arg('level', 1)),
+  guns: process.argv.includes('--guns'), noTurrets: process.argv.includes('--keine-tuerme'),
 };
 const all = Array.from({ length: o.seeds }, (_, i) => 101 + i);
 const n = Math.min(cpus().length, all.length);
@@ -37,7 +39,7 @@ const fmt = (xs, d = 0) => {
 };
 const UNIT = { sekunden: 's', abschuesse: '/min', erlitten: '/min' };
 const NAME = { brut: 'Brutschiff-Strom', zerstoerer: 'Kha’ak-Zerstörer', spaeher: '16 Späher', jaeger: '8 Piraten-Jäger', piraten: 'Piratenwelle', xenon: 'Xenon-Welle', fregatte: 'Piratenfregatte', xenonk: 'Xenon K' };
-console.log(`${o.ship} · Türme ${o.groups?.join('/') ?? o.turret} · ${o.weapon} · Ausrüstung ${o.gear} · Stufe ${o.level} · ${o.seeds} Läufe · ${Math.round((Date.now() - t0) / 1000)} s`);
+console.log(`${o.ship} · ${o.noTurrets ? 'ohne Türme' : `Türme ${o.groups?.join('/') ?? o.turret}`} · ${o.weapon}${o.guns ? ' (Bordwaffen feuern)' : ''} · Ausrüstung ${o.gear} · Stufe ${o.level} · ${o.seeds} Läufe · ${Math.round((Date.now() - t0) / 1000)} s`);
 for (const lage of o.lagen) {
   const rows = parts.flatMap((p) => p[lage]);
   const keys = Object.keys(rows[0]);
