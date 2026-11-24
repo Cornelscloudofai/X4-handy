@@ -1105,16 +1105,17 @@ describe('Turmbefehle', () => {
   it('M-Türme greifen bei „M“ zuerst das Boot an, auch wenn ein Jäger näher ist; Wischen setzt den Befehl', () => {
     const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'cobra', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
     g.resize(W, H);
-    const a = g as unknown as { px: number; py: number; aimA: number; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; pTur: { a: number }[]; orders: { m: string }; orderBtns: [string, number, number, number][] };
+    const a = g as unknown as { px: number; py: number; aimA: number; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; pTur: { a: number }[]; orders: { m: string; g: string[] }; orderBtns: [string, number, number, number][] };
     for (let i = 0; i < 2000 && a.enemies.length < 2; i++) g.update(DT);
     const [e1, e2] = a.enemies;
     e1.kind = 'jaeger'; e2.kind = 'kanone';
-    // per Wischen nach rechts: „M“
-    const [, bx, by] = a.orderBtns[0];
-    g.pointerDown(7, bx, by);
-    g.pointerMove(7, bx + 60, by);
-    g.pointerUp(7);
-    expect(a.orders.m).toBe('M');
+    // die Cobra hat zwei Turmgruppen mit je eigenem Knopf: auf beiden per Wischen „M“ setzen
+    for (const [k, bx, by] of a.orderBtns.filter(([q]) => q === 'g0' || q === 'g1')) {
+      g.pointerDown(7, bx, by);
+      g.pointerMove(7, bx + 60, by);
+      g.pointerUp(7);
+      expect(a.orders.g[Number(k.slice(1))]).toBe('M');
+    }
     for (let i = 0; i < 90; i++) {
       Object.assign(e1, { x: a.px + 120, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
       Object.assign(e2, { x: a.px - 200, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
@@ -1123,21 +1124,23 @@ describe('Turmbefehle', () => {
     }
     // Türme zeigen nach links (zum Boot), nicht nach rechts (zum Jäger)
     expect(a.pTur.every((t) => Math.cos(t.a) < -0.5)).toBe(true);
-    g.setOrder('m', 'alle');
+    g.setOrder('g0', 'alle'); g.setOrder('g1', 'alle');
   });
 
   it('„Strukturen“: Türme nehmen zuerst einen Geschützturm, auch wenn ein Jäger näher ist; Wischen schräg nach oben', () => {
     const g = new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'cobra', weapon: 'puls', turret: 'puls', shield: 'leicht' } }, 'pirate');
     g.resize(W, H);
-    const a = g as unknown as { px: number; py: number; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; pTur: { a: number }[]; orders: { m: string }; orderBtns: [string, number, number, number][] };
+    const a = g as unknown as { px: number; py: number; enemies: { kind: string; x: number; y: number; vx: number; vy: number; hp: number; max: number }[]; pTur: { a: number }[]; orders: { m: string; g: string[] }; orderBtns: [string, number, number, number][] };
     for (let i = 0; i < 2000 && a.enemies.length < 2; i++) g.update(DT);
     const [e1, e2] = a.enemies;
     e1.kind = 'jaeger'; e2.kind = 'turret';
-    const [, bx, by] = a.orderBtns[0];
-    g.pointerDown(7, bx, by);
-    g.pointerMove(7, bx + 40, by - 40);
-    g.pointerUp(7);
-    expect(a.orders.m).toBe('struktur');
+    // die Cobra hat zwei Turmgruppen mit je eigenem Knopf: auf beiden per Wischen „struktur“ setzen
+    for (const [k, bx, by] of a.orderBtns.filter(([q]) => q === 'g0' || q === 'g1')) {
+      g.pointerDown(7, bx, by);
+      g.pointerMove(7, bx + 40, by - 40);
+      g.pointerUp(7);
+      expect(a.orders.g[Number(k.slice(1))]).toBe('struktur');
+    }
     for (let i = 0; i < 90; i++) {
       Object.assign(e1, { x: a.px + 120, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
       Object.assign(e2, { x: a.px - 200, y: a.py, vx: 0, vy: 0, hp: 1e6, max: 1e6 });
@@ -1145,7 +1148,7 @@ describe('Turmbefehle', () => {
       g.update(DT);
     }
     expect(a.pTur.every((t) => Math.cos(t.a) < -0.5)).toBe(true);
-    g.setOrder('m', 'alle');
+    g.setOrder('g0', 'alle'); g.setOrder('g1', 'alle');
   });
 
   it('Befehlsknöpfe sitzen ganz am linken Rand – auch mit Sicherheitsrand des Geräts – und die Auswahl bleibt im Bild', () => {

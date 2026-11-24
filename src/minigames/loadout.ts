@@ -255,12 +255,14 @@ export const SHIPS: Record<ShipId, ShipDef> = {
   dragon: ship('M', {
     name: 'Dragon', role: 'Korvette', desc: 'Furchteinflößende Korvette: sechs M-Waffenplätze, ein M-Raketenwerfer, zwei Türme, nur ein Schild. Torpedo: langsamer, schwerer Schuss mit großem Flächenschaden.',
     x4: { hull: 21000, engines: 1, shields: 1, weapons: 6, launchers: 1, turrets: 2, missiles: 2, v: 478, dragYaw: 11.298 },
-    gunWidth: 28, gunPos: [-14.5, -12.3, -8.9, 8.9, 12.3, 14.5], turrets: [[-5.9, 4.4], [5.9, 4.4]], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
+    gunWidth: 28, gunPos: [-14.5, -12.3, -8.9, 8.9, 12.3, 14.5], turrets: [[-5.9, 4.4], [5.9, 4.4]], turretGroup: [0, 1], groups: [{ name: 'Turm links', kind: 'M' }, { name: 'Turm rechts', kind: 'M' }], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
   }),
   cobra: ship('M', {
     name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
     x4: { hull: 33000, engines: 3, shields: 2, weapons: 3, launchers: 0, turrets: 4, missiles: 0, v: 518, dragYaw: 11 },
-    gunWidth: 16, gunPos: [-3.7, 0, 3.7], turrets: [[-7.2, -0.4], [7.2, -0.4], [-7.2, 18.5], [7.2, 18.5]], r: 24, size: 92, special: 'escort', sprite: 'split-cobra', fallback: 'split-jaeger-s',
+    gunWidth: 16, gunPos: [-3.7, 0, 3.7], turrets: [[-7.2, -0.4], [7.2, -0.4], [-7.2, 18.5], [7.2, 18.5]],
+    // zwei Turmgruppen: je Gruppe eigene Turmart und eigener Befehlsknopf (z. B. Flak vorn, Gatling hinten)
+    turretGroup: [0, 0, 1, 1], groups: [{ name: 'Bugtürme', kind: 'M' }, { name: 'Hecktürme', kind: 'M' }], r: 24, size: 92, special: 'escort', sprite: 'split-cobra', fallback: 'split-jaeger-s',
   }),
   klapperschlange: ship('L', {
     name: 'Klapperschlange', role: 'Zerstörer', desc: 'Zerstörer der Split: vier schwere Hauptkanonen im Bug, je zwei schwenkbare L-Türme unter den Schulterplatten, die auch spitz nach vorn über den Bug feuern, dazu zwölf M-Türme. Riesige Hülle und starke Schilde, aber träge. Waffenüberladung: kurz doppelte Feuerrate.',
@@ -271,6 +273,8 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     // M-Türme auf den runden Luken der Panzerplatten
     turrets: fromImage(RS_IMG, RS_SIZE, [[565, 307], [689, 307], [565, 387], [689, 387], [557, 580], [697, 580], [549, 692], [705, 692], [541, 792], [713, 792], [538, 919], [716, 919]]),
     turretD: 0.045,
+    // drei Turmgruppen zu je vier: Bug, Mitte, Heck
+    turretGroup: [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2], groups: [{ name: 'Bugtürme', kind: 'M' }, { name: 'Mittschiffs', kind: 'M' }, { name: 'Hecktürme', kind: 'M' }],
     lMounts: lMounts(RS_IMG, [
       // vorderer Flügel (L-förmige Platte mit schräger Außenfläche), Rohr kommt darunter hervor
       { pivot: [515, 246], min: -25, max: 140, cover: [[476, 262], [486, 229], [505, 226], [555, 204], [558, 300], [533, 305], [532, 246], [478, 267]] },
@@ -745,7 +749,7 @@ function valid(l: (Partial<Record<Exclude<keyof Loadout, 'groups' | 'wing' | 'wi
     // das Silo braucht einen Sockel im Rumpf – die Schulterrohre des Zerstörers tragen es nicht
     lturret: l?.lturret && l.lturret in LTURRETS && l.lturret !== 'silo' ? (l.lturret as LTurretId) : DEFAULT_LOADOUT.lturret,
     missile: l?.missile && l.missile in MISSILES ? (l.missile as MissileId) : DEFAULT_LOADOUT.missile,
-    groups: validGroups(l?.groups),
+    groups: validGroups(l?.groups, l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship, turret && turret in TURRETS ? (turret as TurretId) : DEFAULT_LOADOUT.turret),
     wing: validWing(l?.wing, l?.ship && l.ship in SHIPS ? (l.ship as ShipId) : DEFAULT_LOADOUT.ship),
     wingGear: validWingGear(l?.wingGear),
   };
@@ -812,12 +816,18 @@ function validWingGear(g: unknown): Partial<Record<ShipId, WingGear>> {
 /** Anzahl Begleitschiffe */
 export const wingCount = (w: Loadout['wing']): number => Object.values(w ?? {}).reduce((a, b) => a + (b ?? 0), 0);
 
-/** Turmarten der Trägergruppen prüfen; fehlende Gruppen bekommen Pulstürme bzw. schwere Plasmatürme */
-function validGroups(g: unknown): string[] {
-  const list = Array.isArray(g) ? g : [];
-  return (SHIPS.raptor.groups ?? []).map((gr, i) => {
+/**
+ * Turmarten der Turmgruppen des Schiffs prüfen. Fehlende Gruppen bekommen die bisher gewählte Turmart (Träger:
+ * Pulstürme bzw. schwere Plasmatürme). Eine Liste, die nicht zum Schiff passt (aus der Zeit ohne Gruppen oder von einem
+ * anderen Schiff), gilt als nicht gesetzt.
+ */
+function validGroups(g: unknown, ship: ShipId, turret: TurretId): string[] {
+  const gs = SHIPS[ship].groups ?? [];
+  const raw = Array.isArray(g) ? g : [];
+  const list = ship === 'raptor' || raw.length === gs.length ? raw : [];
+  return gs.map((gr, i) => {
     const v = list[i];
-    return gr.kind === 'L' ? (typeof v === 'string' && v in LTURRETS ? v : 'plasma') : (typeof v === 'string' && v in TURRETS ? v : 'puls');
+    return gr.kind === 'L' ? (typeof v === 'string' && v in LTURRETS ? v : 'plasma') : (typeof v === 'string' && v in TURRETS ? v : ship === 'raptor' ? 'puls' : turret);
   });
 }
 
@@ -825,7 +835,7 @@ function validGroups(g: unknown): string[] {
 export function turretOf(lo: Loadout, d: ShipDef, i: number): { id: string; def: TurretDef; L: boolean } {
   const g = d.turretGroup?.[i];
   if (g == null || !d.groups) return { id: lo.turret, def: TURRETS[lo.turret], L: false };
-  const kind = d.groups[g].kind, id = lo.groups?.[g] ?? (kind === 'L' ? 'plasma' : 'puls');
+  const kind = d.groups[g].kind, id = lo.groups?.[g] ?? (kind === 'L' ? 'plasma' : d.name === 'Raptor' ? 'puls' : lo.turret);
   return kind === 'L' ? { id, def: LTURRETS[(id in LTURRETS ? id : 'plasma') as LTurretId], L: true } : { id, def: TURRETS[(id in TURRETS ? id : 'puls') as TurretId], L: false };
 }
 

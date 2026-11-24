@@ -144,10 +144,9 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
   der Flak nicht; Ausrüstungsstufe ändert seinen Schaden nicht (gewollt, aber nirgends erklärt); Schuss ins Leere
   verpufft.
 
-## Gemischte Loadouts: Waffen und Türme einzeln wählen (vorgemerkt, Grundsatzentscheidung offen)
+## Gemischte Loadouts: Waffen und Türme einzeln wählen (Türme umgesetzt, Frontwaffen vorgemerkt)
 
-- **Turmgruppen auch für M-Schiffe:** wie beim Raptor (Turmgruppen mit eigener Art und eigenem Befehlsknopf) – z. B.
-  Cobra: zwei Gruppen zu je zwei Türmen, Flak vorn, Gatling hinten. Die Technik dafür gibt es schon (Träger).
+- **Turmgruppen für M-Schiffe:** umgesetzt (Cobra 2 × 2, Dragon 2 × 1, Klapperschlange 3 × 4).
 - **Frontwaffen einzeln:** jede Bordkanone eigene Waffe (Cobra: drei). Offen: Blitzwaffen bündeln sich heute zu
   einer Entladung aus dem Bug – bei gemischten Kanonen bräuchte jede Blitzkanone eine eigene, schwächere Entladung
   (sonst dreifacher Blitz viel zu stark); Feuerknopf, Zielhilfe und Konvergenz bei gemischten Geschossgeschwindigkeiten.

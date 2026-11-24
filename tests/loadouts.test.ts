@@ -79,3 +79,18 @@ describe('Loadouts', () => {
     expect(suggestLoadoutName({ ship: 'mamba', weapon: 'tau', turret: 'puls', shield: 'leicht', missile: 'lenk' })).toBe('Mamba · Tau-Beschleuniger · Lenkrakete');
   });
 });
+
+describe('Turmgruppen auf M-Schiffen', () => {
+  it('Cobra: Bug- und Hecktürme mit eigener Turmart; alte Loadouts übernehmen ihre Turmart für beide Gruppen', async () => {
+    const { ShooterGame } = await import('../src/minigames/shooter');
+    setLoadout({ ship: 'cobra', turret: 'flak' });
+    expect(loadout().groups).toEqual(['flak', 'flak']);
+    setLoadout({ groups: ['flak', 'neutron'] });
+    const g = new ShooterGame({ level: 1, seed: 1, mutator: null, mode: 'normal', fog: false } as never, 'pirate') as unknown as { pTur: { type?: string; g?: number }[]; orderBtns: [string, number, number, number][] };
+    expect(g.pTur.map((t) => t.type)).toEqual(['flak', 'flak', 'neutron', 'neutron']);
+    expect(g.orderBtns.map(([k]) => k)).toEqual(expect.arrayContaining(['g0', 'g1']));
+    // nach einem Neustart aus dem Speicher
+    resetLoadoutCache();
+    expect(loadoutFor('cobra').groups).toEqual(['flak', 'neutron']);
+  });
+});

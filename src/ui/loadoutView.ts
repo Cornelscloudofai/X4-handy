@@ -204,7 +204,7 @@ export function loadoutView(m: LoModal): string {
     ? [
       ...(ship.x4.weapons ? [{ view: 'weapon' as LoView, key: 'weapon', ic: WEAPON_LOOK[lo.weapon]?.[0] ?? 'gun', label: `Kanonen ${ship.x4.weapons}×${ship.gunSize.toUpperCase()}`, value: wd.name }] : []),
       ...(ship.lMounts?.length ? [{ view: 'lturret' as LoView, key: 'lturret', ic: 'turret', label: `L-Türme ${ship.lMounts.length}×`, value: ltd.name }] : []),
-      ...(ship.groups ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `Türme ${ship.turrets.length}× in ${ship.groups.length} Gruppen`, value: 'je Cluster wählen' }]
+      ...(ship.groups ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `${ship.lMounts?.length ? 'M-Türme' : 'Türme'} ${ship.turrets.length}× in ${ship.groups.length} Gruppen`, value: ship.name === 'Raptor' ? 'je Cluster wählen' : ship.groups.map((_, gi) => turretOf(lo, ship, ship.turretGroup!.indexOf(gi)).def.name.replace(/-?[Tt]urm$/, '')).join(' · ') }]
         : ship.turrets.length ? [{ view: 'turret' as LoView, key: 'turret', ic: 'turret', label: `${ship.lMounts?.length ? 'M-Türme' : 'Türme'} ${ship.turrets.length}×`, value: td.name }] : []),
       ...(ship.x4.launchers ? [{ view: 'missile' as LoView, key: 'missile', ic: 'rocket', label: `Raketen ${ship.x4.launchers}×`, value: missile.name }] : []),
       { view: 'wing', key: 'wing', ic: 'wing', label: SHIPS[lo.ship].bays ? 'Hangar · Staffel' : 'Flügelleute', value: wingCount(lo.wing) ? `${wingCount(lo.wing)} Schiffe` : 'keine' },
@@ -257,11 +257,11 @@ export function loadoutView(m: LoModal): string {
       return card({ key: 'weapon', value: id, on: lo.weapon === id, name: d.name, big: `${num(dps)}/s`, sm: d.beam ? 'Dauerstrahl' : `${num(r, 1)} km`, ic, color: col, img: spriteUrl(`waffe-${id}-ki`), role: WEAPON_ROLE[id], ds: `${delta(dps, curDps, (x) => `${num(x)}/s`)}${delta(r, curKm, (x) => `${num(x, 1)} km`)}` });
     }).join('')}</div><div class="hgr-desc"><b>${esc(wd.name)}:</b> ${esc(wd.desc)}<small>${esc(gunData(g, wd.beam))}</small></div>`;
   } else if (view === 'turret' && ship.groups) {
-    // Träger: je Gruppe (vom Bug zum Heck) die Turmart wählen – Cluster links und rechts gleich
-    title = 'Türme'; sub = `${ship.turrets.length} Türme · je Gruppe vom Bug zum Heck · links und rechts gleich`;
+    // Turmgruppen (Träger, Cobra, Dragon, Klapperschlange): je Gruppe vom Bug zum Heck die Turmart wählen
+    title = 'Türme'; sub = ship.name === 'Raptor' ? `${ship.turrets.length} Türme · je Gruppe vom Bug zum Heck · links und rechts gleich` : `${ship.turrets.length} Türme in ${ship.groups.length} Gruppen · je Gruppe eigene Turmart und eigener Befehlsknopf`;
     const groups = ship.groups;
     body = `<div class="hgr-groups">${groups.map((gr, gi) => {
-      const n = ship.turretGroup!.filter((x) => x === gi).length, cur = lo.groups?.[gi] ?? (gr.kind === 'L' ? 'plasma' : 'puls');
+      const n = ship.turretGroup!.filter((x) => x === gi).length, cur = lo.groups?.[gi] ?? (gr.kind === 'L' ? 'plasma' : ship.name === 'Raptor' ? 'puls' : lo.turret);
       const ids: string[] = gr.kind === 'L' ? LTURRET_IDS : TURRET_IDS;
       const def = (id: string) => (gr.kind === 'L' ? LTURRETS[id as keyof typeof LTURRETS] : TURRETS[id as keyof typeof TURRETS]);
       return `<div class="hgr-grp"><div class="hgr-grp-h"><b>${esc(gr.name)}</b><small>${n} × ${gr.kind} · ${num(n * turretDps(def(cur)))}/s</small></div>

@@ -1728,7 +1728,8 @@ export class ShooterGame implements MiniGame {
     if (gs) {
       // vom oberen Textbereich (Fortschritt, zwei Zeilen) bis über den Joystick; reicht der Platz nicht für eine
       // Spalte mit gut greifbaren Knöpfen, zwei Spalten nebeneinander
-      const keys: OrderKey[] = [...(wing ? ['w' as const] : []), ...gs.map((_, i) => `g${i}` as OrderKey)];
+      // Turmgruppen (Träger und M-Schiffe mit Gruppen), darunter die L-Türme an der Bordwand (Klapperschlange)
+      const keys: OrderKey[] = [...(wing ? ['w' as const] : []), ...gs.map((_, i) => `g${i}` as OrderKey), ...(this.pL.length ? ['l' as const] : [])];
       const y1 = this.quer ? this.h - 150 : this.h - 262, top = this.quer ? TOP + 10 : TOP + 50, gap = wing ? 10 : 0, n = keys.length;
       const fit = (m: number) => Math.min(31, (y1 - top - 14 - gap) / Math.max(1, m - 1));
       const cols = fit(n) >= 26 ? 1 : 2, per = Math.ceil(n / cols), step = fit(per), r = Math.min(14, step * 0.46);
