@@ -19,6 +19,8 @@ export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' |
 
 export interface MiniOpts {
   level: Level;
+  /** gleich nach dem Öffnen die Kampftasten anordnen (aus den Einstellungen); „Fertig“ schließt wieder */
+  layout?: boolean;
   seed?: number;
   /** Ware des Spiels (Rohr-Puzzle: Ware des Moduls; Abbau: Rohstoff) */
   ware?: string;
@@ -211,6 +213,7 @@ export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameRe
   resize();
   bindInput(cur);
   setPhase('intro');
+  if (opts.layout) startLayout(cur);
   cur.raf = requestAnimationFrame(loop);
   if (kind === 'pirates' || kind === 'xenon' || kind === 'khaak') allowTurn(true);
   sfx.open();
@@ -348,6 +351,7 @@ function bindInput(s: Session): void {
         setPhase('play');
         break;
       case 'resume': setPhase('play'); break;
+      case 'layout': startLayout(s); break;
       case 'ask-toggle': askChecked = (b as HTMLInputElement).checked; return;
       case 'pause': if (s.phase === 'play') setPhase('pause'); break;
       case 'rot': cycleRot(s); break;
@@ -559,6 +563,17 @@ function reportBox(r: GameResult): string {
   return `<details class="mg-report" open><summary>Kampfprotokoll</summary>${body}<p class="mg-rep-note">Schaden an Schild und Hülle; Treffer / Schüsse je Geschoss, Lanze oder Rakete.</p></details>`;
 }
 
+/** Spiel mit verschiebbaren Tasten (Kampf) */
+function layoutable(g: MiniGame): g is MiniGame & { layoutEdit(on: boolean, done?: () => void): void } {
+  return typeof (g as { layoutEdit?: unknown }).layoutEdit === 'function';
+}
+/** Tasten anordnen: Spiel läuft weiter angezeigt, steht aber still; „Fertig“ führt zurück ins Pausenmenü */
+function startLayout(s: Session): void {
+  if (!layoutable(s.game)) return;
+  setPhase('play');
+  s.game.layoutEdit(true, () => { if (cur !== s) return; if (s.opts.layout) close(null); else setPhase('pause'); });
+}
+
 function setPhase(p: Phase): void {
   const s = cur;
   if (!s) return;
@@ -600,7 +615,7 @@ function setPhase(p: Phase): void {
       ${retunable(g) ? tunePanel(s.cfg.level, { reset: 'data-mg="tune-reset"', fog: 'data-mg="fog-test"', mods: 'data-mg="mods-test"', note: 'Wirkt sofort auf alle Gegner im Feld (angeschlagene bleiben anteilig angeschlagen) und auf alle, die noch kommen. Wird gemerkt.' }) : ''}
       ${g.goals.length ? `<div class="mg-goals">${g.goals.map((q) => `<div class="${q.done ? 'done' : ''}"><i></i>${esc(q.text)}</div>`).join('')}</div>` : ''}
       ${rulesBox(g.rules, s.kind, mode, true, !!s.cfg.mission && s.cfg.mission !== 'geleit')}
-      <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button><button class="btn ghost" data-mg="abort">Aufgeben</button>${feedbackHook ? '<button class="btn ghost" data-mg="feedback">Feedback geben</button>' : ''}</div></div>`;
+      <div class="mg-actions col"><button class="btn primary" data-mg="resume">Weiter</button>${layoutable(g) ? '<button class="btn ghost" data-mg="layout">Tasten anordnen</button>' : ''}<button class="btn ghost" data-mg="abort">Aufgeben</button>${feedbackHook ? '<button class="btn ghost" data-mg="feedback">Feedback geben</button>' : ''}</div></div>`;
   } else {
     const r = s.result!;
     const o = s.outcome;

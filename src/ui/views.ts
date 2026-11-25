@@ -1859,6 +1859,8 @@ function morePanel(state: GameState, ui: UIState): string {
             <div class="sub">Leisten, Knöpfe, Fenster und Anzeigen in den Minispielen – kleiner zeigt dort mehr vom Spielfeld${hudScale() < hudSetting() - 0.001 ? ` · auf diesem Bildschirm höchstens ${Math.round(hudScale() * 100)} %` : ''}</div>
             <div class="range-row"><span class="small muted">klein</span><input type="range" min="${HUD_MIN * 100}" max="${HUD_MAX * 100}" step="5" value="${Math.round(hudSetting() * 100)}" data-change="hud-scale" aria-label="HUD-Größe"><span class="small muted">groß</span></div></div>
             ${Math.abs(hudSetting() - 1) > 0.001 ? `<button class="btn small" ${act('hud-reset')}>100 %</button>` : ''}</div>
+          <div class="row"><div class="grow"><div class="title" style="font-weight:500">Kampftasten anordnen</div><div class="sub">Jede Taste, das Radar und die Zoom-Leiste verschieben und einzeln vergrößern – hochkant und quer getrennt. Auch im Kampf über Pause erreichbar.</div></div>
+            <button class="btn small" ${act('hud-layout')}>Anordnen</button></div>
           <div class="row"><div class="grow"><div class="title" style="font-weight:500">Menü-Knopf</div><div class="sub">Oben auf der Karte: ${esc(menuStyle().name)}</div>
             <div class="segment" style="margin-top:8px">${MENU_STYLES.map((m) => `<button class="${menuStyle().id === m.id ? 'on' : ''}" ${act('hud-menu', { id: m.id })}>${esc(m.name)}</button>`).join('')}</div></div></div>
           <div class="row"><div class="grow"><div class="title" style="font-weight:500">Rahmen der Reiterleiste</div><div class="sub">Unten auf der Karte: ${esc(frameStyle().name)}</div>

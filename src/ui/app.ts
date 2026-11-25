@@ -1623,6 +1623,8 @@ function onClick(e: MouseEvent): void {
         break;
       }
       case 'ship-art-try': openMinigame('pirates', { level: 1, mutator: null }, () => refresh(), true); break;
+      // Kampftasten anordnen: Simulator im Überlebensmodus, gleich im Anordnen; „Fertig“ kehrt zurück
+      case 'hud-layout': openMinigame('pirates', { level: 1, mutator: null, mission: 'ueberleben', layout: true }, () => refresh(), true); break;
       case 'inc-toggle': {
         ui.incMin = !ui.incMin;
         // beim Einklappen gilt alles Offene als gesehen; neue Ereignisse lassen den Viertelkreis pulsieren

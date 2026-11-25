@@ -486,6 +486,34 @@ const F_MAX = 400, STATION_MAX = 1000, KONVOI_GAP = 560, BERGER_MAX = 800;
 /** Station: Bildgröße, Trefferradius, Lage der sechs Turmsockel (Anteil der Bildgröße), Hülle eines Stationsturms */
 /** Versetztes Feuern: Anteil der Feuerrate gegenüber der gebündelten Salve (Speicher lädt je Einzelschuss) */
 const STAGGER_RATE = 0.7;
+/** Tasten anordnen: verschiebbare Tasten bzw. Gruppen, Größenbereich, Speicher (je Ausrichtung) */
+type LayoutId = 'fire' | 'missile' | 'special' | 'feuer' | 'zoom' | 'radar' | 'orders' | 'vorrat';
+/** Ausdehnung um den Anker (links, oben, rechts, unten) in Grundgröße – für Rand und Rahmen */
+type LayExt = [number, number, number, number];
+type LayoutEntry = { dx: number; dy: number; s: number };
+/** Anordnen: Anker (verschoben) und Rahmen x0, y0, x1, y1 */
+type LayItem = { id: LayoutId; name: string; a: [number, number]; b: [number, number, number, number] };
+/** Feuerart: Beschriftung unter dem Knopf; Zoom: Sicht- und Minus-Knopf links vom Plus, Beschriftung darunter */
+const FEUER_EXT: LayExt = [38, 18, 38, 38], ZOOM_EXT: LayExt = [116, 15, 17, 38];
+const LAY_KEY = 'x4-sektorbau-tasten', LAY_MIN = 0.7, LAY_MAX = 1.6;
+let layCache: { hoch: Partial<Record<LayoutId, LayoutEntry>>; quer: Partial<Record<LayoutId, LayoutEntry>> } | null = null;
+function layAll(): NonNullable<typeof layCache> {
+  if (layCache) return layCache;
+  try { layCache = { hoch: {}, quer: {}, ...JSON.parse(globalThis.localStorage?.getItem(LAY_KEY) ?? '{}') }; } catch { layCache = { hoch: {}, quer: {} }; }
+  return layCache!;
+}
+function layoutOf(quer: boolean): Partial<Record<LayoutId, LayoutEntry>> { return layAll()[quer ? 'quer' : 'hoch']; }
+function layoutSave(): void { try { globalThis.localStorage?.setItem(LAY_KEY, JSON.stringify(layAll())); } catch { /* Speicher nicht verfügbar */ } }
+function setLayout(quer: boolean, id: LayoutId, v: Partial<LayoutEntry> | null): void {
+  const m = layoutOf(quer);
+  if (v === null) delete m[id];
+  else m[id] = { dx: 0, dy: 0, s: 1, ...m[id], ...v };
+  layoutSave();
+}
+function resetLayout(quer: boolean): void { layAll()[quer ? 'quer' : 'hoch'] = {}; layoutSave(); }
+/** Tests: gemerkte Anordnung neu lesen */
+export function resetLayoutCache(): void { layCache = null; }
+
 const STATION_SIZE = 230, STATION_R = 86, STATION_TUR = 0.37, STATION_TUR_HP = 60;
 /** Flucht: Sekunden, bis der Sprungantrieb geladen ist (Stufe 1); Bergung: Container im Feld und nötig für den Erfolg */
 const FLUCHT_T = 150, CRATES = 8, CRATES_MIN = 4;
@@ -854,6 +882,8 @@ export class ShooterGame implements MiniGame {
     else { this.track?.stop(3); this.track = null; }
     // keine Taste und kein Feuer „hängen“ lassen, wenn das Spiel unterbrochen wird
     if (p !== 'play') { this.keys.clear(); this.mouseFire = false; }
+    // Pause beendet das Anordnen der Tasten
+    if (p !== 'play' && this.layEdit) this.layoutEdit(false);
   }
 
   get rules(): Rules {
@@ -1716,15 +1746,21 @@ export class ShooterGame implements MiniGame {
   private get quer(): boolean { return this.w > this.h * 1.2; }
   /** Zeile der Zoom- und Kamerataste, Grundlinie ihrer Beschriftung */
   private get zoomRowY(): number { return this.quer ? TOP + 26 : TOP + 124; }
-  private get zoomLabelY(): number { return this.zoomRowY + 28; }
+  private get zoomLabelY(): number { const z = this.zoomGroup; return z[1] + 28 * z[2]; }
   /** Rechte Kante der Zeile: hochkant unter dem Radar, quer links daneben */
   private get zoomRowX(): number { return this.quer ? this.w - 126 : this.w - 38; }
   // Tasten rechts unten: Feuer groß unter dem Daumen, Raketen links daneben, Ausweichen darüber
-  private get btnFire(): [number, number, number] { return [this.w - 66, this.h - 80, 40]; }
-  private get btnMissile(): [number, number, number] { return [this.w - 160, this.h - 54, 27]; }
+  private get btnFire(): [number, number, number] { return this.placed('fire', [this.w - 66, this.h - 80, 40]); }
+  // die Raketenzahl steht über dem Knopf
+  private get btnMissile(): [number, number, number] { return this.placed('missile', [this.w - 160, this.h - 54, 27], [27, 42, 27, 27]); }
   /** Zoom-Tasten unter dem Radar: weiter weg (−) und näher heran (+) */
-  private get btnZoomOut(): [number, number, number] { return [this.zoomRowX - 44, this.zoomRowY, 15]; }
-  private get btnZoomIn(): [number, number, number] { return [this.zoomRowX, this.zoomRowY, 15]; }
+  private get btnZoomOut(): [number, number, number] { const z = this.zoomGroup; return [z[0] - 44 * z[2], z[1], 15 * z[2]]; }
+  private get btnZoomIn(): [number, number, number] { const z = this.zoomGroup; return [z[0], z[1], 15 * z[2]]; }
+  /** Zoom- und Kamerataste als Gruppe: Lage der Plus-Taste und Maßstab (Tasten anordnen) */
+  private get zoomGroup(): [number, number, number] {
+    const [x, y, r] = this.placed('zoom', [this.zoomRowX, this.zoomRowY, 15], ZOOM_EXT);
+    return [x, y, r / 15];
+  }
   /** Träger: Schieber am rechten Rand, der die Kamera längs des Schiffs bewegt (oben Bug, unten Heck) */
   private get panTrack(): { x: number; y0: number; y1: number } {
     // endet mit Abstand über der Ausweichtaste (auf kleinen Bildschirmen kürzer)
@@ -1758,10 +1794,10 @@ export class ShooterGame implements MiniGame {
   /** Freie Sicht: über dieser Linie verschieben Finger die Kamera, darunter steuern die Sticks */
   private get camZoneY(): number { return this.h * 0.75; }
   /** Taste für die Kamera: links neben den Zoom-Tasten */
-  private get btnCam(): [number, number, number] { return [this.zoomRowX - 88, this.zoomRowY, 15]; }
+  private get btnCam(): [number, number, number] { const z = this.zoomGroup; return [z[0] - 88 * z[2], z[1], 15 * z[2]]; }
   /** Feuerart-Taste rechts am Rand über der Spezialtaste (nur mit mehreren Bordkanonen, die Geschosse oder Lanzen feuern) */
   /** (quer ist über der Spezialtaste kein Platz – dort links daneben) */
-  private get btnFireMode(): [number, number, number] { const [x, y] = this.btnDash; return this.quer ? [x - 64, y, 18] : [x, y - 64, 18]; }
+  private get btnFireMode(): [number, number, number] { const [x, y] = this.btnDashBase; return this.placed('feuer', this.quer ? [x - 64, y, 18] : [x, y - 64, 18], FEUER_EXT); }
   private get fireModeShown(): boolean { return this.guns.length > 1 && !this.chainGun && !this.wpn.beam && !this.wpn.missile; }
   /** versetzt feuern: gewählt und sinnvoll (mehrere Rohre, keine Blitz- oder Strahlwaffe) */
   private get staggerOn(): boolean { return this.staggered && this.fireModeShown; }
@@ -1772,13 +1808,214 @@ export class ShooterGame implements MiniGame {
     this.floats.add(this.px, this.py - 40, this.staggered ? 'Feuer: versetzt' : 'Feuer: gebündelt', '#9ffff0', 13);
     sfx.tap();
   }
+  // ---------- Tasten anordnen ----------
+
+  /** eigene Lage und Größe einer Taste bzw. Gruppe (je Ausrichtung gemerkt) – sonst die Werkslage */
+  private placed(id: LayoutId, base: [number, number, number], ext?: LayExt): [number, number, number] {
+    const o = layoutOf(this.quer)[id];
+    if (!o) return base;
+    const r = base[2] * o.s, pad = 4, [l, t, rr, b] = ext ? ext.map((v) => v * o.s) : [r, r, r, r];
+    // nie über den Rand hinaus und nicht unter die Kopfzeile (samt Beschriftung)
+    const x = clamp(base[0] + o.dx, l + pad, this.w - rr - pad), y = clamp(base[1] + o.dy, TOP + t + pad, this.h - b - pad);
+    return [x, y, r];
+  }
+  /** Turmbefehle: Ausdehnung der Gruppe um den ersten Knopf */
+  private get ordersExt(): LayExt {
+    const base = this.orderBtnsBase;
+    if (!base.length) return [0, 0, 0, 0];
+    const [, ax, ay] = base[0];
+    return [Math.max(...base.map(([, x, , r]) => ax - x + r)), Math.max(...base.map(([, , y, r]) => ay - y + r)), Math.max(...base.map(([, x, , r]) => x - ax + r)), Math.max(...base.map(([, , y, r]) => y - ay + r))];
+  }
+  /** Magazin und Turmvorrat: Zeilen (je 32 hoch) unter dem Anker oben rechts */
+  private get ammoRows(): number {
+    const mag = !!this.wpn.mag && !this.wpn.beam && this.guns.length > 0;
+    let rows = mag ? 1 : 0;
+    for (const fixed of [false, true]) if (this.pTur.some((t) => { const m = (t.w ?? this.tw).missile; return !!m && !!m.fixed === fixed && t.ammo != null; })) rows++;
+    return rows;
+  }
+  private get ammoBase(): [number, number, number] { return [this.w - 20, this.quer ? TOP + 122 : TOP + 184, 1]; }
+  private get ammoExt(): LayExt { return [114 + (this.ship.aspect ? 28 : 0), 16, 4, Math.max(1, this.ammoRows) * 32 - 22]; }
+  /** Anker und Maßstab der Vorratsanzeigen (verschiebbar wie die Tasten) */
+  private get ammoPlace(): [number, number, number] { return this.placed('vorrat', this.ammoBase, this.ammoExt); }
+  /** Zeichnung der Vorratsanzeigen an ihren Platz verschieben und skalieren (Zeichencode bleibt in Grundlage) */
+  private ammoXf(ctx: CanvasRenderingContext2D): void {
+    const [bx, by] = this.ammoBase, [x, y, k] = this.ammoPlace;
+    if (x === bx && y === by && k === 1) return;
+    ctx.translate(x, y); ctx.scale(k, k); ctx.translate(-bx, -by);
+  }
+  /** Tasten, die gerade zu sehen sind (nur die lassen sich anordnen): Anker und Rahmen samt Beschriftung */
+  private get layoutItems(): LayItem[] {
+    const out: LayItem[] = [];
+    const add = (id: LayoutId, name: string, c: [number, number, number], r0: number, e?: LayExt) => {
+      const k = c[2] / r0, [l, t, r, b] = e ?? [r0, r0, r0, r0];
+      out.push({ id, name, a: [c[0], c[1]], b: [c[0] - l * k, c[1] - t * k, c[0] + r * k, c[1] + b * k] });
+    };
+    if (this.ctrl === 'eins' && !this.pc && this.guns.length) add('fire', 'Feuer', this.btnFire, 40);
+    if (this.launchers.length) add('missile', 'Raketen', this.btnMissile, 27, [27, 42, 27, 27]);
+    add('special', SPECIALS[this.ship.special].name, this.btnDash, this.btnDashBase[2]);
+    if (this.fireModeShown) add('feuer', 'Feuerart', this.btnFireMode, 18, FEUER_EXT);
+    add('zoom', 'Sicht und Zoom', this.btnZoomIn, 15, ZOOM_EXT);
+    { const [rx, ry, rw] = this.radarRect; add('radar', 'Radar', [rx + rw / 2, ry + rw / 2, rw / 2], 46); }
+    const ob = this.orderBtns, ob0 = this.orderBtnsBase;
+    if (ob.length) add('orders', 'Turmbefehle', [ob[0][1], ob[0][2], ob[0][3]], ob0[0][3], this.ordersExt);
+    if (this.ammoRows) add('vorrat', this.ammoRows > 1 ? 'Magazin und Vorrat' : 'Magazin', this.ammoPlace, 1, this.ammoExt);
+    return out;
+  }
+  /** Tasten anordnen: aktiv, gewählte Taste, laufendes Ziehen (Taste oder Größenregler) */
+  private layEdit = false;
+  private laySel: LayoutId | null = null;
+  private layDrag: { id: number; what: 'item' | 'size'; key?: LayoutId; gx: number; gy: number } | null = null;
+  private layDone: (() => void) | null = null;
+  /** vom Spielrahmen: Tasten anordnen ein-/ausschalten (das Spiel steht so lange still) */
+  layoutEdit(on: boolean, done?: () => void): void {
+    this.layEdit = on;
+    this.layDrag = null;
+    this.layDone = on ? done ?? null : null;
+    if (on) { this.laySel = this.layoutItems[0]?.id ?? null; this.joy = null; this.aim = null; if (this.fireId !== 99) this.fireId = null; }
+  }
+  /** Bedienfeld beim Anordnen: dort, wo es am wenigsten verdeckt (die gewählte Taste nie); steht still, solange gezogen wird */
+  private layPanelAt: { x: number; y: number } | null = null;
+  private get layPanel(): { x: number; y: number; w: number; h: number } {
+    const w = Math.min(this.w - 24, 340), h = 116;
+    if (!this.layDrag || !this.layPanelAt) {
+      const xs = this.quer ? [(this.w - w) / 2, 16, this.w - w - 16] : [(this.w - w) / 2];
+      const ys = [(this.h - h) / 2, TOP + 112, this.h - h - 24];
+      let best = Infinity;
+      for (const y of ys) for (const x of xs) {
+        let cost = 0;
+        for (const it of this.layoutItems) {
+          const [x0, y0, x1, y1] = it.b, ox = Math.min(x + w, x1 + 8) - Math.max(x, x0 - 8), oy = Math.min(y + h, y1 + 8) - Math.max(y, y0 - 8);
+          if (ox > 0 && oy > 0) cost += ox * oy * (it.id === this.laySel ? 50 : 1);
+        }
+        if (cost < best - 1) { best = cost; this.layPanelAt = { x, y }; }
+      }
+    }
+    return { ...this.layPanelAt!, w, h };
+  }
+  private layHit(x: number, y: number): { kind: 'slider' | 'reset' | 'all' | 'done' | 'panel' } | null {
+    const p = this.layPanel;
+    if (x < p.x || x > p.x + p.w || y < p.y || y > p.y + p.h) return null;
+    const by = p.y + p.h - 34, bw = (p.w - 32) / 3;
+    if (y > by - 4) {
+      const k = Math.floor((x - p.x - 12) / (bw + 4));
+      return { kind: k <= 0 ? 'reset' : k === 1 ? 'all' : 'done' };
+    }
+    if (y > p.y + 40 && y < p.y + 74) return { kind: 'slider' };
+    return { kind: 'panel' };
+  }
+  private laySize(x: number): void {
+    if (!this.laySel) return;
+    const p = this.layPanel, f = clamp((x - p.x - 70) / (p.w - 140), 0, 1);
+    setLayout(this.quer, this.laySel, { s: LAY_MIN + f * (LAY_MAX - LAY_MIN) });
+  }
+  private layDown(id: number, x: number, y: number): void {
+    const h = this.layHit(x, y);
+    if (h) {
+      if (h.kind === 'slider') { this.layDrag = { id, what: 'size', gx: 0, gy: 0 }; this.laySize(x); }
+      else if (h.kind === 'reset' && this.laySel) { setLayout(this.quer, this.laySel, null); sfx.tap(); }
+      else if (h.kind === 'all') { resetLayout(this.quer); sfx.tap(); }
+      else if (h.kind === 'done') { sfx.tap(); const d = this.layDone; this.layoutEdit(false); d?.(); }
+      return;
+    }
+    // Taste wählen und greifen (die zuletzt berührte ist markiert, für sie gilt der Größenregler)
+    // im Rahmen (oder knapp daneben); liegen Rahmen übereinander, gewinnt der kleinere
+    let best: LayItem | null = null, bd = Infinity;
+    for (const it of this.layoutItems) {
+      const [x0, y0, x1, y1] = it.b, d = Math.max(x0 - x, x - x1, y0 - y, y - y1, 0);
+      const score = d > 0 ? 1e9 + d : (x1 - x0) * (y1 - y0);
+      if (d < 14 && score < bd) { bd = score; best = it; }
+    }
+    if (!best) return;
+    this.laySel = best.id;
+    this.layDrag = { id, what: 'item', key: best.id, gx: x - best.a[0], gy: y - best.a[1] };
+    sfx.tap();
+  }
+  private layMove(id: number, x: number, y: number): void {
+    const d = this.layDrag;
+    if (!d || d.id !== id) return;
+    if (d.what === 'size') { this.laySize(x); return; }
+    const key = d.key!, at = () => this.layoutItems.find((i) => i.id === key)?.a;
+    const a = at();
+    if (!a) return;
+    // um die Verschiebung des Ankers weiterschieben; am Rand nicht weiter zählen (sonst klebt die Taste beim Zurückziehen)
+    const tx = x - d.gx, ty = y - d.gy, o = layoutOf(this.quer)[key] ?? { dx: 0, dy: 0, s: 1 };
+    setLayout(this.quer, key, { dx: o.dx + tx - a[0], dy: o.dy + ty - a[1] });
+    const b = at()!, o2 = layoutOf(this.quer)[key]!;
+    setLayout(this.quer, key, { dx: o2.dx - (tx - b[0]), dy: o2.dy - (ty - b[1]) });
+  }
+  /** Tasten anordnen: Rahmen um jede Taste, die gewählte leuchtet; Bedienfeld mit Größenregler */
+  private drawLayout(ctx: CanvasRenderingContext2D, t: number): void {
+    ctx.save();
+    for (const it of this.layoutItems) {
+      const [x0, y0, x1, y1] = it.b, on = it.id === this.laySel;
+      ctx.setLineDash(on ? [] : [5, 5]);
+      ctx.strokeStyle = on ? '#ffd27a' : 'rgba(159,255,240,0.55)';
+      ctx.lineWidth = on ? 2.5 : 1.4;
+      if (on) { ctx.shadowColor = 'rgba(255,181,71,0.9)'; ctx.shadowBlur = 10 + 4 * Math.sin(t * 4); }
+      ctx.beginPath(); ctx.roundRect(x0 - 6, y0 - 6, x1 - x0 + 12, y1 - y0 + 12, 10); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    ctx.setLineDash([]);
+    const p = this.layPanel, sel = this.layoutItems.find((i) => i.id === this.laySel), o = this.laySel ? layoutOf(this.quer)[this.laySel] : undefined;
+    ctx.fillStyle = 'rgba(4,10,15,0.92)';
+    ctx.strokeStyle = 'rgba(110,220,205,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 12); ctx.fill(); ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e4f3f0';
+    ctx.font = '600 13px "Chakra Petch", Barlow, sans-serif';
+    ctx.fillText('Tasten anordnen', p.x + 12, p.y + 20);
+    ctx.fillStyle = '#ffd27a';
+    ctx.textAlign = 'right';
+    ctx.fillText(sel ? sel.name : 'Taste antippen', p.x + p.w - 12, p.y + 20);
+    ctx.font = '500 11px Barlow, sans-serif';
+    ctx.fillStyle = 'rgba(169,195,198,0.85)';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Ziehen zum Verschieben · ${this.quer ? 'quer' : 'hochkant'} gemerkt`, p.x + 12, p.y + 35);
+    // Größenregler
+    const sy = p.y + 57, sx0 = p.x + 70, sx1 = p.x + p.w - 70, f = ((o?.s ?? 1) - LAY_MIN) / (LAY_MAX - LAY_MIN);
+    ctx.fillStyle = 'rgba(169,195,198,0.85)';
+    ctx.fillText('Größe', p.x + 12, sy + 4);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.round((o?.s ?? 1) * 100)} %`, p.x + p.w - 12, sy + 4);
+    ctx.strokeStyle = 'rgba(110,220,205,0.25)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(sx0, sy); ctx.lineTo(sx1, sy); ctx.stroke();
+    ctx.strokeStyle = '#5ff0d8';
+    ctx.beginPath(); ctx.moveTo(sx0, sy); ctx.lineTo(sx0 + (sx1 - sx0) * f, sy); ctx.stroke();
+    ctx.lineCap = 'butt';
+    drawKnob(ctx, sx0 + (sx1 - sx0) * f, sy, 10, { color: '#ffb547', on: true, t });
+    // Knöpfe
+    const by = p.y + p.h - 34, bw = (p.w - 32) / 3;
+    for (const [k, label] of [[0, 'Zurücksetzen'], [1, 'Alle zurück'], [2, 'Fertig']] as const) {
+      const bx = p.x + 12 + k * (bw + 4);
+      ctx.fillStyle = k === 2 ? 'rgba(63,224,197,0.85)' : 'rgba(20,40,50,0.9)';
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, 26, 8); ctx.fill();
+      ctx.fillStyle = k === 2 ? '#03110e' : '#e4f3f0';
+      ctx.font = '600 12px "Chakra Petch", Barlow, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, bx + bw / 2, by + 17);
+    }
+    ctx.restore();
+  }
+
   /** Radar oben rechts (antippen öffnet die taktische Karte) */
-  private get radarRect(): [number, number, number, number] { return [this.w - 102, TOP + 6, 92, 92]; }
+  private get radarRect(): [number, number, number, number] {
+    const [x, y, r] = this.placed('radar', [this.w - 56, TOP + 52, 46]);
+    return [x - r, y - r, 2 * r, 2 * r];
+  }
   private panId: number | null = null;
   private panTap = 0;
-  private get btnDash(): [number, number, number] { return this.quer ? [this.w - 150, this.h - 140, 25] : [this.w - 60, this.h - 182, 25]; }
+  private get btnDashBase(): [number, number, number] { return this.quer ? [this.w - 150, this.h - 140, 25] : [this.w - 60, this.h - 182, 25]; }
+  private get btnDash(): [number, number, number] { return this.placed('special', this.btnDashBase); }
   /** Befehlsknöpfe der Türme: links über dem Joystick (M oben, L darunter; nur wenn das Schiff solche Türme hat) */
   private get orderBtns(): [OrderKey, number, number, number][] {
+    const base = this.orderBtnsBase;
+    if (!base.length) return base;
+    // als Gruppe verschoben und skaliert (um den ersten Knopf)
+    const [, ax, ay, ar] = base[0], [x, y, r] = this.placed('orders', [ax, ay, ar], this.ordersExt), k = r / ar;
+    return base.map(([key, bx, by, br]) => [key, x + (bx - ax) * k, y + (by - ay) * k, br * k]);
+  }
+  private get orderBtnsBase(): [OrderKey, number, number, number][] {
     const out: [OrderKey, number, number, number][] = [];
     // Träger: je Feuergruppe ein kleiner Knopf, vom Bug (oben) zum Heck (unten), L-Gruppen darunter
     const gs = this.ship.groups;
@@ -1847,6 +2084,7 @@ export class ShooterGame implements MiniGame {
   // ---------- Eingabe ----------
 
   pointerDown(id: number, x: number, y: number): void {
+    if (this.layEdit) { this.layDown(id, x, y); return; }
     if (id !== MOUSE_ID && this.pc) { this.pc = false; this.keys.clear(); this.mouseFire = false; }
     if (this.choosing) { this.pickCardAt(x, y); return; }
     if (this.tac) { this.tacTap(x, y); return; }
@@ -1904,6 +2142,7 @@ export class ShooterGame implements MiniGame {
   }
 
   pointerMove(id: number, x: number, y: number): void {
+    if (this.layEdit) { this.layMove(id, x, y); return; }
     if (this.panId === id) { this.setPan(y); return; }
     if (this.torpAim?.id === id) { this.moveTorpAim(x, y); return; }
     // zurück am Schiff: ein Finger, der schon vorher auf einem Stick lag, übernimmt ihn wieder (an seiner jetzigen Stelle)
@@ -1955,6 +2194,7 @@ export class ShooterGame implements MiniGame {
   }
 
   pointerUp(id: number): void {
+    if (this.layEdit) { if (this.layDrag?.id === id) this.layDrag = null; return; }
     if (this.panId === id) this.panId = null;
     if (this.torpAim?.id === id) { this.releaseTorpAim(); return; }
     if (this.heldJoy === id) this.heldJoy = null;
@@ -4267,6 +4507,8 @@ export class ShooterGame implements MiniGame {
 
   update(dt: number): void {
     if (this.done) return;
+    // Tasten anordnen: das Spiel steht still
+    if (this.layEdit) return;
     // taktische Karte: Zeitlupe
     if (this.tac) { if (this.endT >= 0 || this.choosing) this.closeTac(); else dt *= 0.25; }
     this.fx.update(dt);
@@ -6953,6 +7195,7 @@ export class ShooterGame implements MiniGame {
       ctx.restore();
     }
     if (this.choosing) this.drawCards(ctx);
+    if (this.layEdit) this.drawLayout(ctx, t);
   }
 
   /**
@@ -8987,8 +9230,7 @@ export class ShooterGame implements MiniGame {
   }
 
   private drawRadar(ctx: CanvasRenderingContext2D): void {
-    const RADAR = 1500, rw = 92, rh = 92;
-    const x0 = this.w - rw - 10, y0 = TOP + 6;
+    const RADAR = 1500, [x0, y0, rw, rh] = this.radarRect;
     const sc = rw / (RADAR * 2);
     ctx.save();
     // Fassung wie bei den Kampftasten: dunkles Metall mit Fase und Schlagschatten
@@ -9228,6 +9470,7 @@ export class ShooterGame implements MiniGame {
     const x = this.w - W - (this.ship.aspect ? 48 : 20);
     let y = (this.quer ? TOP + 122 : TOP + 184) + (mag ? 32 : 0);
     ctx.save();
+    this.ammoXf(ctx);
     for (const [label, n, max] of rows) {
       const f = n / max, low = f <= 0.2, col = n <= 0 ? '#ff5c6c' : low ? '#ffb547' : '#ffb070';
       ctx.fillStyle = 'rgba(5,14,22,0.72)';
@@ -9262,6 +9505,7 @@ export class ShooterGame implements MiniGame {
     const W = 84, H = 4;
     const x = this.w - W - 20, y = this.quer ? TOP + 122 : TOP + 184;
     ctx.save();
+    this.ammoXf(ctx);
     ctx.fillStyle = 'rgba(5,14,22,0.72)';
     ctx.strokeStyle = 'rgba(110,220,205,0.25)';
     ctx.lineWidth = 1;
