@@ -343,12 +343,17 @@ for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['fl
   await page.screenshot({ path: `${out}/mg-17-${mission}-${kind}.png` });
   // Einsatz vorzeitig zu Ende (z. B. Jäger zerstört): gleich über den Ergebnisbildschirm zurück, sonst pausieren und abbrechen
   // (die Runde läuft weiter: endet sie genau zwischen Prüfen und Klicken, kommt der Ergebnisbildschirm – dann dort weiter)
-  if (await page.locator('#minigame [data-mg="pause"]').isVisible()) {
-    const paused = await page.click('#minigame [data-mg="pause"]', { timeout: 2000 }).then(() => true, () => false);
-    if (paused) await page.click('#minigame [data-mg="abort"]');
-    await page.waitForTimeout(200);
+  // bis zu drei Versuche: Ergebnisbildschirm da → beenden; sonst pausieren und abbrechen (endet die Runde mitten im
+  // Klicken, ist beim nächsten Versuch der Ergebnisbildschirm da)
+  const quit = page.locator('#minigame [data-mg="quit"]');
+  for (let k = 0; k < 3 && !(await quit.isVisible()); k++) {
+    if (await page.locator('#minigame [data-mg="pause"]').isVisible()) {
+      const paused = await page.click('#minigame [data-mg="pause"]', { timeout: 2000 }).then(() => true, () => false);
+      if (paused) await page.click('#minigame [data-mg="abort"]', { timeout: 2000 }).catch(() => {});
+    }
+    await page.waitForTimeout(400);
   }
-  await page.click('#minigame [data-mg="quit"]');
+  await quit.click();
   await page.waitForTimeout(200);
 }
 await simTab(page, 'work');
