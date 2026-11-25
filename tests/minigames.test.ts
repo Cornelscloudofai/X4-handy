@@ -1712,9 +1712,9 @@ describe('Kampf: Nachladen, Thermal-Desintegrator, Turmreichweite', () => {
   const mk = (weapon: string) => new ShooterGame({ ...cfg(1, 3), loadout: { ship: 'mamba', weapon, turret: 'puls', shield: 'leicht' } as Loadout }, 'pirate') as unknown as T;
 
   it('Nachladen dauert im Spiel etwa so lange wie in X4 (nicht mehr um den Spieltakt gestreckt)', () => {
-    // Schrotbatterie S: 5 s in X4 → gut 4,7 s im Spiel (vorher 7,8 s)
-    expect(mk('schrot').wpn.reload).toBeLessThan(5);
-    expect(mk('schrot').wpn.reload).toBeGreaterThan(4);
+    // Schrotbatterie S: im Spiel bewusst kürzer als in X4 (2,8 s statt 5 s – sonst zu behäbig) → gut 2,6 s
+    expect(mk('schrot').wpn.reload).toBeLessThan(3);
+    expect(mk('schrot').wpn.reload).toBeGreaterThan(2);
     expect(mk('tau').wpn.reload).toBeLessThan(4);
   });
 

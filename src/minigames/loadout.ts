@@ -483,8 +483,10 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     // Nahkampf: anderthalbfacher Schaden, aber nur auf kurze Entfernung voll; Wucht schafft Luft gegen Jäger
     name: 'Schrotbatterie', group: 'allgemein', color: '#ffc070', w: 1.8, falloff: true, knock: 240,
     desc: 'Sechs Geschosse je Schuss mit Streuung: verheerend aus der Nähe, auf Distanz verpufft die Ladung (ab einem Drittel der Reichweite bis auf 40 %). Die Wucht stößt Jäger zurück.',
-    s: { dmg: 72, rate: 0.9, amt: 6, mag: 8, reload: 5, v: 1800, life: 1.28, angle: 1.16 },
-    m: { dmg: 128, rate: 0.8, amt: 6, mag: 6, reload: 5.5, v: 1900, life: 1.474, angle: 1.16 },
+    // schneller und flüssiger: höherer Takt, kürzeres Nachladen, schnellere Ladung (Reichweite gleich); Schaden je
+    // Kugel so gesenkt, dass die Wirkung über ein Magazin samt Nachladen etwa gleich bleibt
+    s: { dmg: 54, rate: 1.1, amt: 6, mag: 8, reload: 2.8, v: 2800, life: 0.823, angle: 1.16 },
+    m: { dmg: 92, rate: 1, amt: 6, mag: 6, reload: 3, v: 2800, life: 1, angle: 1.16 },
   },
   strahl: {
     name: 'Strahlenemitter', group: 'allgemein', color: '#9ffcff', w: 2, beam: true,
@@ -496,8 +498,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     // wie der Plasmaturm: 40 % durch den Schild, Spritzschaden beim Einschlag; schnellere Kugeln, Reichweite gleich
     name: 'Plasmakanone', group: 'allgemein', color: '#a6ff6b', w: 5, hullPierce: 0.4, splash: 55,
     desc: 'Schwere Plasmageschosse mit hohem Schaden und großer Reichweite. Das Plasma schlägt zum Teil durch den Schild und verbrennt beim Einschlag auch, was daneben fliegt.',
-    s: { dmg: 940, rate: 1000 / 2600, amt: 1, mag: 0, reload: 0, v: 1600, life: 2.85, angle: 0.7 },
-    m: { dmg: 1560, rate: 1000 / 2500, amt: 1, mag: 0, reload: 0, v: 1600, life: 3.75, angle: 0.7 },
+    // höherer Takt (gut eine Kugel je 1,5 s statt alle 2,5 s), Schaden je Kugel entsprechend geringer
+    s: { dmg: 557, rate: 0.65, amt: 1, mag: 0, reload: 0, v: 1600, life: 2.85, angle: 0.7 },
+    m: { dmg: 890, rate: 0.7, amt: 1, mag: 0, reload: 0, v: 1600, life: 3.75, angle: 0.7 },
   },
   neutron: {
     name: 'Neutronen-Gatling', group: 'split', color: '#ff8a3d', w: 2,
@@ -508,8 +511,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   tau: {
     name: 'Tau-Beschleuniger', group: 'split', color: '#ff5a5a', w: 2.2,
     desc: 'Split: vier Geschosse je Schuss in schneller Folge – auf kurze Entfernung verheerend, geringe Reichweite.',
-    s: { dmg: 56, rate: 2.5, amt: 4, mag: 6, reload: 4, v: 2000, life: 1.235, angle: 1.25 },
-    m: { dmg: 90, rate: 2, amt: 4, mag: 6, reload: 5, v: 2000, life: 1.4, angle: 1.32 },
+    // halbes Nachladen, Schaden je Geschoss so gesenkt, dass die Wirkung je Magazin samt Pause etwa gleich bleibt
+    s: { dmg: 42, rate: 2.5, amt: 4, mag: 6, reload: 2, v: 2000, life: 1.235, angle: 1.25 },
+    m: { dmg: 68, rate: 2, amt: 4, mag: 6, reload: 2.5, v: 2000, life: 1.4, angle: 1.32 },
   },
   thermal: {
     // drei Viertel durch den Schild: die Waffe gegen stark geschilderte Ziele (vorher 40 %, ohne erkennbare Rolle)
