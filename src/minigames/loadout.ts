@@ -423,6 +423,8 @@ export interface WeaponDef {
   beam?: boolean;
   /** Anteil des Schadens, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */
   hullPierce?: number;
+  /** Flächenschaden beim Einschlag (Radius): halber Schaden im Umkreis */
+  splash?: number;
   rail?: boolean;
   /** Mass Driver: Projektil mit langer Leuchtspur, durchschlägt ein Ziel und trifft das nächste mit halber Wucht */
   slug?: boolean;
@@ -481,10 +483,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     m: { dmg: 135, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0.18 },
   },
   plasma: {
-    name: 'Plasmakanone', group: 'allgemein', color: '#a6ff6b', w: 5,
-    desc: 'Schwere, langsame Plasmageschosse mit hohem Schaden und großer Reichweite – treffen ist schwer, aber lohnt sich.',
-    s: { dmg: 720, rate: 1000 / 2600, amt: 1, mag: 0, reload: 0, v: 1200, life: 3.8, angle: 0.7 },
-    m: { dmg: 1200, rate: 1000 / 2500, amt: 1, mag: 0, reload: 0, v: 1200, life: 5, angle: 0.7 },
+    // wie der Plasmaturm: 40 % durch den Schild, Spritzschaden beim Einschlag; schnellere Kugeln, Reichweite gleich
+    name: 'Plasmakanone', group: 'allgemein', color: '#a6ff6b', w: 5, hullPierce: 0.4, splash: 55,
+    desc: 'Schwere Plasmageschosse mit hohem Schaden und großer Reichweite. Das Plasma schlägt zum Teil durch den Schild und verbrennt beim Einschlag auch, was daneben fliegt.',
+    s: { dmg: 940, rate: 1000 / 2600, amt: 1, mag: 0, reload: 0, v: 1600, life: 2.85, angle: 0.7 },
+    m: { dmg: 1560, rate: 1000 / 2500, amt: 1, mag: 0, reload: 0, v: 1600, life: 3.75, angle: 0.7 },
   },
   neutron: {
     name: 'Neutronen-Gatling', group: 'split', color: '#ff8a3d', w: 2,
@@ -499,10 +502,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     m: { dmg: 90, rate: 2, amt: 4, mag: 6, reload: 5, v: 2000, life: 1.4, angle: 1.32 },
   },
   thermal: {
-    name: 'Thermal-Desintegrator', group: 'split', color: '#ff9d2e', w: 2.6, hullPierce: 0.4,
-    desc: 'Split: 40 % jedes Treffers umgehen den Schild und gehen sofort auf die Hülle – stark gegen gut geschützte Ziele.',
-    s: { dmg: 31, rate: 4, amt: 1, mag: 8, reload: 2.2, v: 2200, life: 1.1, angle: 0.3 },
-    m: { dmg: 92, rate: 4, amt: 1, mag: 8, reload: 4.5, v: 2200, life: 1.682, angle: 0.3 },
+    // drei Viertel durch den Schild: die Waffe gegen stark geschilderte Ziele (vorher 40 %, ohne erkennbare Rolle)
+    name: 'Thermal-Desintegrator', group: 'split', color: '#ff9d2e', w: 2.6, hullPierce: 0.75,
+    desc: 'Split: drei Viertel jedes Treffers umgehen den Schild und gehen sofort auf die Hülle – die Waffe gegen stark geschützte Ziele.',
+    s: { dmg: 47, rate: 4, amt: 1, mag: 8, reload: 2.2, v: 2200, life: 1.1, angle: 0.3 },
+    m: { dmg: 140, rate: 4, amt: 1, mag: 8, reload: 4.5, v: 2200, life: 1.682, angle: 0.3 },
   },
   boson: {
     name: 'Bosonenlanze', group: 'split', color: '#e0c3ff', w: 3, gimbal: 0.5, rail: true,
@@ -533,8 +537,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   massdriver: {
     name: 'Mass Driver', group: 'allgemein', color: '#9fdcff', w: 2.6, gimbal: 0.7, slug: true,
     desc: 'Terraner: magnetisch beschleunigtes Projektil, sehr schnell und mit langer Leuchtspur – hoher Einzelschaden, durchschlägt ein Ziel und trifft das nächste mit halber Wucht. Kann verfehlen.',
-    s: { dmg: 450, rate: 1.3, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.15, angle: 0.12 },
-    m: { dmg: 690, rate: 1.3, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.25, angle: 0.12 },
+    s: { dmg: 450, rate: 0.8, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.15, angle: 0.12 },
+    m: { dmg: 690, rate: 0.8, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.25, angle: 0.12 },
   },
   // Schwere Hauptbatterie (nur L): eigene Entwürfe ohne X4-Vorbild. Takt so gewählt, dass im Minispiel etwa ein Schuss
   // pro Sekunde fällt (Schnellfeuer) bzw. drei Schuss in einer Sekunde, dann drei Sekunden Pause (Salve).

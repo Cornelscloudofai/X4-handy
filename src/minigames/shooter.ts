@@ -3645,6 +3645,9 @@ export class ShooterGame implements MiniGame {
       this.enemies.push(t);
     }
     if (!mini) this.bossT = 0;
+    // Rumpf von Anfang an geschützt, solange Türme stehen (sonst erst ab dem nächsten Takt – eine Salve im selben
+    // Augenblick träfe den Kern ungeschützt)
+    b.shielded = this.enemies.some((q) => q.parent === b);
     // Piratenträger: startet von seiner Startbahn Jäger
     if (this.side === 'pirate' && !small) { b.launchT = 6; b.launched = 0; }
   }
@@ -4757,7 +4760,7 @@ export class ShooterGame implements MiniGame {
           this.logSrc = 'gun'; this.logShot();
           if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7) * (over ? 2 : 1), w.range, over ? '#ffd27a' : w.color, this.ship.gunSize === 'l' || over, this.c('pierce')); continue; }
           const slug = !!WEAPONS[this.wpnId as WeaponId]?.slug;
-          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', src: 'gun', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce') + (slug ? 1 : 0), hullPierce: w.hullPierce || undefined, splash: this.c('splash') ? 30 + 25 * this.c('splash') : undefined, slug: slug || undefined });
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', src: 'gun', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce') + (slug ? 1 : 0), hullPierce: w.hullPierce || undefined, splash: Math.max(w.splash ?? 0, this.c('splash') ? 30 + 25 * this.c('splash') : 0) || undefined, slug: slug || undefined });
           // Mass Driver: Mündungsblitz und kleine Druckwelle an der Mündung
           if (slug) { this.fx.add({ x: ox, y: oy, color: '#dff4ff', size: 7, max: 0.07 }); this.fx.add({ x: ox + Math.cos(a) * 6, y: oy + Math.sin(a) * 6, color: '#9fdcff', size: 5, kind: 'ring', max: 0.16 }); }
         }
