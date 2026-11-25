@@ -346,12 +346,12 @@ for (const [mission, kind] of [['station', 'xenon'], ['konvoi', 'pirates'], ['fl
   // bis zu drei Versuche: Ergebnisbildschirm da → beenden; sonst pausieren und abbrechen (endet die Runde mitten im
   // Klicken, ist beim nächsten Versuch der Ergebnisbildschirm da)
   const quit = page.locator('#minigame [data-mg="quit"]');
-  for (let k = 0; k < 3 && !(await quit.isVisible()); k++) {
-    if (await page.locator('#minigame [data-mg="pause"]').isVisible()) {
-      const paused = await page.click('#minigame [data-mg="pause"]', { timeout: 2000 }).then(() => true, () => false);
-      if (paused) await page.click('#minigame [data-mg="abort"]', { timeout: 2000 }).catch(() => {});
-    }
-    await page.waitForTimeout(400);
+  // (unter Last kann das Abbrechen-Klicken auslaufen – dann steht das Pausenmenü noch offen: dort weiter abbrechen)
+  for (let k = 0; k < 5 && !(await quit.isVisible()); k++) {
+    const abort = page.locator('#minigame [data-mg="abort"]');
+    if (await abort.isVisible()) await abort.click({ timeout: 5000 }).catch(() => {});
+    else if (await page.locator('#minigame [data-mg="pause"]').isVisible()) await page.click('#minigame [data-mg="pause"]', { timeout: 5000 }).catch(() => {});
+    await quit.waitFor({ state: 'visible', timeout: 1500 }).catch(() => {});
   }
   await quit.click();
   await page.waitForTimeout(200);
