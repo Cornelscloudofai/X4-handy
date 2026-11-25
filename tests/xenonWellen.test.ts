@@ -75,6 +75,15 @@ describe('Xenon-Wellen nach Stufe', () => {
   });
 });
 
+describe('Kha\'ak: Brutschiff nach Schiffsklasse', () => {
+  it('Stufe 1 mit einem Jäger (S): kein Brutschiff; mit M und ab Stufe 2 am Ende eines', () => {
+    const last = (g: G) => bigsPerWave(g).at(-1);
+    expect(last(game(1, 'mamba', 'khaak'))).toBe(0);
+    expect(last(game(1, 'cobra', 'khaak'))).toBe(1);
+    expect(last(game(2, 'mamba', 'khaak'))).toBe(1);
+  });
+});
+
 describe('Großkampfschiffe: Platz und Abstand', () => {
   it('Xenon K nie am Kartenrand – rundherum Platz, um jeden Turm zu erreichen', () => {
     for (let seed = 1; seed <= 12; seed++) {

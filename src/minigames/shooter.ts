@@ -1353,7 +1353,7 @@ export class ShooterGame implements MiniGame {
         ? 'Dein Frachter fliegt zum Sprungtor, Piraten lauern auf der Route. Fang sie ab, bevor sie ihn erreichen – Raketen- und Kanonenboote zuerst. Zum Schluss stellt sich der Piratenträger: erst die Flaktürme, und er startet Jäger von seiner Startbahn.'
         : side === 'xenon'
           ? 'Dein Frachter fliegt zum Sprungtor, Xenon fallen von allen Seiten ein. Fang sie weit draußen ab.' + (this.midBigWave >= 0 ? ` In Welle ${this.midBigWave + 1} und zum Schluss greift je ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.` : this.finalBigs ? ' Zum Schluss greift ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Fregatten, Korvetten und Schwärmen.')
-          : 'Kha’ak fallen über die Route her: Späher kommen als geschlossene Cluster und schwärmen erst kurz vor dem Ziel aus – oder sobald du einen triffst. Jäger feuern Kyon-Strahlen, die Schilde schnell durchbrennen; Abfangjäger springen aus dem Visier. Zum Schluss ein Brutschiff: erst Kyon-Türme und Brutkammern, dann der Kern.';
+          : 'Kha’ak fallen über die Route her: Späher kommen als geschlossene Cluster und schwärmen erst kurz vor dem Ziel aus – oder sobald du einen triffst. Jäger feuern Kyon-Strahlen, die Schilde schnell durchbrennen; Abfangjäger springen aus dem Visier.' + (this.finalBigs ? ' Zum Schluss ein Brutschiff: erst Kyon-Türme und Brutkammern, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Korvetten, Abfangjägern und Clustern.');
     if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
     for (let i = 0; i < 40; i++) this.sectionPlan.push(this.mutator?.id === 'mines' ? 'mines' : i === 0 ? 'none' : this.r() < 0.45 ? (this.r() < 0.5 ? 'rocks' : 'mines') : 'none');
@@ -1610,9 +1610,12 @@ export class ShooterGame implements MiniGame {
   private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : this.counted && i === this.nWaves - 1 && this.finalBigs > 0; }
   /**
    * Großkampfschiffe in der letzten Welle. Xenon: Stufe 1 keines (dort viele kleine Schiffe und Schwärme), ab Stufe 2
-   * ein Xenon K; die übrigen Seiten eines
+   * ein Xenon K. Kha'ak: mit einem Jäger (S) auf Stufe 1 kein Brutschiff (ab M ist es kein Problem). Piraten: eines
    */
-  private get finalBigs(): number { return this.side !== 'xenon' || this.mode === 'endless' ? 1 : this.level >= 2 ? 1 : 0; }
+  private get finalBigs(): number {
+    if (this.mode === 'endless' || this.level >= 2) return 1;
+    return this.side === 'xenon' || (this.side === 'khaak' && this.ship.cls === 'S') ? 0 : 1;
+  }
   /** Xenon ab Stufe 4: ein weiterer Xenon K in der mittleren Welle (bei fünf oder sechs Wellen Welle 3), sonst -1 */
   private get midBigWave(): number { return this.side === 'xenon' && this.mode !== 'endless' && this.counted && this.level >= 4 ? Math.floor((this.nWaves - 1) / 2) : -1; }
 
@@ -4806,8 +4809,8 @@ export class ShooterGame implements MiniGame {
       // gegen Ende ein Großkampfschiff, das den Sprung verhindern soll
       if (this.charge >= 0.62 && !this.fluchtBoss) {
         this.fluchtBoss = true;
-        // Xenon auf Stufe 1: statt des K zwei Fregatten mit einer Korvette
-        if (this.side === 'xenon' && this.level < 2) this.reinforce.push({ t: this.waveT, kinds: ['p', 'p', 'm'], from: Math.floor(this.r() * 5) });
+        // Xenon (bzw. Kha'ak gegen einen Jäger) auf Stufe 1: statt des Großkampfschiffs zwei Fregatten bzw. Korvetten
+        if (!this.finalBigs) this.reinforce.push({ t: this.waveT, kinds: this.side === 'khaak' ? ['kk', 'kk', 'ka'] : ['p', 'p', 'm'], from: Math.floor(this.r() * 5) });
         else this.reinforce.push({ t: this.waveT, kinds: ['boss'], from: Math.floor(this.r() * 5) });
       }
       if (this.charge >= 1 && this.liveWards.length) { this.winRound(); return; }
