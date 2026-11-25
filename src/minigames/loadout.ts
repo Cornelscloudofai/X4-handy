@@ -468,8 +468,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     // Schildbrecher: Energie zehrt am Schild (+60 %), an der Hülle etwas weniger (−10 %)
     name: 'Pulslaser', group: 'allgemein', color: '#7ffff0', w: 2, shieldK: 1.6, hullK: 0.9,
     desc: 'Kurze Salven mit sehr schnellen, genauen Geschossen und großer Reichweite. Schildbrecher: gegen Schilde deutlich stärker, gegen nackte Hülle schwächer.',
-    s: { dmg: 36, rate: 6, amt: 1, mag: 3, reload: 0.7, v: 5000, life: 0.7, angle: 0 },
-    m: { dmg: 55, rate: 8, amt: 1, mag: 3, reload: 0.7, v: 5000, life: 0.8, angle: 0 },
+    // schnellere Geschosse wie beim Pulsturm (9000 statt 5000), Reichweite gleich
+    s: { dmg: 36, rate: 6, amt: 1, mag: 3, reload: 0.7, v: 9000, life: 0.389, angle: 0 },
+    m: { dmg: 55, rate: 8, amt: 1, mag: 3, reload: 0.7, v: 9000, life: 0.444, angle: 0 },
   },
   bolzen: {
     // Hüllenbrecher: massive Bolzen schlagen in die Panzerung (+15 %), am Schild prallen sie eher ab (−30 %)
@@ -597,9 +598,9 @@ export function weaponFits(w: WeaponDef, size: GunSize): boolean {
  * salvos: Vorrat je Turm in vollen Salven (danach schweigt er bis zum Ende der Runde)
  */
 export interface TurretMissile { n: number; gap: number; reload: number; dmg: number; range: number; salvos: number; fixed?: boolean; /** Raketenart (TURRET_MISSILES) */ kind: 'silo' | 'spreng' }
-export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile; /** Flak: Sprenggranaten mit Annäherungszünder */ flak?: boolean; /** Anteil, der den Schild umgeht */ hullPierce?: number; /** Flächenschaden beim Einschlag (Radius) */ splash?: number }
+export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile; /** Flak: Sprenggranaten mit Annäherungszünder */ flak?: boolean; /** Anteil, der den Schild umgeht */ hullPierce?: number; /** Flächenschaden beim Einschlag (Radius) */ splash?: number; /** Wirkung auf Schild und Hülle (Pulsturm: Schildbrecher) */ shieldK?: number; hullK?: number }
 export const TURRETS: Record<TurretId, TurretDef> = {
-  puls: { name: 'Pulsturm', desc: 'Dauerfeuer ohne Nachladen, schwenkt schnell und trifft genau – wendige Jäger entkommen ihm kaum, gegen dicke Panzerung fehlt die Wucht.', turn: 180, color: '#7ffff0', w: 2,
+  puls: { name: 'Pulsturm', desc: 'Dauerfeuer ohne Nachladen, schwenkt schnell und trifft genau – wendige Jäger entkommen ihm kaum. Schildbrecher wie der Pulslaser: gegen Schilde deutlich stärker, gegen nackte Hülle etwas schwächer.', turn: 180, color: '#7ffff0', w: 2, shieldK: 1.6, hullK: 0.9,
     gun: { dmg: 44, rate: 3.8, amt: 1, mag: 0, reload: 0, v: 9000, life: 0.39, angle: 0.17 } },
   // Strahlenturm: wie der Strahlenemitter (M) als Dauerstrahl; trifft sofort, solange er auf dem Ziel liegt
   strahl: { name: 'Strahlenturm', desc: 'Dauerstrahl: trifft sofort, solange er auf dem Ziel liegt – wenig Schaden pro Sekunde, aber nie daneben; wendige Jäger kommen kaum heran.', turn: 150, color: '#9ffcff', w: 2, beam: true,

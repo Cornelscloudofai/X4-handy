@@ -4992,7 +4992,7 @@ export class ShooterGame implements MiniGame {
           // Flak: Zeitzünder knapp hinter dem Ziel, dazu der Annäherungszünder (siehe updateShots)
           // Flak: Zeitzünder knapp hinter dem Abfangpunkt; vorher zündet meist schon der Annäherungszünder
           const life = w.flak ? Math.min(w.life * this.tRangeMul, (Math.hypot(tgt.x + aim.vx * lt - mx, tgt.y + aim.vy * lt - my) + 20) / w.speed) : w.life * this.tRangeMul;
-          this.bullets.push({ x: mx + Math.cos(a) * fwd, y: my + Math.sin(a) * fwd, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined, hullPierce: w.hullPierce || undefined, splash: w.splash });
+          this.bullets.push({ x: mx + Math.cos(a) * fwd, y: my + Math.sin(a) * fwd, vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed, dmg: this.tDmg * w.dmg, from: 'p', src: key, life, color: w.color, w: Math.min(w.w, 4), pierce: 0, pflak: w.flak || undefined, hullPierce: w.hullPierce || undefined, splash: w.splash, kS: w.shieldK, kH: w.hullK });
         }
         t.cd = (w.interval * this.tempo) / this.tRateMul;
         if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
