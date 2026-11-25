@@ -114,12 +114,14 @@ describe('Raketen-Vierlinge nur auf L und XL, gezählt nach Gruppen', () => {
     expect(takeTurretNote()).toContain('höchstens einer Gruppe');
   });
 
-  it('Raptor: höchstens vier M-Cluster, Silos auf den L-Sockeln frei', () => {
+  it('Raptor: höchstens vier M-Cluster mit Vierlingen und eine L-Gruppe mit Silos', () => {
     const gs = SHIPS.raptor.groups!;
     setLoadout({ ship: 'raptor', groups: gs.map((g) => (g.kind === 'L' ? 'silo' : 'rakete')) });
     const got = loadout().groups!;
     expect(got.filter((v, i) => gs[i].kind === 'M' && v === 'rakete').length).toBe(4);
     expect(got.filter((v, i) => gs[i].kind === 'M' && v === 'tau').length).toBe(gs.filter((g) => g.kind === 'M').length - 4);
-    expect(got.filter((_, i) => gs[i].kind === 'L').every((v) => v === 'silo')).toBe(true);
+    // Raketensilos nur in einer L-Gruppe (die vorderste), die übrigen werden schwere Plasmatürme
+    expect(got.filter((_, i) => gs[i].kind === 'L')).toEqual(['silo', 'plasma', 'plasma']);
+    expect(takeTurretNote()).toContain('Raketensilos in höchstens einer L-Gruppe');
   });
 });

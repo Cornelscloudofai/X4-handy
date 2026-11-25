@@ -58,6 +58,8 @@ export interface ShipDef {
   chainK?: { rate: number };
   /** Raketen-Vierlinge: in höchstens so vielen M-Turmgruppen (gezählt werden Gruppen, nicht Türme); fehlt: keine */
   rocketGroups?: number;
+  /** Raketensilos: in höchstens so vielen L-Turmgruppen (Träger); fehlt: keine Grenze */
+  siloGroups?: number;
   /** Klasse für die Anzeige */
   cls: 'S' | 'M' | 'L' | 'XL';
   /** Seitenverhältnis des Bilds (Breite : Länge) bei langen Schiffen; size ist dann die Länge (sonst quadratisch) */
@@ -307,7 +309,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     r: 46, size: RS_SIZE, special: 'overdrive', sprite: 'split-klapperschlange', fallback: 'split-jaeger-s',
   }),
   raptor: ship('XL', {
-    rocketGroups: 4,
+    rocketGroups: 4, siloGroups: 1,
     name: 'Raptor', role: 'Träger', desc: 'Träger der Split, 3,2 km lang: 114 M-Türme in Clustern entlang des Rumpfs und acht schwere L-Türme – je Cluster wählst du die Turmart. Keine Bordkanonen, keine Raketen; sehr langsam, aber kaum zu knacken. Waffenüberladung: kurz doppelte Feuerrate aller Türme.',
     // X4 9.0: 1 XL-Triebwerk, 1 XL- und 49 M-Schilde, keine Bordwaffen, 8 L- und 93 M-Türme; Tempo aus Schub
     // 13 715 / Luftwiderstand 120,6. Türme hier nach den Sockeln im Bild: 114 M und 8 L.
@@ -634,8 +636,8 @@ export const LTURRETS: Record<LTurretId, LTurretDef> = {
   neutron: { name: 'Schwerer Neutronen-Gatling-Turm', desc: 'Langer, dichter Geschossstrom, dann nachladen – viel Druck auf Jäger.', turn: 70, color: '#ff8a3d', w: 2.6, barrel: 'split-lturm-rohr-neutron-ki',
     gun: { dmg: 48, rate: 14, amt: 1, mag: 100, reload: 7, v: 2700, life: 1.7, angle: 0.4 } },
   // Raketensilo (L, fest im Rumpf, dreht nicht): acht schwerere Lenkraketen kurz nacheinander, doppelte Reichweite
-  silo: { name: 'Raketensilo', desc: 'Fest im Rumpf verankert: acht Lenkraketen kurz nacheinander (alle 0,3 s), etwas schwerer und mit doppelter Reichweite, dann drei Sekunden Nachladen. Vorrat: 160 Raketen je Silo.', turn: 0, color: '#ff9a4a', w: 2.6, barrel: 'split-lturm-silo-ki',
-    missile: { n: 8, gap: 0.3, reload: 3, dmg: 1.4, range: 2, salvos: 20, fixed: true },
+  silo: { name: 'Raketensilo', desc: 'Fest im Rumpf verankert: acht Lenkraketen kurz nacheinander (alle 0,3 s), etwas schwerer und mit doppelter Reichweite, dann sechs Sekunden Nachladen. Nur in einer L-Gruppe des Raptors. Vorrat: 160 Raketen je Silo.', turn: 0, color: '#ff9a4a', w: 2.6, barrel: 'split-lturm-silo-ki',
+    missile: { n: 8, gap: 0.3, reload: 6, dmg: 1.4, range: 2, salvos: 20, fixed: true },
     gun: { dmg: 0, rate: 1, amt: 8, mag: 0, reload: 0, v: 400, life: 13, angle: 0 } },
 };
 export const LTURRET_IDS = Object.keys(LTURRETS) as LTurretId[];
@@ -865,11 +867,17 @@ function validGroups(g: unknown, ship: ShipId, turret: TurretId): string[] {
   const raw = Array.isArray(g) ? g : [];
   const list = ship === 'raptor' || raw.length === gs.length ? raw : [];
   // Raketen-Vierlinge: nur so viele Gruppen wie erlaubt, vom Bug an gezählt; die übrigen werden Tau-Türme
-  let rockets = 0;
+  let rockets = 0, silos = 0;
   const cap = rocketCap(ship);
   return gs.map((gr, i) => {
     const v = list[i];
-    if (gr.kind === 'L') return typeof v === 'string' && v in LTURRETS ? v : 'plasma';
+    if (gr.kind === 'L') {
+      const l = typeof v === 'string' && v in LTURRETS ? v : 'plasma';
+      // Raketensilos: nur in so vielen L-Gruppen wie erlaubt (vom Bug an gezählt), die übrigen werden Plasmatürme
+      if (l !== 'silo' || silos < siloCap(ship)) { if (l === 'silo') silos++; return l; }
+      turretNote = (turretNote ? `${turretNote}. ` : '') + `${SHIPS[ship].name}: Raketensilos in höchstens ${siloCap(ship) === 1 ? 'einer L-Gruppe' : `${siloCap(ship)} L-Gruppen`} – überzählige durch schwere Plasmatürme ersetzt`;
+      return 'plasma';
+    }
     const t = typeof v === 'string' && v in TURRETS ? v : ship === 'raptor' ? 'puls' : turret;
     if (t !== 'rakete') return t;
     if (rockets < cap) { rockets++; return t; }
@@ -882,6 +890,8 @@ function validGroups(g: unknown, ship: ShipId, turret: TurretId): string[] {
 
 /** Raketen-Vierlinge: in wie vielen M-Turmgruppen dieses Schiffs erlaubt (Cobra und Drache: keine) */
 export function rocketCap(ship: ShipId): number { return SHIPS[ship].rocketGroups ?? 0; }
+/** Raketensilos: in wie vielen L-Turmgruppen erlaubt (ohne Angabe: alle) */
+export function siloCap(ship: ShipId): number { return SHIPS[ship].siloGroups ?? Infinity; }
 
 
 /** Turm i des Schiffs: Art, Werte und ob es ein L-Turm ist (Träger je Gruppe, sonst die gewählte M-Turmart) */
