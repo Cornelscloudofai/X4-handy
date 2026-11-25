@@ -431,7 +431,7 @@ export interface WeaponDef {
   /** Schrot: voller Schaden bis ein Drittel der Reichweite, dann fallend bis 40 %; Wucht stößt S-Schiffe zurück */
   falloff?: boolean;
   knock?: number;
-  /** Feuerart ab Werk: versetzt (Rohr für Rohr im Takt) statt gebündelt (alle Rohre zugleich) – für langsam feuernde Waffen */
+  /** Feuerart ab Werk versetzt (Rohr für Rohr im Takt) statt gebündelt (alle Rohre zugleich); derzeit überall gebündelt */
   stagger?: boolean;
   rail?: boolean;
   /** Mass Driver: Projektil mit langer Leuchtspur, durchschlägt ein Ziel und trifft das nächste mit halber Wucht */
@@ -483,7 +483,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
   schrot: {
     // Nahkampf: anderthalbfacher Schaden, aber nur auf kurze Entfernung voll; Wucht schafft Luft gegen Jäger
-    name: 'Schrotbatterie', group: 'allgemein', color: '#ffc070', w: 1.8, falloff: true, knock: 240, stagger: true,
+    name: 'Schrotbatterie', group: 'allgemein', color: '#ffc070', w: 1.8, falloff: true, knock: 240,
     desc: 'Sechs Geschosse je Schuss mit Streuung: verheerend aus der Nähe, auf Distanz verpufft die Ladung (ab einem Drittel der Reichweite bis auf 40 %). Die Wucht stößt Jäger zurück.',
     // schneller und flüssiger: höherer Takt, kürzeres Nachladen, schnellere Ladung (Reichweite gleich); Schaden je
     // Kugel so gesenkt, dass die Wirkung über ein Magazin samt Nachladen etwa gleich bleibt
@@ -498,7 +498,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
   plasma: {
     // wie der Plasmaturm: 40 % durch den Schild, Spritzschaden beim Einschlag; schnellere Kugeln, Reichweite gleich
-    name: 'Plasmakanone', group: 'allgemein', color: '#a6ff6b', w: 5, hullPierce: 0.4, splash: 55, stagger: true,
+    name: 'Plasmakanone', group: 'allgemein', color: '#a6ff6b', w: 5, hullPierce: 0.4, splash: 55,
     desc: 'Schwere Plasmageschosse mit hohem Schaden und großer Reichweite. Das Plasma schlägt zum Teil durch den Schild und verbrennt beim Einschlag auch, was daneben fliegt.',
     // höherer Takt (gut eine Kugel je 1,5 s statt alle 2,5 s), Schaden je Kugel entsprechend geringer
     s: { dmg: 557, rate: 0.65, amt: 1, mag: 0, reload: 0, v: 1600, life: 2.85, angle: 0.7 },
@@ -511,7 +511,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     m: { dmg: 19, rate: 18, amt: 1, mag: 0, reload: 0, v: 2500, life: 1.5, angle: 0.64 },
   },
   tau: {
-    name: 'Tau-Beschleuniger', group: 'split', color: '#ff5a5a', w: 2.2, stagger: true,
+    name: 'Tau-Beschleuniger', group: 'split', color: '#ff5a5a', w: 2.2,
     desc: 'Split: vier Geschosse je Schuss in schneller Folge – auf kurze Entfernung verheerend, geringe Reichweite.',
     // halbes Nachladen, Schaden je Geschoss so gesenkt, dass die Wirkung je Magazin samt Pause etwa gleich bleibt
     s: { dmg: 42, rate: 2.5, amt: 4, mag: 6, reload: 2, v: 2000, life: 1.235, angle: 1.25 },
@@ -527,7 +527,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     m: { dmg: 69, rate: 6, amt: 1, mag: 12, reload: 2.5, v: 2200, life: 1.682, angle: 0.3 },
   },
   boson: {
-    name: 'Bosonenlanze', group: 'split', color: '#e0c3ff', w: 3, gimbal: 0.5, rail: true, stagger: true,
+    name: 'Bosonenlanze', group: 'split', color: '#e0c3ff', w: 3, gimbal: 0.5, rail: true,
     desc: 'Split: blitzschneller Lanzenstrahl, der sofort trifft – riesiger Schaden und größte Reichweite, etwa ein Schuss pro Sekunde.',
     s: { dmg: 750, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.55, angle: 0.23 },
     m: { dmg: 1150, rate: 1, amt: 1, mag: 0, reload: 0, v: 14000, life: 0.59, angle: 0.23 },
@@ -553,7 +553,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // Neutronen-Gatling und Bosonenlanze eingeordnet: rund 60 % des Lanzenschadens je Schuss, etwas schnellerer Takt,
   // kann aber verfehlen (sichtbares Projektil, etwas Vorhalt nötig); Durchschlag als Besonderheit
   massdriver: {
-    name: 'Mass Driver', group: 'allgemein', color: '#9fdcff', w: 2.6, gimbal: 0.7, slug: true, stagger: true,
+    name: 'Mass Driver', group: 'allgemein', color: '#9fdcff', w: 2.6, gimbal: 0.7, slug: true,
     desc: 'Terraner: magnetisch beschleunigtes Projektil, sehr schnell und mit langer Leuchtspur – hoher Einzelschaden, durchschlägt ein Ziel und trifft das nächste mit halber Wucht. Kann verfehlen.',
     s: { dmg: 450, rate: 0.8, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.15, angle: 0.12 },
     m: { dmg: 690, rate: 0.8, amt: 1, mag: 0, reload: 0, v: 5200, life: 1.25, angle: 0.12 },

@@ -33,31 +33,44 @@ const shots = (g: G, t: number): number[] => {
 };
 
 describe('Feuerart der Bordkanonen', () => {
-  it('ab Werk: langsame Waffen versetzt, schnelle gebündelt', () => {
-    expect(fireStaggered('plasma')).toBe(true);
-    expect(fireStaggered('massdriver')).toBe(true);
-    expect(fireStaggered('neutron')).toBe(false);
-    expect(fireStaggered('puls')).toBe(false);
+  it('ab Werk gebündelt – versetzt ist eine bewusste Wahl', () => {
+    for (const w of ['plasma', 'massdriver', 'neutron', 'puls'] as WeaponId[]) expect(fireStaggered(w)).toBe(false);
   });
 
-  it('versetzt: je Schuss ein Rohr, gleich viele Geschosse wie gebündelt', () => {
-    const v = shots(game('plasma'), 6);
-    store.set('x4-sektorbau-feuerart', JSON.stringify({ plasma: 'gebuendelt' }));
-    const b = shots(game('plasma'), 6);
+  it('versetzt: je Schuss ein Rohr, dafür rund 30 % weniger Geschosse als gebündelt (Speicher lädt je Einzelschuss)', () => {
+    const b = shots(game('plasma'), 9);
+    store.set('x4-sektorbau-feuerart', JSON.stringify({ plasma: 'versetzt' }));
+    const v = shots(game('plasma'), 9);
     // gebündelt: sechs Kugeln im selben Bild; versetzt: nie mehr als eine je Bild
     expect(Math.max(...b)).toBe(6);
     expect(Math.max(...v)).toBe(1);
     const sv = v.reduce((a, c) => a + c, 0), sb = b.reduce((a, c) => a + c, 0);
-    expect(Math.abs(sv - sb)).toBeLessThanOrEqual(6);
+    // (über wenige Runden gemessen: die erste gebündelte Salve fällt gleich zu Beginn, daher etwas unter 0,7)
+    expect(sv / sb).toBeGreaterThan(0.5);
+    expect(sv / sb).toBeLessThan(0.8);
   });
 
   it('Taste im Kampf schaltet um und merkt sich die Wahl je Waffe', () => {
     const g = game('plasma');
-    expect(g.staggered).toBe(true);
+    expect(g.staggered).toBe(false);
     const [x, y] = g.btnFireMode;
     g.pointerDown(5, x, y); g.pointerUp(5);
-    expect(g.staggered).toBe(false);
-    expect(fireStaggered('plasma')).toBe(false);
-    expect(fireStaggered('massdriver')).toBe(true);
+    expect(g.staggered).toBe(true);
+    expect(fireStaggered('plasma')).toBe(true);
+    expect(fireStaggered('massdriver')).toBe(false);
+  });
+});
+
+describe('Versetzt: Zielhilfe hält das Ziel der Runde', () => {
+  it('ist das Ziel nach der ersten Kugel zerstört, sucht sich die nächste Kugel kein neues Ziel', () => {
+    store.set('x4-sektorbau-feuerart', JSON.stringify({ massdriver: 'versetzt' }));
+    const g = game('massdriver') as G & { makeEnemy(k: string, x: number, y: number): { x: number; y: number; hp: number; max: number; sh: number; vx: number; vy: number }; roundE: unknown; lock: { e: unknown } | null; px: number; py: number };
+    const a = g.makeEnemy('jaeger', g.px - 30, g.py - 300), b = g.makeEnemy('jaeger', g.px + 60, g.py - 300);
+    g.enemies.push(a, b);
+    for (let i = 0; i < 40 && !g.roundE; i++) { a.vx = a.vy = b.vx = b.vy = 0; g.aimA = -Math.PI / 2; g.fireId = 1; g.update(DT); }
+    const first = g.roundE;
+    expect(first).not.toBeNull();
+    // weitere Kugeln derselben Runde: Ziel bleibt dasselbe, auch wenn es inzwischen zerstört ist
+    for (let i = 0; i < 6; i++) { g.fireId = 1; g.update(DT); if ((g as unknown as { gunIdx: number }).gunIdx % 6 === 0) break; expect(g.roundE).toBe(first); }
   });
 });

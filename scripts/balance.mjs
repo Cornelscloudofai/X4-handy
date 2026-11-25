@@ -4,6 +4,7 @@
 //                            [--gear 1] [--level 1] [--guns] [--keine-tuerme]
 // --nur-l: nur die schweren L-Türme (Zerstörer: --lturret plasma|tau|boson|neutron; Träger: --groups je Gruppe)
 // --flanke: Gegner entlang des Rumpfs (Bug oben), Großkampfschiff querab – für lange Schiffe wie den Raptor
+// --feuer versetzt|gebuendelt: Feuerart der Bordkanonen erzwingen (sonst ab Werk)
 // --raketen: Raketenwerfer feuern, sobald bereit (--missile lenk|schwer|schwarm|stoer)
 // --guns: alle Bordwaffen feuern wie ein Spieler (Bug mit Vorhalt aufs nächste Ziel); --keine-tuerme: Türme abgebaut
 // Lagen – Wellen (Abschüsse/min, erlittener Schaden/min): brut (Brutschiff ab Welle 1), spaeher (16 Kha'ak-Späher),
@@ -23,7 +24,7 @@ const o = {
   ship: arg('ship', 'cobra'), turret: arg('turret', 'neutron'), groups: arg('groups', '') ? arg('groups').split(',') : undefined,
   weapon: arg('weapon', 'stoerblitz'), gear: Number(arg('gear', 1)), level: Number(arg('level', 1)),
   guns: process.argv.includes('--guns'), noTurrets: process.argv.includes('--keine-tuerme'),
-  onlyL: process.argv.includes('--nur-l'), lturret: arg('lturret', ''), flank: process.argv.includes('--flanke'), rockets: process.argv.includes('--raketen'), missile: arg('missile', ''),
+  onlyL: process.argv.includes('--nur-l'), lturret: arg('lturret', ''), flank: process.argv.includes('--flanke'), rockets: process.argv.includes('--raketen'), missile: arg('missile', ''), fireMode: arg('feuer', ''),
 };
 const all = Array.from({ length: o.seeds }, (_, i) => 101 + i);
 const n = Math.min(cpus().length, all.length);
@@ -43,7 +44,7 @@ const fmt = (xs, d = 0) => {
 };
 const UNIT = { sekunden: 's', abschuesse: '/min', erlitten: '/min' };
 const NAME = { brut: 'Brutschiff-Strom', zerstoerer: 'Kha’ak-Zerstörer', spaeher: '16 Späher', jaeger: '8 Piraten-Jäger', piraten: 'Piratenwelle', xenon: 'Xenon-Welle', fregatte: 'Piratenfregatte', xenonk: 'Xenon K' };
-console.log(`${o.ship} · ${o.noTurrets ? 'ohne Türme' : o.onlyL ? `nur L-Türme ${o.lturret || o.groups?.filter((x) => x.length).join('/') || ''}` : `Türme ${o.groups?.join('/') ?? o.turret}`} · ${o.weapon}${o.guns ? ' (Bordwaffen feuern)' : ''}${o.rockets ? ` · Raketen ${o.missile || 'lenk'}` : ''} · Ausrüstung ${o.gear} · Stufe ${o.level}${o.flank ? ' · Flanke' : ''} · ${o.seeds} Läufe · ${Math.round((Date.now() - t0) / 1000)} s`);
+console.log(`${o.ship} · ${o.noTurrets ? 'ohne Türme' : o.onlyL ? `nur L-Türme ${o.lturret || o.groups?.filter((x) => x.length).join('/') || ''}` : `Türme ${o.groups?.join('/') ?? o.turret}`} · ${o.weapon}${o.guns ? ' (Bordwaffen feuern)' : ''}${o.rockets ? ` · Raketen ${o.missile || 'lenk'}` : ''}${o.fireMode ? ` · ${o.fireMode}` : ''} · Ausrüstung ${o.gear} · Stufe ${o.level}${o.flank ? ' · Flanke' : ''} · ${o.seeds} Läufe · ${Math.round((Date.now() - t0) / 1000)} s`);
 for (const lage of o.lagen) {
   const rows = parts.flatMap((p) => p[lage]);
   const keys = Object.keys(rows[0]);

@@ -484,6 +484,8 @@ const F_SPEED = 24;
 /** Hülle eines Frachters, der Station (Einsatz „Station verteidigen“) und Abstand der Konvoi-Frachter quer zur Route */
 const F_MAX = 400, STATION_MAX = 1000, KONVOI_GAP = 560, BERGER_MAX = 800;
 /** Station: Bildgröße, Trefferradius, Lage der sechs Turmsockel (Anteil der Bildgröße), Hülle eines Stationsturms */
+/** Versetztes Feuern: Anteil der Feuerrate gegenüber der gebündelten Salve (Speicher lädt je Einzelschuss) */
+const STAGGER_RATE = 0.7;
 const STATION_SIZE = 230, STATION_R = 86, STATION_TUR = 0.37, STATION_TUR_HP = 60;
 /** Flucht: Sekunden, bis der Sprungantrieb geladen ist (Stufe 1); Bergung: Container im Feld und nötig für den Erfolg */
 const FLUCHT_T = 150, CRATES = 8, CRATES_MIN = 4;
@@ -944,6 +946,10 @@ export class ShooterGame implements MiniGame {
   /** Feuerart der Bordkanonen: versetzt (Rohr für Rohr) oder gebündelt (alle zugleich); nächstes Rohr beim Versetzen */
   private staggered = false;
   private gunIdx = 0;
+  /** versetzt: Ziel der laufenden Runde (die erste Kugel legt es fest) und sein letzter Vorhaltepunkt */
+  private roundE: Enemy | null = null;
+  private roundX = 0;
+  private roundY = 0;
   /** Finger auf der Feuertaste (99 = Autopilot) */
   private fireId: number | null = null;
   /**
@@ -4757,14 +4763,26 @@ export class ShooterGame implements MiniGame {
     } else if (this.fireId !== null && this.fireCd <= 0) {
       this.fired++;
       sfx.shot(this.wpnId, this.panAt(this.px));
-      let a0 = this.aimA;
-      if (this.lock) {
-        const la = Math.atan2(this.lock.y - this.py, this.lock.x - this.px);
+      // versetzt: je Takt nur ein Rohr, der Reihe nach (erst nach allen Rohren zählt der Schuss fürs Magazin)
+      const nG = this.guns.length, stag = this.staggerOn, first = !stag || this.gunIdx % nG === 0;
+      // Zielhilfe: gebündelt aufs erfasste Ziel. Versetzt hält sie das Ziel der ersten Kugel für die ganze Runde – wie
+      // bei der Salve gehen alle Rohre einer Runde auf dasselbe Ziel; ist es zerstört, fliegen die übrigen dorthin, wo
+      // es war (der Überschaden schwerer Waffen gegen kleine Ziele bleibt). Ein neues Ziel erst zur nächsten Runde.
+      let a0 = this.aimA, tx: number | null = null, ty = 0;
+      if (first) {
+        this.roundE = this.lock?.e ?? null;
+        if (this.lock) { tx = this.lock.x; ty = this.lock.y; }
+      } else if (this.roundE && this.enemies.includes(this.roundE)) {
+        const e = this.roundE, t = w.speed > 0 && w.speed < 1e5 ? interceptTime(e.x - this.px, e.y - this.py, e.vx, e.vy, w.speed) : 0;
+        const tt = Number.isFinite(t) && t > 0 ? t : 0;
+        tx = e.x + e.vx * tt; ty = e.y + e.vy * tt;
+      } else if (this.roundE) { tx = this.roundX; ty = this.roundY; }
+      if (tx != null) {
+        this.roundX = tx; this.roundY = ty;
+        const la = Math.atan2(ty - this.py, tx - this.px);
         if (Math.abs(wrapA(la - this.aimA)) < this.aimAssist * w.gimbal) a0 = la;
       }
       const spread = this.c('spread');
-      // versetzt: je Takt nur ein Rohr, der Reihe nach (erst nach allen Rohren zählt der Schuss fürs Magazin)
-      const nG = this.guns.length, stag = this.staggerOn;
       const guns = stag ? [this.guns[this.gunIdx % nG]] : this.guns;
       // Überladung (Lanze): jeder dritte Salvenschuss, mit zwei Karten jeder zweite
       if (!stag || this.gunIdx % nG === 0) this.railN++;
@@ -4792,8 +4810,9 @@ export class ShooterGame implements MiniGame {
           if (slug) { this.fx.add({ x: ox, y: oy, color: '#dff4ff', size: 7, max: 0.07 }); this.fx.add({ x: ox + Math.cos(a) * 6, y: oy + Math.sin(a) * 6, color: '#9fdcff', size: 5, kind: 'ring', max: 0.16 }); }
         }
       }
-      // nächster Schuss; ist das Magazin leer, erst nachladen. Versetzt: die Rohre teilen sich die Schusspause
-      this.fireCd = (w.interval * this.tempo) / (stag ? nG : 1);
+      // nächster Schuss; ist das Magazin leer, erst nachladen. Versetzt: die Rohre teilen sich die Schusspause – und der
+      // gemeinsame Energiespeicher lädt für jeden Einzelschuss neu, das kostet Zeit (STAGGER_RATE der Feuerrate)
+      this.fireCd = (w.interval * this.tempo) / (stag ? nG * STAGGER_RATE : 1);
       const round = !stag || ++this.gunIdx % nG === 0;
       if (round && w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; this.reloadLeft = this.reloadMax = this.fireCd; this.reloading = true; this.gunIdx = 0; }
     }
