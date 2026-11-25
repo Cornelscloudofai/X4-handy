@@ -494,24 +494,84 @@ export class Floaters {
 
 /** Runde Taste auf der Leinwand (Fähigkeit mit Abklingzeit) */
 /** Rundknopf mit Ladering; Beschriftung als Text oder als gezeichnetes Symbol (Funktion bekommt Mitte, Größe, Farbe) */
+/**
+ * Kampfknopf im gemeinsamen Stil: dunkle Metallfassung mit Fase und Schlagschatten, eingelassene Glasscheibe mit
+ * Lichtkante oben, farbiger Innenring; ready < 1 zeigt den Ladestand als leuchtenden Bogen in der Fassung, bereit
+ * glimmt der Knopf leicht in seiner Farbe. on: hervorgehoben (gedrückt bzw. eingeschaltet), dim: abgeschaltet.
+ */
+export function drawKnob(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, o: { color: string; ready?: number; on?: boolean; dim?: boolean; t?: number }): void {
+  const { color } = o, ready = o.ready ?? 1, ok = ready >= 1 && !o.dim, t = o.t ?? 0, ri = r * 0.82;
+  ctx.save();
+  // Fassung mit Schlagschatten
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = r * 0.45;
+  ctx.shadowOffsetY = r * 0.1;
+  const bez = ctx.createLinearGradient(x, y - r, x, y + r);
+  bez.addColorStop(0, '#33454f');
+  bez.addColorStop(0.5, '#18242c');
+  bez.addColorStop(1, '#070e13');
+  ctx.fillStyle = bez;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowColor = 'transparent';
+  // Fase: oben hell, unten dunkel
+  const rim = ctx.createLinearGradient(x, y - r, x, y + r);
+  rim.addColorStop(0, 'rgba(255,255,255,0.32)');
+  rim.addColorStop(0.45, 'rgba(255,255,255,0.05)');
+  rim.addColorStop(1, 'rgba(0,0,0,0.45)');
+  ctx.strokeStyle = rim;
+  ctx.lineWidth = Math.max(1, r * 0.06);
+  ctx.beginPath(); ctx.arc(x, y, r - ctx.lineWidth / 2, 0, Math.PI * 2); ctx.stroke();
+  // Glimmen in der Knopffarbe, wenn bereit (sanft pulsierend), stärker, wenn eingeschaltet
+  if (ok) {
+    ctx.shadowColor = rgba(color, o.on ? 0.9 : 0.55);
+    ctx.shadowBlur = r * (o.on ? 0.7 : 0.35 + 0.12 * Math.sin(t * 3));
+  }
+  // eingelassene Scheibe: Licht von oben, Farbe der Taste in der Tiefe
+  const well = ctx.createRadialGradient(x, y - ri * 0.45, ri * 0.1, x, y, ri);
+  well.addColorStop(0, rgba(color, o.dim ? 0.06 : o.on ? 0.42 : 0.2));
+  well.addColorStop(0.65, rgba(color, o.dim ? 0.02 : o.on ? 0.18 : 0.07));
+  well.addColorStop(1, 'rgba(3,8,12,0.96)');
+  ctx.fillStyle = well;
+  ctx.beginPath(); ctx.arc(x, y, ri, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowColor = 'transparent';
+  // Innenring in der Knopffarbe; darüber die innere Schattenkante
+  ctx.strokeStyle = rgba(color, o.dim ? 0.18 : ok ? (o.on ? 0.95 : 0.55 + 0.15 * Math.sin(t * 3)) : 0.3);
+  ctx.lineWidth = Math.max(1, r * 0.07);
+  ctx.beginPath(); ctx.arc(x, y, ri, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  ctx.beginPath(); ctx.arc(x, y, ri - r * 0.06, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  // Ladestand: dunkle Spur, leuchtender Bogen in der Fassung
+  if (ready < 1) {
+    const rr = (r + ri) / 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = (r - ri) * 0.8;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.stroke();
+    ctx.shadowColor = rgba(color, 0.9);
+    ctx.shadowBlur = r * 0.3;
+    ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.arc(x, y, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.001, ready)); ctx.stroke();
+    ctx.shadowColor = 'transparent';
+  }
+  // Glanz auf der Scheibe: weicher Lichtfleck oben
+  const gl = ctx.createLinearGradient(x, y - ri, x, y - ri * 0.1);
+  gl.addColorStop(0, 'rgba(255,255,255,0.2)');
+  gl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gl;
+  ctx.beginPath(); ctx.ellipse(x, y - ri * 0.5, ri * 0.72, ri * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
 export function drawButton(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ready: number, color: string, label: string | ((x: number, y: number, s: number, color: string) => void), t: number, charges?: number): void {
   const ok = ready >= 1;
-  ctx.fillStyle = ok ? rgba(color, 0.16) : 'rgba(14,30,44,0.8)';
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = ok ? rgba(color, 0.6 + 0.3 * Math.sin(t * 5)) : 'rgba(110,220,205,0.25)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  if (!ok) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(x, y, r - 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ready);
-    ctx.stroke();
-  }
-  ctx.fillStyle = ok ? color : 'rgba(169,195,198,0.6)';
-  if (typeof label === 'function') label(x, y, r * 0.56, ok ? color : 'rgba(169,195,198,0.6)');
+  drawKnob(ctx, x, y, r, { color, ready, t });
+  // Zeichen mit leichtem Leuchten in der Knopffarbe (bereit), sonst gedämpft
+  const fg = ok ? color : 'rgba(169,195,198,0.55)';
+  ctx.save();
+  if (ok) { ctx.shadowColor = rgba(color, 0.8); ctx.shadowBlur = r * 0.25; }
+  ctx.fillStyle = fg;
+  if (typeof label === 'function') label(x, y, r * 0.5, fg);
   else {
     ctx.font = `700 ${Math.round(r * 0.62)}px "Chakra Petch", Barlow, sans-serif`;
     ctx.textAlign = 'center';
@@ -519,6 +579,7 @@ export function drawButton(ctx: CanvasRenderingContext2D, x: number, y: number, 
     ctx.fillText(label, x, y);
     ctx.textBaseline = 'alphabetic';
   }
+  ctx.restore();
   if (charges != null) {
     for (let k = 0; k < charges; k++) {
       ctx.fillStyle = color;

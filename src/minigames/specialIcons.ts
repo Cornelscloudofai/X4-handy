@@ -107,6 +107,36 @@ const DRAW: Record<SpecialId, (g: Ctx) => void> = {
   },
 };
 
+/**
+ * Symbole der Kampftasten (Einheiten −1 … 1): Feuern als Fadenkreuz mit Mündungsstrahlen, Raketen als schräg
+ * startende Rakete mit Abgasspur
+ */
+export function drawHudIcon(g: Ctx, id: 'fire' | 'rocket', x: number, y: number, s: number, color: string): void {
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  g.fillStyle = color;
+  g.strokeStyle = color;
+  g.lineCap = 'round';
+  if (id === 'fire') {
+    g.lineWidth = 0.13;
+    g.beginPath(); g.arc(0, 0, 0.55, 0, Math.PI * 2); g.stroke();
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
+      g.beginPath(); g.moveTo(dx * 0.32, dy * 0.32); g.lineTo(dx * 0.95, dy * 0.95); g.stroke();
+    }
+    g.beginPath(); g.arc(0, 0, 0.14, 0, Math.PI * 2); g.fill();
+  } else {
+    g.rotate(Math.PI / 4);
+    rocket(g, 0, -0.12, 1.45, 0.26);
+    g.globalAlpha *= 0.55;
+    g.lineWidth = 0.12;
+    for (const [dx, l] of [[-0.18, 0.4], [0, 0.6], [0.18, 0.4]] as const) {
+      g.beginPath(); g.moveTo(dx, 0.78); g.lineTo(dx, 0.78 + l); g.stroke();
+    }
+  }
+  g.restore();
+}
+
 /** Symbol der Fähigkeit mittig bei (x, y), Kantenlänge etwa 2·s */
 export function drawSpecialIcon(g: Ctx, id: SpecialId, x: number, y: number, s: number, color: string): void {
   g.save();

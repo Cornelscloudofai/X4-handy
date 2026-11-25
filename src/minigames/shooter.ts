@@ -15,7 +15,7 @@ import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
 import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, fireStaggered, setFireStaggered, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
-  buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
+  buzz, clamp, drawButton, drawKnob, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
   type Place,
 } from './common';
@@ -25,7 +25,7 @@ import { BattleBackdrop, FOG_VEILS, cellHash, fogVeil } from './battleBg';
 import { drawGraded } from '../render/canvasFx';
 import { drawJet, Smoke } from '../render/engineFx';
 import { anomalyPull, clearHeading, coverHit, drawAnomaly, drawWreck, drawWreckIntro, crystalGlow, makeWreck, spriteFill, markHit, preloadCover, pushOut, steerAround, updateWrecks, wreckAt, type Anomaly, type Wreck as CoverWreck } from './cover';
-import { drawSpecialIcon } from './specialIcons';
+import { drawHudIcon, drawSpecialIcon } from './specialIcons';
 import { hullGap, hullMaskOf, type HullMask } from './hullMask';
 import { FlightSchool, fmtTime, saveSchool, schoolBest, SCHOOL_NAME, type SchoolCtrl, type SchoolHost } from './flightSchool';
 export { enemyStats, enemyStatTable, drawFighterVector } from './shooterData';
@@ -9133,13 +9133,7 @@ export class ShooterGame implements MiniGame {
     const shown = this.orderDrag ? btns.filter(([w]) => w === this.orderDrag!.which) : btns;
     for (const [which, x, y, r] of shown) {
       const isW = which === 'w', cur = this.orderOf(which), open = this.orderDrag?.which === which, small = r < 18, tiny = r < 13;
-      ctx.fillStyle = open ? 'rgba(20,48,60,0.92)' : isW ? 'rgba(10,40,52,0.85)' : 'rgba(5,14,22,0.78)';
-      ctx.strokeStyle = isW ? 'rgba(127,216,255,0.8)' : cur === 'alle' ? 'rgba(110,220,205,0.45)' : 'rgba(255,181,71,0.8)';
-      ctx.lineWidth = small ? 1.3 : 1.6;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      drawKnob(ctx, x, y, r, { color: isW ? '#7fd8ff' : cur === 'alle' ? '#5ff0d8' : '#ffb547', on: open, t: this.time });
       ctx.fillStyle = '#e4f3f0';
       ctx.font = `700 ${tiny ? 9 : small ? 10 : 13}px "Chakra Petch", Barlow, sans-serif`;
       ctx.fillText(this.orderLabel(which), x, y - (small ? 3.5 : 5));
@@ -9388,39 +9382,29 @@ export class ShooterGame implements MiniGame {
     this.drawTurretAmmo(ctx);
     this.drawOrders(ctx);
     if (this.ship.aspect) this.drawPanTrack(ctx);
-    for (const [btn, label, can] of [[this.btnZoomOut, '−', this.zoomGoal > ZOOMS[ZOOMS.length - 1]], [this.btnZoomIn, '+', this.zoomGoal < ZOOMS[0]]] as const) {
-      ctx.fillStyle = 'rgba(5,14,22,0.78)';
-      ctx.strokeStyle = can ? 'rgba(110,220,205,0.55)' : 'rgba(110,220,205,0.18)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(btn[0], btn[1], btn[2], 0, Math.PI * 2);
-      ctx.fill();
+    for (const [btn, plus, can] of [[this.btnZoomOut, false, this.zoomGoal > ZOOMS[ZOOMS.length - 1]], [this.btnZoomIn, true, this.zoomGoal < ZOOMS[0]]] as const) {
+      const [zx, zy, zr] = btn;
+      drawKnob(ctx, zx, zy, zr, { color: '#5ff0d8', dim: !can, t });
+      // Plus/Minus als Striche (schärfer als ein Schriftzeichen)
+      ctx.strokeStyle = can ? '#bffff6' : 'rgba(159,255,240,0.3)';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(zx - zr * 0.38, zy); ctx.lineTo(zx + zr * 0.38, zy);
+      if (plus) { ctx.moveTo(zx, zy - zr * 0.38); ctx.lineTo(zx, zy + zr * 0.38); }
       ctx.stroke();
-      ctx.fillStyle = can ? '#9ffff0' : 'rgba(159,255,240,0.3)';
-      ctx.font = '700 18px "Chakra Petch", Barlow, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(label, btn[0], btn[1] + 1);
-      ctx.textBaseline = 'alphabetic';
+      ctx.lineCap = 'butt';
     }
-    ctx.fillStyle = 'rgba(169,195,198,0.7)';
-    ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('ZOOM', (this.btnZoomOut[0] + this.btnZoomIn[0]) / 2, this.zoomLabelY);
+    hudLabel(ctx, 'ZOOM', (this.btnZoomOut[0] + this.btnZoomIn[0]) / 2, this.zoomLabelY, 'rgba(169,195,198,0.75)');
     // Kamerataste: Auge; Beschriftung zeigt den Modus
     {
       const [cx, cy, cr] = this.btnCam, on = this.camMode !== 'schiff';
-      ctx.fillStyle = on ? 'rgba(40,30,8,0.85)' : 'rgba(5,14,22,0.78)';
-      ctx.strokeStyle = on ? 'rgba(255,181,71,0.85)' : 'rgba(110,220,205,0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = on ? '#ffd27a' : '#9ffff0';
+      drawKnob(ctx, cx, cy, cr, { color: on ? '#ffb547' : '#5ff0d8', on, t });
+      ctx.strokeStyle = on ? '#ffd27a' : '#bffff6';
       ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.ellipse(cx, cy, 8, 4.6, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = on ? '#ffd27a' : '#9ffff0';
       ctx.beginPath(); ctx.arc(cx, cy, 2.2, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = on ? '#ffd27a' : 'rgba(169,195,198,0.7)';
-      ctx.fillText(this.camMode === 'frei' ? (this.camFollow ? 'FOLGEN' : 'FREI') : this.camMode === 'auto' ? 'AUTO' : 'SICHT', cx, this.zoomLabelY);
+      hudLabel(ctx, this.camMode === 'frei' ? (this.camFollow ? 'FOLGEN' : 'FREI') : this.camMode === 'auto' ? 'AUTO' : 'SICHT', cx, this.zoomLabelY, on ? '#ffd27a' : 'rgba(169,195,198,0.75)');
       if (on) {
         // Grenze: oben Kamera, unten Steuerung – dezent
         const yz = this.camZoneY;
@@ -9438,11 +9422,8 @@ export class ShooterGame implements MiniGame {
     // Feuerart: drei Rohre als Striche – gebündelt gleich lang (alle zugleich), versetzt gestaffelt (der Reihe nach)
     if (this.fireModeShown) {
       const [fx, fy, fr] = this.btnFireMode, on = this.staggered;
-      ctx.fillStyle = 'rgba(5,14,22,0.78)';
-      ctx.strokeStyle = on ? 'rgba(255,181,71,0.85)' : 'rgba(110,220,205,0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = on ? '#ffd27a' : '#9ffff0';
+      drawKnob(ctx, fx, fy, fr, { color: on ? '#ffb547' : '#5ff0d8', on, t });
+      ctx.strokeStyle = on ? '#ffd27a' : '#bffff6';
       ctx.lineWidth = 2;
       ctx.lineCap = 'round';
       for (let k = -1; k <= 1; k++) {
@@ -9450,10 +9431,7 @@ export class ShooterGame implements MiniGame {
         ctx.beginPath(); ctx.moveTo(fx + k * 5, bot); ctx.lineTo(fx + k * 5, top); ctx.stroke();
       }
       ctx.lineCap = 'butt';
-      ctx.fillStyle = on ? '#ffd27a' : 'rgba(169,195,198,0.7)';
-      ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('FEUER', fx, fy + fr + 12);
+      hudLabel(ctx, on ? 'VERSETZT' : 'GEBÜNDELT', fx, fy + fr + 13, on ? '#ffd27a' : 'rgba(169,195,198,0.75)');
     }
     const [fbx, fby, fbr] = this.btnFire;
     if (this.ctrl === 'eins' && !this.pc && this.fireId !== null && this.fireId !== 99) {
@@ -9463,10 +9441,10 @@ export class ShooterGame implements MiniGame {
       ctx.fill();
     }
     // Feuertaste nur mit Bordkanonen (der Träger hat nur Türme, die selbst feuern)
-    if (this.ctrl === 'eins' && !this.pc && this.guns.length) drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', 'F', t);
+    if (this.ctrl === 'eins' && !this.pc && this.guns.length) drawButton(ctx, fbx, fby, fbr, 1, '#7ffff0', (x, y, sz, col) => drawHudIcon(ctx, 'fire', x, y, sz * 1.15, col), t);
     const [bx, by, br] = this.btnMissile;
     if (this.launchers.length) {
-      drawButton(ctx, bx, by, br, this.ammo > 0 ? 1 - this.missileCd / this.missileCdMax : 0, '#ffb547', 'R', t);
+      drawButton(ctx, bx, by, br, this.ammo > 0 ? 1 - this.missileCd / this.missileCdMax : 0, '#ffb547', (x, y, sz, col) => drawHudIcon(ctx, 'rocket', x, y, sz * 1.1, col), t);
       // Raketen im Lager
       ctx.fillStyle = this.ammo > 0 ? 'rgba(255,210,122,0.9)' : 'rgba(255,92,108,0.9)';
       ctx.font = '600 11px "Chakra Petch", Barlow, sans-serif';
@@ -9564,4 +9542,17 @@ export class ShooterGame implements MiniGame {
       }
     }
   }
+}
+
+/** Beschriftung unter einer Kampftaste: kleine Versalien mit etwas Sperrung und dunklem Schatten (lesbar über hellem Nebel) */
+function hudLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string): void {
+  ctx.save();
+  ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
+  ctx.textAlign = 'center';
+  (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0.8px';
+  ctx.shadowColor = 'rgba(0,0,0,0.85)';
+  ctx.shadowBlur = 3;
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  ctx.restore();
 }
