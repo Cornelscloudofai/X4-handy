@@ -5,14 +5,14 @@ import { it } from 'vitest';
 import { writeFileSync } from 'node:fs';
 declare const process: { env: Record<string, string | undefined> };
 import { ShooterGame, interceptTime } from '../src/minigames/shooter';
-import { DEFAULT_LOADOUT, setBroodTest } from '../src/minigames/loadout';
+import { DEFAULT_LOADOUT, SHIPS, setBroodTest } from '../src/minigames/loadout';
 
 type En = { x: number; y: number; kind: string; hp: number; sh: number; max: number; shMax: number; parent?: unknown; vx: number; vy: number };
 type G = {
   update(d: number): void; resize(w: number, h: number): void; px: number; py: number; enemies: En[]; clusters: Map<unknown, unknown>;
   hull: number; shield: number; fireChain(x: number, y: number, a: number): void; 
   tempo: number; spawnBoss(m?: boolean): void; makeEnemy(k: string, x: number, y: number): En; state: { choosing: boolean }; chooseCard(i: number): void;
-  chainGun: boolean; aimA: number; fireId: number | null; pTur: unknown[]; wpn: { interval: number; range: number; speed: number };
+  chainGun: boolean; aimA: number; fireId: number | null; pTur: { L?: boolean }[]; wpn: { interval: number; range: number; speed: number };
 };
 const env = process.env;
 const DT = 1 / 60;
@@ -20,13 +20,15 @@ const DT = 1 / 60;
 it.skipIf(!env.BALANCE)('Messlauf', () => {
   const store = new Map<string, string>();
   (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) };
-  const o = JSON.parse(env.BALANCE!) as { lagen: string[]; seeds: number[]; ship: string; turret: string; groups?: string[]; weapon: string; gear: 1 | 2 | 3; level: 1 | 2 | 3 | 4 | 5; secs: number; out: string; guns?: boolean; noTurrets?: boolean };
-  const lo = { ...DEFAULT_LOADOUT, wing: {}, ship: o.ship, turret: o.turret, weapon: o.weapon, ...(o.groups ? { groups: o.groups } : {}) };
+  const o = JSON.parse(env.BALANCE!) as { lagen: string[]; seeds: number[]; ship: string; turret: string; groups?: string[]; weapon: string; gear: 1 | 2 | 3; level: 1 | 2 | 3 | 4 | 5; secs: number; out: string; guns?: boolean; noTurrets?: boolean; onlyL?: boolean; lturret?: string };
+  const lo = { ...DEFAULT_LOADOUT, wing: {}, ship: o.ship, turret: o.turret, weapon: o.weapon, ...(o.lturret ? { lturret: o.lturret } : {}), ...(o.groups ? { groups: o.groups } : {}) };
   const make = (seed: number, side: string): G => {
     const g = new ShooterGame({ level: o.level, seed, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, mods: {}, gear: { weapon: o.gear, shield: o.gear, engine: o.gear }, loadout: lo } as never, side as never) as unknown as G;
     g.resize(390, 780);
     // nur die Bordwaffen messen: Türme abbauen
     if (o.noTurrets) g.pTur.length = 0;
+    // nur die schweren L-Türme messen (Zerstörer: Schulterrohre; Träger: L-Sockel)
+    if (o.onlyL) { const keep = g.pTur.filter((t) => t.L); g.pTur.length = 0; g.pTur.push(...keep); }
     return g;
   };
   // Bordwaffe: Blitzwaffen feuern im Takt auf den nächsten Gegner in Reichweite (andere Bordwaffen schweigen)
@@ -46,6 +48,8 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
     const n = g.enemies.filter(pick).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0];
     if (n && Math.hypot(n.x - g.px, n.y - g.py) < g.wpn.range) g.fireChain(g.px, g.py, Math.atan2(n.y - g.py, n.x - g.px));
   };
+  // Abstand der Testlagen vom eigenen Schiff: große Schiffe (Zerstörer, Träger) reichen weit über ihre Mitte hinaus
+  const pad = (SHIPS[o.ship as keyof typeof SHIPS]?.size ?? 0) * 0.5;
   const res: Record<string, Record<string, number>[]> = {};
   for (const lage of o.lagen) {
     res[lage] = [];
@@ -65,7 +69,7 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
           const alive = g.enemies.filter((e) => e === boss || e.parent === boss);
           const near = alive.filter((e) => e !== boss).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0] ?? boss;
           const ox = near.x - boss.x, oy = near.y - boss.y;
-          boss.x = g.px - ox; boss.y = g.py - 350 - oy; boss.vx = boss.vy = 0;
+          boss.x = g.px - ox; boss.y = g.py - 350 - pad - oy; boss.vx = boss.vy = 0;
           for (const e of g.enemies) if (e !== boss && !e.parent) e.x = -9999;
           // zwischen den Wellen wartet das Spiel auf eine Verbesserungskarte (sonst steht die Zeit still)
           if (g.state.choosing) g.chooseCard(0);
@@ -87,7 +91,7 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
           for (let i = 0; i < 3000 && !g.enemies.length; i++) g.update(DT);
           g.enemies.length = 0; g.clusters.clear();
           const wave = WAVE[lage];
-          wave.forEach((kind, k) => { const a = (k / wave.length) * Math.PI * 2; g.enemies.push(g.makeEnemy(kind, g.px + Math.cos(a) * 500, g.py + Math.sin(a) * 500)); });
+          wave.forEach((kind, k) => { const a = (k / wave.length) * Math.PI * 2; g.enemies.push(g.makeEnemy(kind, g.px + Math.cos(a) * (500 + pad), g.py + Math.sin(a) * (500 + pad))); });
         }
         const every = Math.max(1, Math.round(g.wpn.interval * g.tempo * 60));
         // gezählt werden die Schiffe der Welle (beim Brutschiff die Späher)

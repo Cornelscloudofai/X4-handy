@@ -623,8 +623,10 @@ export const TURRET_IDS = Object.keys(TURRETS) as TurretId[];
  */
 export interface LTurretDef extends TurretDef { barrel: string }
 export const LTURRETS: Record<LTurretId, LTurretDef> = {
-  plasma: { name: 'Schwerer Plasmaturm', desc: 'Zwei sehr schwere, langsame Plasmageschosse, dann Pause – große Reichweite.', turn: 30, color: '#a6ff6b', w: 5, barrel: 'split-lturm-rohr-plasma-ki',
-    gun: { dmg: 2200, rate: 0.8, amt: 1, mag: 2, reload: 6, v: 1100, life: 6.5, angle: 0.6 } },
+  // wie der M-Plasmaturm: ruhiger Takt statt Doppelschuss mit langer Pause, 40 % durch den Schild, Spritzschaden;
+  // schnellere Kugeln (Reichweite gleich) und etwas schnelleres Schwenken
+  plasma: { name: 'Schwerer Plasmaturm', desc: 'Sehr schwere Plasmakugeln im ruhigen Takt, große Reichweite. Das Plasma schlägt zum Teil durch den Schild und verbrennt beim Einschlag auch, was daneben fliegt.', turn: 45, color: '#a6ff6b', w: 5, barrel: 'split-lturm-rohr-plasma-ki', hullPierce: 0.4, splash: 90,
+    gun: { dmg: 1200, rate: 0.5, amt: 1, mag: 0, reload: 0, v: 1500, life: 4.77, angle: 0.6 } },
   tau: { name: 'Schwerer Tau-Beschleuniger-Turm', desc: 'Vier Geschosse je Schuss in schneller Folge – verheerend auf mittlere Entfernung.', turn: 70, color: '#ff5a5a', w: 2.6, barrel: 'split-lturm-rohr-tau-ki',
     gun: { dmg: 125, rate: 2.4, amt: 4, mag: 8, reload: 4.5, v: 2300, life: 1.6, angle: 1 } },
   boson: { name: 'Schwerer Bosonenlanzen-Turm', desc: 'Blitzschneller, sehr schwerer Lanzenstrahl, der sofort trifft – schwenkt langsam.', turn: 25, color: '#ff8a2a', w: 6, rail: true, barrel: 'split-lturm-rohr-boson-ki',

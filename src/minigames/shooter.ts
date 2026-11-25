@@ -5124,7 +5124,7 @@ export class ShooterGame implements MiniGame {
         const a = a0 + (this.r() - 0.5) * 2 * w.jitter;
         this.logSrc = 'lt'; this.logShot();
         if (w.rail) { this.fireRail(mx, my, a, this.tDmg * w.dmg, w.range * this.tRangeMul, w.color, true); continue; }
-        this.bullets.push({ x: mx, y: my, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.tDmg * w.dmg, from: 'p', src: 'lt', life: w.life * this.tRangeMul, color: w.color, w: Math.min(w.w, 5), pierce: 0 });
+        this.bullets.push({ x: mx, y: my, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.tDmg * w.dmg, from: 'p', src: 'lt', life: w.life * this.tRangeMul, color: w.color, w: Math.min(w.w, 5), pierce: 0, hullPierce: w.hullPierce || undefined, splash: w.splash });
       }
       t.cd = (w.interval * this.tempo) / this.tRateMul;
       if (w.mag && --t.mag <= 0) { t.mag = w.mag; t.cd = w.reload * this.tempo; }
