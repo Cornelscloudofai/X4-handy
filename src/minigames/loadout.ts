@@ -73,6 +73,11 @@ export interface ShipDef {
    */
   handling?: { speed: number; turn: number; accel: number };
   /**
+   * Trägheit beim Steuern (Sekunden): yaw = bis die volle Drehrate anliegt (und wieder abgebremst ist), spool = bis der
+   * Schub voll anliegt bzw. die Schubrichtung umgeschwenkt ist. Größer = träger; fehlt: Wert der Schiffsklasse
+   */
+  agility?: { yaw: number; spool: number };
+  /**
    * Träger: Hangarbuchten an den Flugdecks (Spielpunkte, Bug oben). Anflug von außen (out) aufs Deck (deck), dann unter
    * den roten Rumpf (in) – dort ist das Schiff gelandet und unsichtbar. Start in umgekehrter Reihenfolge.
    */
@@ -139,6 +144,10 @@ function spreadGuns(n: number, width: number): number[] {
 
 type ShipBase = Omit<ShipDef, 'cls' | 'speed' | 'turn' | 'hull' | 'shield' | 'regen' | 'delay' | 'gunSize' | 'guns'> & { gunWidth: number; /** Lage der Rohre wie im Bild (sonst gleichmäßig verteilt) */ gunPos?: number[] };
 
+/** Trägheit je Klasse (Sekunden bis volle Drehrate / voller Schub): je größer, desto träger */
+const AGILITY: Record<'S' | 'M' | 'L' | 'XL', { yaw: number; spool: number }> = {
+  S: { yaw: 0.12, spool: 0.12 }, M: { yaw: 0.35, spool: 0.3 }, L: { yaw: 0.8, spool: 0.6 }, XL: { yaw: 1.3, spool: 1 },
+};
 function ship(cls: 'S' | 'M' | 'L' | 'XL', base: ShipBase): ShipDef {
   const d = base.x4;
   const { gunWidth, gunPos, ...rest } = base;
@@ -153,6 +162,7 @@ function ship(cls: 'S' | 'M' | 'L' | 'XL', base: ShipBase): ShipDef {
     regen: (d.shields * SHIELD[cls].rate + m * SHIELD.M.rate) / MAMBA.regen,
     delay: SHIELD[cls].delay / SHIELD.S.delay,
     guns: gunPos ?? spreadGuns(d.weapons, gunWidth),
+    agility: base.agility ?? AGILITY[cls],
     gunSize: cls === 'L' || cls === 'XL' ? 'l' : cls === 'M' ? 'm' : 's',
   };
 }
@@ -232,36 +242,43 @@ const RS_IMG = 1254, RS_SIZE = 200;
 // wie im Original; die Gegner werden bei stärkeren Schiffen entsprechend zahlreicher und zäher.
 export const SHIPS: Record<ShipId, ShipDef> = {
   jaguar: ship('S', {
+    agility: { yaw: 0.08, spool: 0.08 },
     name: 'Jaguar', role: 'Aufklärer', desc: 'Aufklärer mit phänomenalem Tempo: ein Waffenplatz, wenig Hülle, keine Raketen. Nachbrenner: kurz noch schneller.',
     x4: { hull: 2000, engines: 1, shields: 1, weapons: 1, launchers: 0, turrets: 0, missiles: 0, v: 390, dragYaw: 3.015 },
     gunWidth: 0, gunPos: [2], turrets: [], r: 10, size: 36, special: 'sprint', sprite: 'split-jaguar', fallback: 'split-jaeger-s',
   }),
   mamba: ship('S', {
+    agility: { yaw: 0.1, spool: 0.09 },
     name: 'Mamba', role: 'Jäger', desc: 'Vielseitiges Arbeitstier: zwei Waffenplätze, ein Raketenwerfer, als einziger Jäger zwei Schilde. Ausweichmanöver.',
     x4: { hull: 3600, engines: 2, shields: 2, weapons: 2, launchers: 1, turrets: 0, missiles: 8, v: 330, dragYaw: 3.3 },
     gunWidth: 10, turrets: [], r: 12, size: 40, special: 'dash', sprite: 'split-jaeger-s', fallback: 'split-jaeger-s',
   }),
   asp: ship('S', {
+    agility: { yaw: 0.12, spool: 0.12 },
     name: 'Asp', role: 'Jäger', desc: 'Wendiger, mittelgroßer Jäger, bei Split-Söldnern beliebt: drei Waffenplätze, ein Raketenwerfer, mehr Hülle als die Mamba, aber nur ein Schild. Ausweichmanöver.',
     x4: { hull: 4600, engines: 2, shields: 1, weapons: 3, launchers: 1, turrets: 0, missiles: 3, v: 347, dragYaw: 2.9 },
     gunWidth: 9, turrets: [], r: 12, size: 44, special: 'dash', sprite: 'split-asp', fallback: 'split-jaeger-s',
   }),
   balaur: ship('S', {
+    agility: { yaw: 0.14, spool: 0.12 },
     name: 'Balaur', role: 'Schwerer Jäger', desc: 'Meisterstück der Freien Familien: vier Waffenplätze, drei Triebwerke, keine Raketen – „hart zuschlagen, schnell zuschlagen, dann weg“. Ausweichmanöver.',
     x4: { hull: 5500, engines: 3, shields: 1, weapons: 4, launchers: 0, turrets: 0, missiles: 0, v: 363, dragYaw: 3.62 },
     gunWidth: 18, gunPos: [-10.4, -7.6, 7.6, 10.4], turrets: [], r: 13, size: 48, special: 'dash', sprite: 'split-balaur', fallback: 'split-jaeger-s',
   }),
   chimera: ship('S', {
+    agility: { yaw: 0.17, spool: 0.15 },
     name: 'Chimera', role: 'Schwerer Jäger', desc: 'Schwerer Jäger des Zyarth-Patriarchats: fünf Waffenplätze, vier Triebwerke, die meiste Hülle der Jäger, keine Raketen – aber ein großes Profil. Waffenüberladung: kurz doppelte Feuerrate.',
     x4: { hull: 6100, engines: 4, shields: 1, weapons: 5, launchers: 0, turrets: 0, missiles: 0, v: 394, dragYaw: 4.3 },
     gunWidth: 22, turrets: [], r: 15, size: 52, special: 'overdrive', sprite: 'split-chimera', fallback: 'split-jaeger-s',
   }),
   dragon: ship('M', {
+    agility: { yaw: 0.3, spool: 0.25 },
     name: 'Dragon', role: 'Korvette', desc: 'Furchteinflößende Korvette: sechs M-Waffenplätze, ein M-Raketenwerfer, zwei Türme, nur ein Schild. Torpedo: langsamer, schwerer Schuss mit großem Flächenschaden.',
     x4: { hull: 21000, engines: 1, shields: 1, weapons: 6, launchers: 1, turrets: 2, missiles: 12, v: 478, dragYaw: 11.298 },
     gunWidth: 28, gunPos: [-14.5, -12.3, -8.9, 8.9, 12.3, 14.5], turrets: [[-5.9, 4.4], [5.9, 4.4]], turretGroup: [0, 1], groups: [{ name: 'Turm links', kind: 'M' }, { name: 'Turm rechts', kind: 'M' }], r: 20, size: 80, special: 'torpedo', sprite: 'split-dragon', fallback: 'split-jaeger-s',
   }),
   cobra: ship('M', {
+    agility: { yaw: 0.42, spool: 0.36 },
     chainK: { rate: 0.85 },
     name: 'Cobra', role: 'Fregatte', desc: 'Fregatte: drei M-Waffenplätze, vier Türme, zwei Schilde, drei Triebwerke, Andockplatz – keine Raketenwerfer. Begleitjäger: startet für eine Weile eine Mamba.',
     x4: { hull: 33000, engines: 3, shields: 2, weapons: 3, launchers: 0, turrets: 4, missiles: 0, v: 518, dragYaw: 11 },
@@ -306,6 +323,7 @@ export const SHIPS: Record<ShipId, ShipDef> = {
   // Eigener Entwurf (kein Schiff aus den X4-Daten): Bomber der Split. Werte angenommen – zwischen Mamba und Asp,
   // dafür drei Raketenwerfer (Flügel links/rechts, Rückenschacht), großes Raketenlager und schnelles Nachladen.
   wolf: ship('S', {
+    agility: { yaw: 0.15, spool: 0.14 },
     name: 'Wolf', role: 'Bomber', desc: 'Bomber der Split (eigener Entwurf): drei Raketenwerfer – je einer in den Flügeln und ein Schacht im Rücken –, Lager für 40 Raketen, lädt doppelt so schnell nach. Nur eine Bordkanone, etwas träger. Raketenschwarm: sofort eine doppelte Salve, auch während des Nachladens.',
     x4: { hull: 4200, engines: 2, shields: 1, weapons: 1, launchers: 3, turrets: 0, missiles: 40, v: 300, dragYaw: 3.8 },
     gunWidth: 0, gunPos: [0], gunFwd: 0.46, turrets: [], r: 13, size: 50, special: 'salvo', sprite: 'split-wolf', fallback: 'split-jaeger-s',

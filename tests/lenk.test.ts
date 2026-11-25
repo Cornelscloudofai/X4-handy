@@ -21,6 +21,8 @@ const push = (g: G, dx: number, dy: number) => {
   for (let i = 0; i < 12; i++) g.update(DT);
   const turn = g.aimA - a0, fire = g.fireId !== null;
   g.pointerUp(7);
+  // Trägheit: das Schiff dreht nach dem Loslassen noch aus – erst zur Ruhe kommen lassen
+  for (let i = 0; i < 60; i++) g.update(DT);
   return { turn, fire };
 };
 

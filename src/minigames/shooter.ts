@@ -930,6 +930,12 @@ export class ShooterGame implements MiniGame {
   private fireCd = 0;
   /** Blickrichtung des Jägers – die Bordkanonen feuern nur dorthin */
   private aimA = -Math.PI / 2;
+  /** Trägheit beim Drehen: Drehgeschwindigkeit (rad/s) und der in diesem Takt gewünschte Wert */
+  private yawV = 0;
+  private yawWant = 0;
+  /** Trägheit beim Schub: anliegender Schub als Vektor (Weltrichtung, Anteil des vollen Schubs) */
+  private thrX = 0;
+  private thrY = 0;
   /** Finger auf der Feuertaste (99 = Autopilot) */
   private fireId: number | null = null;
   /**
@@ -1501,6 +1507,18 @@ export class ShooterGame implements MiniGame {
   /** Test-Schalter „Mods aus“ wurde umgelegt (Pausenmenü): die Bordwaffe neu berechnen, alles andere wirkt sofort */
   modsChanged(): void { this.wpn = this.wpnMods(); }
   private get speed(): number { return [200, 235, 270][this.gear.engine - 1] * (1 + 0.12 * this.c('speed')) * this.ship.speed * (1 + this.m('speed')) * (this.sprintT > 0 ? 1.7 : 1) * (this.towing ? 0.82 : 1); }
+  /** Drehbeschleunigung (rad/s²): volle Drehrate nach agility.yaw Sekunden */
+  private get yawAcc(): number { return this.turnRate / (this.ship.agility?.yaw ?? 0.12); }
+  /**
+   * Bug mit Trägheit auf Richtung a drehen (k: Anteil der vollen Drehrate): Wunschtempo so, dass das Schiff mit seiner
+   * Drehbeschleunigung genau am Ziel zum Stehen kommt – kein Überschwingen, kein Zappeln um die Mitte
+   */
+  private steerTo(a: number, k = 1): void {
+    const err = wrapA(a - this.aimA);
+    if (Math.abs(err) < 0.002) { this.yawWant = 0; return; }
+    this.yawWant = Math.sign(err) * Math.min(this.turnRate * k, Math.sqrt(2 * this.yawAcc * Math.abs(err)) * 0.9);
+  }
+
   private get turnRate(): number { return [3.8, 4.3, 4.8][this.gear.engine - 1] * (1 + 0.1 * this.c('speed')) * this.ship.turn * (1 + this.m('turn')) * (this.sprintT > 0 ? 1.3 : 1); }
   /** Drohnen: aus Verbesserungen, dazu der Begleitjäger der Cobra (immer der letzte) */
   private get droneN(): number { return this.c('drone') + (this.escortT > 0 ? 1 : 0); }
@@ -4575,7 +4593,7 @@ export class ShooterGame implements MiniGame {
       this.pcT += dt;
       if (this.mouseX >= 0 && this.camMode === 'schiff' && !this.tac) {
         const wx = this.camX + this.mouseX / this.zoom, wy = this.camY + this.mouseY / this.zoom;
-        if (Math.hypot(wx - this.px, wy - this.py) > 8) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(wy - this.py, wx - this.px), this.turnRate * dt));
+        if (Math.hypot(wx - this.px, wy - this.py) > 8) this.steerTo(Math.atan2(wy - this.py, wx - this.px));
       }
       if (this.fireId !== 99) this.fireId = this.mouseFire ? MOUSE_ID : null;
       const k = this.keys;
@@ -4596,8 +4614,8 @@ export class ShooterGame implements MiniGame {
       if (this.ctrl === 'lenk') {
         // Lenkachse: entlang der Achse drehen (je weiter aus der Mitte, desto schneller; in der Ruhezone geradeaus)
         const { s } = this.lenkAxes(a);
-        if (Math.abs(s) > LENK_DEAD) this.aimA = wrapA(this.aimA + Math.sign(s) * ((Math.abs(s) - LENK_DEAD) / (1 - LENK_DEAD)) * this.turnRate * dt);
-      } else if (a && ad > AIM_DEAD) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(a.ky, a.kx), this.turnRate * aimStrength(ad) * dt));
+        if (Math.abs(s) > LENK_DEAD) this.yawWant = Math.sign(s) * ((Math.abs(s) - LENK_DEAD) / (1 - LENK_DEAD)) * this.turnRate;
+      } else if (a && ad > AIM_DEAD) this.steerTo(Math.atan2(a.ky, a.kx), aimStrength(ad));
       if (this.fireId !== 99) {
         // Lenkachse: über die Feuerlinie quer zur Achse; zwei Sticks: über den Feuerring hinaus
         const fire = a && (this.ctrl === 'lenk' ? this.lenkAxes(a).f > LENK_FIRE : ad > AIM_FIRE) ? a.id : null;
@@ -4617,11 +4635,28 @@ export class ShooterGame implements MiniGame {
         eff = c >= 0 ? SIDE_THRUST + (1 - SIDE_THRUST) * c * c : SIDE_THRUST + (BACK_THRUST - SIDE_THRUST) * c * c;
       }
     } else {
-      if (j && defl > 0.12) this.aimA = wrapA(turnTo(this.aimA, Math.atan2(j.ky, j.kx), this.turnRate * dt));
+      if (j && defl > 0.12) this.steerTo(Math.atan2(j.ky, j.kx));
       thr = clamp((defl - TURN_ONLY) / (1 - TURN_ONLY), 0, 1);
       thrA = this.aimA;
     }
-    this.thrust = thr;
+    // Drehen mit Trägheit: die Drehgeschwindigkeit folgt dem Wunsch höchstens mit der Drehbeschleunigung des Schiffs
+    // (Anlaufen, Abbremsen und Richtungswechsel brauchen Zeit – große Schiffe deutlich mehr)
+    const lim = this.yawAcc * dt;
+    this.yawV += clamp(this.yawWant - this.yawV, -lim, lim);
+    this.aimA = wrapA(this.aimA + this.yawV * dt);
+    this.yawWant = 0;
+    // Schub mit Trägheit: Triebwerke und Steuerdüsen fahren in agility.spool Sekunden hoch bzw. schwenken um
+    const want = thr * eff, sk = 1 - Math.exp((-dt * 3) / (this.ship.agility?.spool ?? 0.12));
+    this.thrX += (Math.cos(thrA) * want - this.thrX) * sk;
+    this.thrY += (Math.sin(thrA) * want - this.thrY) * sk;
+    const tMag = Math.hypot(this.thrX, this.thrY);
+    if (tMag > 1e-3) {
+      thrA = Math.atan2(this.thrY, this.thrX);
+      const c = Math.cos(wrapA(thrA - this.aimA));
+      eff = c >= 0 ? SIDE_THRUST + (1 - SIDE_THRUST) * c * c : SIDE_THRUST + (BACK_THRUST - SIDE_THRUST) * c * c;
+    }
+    const thrNow = tMag > 1e-3 ? clamp(tMag / eff, 0, 1) : 0;
+    this.thrust = thrNow;
     // Reiseantrieb: ohne Gegner in der Nähe und bei vollem Schub deutlich schneller
     const calm = this.fireId === null && !this.enemies.some((e) => Math.hypot(e.x - this.px, e.y - this.py) < 560) && !this.eMissiles.some((m) => Math.hypot(m.x - this.px, m.y - this.py) < 400);
     this.cruise = clamp(this.cruise + (calm && thr > 0.85 ? dt * 0.7 : -dt * 3), 0, 1);
@@ -4629,7 +4664,7 @@ export class ShooterGame implements MiniGame {
     // Schub in Blickrichtung; etwas Flugassistent bremst die Drift langsam ab
     // in Schubrichtung höchstens so schnell, wie die Düsen dorthin schaffen (seitlich und rückwärts weniger)
     const along = this.pvx * Math.cos(thrA) + this.pvy * Math.sin(thrA);
-    const acc = along < vmax * eff ? this.speed * ACCEL * (this.ship.handling?.accel ?? 1) * thr * eff * (1 + this.cruise) : 0;
+    const acc = along < vmax * eff ? this.speed * ACCEL * (this.ship.handling?.accel ?? 1) * thrNow * eff * (1 + this.cruise) : 0;
     this.pvx += Math.cos(thrA) * acc * dt;
     this.pvy += Math.sin(thrA) * acc * dt;
     const damp = Math.exp(-DRIFT_DAMP * dt);
