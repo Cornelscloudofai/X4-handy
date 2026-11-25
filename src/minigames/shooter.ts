@@ -1224,7 +1224,7 @@ export class ShooterGame implements MiniGame {
     if (cfg.mission === 'ueberleben') this.controls = this.controls.map((c) => c.replace('Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen', 'Gegner kommen aus allen Richtungen – in Bewegung bleiben, nicht einkreisen lassen'));
     this.ship = SHIPS[lo.ship];
     this.fk = Math.max(1, (SHIPS.cobra.size * (SHIPS.cobra.turretD ?? 0.1)) / F_GAT.size);
-    if (this.ship.guns.length > 1) this.controls = [...this.controls, 'Feuer-Taste links neben dem Auge (am PC: F): Bordkanonen gebündelt (alle Rohre zugleich) oder versetzt (Rohr für Rohr im gleichmäßigen Takt) – je Waffe gemerkt'];
+    if (this.ship.guns.length > 1) this.controls = [...this.controls, 'Feuer-Taste rechts über der Spezialtaste (am PC: F): Bordkanonen gebündelt (alle Rohre zugleich) oder versetzt (Rohr für Rohr im gleichmäßigen Takt) – je Waffe gemerkt'];
     this.controls = [...this.controls, 'Auge-Taste neben dem Zoom: freie Sicht (ziehen verschiebt, zwei Finger zoomen, Schiff antippen = folgen), nochmal: Beobachter, der dem Gefecht folgt. Radar antippen: taktische Karte in Zeitlupe – dort einen Gegner antippen, und die Staffel greift ihn an'];
     if (this.ship.turrets.length) this.controls = [...this.controls, `Turmbefehle: Knopf ${this.ship.lMounts?.length ? '„M“ bzw. „L“' : '„M“'} links halten und wischen – nach oben alle Ziele, links zuerst S-Schiffe (Jäger), rechts M-Schiffe (Boote), unten L-Schiffe (Fregatte, K-Segment); antippen schaltet weiter. Raketen schießen die M-Türme nur bei „alle“ und „S“ ab`];
     // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
@@ -1759,8 +1759,9 @@ export class ShooterGame implements MiniGame {
   private get camZoneY(): number { return this.h * 0.75; }
   /** Taste für die Kamera: links neben den Zoom-Tasten */
   private get btnCam(): [number, number, number] { return [this.zoomRowX - 88, this.zoomRowY, 15]; }
-  /** Feuerart-Taste links neben der Kamerataste (nur mit mehreren Bordkanonen, die Geschosse oder Lanzen feuern) */
-  private get btnFireMode(): [number, number, number] { return [this.zoomRowX - 132, this.zoomRowY, 15]; }
+  /** Feuerart-Taste rechts am Rand über der Spezialtaste (nur mit mehreren Bordkanonen, die Geschosse oder Lanzen feuern) */
+  /** (quer ist über der Spezialtaste kein Platz – dort links daneben) */
+  private get btnFireMode(): [number, number, number] { const [x, y] = this.btnDash; return this.quer ? [x - 64, y, 18] : [x, y - 64, 18]; }
   private get fireModeShown(): boolean { return this.guns.length > 1 && !this.chainGun && !this.wpn.beam && !this.wpn.missile; }
   /** versetzt feuern: gewählt und sinnvoll (mehrere Rohre, keine Blitz- oder Strahlwaffe) */
   private get staggerOn(): boolean { return this.staggered && this.fireModeShown; }
@@ -9452,7 +9453,7 @@ export class ShooterGame implements MiniGame {
       ctx.fillStyle = on ? '#ffd27a' : 'rgba(169,195,198,0.7)';
       ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('FEUER', fx, this.zoomLabelY);
+      ctx.fillText('FEUER', fx, fy + fr + 12);
     }
     const [fbx, fby, fbr] = this.btnFire;
     if (this.ctrl === 'eins' && !this.pc && this.fireId !== null && this.fireId !== 99) {
