@@ -563,6 +563,110 @@ export function drawKnob(ctx: CanvasRenderingContext2D, x: number, y: number, r:
   ctx.restore();
 }
 
+/**
+ * Steuerstick im Stil der Kampftasten: dunkle Glasscheibe (das Spiel scheint durch), Metallfassung mit Skala und
+ * Richtungsmarken, leuchtender Bogen am Rand in Auslenkungsrichtung, Zugseil von der Mitte zum Griff, Griff als Knopf.
+ * rings: innere Ringe (Schwellen); band: Ringband (z. B. Feuerzone) von … bis (Anteile von R)
+ */
+export function drawStick(ctx: CanvasRenderingContext2D, j: { ox: number; oy: number; kx: number; ky: number }, R: number, o: {
+  color: string; t?: number; rings?: { r: number; dashed?: boolean; color?: string; a?: number }[];
+  band?: { from: number; to: number; color: string; on: boolean }; flash?: { r: number; a: number }; knobR?: number;
+}): void {
+  const { ox, oy } = j, col = o.color, t = o.t ?? 0, m = Math.min(1, Math.hypot(j.kx, j.ky)), ang = Math.atan2(j.ky, j.kx);
+  ctx.save();
+  // Glasscheibe: innen fast klar, zum Rand dunkler
+  const plate = ctx.createRadialGradient(ox, oy, R * 0.15, ox, oy, R);
+  plate.addColorStop(0, 'rgba(4,12,18,0.08)');
+  plate.addColorStop(0.75, 'rgba(4,12,18,0.22)');
+  plate.addColorStop(1, 'rgba(4,12,18,0.42)');
+  ctx.fillStyle = plate;
+  ctx.beginPath(); ctx.arc(ox, oy, R, 0, Math.PI * 2); ctx.fill();
+  // Feuerband (unter der Fassung)
+  if (o.band) {
+    const b = o.band, rr = R * (b.from + b.to) / 2, wd = R * (b.to - b.from);
+    ctx.strokeStyle = rgba(b.color, b.on ? 0.34 : 0.12);
+    ctx.lineWidth = wd;
+    ctx.beginPath(); ctx.arc(ox, oy, rr, 0, Math.PI * 2); ctx.stroke();
+    // Rasterung im Band
+    ctx.strokeStyle = rgba(b.color, b.on ? 0.55 : 0.22);
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 48; i++) {
+      const a = (i / 48) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+      ctx.beginPath(); ctx.moveTo(ox + c * R * b.from, oy + sn * R * b.from); ctx.lineTo(ox + c * R * (b.from + (b.to - b.from) * 0.45), oy + sn * R * (b.from + (b.to - b.from) * 0.45)); ctx.stroke();
+    }
+    ctx.strokeStyle = rgba(b.color, b.on ? 0.85 : 0.4);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(ox, oy, R * b.from, 0, Math.PI * 2); ctx.stroke();
+  }
+  // innere Ringe (Schwellen)
+  for (const r of o.rings ?? []) {
+    ctx.setLineDash(r.dashed ? [4, 5] : []);
+    ctx.strokeStyle = rgba(r.color ?? col, r.a ?? 0.32);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(ox, oy, R * r.r, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if (o.flash && o.flash.a > 0) {
+    ctx.shadowColor = rgba('#ffd27a', o.flash.a); ctx.shadowBlur = 12;
+    ctx.strokeStyle = rgba('#ffd27a', o.flash.a);
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(ox, oy, R * o.flash.r, 0, Math.PI * 2); ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  // Fassung: Metall (oben hell, unten dunkel) mit Lichtkante in der Stickfarbe
+  const bez = ctx.createLinearGradient(ox, oy - R, ox, oy + R);
+  bez.addColorStop(0, 'rgba(120,150,160,0.75)');
+  bez.addColorStop(0.5, 'rgba(40,58,68,0.7)');
+  bez.addColorStop(1, 'rgba(8,14,18,0.8)');
+  ctx.strokeStyle = bez;
+  ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.arc(ox, oy, R + 3, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = rgba(col, 0.5);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(ox, oy, R - 0.5, 0, Math.PI * 2); ctx.stroke();
+  // Skala: feine Striche, jeder dritte länger
+  ctx.strokeStyle = rgba(col, 0.28);
+  for (let i = 0; i < 36; i++) {
+    const a = (i / 36) * Math.PI * 2, l = i % 3 ? 4 : 8, c = Math.cos(a), sn = Math.sin(a);
+    ctx.lineWidth = i % 3 ? 1 : 1.5;
+    ctx.beginPath(); ctx.moveTo(ox + c * (R - 3), oy + sn * (R - 3)); ctx.lineTo(ox + c * (R - 3 - l), oy + sn * (R - 3 - l)); ctx.stroke();
+  }
+  // Richtungsmarken: vier kleine Winkel außen
+  ctx.fillStyle = rgba(col, 0.45);
+  for (let k = 0; k < 4; k++) {
+    const a = (k * Math.PI) / 2, c = Math.cos(a), sn = Math.sin(a), d = R + 11;
+    ctx.beginPath();
+    ctx.moveTo(ox + c * (d + 5), oy + sn * (d + 5));
+    ctx.lineTo(ox + c * d - sn * 5, oy + sn * d + c * 5);
+    ctx.lineTo(ox + c * d + sn * 5, oy + sn * d - c * 5);
+    ctx.closePath(); ctx.fill();
+  }
+  // leuchtender Bogen in Auslenkungsrichtung, länger und heller je weiter
+  if (m > 0.05) {
+    const span = 0.35 + m * 0.6;
+    ctx.shadowColor = rgba(col, 0.9); ctx.shadowBlur = 10;
+    ctx.strokeStyle = rgba(col, 0.35 + 0.6 * m);
+    ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(ox, oy, R + 3, ang - span / 2, ang + span / 2); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.lineCap = 'butt';
+  }
+  // Mitte und Zugseil zum Griff
+  const kx = ox + j.kx * R, ky = oy + j.ky * R;
+  if (m > 0.03) {
+    const g = ctx.createLinearGradient(ox, oy, kx, ky);
+    g.addColorStop(0, rgba(col, 0.1));
+    g.addColorStop(1, rgba(col, 0.6));
+    ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(kx, ky); ctx.stroke();
+    ctx.lineCap = 'butt';
+  }
+  ctx.fillStyle = rgba(col, 0.55);
+  ctx.beginPath(); ctx.arc(ox, oy, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // Griff: Knopf in der Stickfarbe, eingeschaltet ab merklicher Auslenkung
+  drawKnob(ctx, kx, ky, o.knobR ?? 24, { color: col, on: m > 0.5, t });
+}
+
 export function drawButton(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ready: number, color: string, label: string | ((x: number, y: number, s: number, color: string) => void), t: number, charges?: number): void {
   const ok = ready >= 1;
   drawKnob(ctx, x, y, r, { color, ready, t });

@@ -15,7 +15,7 @@ import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
 import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, fireStaggered, setFireStaggered, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
-  buzz, clamp, drawButton, drawKnob, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
+  buzz, clamp, drawButton, drawKnob, drawStick, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
   type Place,
 } from './common';
@@ -478,7 +478,7 @@ const AGGRO = 380;
  * der Frachter je Welle fliegt (bleibt, damit Einsätze nicht länger dauern). Sehr lange Schiffe (Träger im X4-Maßstab)
  * bekommen eine noch größere Karte: mindestens 2,2-mal ihre Länge.
  */
-const MAP_W = 6500, LEG = 900, MAP_PAD = 520;
+const MAP_W = 9000, LEG = 900, MAP_PAD = 520;
 /** Frachter-Tempo auf seiner Route */
 const F_SPEED = 24;
 /** Hülle eines Frachters, der Station (Einsatz „Station verteidigen“) und Abstand der Konvoi-Frachter quer zur Route */
@@ -1189,7 +1189,8 @@ export class ShooterGame implements MiniGame {
   /** Pause nach dem Abschuss eines Großkampfschiffs, bis das nächste kommen darf (s) */
   private bigCd = 0;
   /** Verstärkung einer Welle: kommt einige Sekunden später von anderer Seite */
-  private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean; carrier?: boolean }[] = [];
+  /** full: volles Großkampfschiff (zweiter Xenon K der letzten Welle), sonst Großziel */
+  private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean; carrier?: boolean; full?: boolean }[] = [];
   /** Elite-Gegner, die in dieser Welle noch kommen, und dafür in Frage kommende Gegner */
   private eliteLeft = 0;
   private eliteRest = 0;
@@ -1351,7 +1352,7 @@ export class ShooterGame implements MiniGame {
       : side === 'pirate'
         ? 'Dein Frachter fliegt zum Sprungtor, Piraten lauern auf der Route. Fang sie ab, bevor sie ihn erreichen – Raketen- und Kanonenboote zuerst. Zum Schluss stellt sich der Piratenträger: erst die Flaktürme, und er startet Jäger von seiner Startbahn.'
         : side === 'xenon'
-          ? 'Dein Frachter fliegt zum Sprungtor, Xenon fallen von allen Seiten ein. Fang sie weit draußen ab. Zum Schluss greift ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.'
+          ? 'Dein Frachter fliegt zum Sprungtor, Xenon fallen von allen Seiten ein. Fang sie weit draußen ab.' + (this.finalBigs > 1 ? ' Zum Schluss greifen zwei Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann die Kerne.' : this.finalBigs ? ' Zum Schluss greift ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Fregatten, Korvetten und Schwärmen.')
           : 'Kha’ak fallen über die Route her: Späher kommen als geschlossene Cluster und schwärmen erst kurz vor dem Ziel aus – oder sobald du einen triffst. Jäger feuern Kyon-Strahlen, die Schilde schnell durchbrennen; Abfangjäger springen aus dem Visier. Zum Schluss ein Brutschiff: erst Kyon-Türme und Brutkammern, dann der Kern.';
     if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
@@ -1606,7 +1607,12 @@ export class ShooterGame implements MiniGame {
   /** Schutzziele fliegen eine Route (Geleit, Konvoi) */
   private get moving(): boolean { return this.mission === 'geleit' || this.mission === 'konvoi'; }
   private get totalWaves(): number { return this.mode === 'endless' || !this.counted ? Infinity : this.nWaves; }
-  private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : this.counted && i === this.nWaves - 1; }
+  private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : this.counted && i === this.nWaves - 1 && this.finalBigs > 0; }
+  /**
+   * Großkampfschiffe in der letzten Welle. Xenon: Stufe 1 keines (dort viele kleine Schiffe und Schwärme), ab Stufe 2
+   * ein Xenon K, ab Stufe 4 zwei; die übrigen Seiten eines
+   */
+  private get finalBigs(): number { return this.side !== 'xenon' || this.mode === 'endless' ? 1 : this.level >= 4 ? 2 : this.level >= 2 ? 1 : 0; }
 
   resize(w: number, h: number): void {
     const first = this.w === 1;
@@ -1631,7 +1637,8 @@ export class ShooterGame implements MiniGame {
       kind: 'frachter', name, ox, oy, hull: F_MAX, max: F_MAX, flash: 0, dead: false, ph,
       tur: [{ ox: 0, oy: -30 * this.fk, cd: 0, a: -Math.PI / 2, hp: 1, max: 1 }, { ox: 0, oy: 34 * this.fk, cd: 0.3, a: Math.PI / 2, hp: 1, max: 1 }],
     });
-    this.WW = Math.max(MAP_W, Math.round(this.ship.size * 2.2));
+    // große Schiffe brauchen Platz zum Manövrieren: mindestens das Dreifache ihrer Länge
+    this.WW = Math.max(MAP_W, Math.round(this.ship.size * 3));
     // Rand oben und unten: mit großer Karte entsprechend mehr Platz (lange Schiffe ragen sonst über den Rand)
     const pad = MAP_PAD + Math.max(0, (this.WW - 2600) * 0.25);
     if (m === 'geleit' || m === 'konvoi') {
@@ -3482,6 +3489,8 @@ export class ShooterGame implements MiniGame {
   private swarmShare(): number {
     // Kha'ak: Späher kommen immer in Clustern, auch gegen schwache Schiffe
     if (this.side === 'khaak') return clamp(0.3 + 0.05 * Math.log2(Math.max(1, this.power)), 0.3, 0.55);
+    // Xenon: Schwärme von Anfang an (auch gegen schwache Schiffe), ihr Anteil wächst mit der Stufe
+    if (this.side === 'xenon') return clamp(0.35 + 0.04 * (this.level - 1) + 0.05 * Math.log2(Math.max(1, this.power)), 0.35, 0.6);
     return this.power < 2.5 ? 0 : clamp(0.35 + 0.05 * Math.log2(this.power), 0.35, 0.55);
   }
 
@@ -3494,6 +3503,9 @@ export class ShooterGame implements MiniGame {
     return Math.min(21, Math.round((this.waveBudget(i) * this.swarmShare() * 0.7) / SPEC.kj.cost));
   }
 
+  /** kleinster Schwarm: sechs Schiffe; Xenon je Stufe zwei mehr */
+  private get minSwarm(): number { return this.side === 'xenon' ? 6 + 2 * (this.level - 1) : 6; }
+
   /** Schiffe in allen Schwärmen der Welle i zusammen (0 = keine), höchstens 40 */
   swarmSize(i: number): number {
     const share = this.swarmShare();
@@ -3501,7 +3513,9 @@ export class ShooterGame implements MiniGame {
     const small = this.smallKind;
     // Kha'ak ab Stärke 2,5: die Hälfte des Anteils geht an Jäger-Cluster (jaegerSwarm)
     const part = this.side === 'khaak' && this.power >= 2.5 ? 0.5 : 1;
-    return clamp(Math.round((this.waveBudget(i) * share * part) / SPEC[small].cost), this.side === 'khaak' ? 4 : 6, Math.round(40 * this.big));
+    // Xenon: je Stufe ein Viertel mehr Schiffe in den Schwärmen
+    const lv = this.side === 'xenon' ? 1 + 0.25 * (this.level - 1) : 1;
+    return clamp(Math.round((this.waveBudget(i) * share * part * lv) / SPEC[small].cost), this.side === 'khaak' ? 4 : this.minSwarm, Math.round(40 * this.big));
   }
 
   /**
@@ -3511,23 +3525,29 @@ export class ShooterGame implements MiniGame {
   swarms(i: number): number[] {
     const total = this.swarmSize(i);
     if (!total) return [];
-    const max = (this.power >= 10 ? 3 : this.power >= 4 ? 2 : 1) + (this.big > 1 ? 2 : 0);
+    // Xenon: ab Stufe 2 und 4 je ein Schwarm mehr
+    const max = (this.power >= 10 ? 3 : this.power >= 4 ? 2 : 1) + (this.big > 1 ? 2 : 0) + (this.side === 'xenon' ? (this.level >= 2 ? 1 : 0) + (this.level >= 4 ? 1 : 0) : 0);
     if (this.side === 'khaak') return khaakClusters(total, max + 1, this.power >= 4);
-    const n = clamp(Math.floor(total / 6), 1, max);
-    return Array.from({ length: n }, (_, k) => Math.floor(total / n) + (k < total % n ? 1 : 0));
+    // Xenon: Stufe 1 ein Schwarm, Stufe 3 mindestens zwei, Stufe 5 drei – jeder mindestens so groß wie minSwarm
+    const n = clamp(Math.max(Math.floor(total / this.minSwarm), this.side === 'xenon' ? 1 + Math.floor((this.level - 1) / 2) : 1), 1, max);
+    const each = Math.max(this.minSwarm, Math.floor(total / n)), rest = Math.max(0, total - each * n);
+    return Array.from({ length: n }, (_, k) => each + (k < rest ? 1 : 0));
   }
 
   private waveKinds(i: number): EKind[] {
-    let budget = this.waveBudget(i) * (1 - this.swarmShare());
+    // Xenon: mit jeder Stufe 15 % mehr für die übrigen Schiffe (vor allem Korvetten und Fregatten), zusätzlich zu den Schwärmen
+    let budget = this.waveBudget(i) * (1 - this.swarmShare()) * (this.side === 'xenon' ? 1 + 0.15 * (this.level - 1) : 1);
     const pool: EKind[] = this.side === 'pirate'
       ? (i === 0 ? ['jaeger'] : i === 1 ? ['jaeger', 'jaeger', 'rakete', 'schild'] : ['jaeger', 'jaeger', 'rakete', 'kanone', 'schild'])
       : this.side === 'xenon'
-        ? (i === 0 ? ['n'] : i === 1 ? ['n', 'n', 'm', 'xs'] : ['n', 'n', 'm', 'xs', 'p'])
+        ? (i === 0 ? ['n'] : i === 1 ? ['n', 'n', 'm', 'xs', ...(this.level >= 3 ? ['p'] as EKind[] : [])] : ['n', 'n', 'm', 'xs', 'p'])
         : (i === 0 ? ['kj'] : i === 1 ? ['kj', 'kj', 'ka'] : ['kj', 'kj', 'ka', 'kk']);
     // starke Schiffe: schwerere Mischung (mehr Kanonen-/Raketenboote, Xenon M bzw. Abfangjäger/Korvetten), ab der ersten Welle
     const heavy = this.side === 'pirate' ? (['kanone', 'rakete'] as EKind[]) : this.side === 'xenon' ? (['m', 'p'] as EKind[]) : (['ka', 'kk'] as EKind[]);
     // Kha'ak: dazu je Stufe zwei Jäger mehr – sie kommen dann in Clustern zu 9 oder 4 (mehrere gleichzeitig)
     for (let h = 0; h < Math.min(4, Math.floor((this.power - 1) / 2.5)); h++) pool.push(...heavy, ...(this.side === 'khaak' ? ['kj', 'kj'] as EKind[] : []));
+    // Xenon: je Stufe über 1 mehr Korvetten (M) und Fregatten (P) ab der zweiten Welle – statt Xenon K mittendrin
+    if (this.side === 'xenon' && i >= 1) for (let h = 1; h < this.level; h++) pool.push('m', 'p');
     const out: EKind[] = [];
     let shields = 0;
     while (budget > 0.9) {
@@ -3576,8 +3596,10 @@ export class ShooterGame implements MiniGame {
     const boss = this.isBossWave(this.wave);
     if (boss) {
       this.spawnBoss();
+      // zweiter Xenon K (ab Stufe 4): aus einer anderen Richtung, kurz danach
+      for (let b = 1; b < this.finalBigs; b++) this.reinforce.push({ t: 8 + b * 6, kinds: ['boss'], from: 2 + b * 2, full: true });
       this.bannerText = 'BOSS';
-      this.bannerSub = this.side === 'pirate' ? 'Piratenträger – erst die Flaktürme' : this.side === 'xenon' ? 'Xenon K – erst die Türme' : 'Kha’ak-Brutschiff – erst Kyon-Türme und Brutkammern';
+      this.bannerSub = this.side === 'pirate' ? 'Piratenträger – erst die Flaktürme' : this.side === 'xenon' ? (this.finalBigs > 1 ? 'Zwei Xenon K – erst die Türme' : 'Xenon K – erst die Türme') : 'Kha’ak-Brutschiff – erst Kyon-Türme und Brutkammern';
       this.spawnGroup(this.side === 'pirate' ? ['jaeger', 'jaeger'] : this.side === 'xenon' ? ['n', 'n', 'n'] : ['ks', 'ks', 'ks', 'ks', 'ks'], 1 + Math.floor(this.r() * 4), this.side === 'khaak');
     } else {
       // Gegner in zwei bis drei Gruppen aus verschiedenen Richtungen; die späteren kommen einige Sekunden danach
@@ -3615,7 +3637,8 @@ export class ShooterGame implements MiniGame {
       // in Einsätzen ab Stufe 2 auch mit kleinem Schiff ab der zweiten Welle eines (sonst sähe man Fregatte, Piratenträger
       // und Xenon K dort nie)
       // – nie schon in der ersten Welle, die gehört dem Aufwärmen
-      const bigs = this.wave < 1 ? 0 : this.power >= 10 ? (this.wave >= 2 ? 2 : 1) : this.power >= 3.5 || (this.mission !== 'geleit' && this.level >= 2) ? 1 : 0;
+      // Xenon: K nur noch in der letzten Welle – dazwischen wachsen Korvetten, Fregatten und Schwärme mit der Stufe
+      const bigs = this.wave < 1 || this.side === 'xenon' ? 0 : this.power >= 10 ? (this.wave >= 2 ? 2 : 1) : this.power >= 3.5 || (this.mission !== 'geleit' && this.level >= 2) ? 1 : 0;
       // in den Einsätzen gegen Piraten kommt statt der Fregatte manchmal der Piratenträger (ab Stufe 3 öfter)
       for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5), carrier: this.side === 'pirate' && this.mission !== 'geleit' && this.r() < (this.level >= 3 ? 0.5 : 0.3) });
       // Schwärme kleiner Schiffe: kommen fast gleichzeitig (innerhalb von gut einer Sekunde) aus verschiedenen
@@ -3645,6 +3668,13 @@ export class ShooterGame implements MiniGame {
    * Anflugpunkt weit draußen, von der Route des Frachters aus gesehen: 0 vorn, 1 vorn links, 2 vorn rechts,
    * 3 links, 4 rechts (selten auch von hinten)
    */
+  /** weiteste Reichweite der eigenen Waffen (Bordkanonen, Türme, L-Türme) */
+  private get ownReach(): number {
+    let r = this.wpn.range;
+    for (const t of this.pTur) r = Math.max(r, (t.w ?? this.tw).range * this.tRangeMul);
+    if (this.pL.length && this.lt) r = Math.max(r, this.lt.range * this.tRangeMul);
+    return r;
+  }
   private farPoint(from: number): [number, number] {
     const dirs = [-Math.PI / 2, -Math.PI * 0.78, -Math.PI * 0.22, Math.PI, 0];
     let a = dirs[from % dirs.length] + (this.r() - 0.5) * 0.4;
@@ -3659,7 +3689,8 @@ export class ShooterGame implements MiniGame {
       const side = from % 4 === 1 ? -1 : 1;
       return [clamp(this.fX + side * (900 + this.r() * 200), 80, this.WW - 80), clamp(this.fY - 300 + (this.r() - 0.5) * 500, 80, this.WH - 80)];
     }
-    const d = 1400 + this.r() * 300;
+    // lange eigene Schiffe (Träger): Anflug von jenseits des eigenen Rumpfs
+    const d = 1400 + this.r() * 300 + (this.mission === 'ueberleben' ? Math.max(0, this.ship.size * 0.5 - 150) : 0);
     return [clamp(this.fX + Math.cos(a) * d, 80, this.WW - 80), clamp(this.fY + Math.sin(a) * d, 80, this.WH - 80)];
   }
 
@@ -3839,12 +3870,13 @@ export class ShooterGame implements MiniGame {
     this.floats.add(this.px, this.py - 60, `Test: Brutschiff am Kartenrand (${b.x < this.fX ? 'links' : 'rechts'} voraus)`, '#d9a6ff', 15);
   }
 
-  private spawnBoss(mini = false, from = 0, carrier = false): void {
+  private spawnBoss(mini = false, from = 0, carrier = false, side = false): void {
     // Piratenträger als Großziel (in Einsätzen): sieht aus und kämpft wie der Boss, zählt aber als Großziel
     const small = mini && !carrier;
     // X4-Größe: der Xenon K ist ein XL-Schiff (1,7 km), Fregatte und Brutschiff entsprechend; die Türme wachsen mit
     const k = enemyScale('boss', this.side, small);
-    let [x, y] = mini ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120 + 34 * k, this.fY - 1100 - 34 * k * 1.5)];
+    // side: weiteres volles Großkampfschiff aus einer anderen Richtung
+    let [x, y] = mini || side ? this.farPoint(from) : [this.fX + (this.r() - 0.5) * 400, Math.max(120 + 34 * k, this.fY - 1100 - 34 * k * 1.5)];
     // Nest: nicht mitten in den Verteidigern am Nest, sondern ein Stück draußen auf einem Ring darum
     if (this.mission === 'nest') {
       const a = this.r() * Math.PI * 2, dist = 900 + 34 * k * 2;
@@ -3852,12 +3884,17 @@ export class ShooterGame implements MiniGame {
     }
     // Großkampfschiff (Xenon K, Träger, Brutschiff): weit draußen auftauchen – das Rumpfende gut 1 500 vom Frachter –
     // und von dort auf Waffenreichweite heranfliegen
-    if (34 * k >= SPEC.boss.r * 2 && this.mission !== 'nest') {
-      const a = Math.atan2(y - this.fY, x - this.fX), dist = 34 * k * 2.3 + 1500, m = 80 + 34 * k;
+    // Abstand zum eigenen Schiff: außerhalb der eigenen Reichweite (samt halber Schiffslänge – der Raptor ist fast 4 km
+    // lang), sonst beginnt der Kampf schon beim Auftauchen; Rand: so weit drinnen, dass man ganz um das Schiff fliegen
+    // und jeden Turm erreichen kann
+    if (this.mission !== 'nest') {
+      const capital = 34 * k >= SPEC.boss.r * 2, a = Math.atan2(y - this.fY, x - this.fX);
+      const dist = Math.max(capital ? 34 * k * 2.3 + 1500 : Math.hypot(x - this.fX, y - this.fY), this.ship.size * 0.5 + this.ownReach + 34 * k + 400);
+      const m = 34 * k * (capital ? 2 : 1) + 500;
       x = clamp(this.fX + Math.cos(a) * dist, m, this.WW - m); y = clamp(this.fY + Math.sin(a) * dist, m, this.WH - m);
     }
     const b = this.makeEnemy('boss', x, y);
-    b.ang = mini ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
+    b.ang = mini || side ? Math.atan2(this.fY - y, this.fX - x) : Math.PI / 2;
     const bs = enemyStats('boss', this.level, { mini, extra: this.mode === 'endless' ? 1 + this.wave * 0.05 : 1, tune: this.tune });
     b.hp = b.max = bs.hp;
     b.sh = b.shMax = bs.sh;
@@ -4550,7 +4587,7 @@ export class ShooterGame implements MiniGame {
       this.pendingSpawn -= dt;
       if (this.pendingSpawn < 0) { this.pendingSpawn = -1; this.spawnWave(); }
     } else if (due) {
-      if (due.kinds[0] === 'boss') this.spawnBoss(true, due.from, due.carrier);
+      if (due.kinds[0] === 'boss') this.spawnBoss(!due.full, due.from, due.carrier, due.full);
       else this.spawnGroup(due.kinds, due.from, due.swarm);
       this.reinforce = this.reinforce.filter((g) => g !== due);
       this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? (due.carrier ? 'Piratenträger im Anflug!' : 'Piratenfregatte im Anflug!') : this.side === 'xenon' ? 'Xenon K im Anflug!' : 'Brutschiff im Anflug!') : due.swarm ? (this.side === 'khaak' ? `Cluster im Anflug! (${due.kinds.length})` : `Schwarm im Anflug! (${due.kinds.length})`) : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
@@ -4767,7 +4804,9 @@ export class ShooterGame implements MiniGame {
       // gegen Ende ein Großkampfschiff, das den Sprung verhindern soll
       if (this.charge >= 0.62 && !this.fluchtBoss) {
         this.fluchtBoss = true;
-        this.reinforce.push({ t: this.waveT, kinds: ['boss'], from: Math.floor(this.r() * 5) });
+        // Xenon auf Stufe 1: statt des K zwei Fregatten mit einer Korvette
+        if (this.side === 'xenon' && this.level < 2) this.reinforce.push({ t: this.waveT, kinds: ['p', 'p', 'm'], from: Math.floor(this.r() * 5) });
+        else this.reinforce.push({ t: this.waveT, kinds: ['boss'], from: Math.floor(this.r() * 5) });
       }
       if (this.charge >= 1 && this.liveWards.length) { this.winRound(); return; }
     }
@@ -9617,44 +9656,19 @@ export class ShooterGame implements MiniGame {
   }
 
   private drawControls(ctx: CanvasRenderingContext2D, t: number): void {
-    const stick = (j: { ox: number; oy: number; kx: number; ky: number }, inner: number, dashed: boolean, color: string, R = JOY_R) => {
-      ctx.strokeStyle = rgba(color, 0.35);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(j.ox, j.oy, R, 0, Math.PI * 2);
-      ctx.stroke();
-      // innerer Ring: ein Stick – nur drehen (ohne Schub); zwei Sticks rechts – bis hier nur zielen, darüber feuern
-      ctx.setLineDash(dashed ? [4, 5] : []);
-      ctx.strokeStyle = rgba(color, 0.3);
-      ctx.beginPath();
-      ctx.arc(j.ox, j.oy, R * inner, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = rgba(color, 0.35);
-      ctx.beginPath();
-      ctx.arc(j.ox + j.kx * R, j.oy + j.ky * R, 22, 0, Math.PI * 2);
-      ctx.fill();
-    };
     const j = this.joy;
     if (this.pc) this.drawPcHint(ctx);
-    if (j && j.id < 98 && !this.pc) stick(j, this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, true, '#3fe0c5');
+    // linker Stick: innerer Ring = ein Stick nur drehen (ohne Schub), zwei Sticks Totzone
+    if (j && j.id < 98 && !this.pc) drawStick(ctx, j, JOY_R, { color: '#3fe0c5', t, rings: [{ r: this.ctrl === 'zwei' ? 0.12 : TURN_ONLY, dashed: true }] });
     if (this.aim && this.ctrl === 'lenk') this.drawLenk(ctx, this.aim);
     else if (this.aim) {
-      // mittlerer Ring (gestrichelt): volle Lenkung; Band außen ab dem Feuerring: feuern
-      stick(this.aim, AIM_FULL, true, this.fireId !== null ? '#ffb547' : '#3fe0c5', AIM_R);
-      ctx.strokeStyle = rgba('#ffb547', this.fireId !== null ? 0.45 : 0.18);
-      ctx.lineWidth = AIM_R * (1 - AIM_FIRE);
-      ctx.beginPath();
-      ctx.arc(this.aim.ox, this.aim.oy, AIM_R * (1 + AIM_FIRE) / 2, 0, Math.PI * 2);
-      ctx.stroke();
-      // Feuerschwelle leuchtet beim Überschreiten kurz auf
-      if (this.ringFlash > 0) {
-        ctx.strokeStyle = rgba('#ffd27a', this.ringFlash * 3);
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(this.aim.ox, this.aim.oy, AIM_R * AIM_FIRE, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      // mittlerer Ring (gestrichelt): volle Lenkung; Band außen ab dem Feuerring: feuern (leuchtet kurz beim Überschreiten)
+      const firing = this.fireId !== null;
+      drawStick(ctx, this.aim, AIM_R, {
+        color: firing ? '#ffb547' : '#3fe0c5', t, rings: [{ r: AIM_FULL, dashed: true }],
+        band: { from: AIM_FIRE, to: 1, color: '#ffb547', on: firing },
+        flash: this.ringFlash > 0 ? { r: AIM_FIRE, a: Math.min(1, this.ringFlash * 3) } : undefined,
+      });
     }
     this.drawAmmo(ctx);
     this.drawTurretAmmo(ctx);

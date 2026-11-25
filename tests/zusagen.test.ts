@@ -180,6 +180,11 @@ describe('Zusagen im Spiel nachgeprüft', () => {
       const { g, a } = mk('xenon', 1, 'station', { ship: 'mamba', weapon, wing: {} });
       const G = g as unknown as { cards: Record<string, number>; aimA: number; fireId: number | null; makeEnemy(k: string, x: number, y: number): E };
       a.enemies.length = 0; a.wave = 99; a.reinforce.length = 0;
+      // auch Geschosse, Raketen und die Zielerfassung der ersten Sekunde weg (die Xenon schicken von Anfang an einen Schwarm)
+      (g as unknown as { lock: unknown }).lock = null;
+      // Stationstürme schweigen: gemessen wird nur die eigene Waffe
+      for (const w of (g as unknown as { wards: { tur: { cd: number }[] }[] }).wards) for (const t of w.tur) t.cd = 1e9;
+      for (const k of ['bullets', 'missiles', 'eMissiles'] as const) { const l = (g as unknown as Record<string, unknown[] | undefined>)[k]; if (Array.isArray(l)) l.length = 0; }
       G.aimA = -Math.PI / 2;
       const e1 = G.makeEnemy('m', a.px, a.py - 140), e2 = G.makeEnemy('m', a.px, a.py - 230);
       for (const e of [e1, e2]) { e.hp = e.max = 1e6; (e as unknown as { sh: number; shMax: number }).sh = 0; (e as unknown as { shMax: number }).shMax = 0; (e as unknown as { vx: number; vy: number }).vx = 0; e.cd = 1e9; }

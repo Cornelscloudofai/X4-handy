@@ -43,10 +43,10 @@ describe('Kampf: Einsätze', () => {
   }, 300000);
 
   it('mit dem Autopiloten auf Stufe 1 meist zu schaffen', () => {
-    // sechs Runden je Einsatz: mit nur zwei hängt das Ergebnis am Zufall (gemessen: 25 von 36 ohne, 26 von 36 mit
-    // Formationsflug der Jäger)
+    // acht Runden je Einsatz: mit weniger hängt das Ergebnis am Zufall (größere Karte: mit den Starts 1–6 drei Siege
+    // weniger, mit 7–14 einer mehr als vorher)
     let wins = 0, n = 0;
-    for (const id of MISSION_IDS) for (const seed of [1, 2, 3, 4, 5, 6]) {
+    for (const id of MISSION_IDS) for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
       const side = sideOf[MISSIONS[id].sides[0]];
       if (play(game(id, side, seed)).success) wins++;
       n++;

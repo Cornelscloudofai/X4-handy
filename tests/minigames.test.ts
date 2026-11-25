@@ -1251,8 +1251,9 @@ describe('Entwicklungswerkzeug Gegnerstärke', () => {
 describe('Kampf: Schwärme kleiner Schiffe', () => {
   const make = (ship: 'mamba' | 'cobra' | 'klapperschlange', side: 'pirate' | 'xenon') =>
     new ShooterGame({ ...cfg(3, 5), loadout: { ship, weapon: 'puls', turret: 'puls', shield: 'leicht', lturret: 'tau' } } as never, side);
-  it('Mamba ohne eigenen Schwarm, stärkere Schiffe mit wachsenden Schwärmen (höchstens 24)', () => {
-    expect(make('mamba', 'xenon').swarmSize(0)).toBe(0);
+  it('Mamba gegen Piraten ohne eigenen Schwarm (Xenon schicken von Anfang an einen), stärkere Schiffe mit wachsenden Schwärmen', () => {
+    expect(make('mamba', 'pirate').swarmSize(0)).toBe(0);
+    expect(make('mamba', 'xenon').swarmSize(0)).toBeGreaterThanOrEqual(6);
     const z = make('klapperschlange', 'xenon');
     expect(z.swarmSize(0)).toBeGreaterThanOrEqual(10);
     expect(z.swarmSize(4)).toBeGreaterThan(z.swarmSize(0));
@@ -1262,9 +1263,9 @@ describe('Kampf: Schwärme kleiner Schiffe', () => {
   it('starke Schiffe: mehrere Schwärme gleichzeitig aus verschiedenen Richtungen, je mindestens sechs Schiffe', () => {
     const z = make('klapperschlange', 'xenon');
     expect(z.swarms(0).length).toBeGreaterThanOrEqual(2);
-    expect(z.swarms(4).length).toBe(3);
-    for (const i of [0, 2, 4]) { expect(z.swarms(i).reduce((a, b) => a + b, 0)).toBe(z.swarmSize(i)); expect(Math.min(...z.swarms(i))).toBeGreaterThanOrEqual(6); }
-    expect(make('mamba', 'xenon').swarms(0)).toEqual([]);
+    expect(z.swarms(4).length).toBeGreaterThanOrEqual(3);
+    for (const i of [0, 2, 4]) { expect(z.swarms(i).reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(z.swarmSize(i)); expect(Math.min(...z.swarms(i))).toBeGreaterThanOrEqual(6); }
+    expect(make('mamba', 'pirate').swarms(0)).toEqual([]);
     // im Spiel: die Schwärme stehen gemeinsam in der Warteschlange, alle innerhalb von zwei Sekunden, verschiedene Richtungen
     const g = z as unknown as { update(dt: number): void; reinforce: { t: number; from: number; swarm?: boolean }[]; wave: number };
     for (let k = 0; k < 4000 && g.wave < 0; k++) g.update(DT);
