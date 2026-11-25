@@ -425,6 +425,12 @@ export interface WeaponDef {
   hullPierce?: number;
   /** Flächenschaden beim Einschlag (Radius): halber Schaden im Umkreis */
   splash?: number;
+  /** Wirkung auf Schild und Hülle (Faktoren): Pulslaser Schildbrecher, Bolzenrepetierer Hüllenbrecher */
+  shieldK?: number;
+  hullK?: number;
+  /** Schrot: voller Schaden bis ein Drittel der Reichweite, dann fallend bis 40 %; Wucht stößt S-Schiffe zurück */
+  falloff?: boolean;
+  knock?: number;
   rail?: boolean;
   /** Mass Driver: Projektil mit langer Leuchtspur, durchschlägt ein Ziel und trifft das nächste mit halber Wucht */
   slug?: boolean;
@@ -459,22 +465,25 @@ export const RELOAD = 0.6;
 //   trifft als blitzschneller Strahl sofort. Plasmaturm (Zweier-Magazin): 1 s zwischen den beiden Schüssen.
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   puls: {
-    name: 'Pulslaser', group: 'allgemein', color: '#7ffff0', w: 2,
-    desc: 'Kurze Salven mit sehr schnellen, genauen Geschossen und großer Reichweite. Wenig Schaden, aber verlässlich.',
+    // Schildbrecher: Energie zehrt am Schild (+60 %), an der Hülle etwas weniger (−10 %)
+    name: 'Pulslaser', group: 'allgemein', color: '#7ffff0', w: 2, shieldK: 1.6, hullK: 0.9,
+    desc: 'Kurze Salven mit sehr schnellen, genauen Geschossen und großer Reichweite. Schildbrecher: gegen Schilde deutlich stärker, gegen nackte Hülle schwächer.',
     s: { dmg: 36, rate: 6, amt: 1, mag: 3, reload: 0.7, v: 5000, life: 0.7, angle: 0 },
     m: { dmg: 55, rate: 8, amt: 1, mag: 3, reload: 0.7, v: 5000, life: 0.8, angle: 0 },
   },
   bolzen: {
-    name: 'Bolzenrepetierer', group: 'allgemein', color: '#ffd36b', w: 2.2,
-    desc: 'Lange Feuerstöße aus großen, langsameren Geschossen – danach ein paar Sekunden nachladen.',
+    // Hüllenbrecher: massive Bolzen schlagen in die Panzerung (+15 %), am Schild prallen sie eher ab (−30 %)
+    name: 'Bolzenrepetierer', group: 'allgemein', color: '#ffd36b', w: 2.2, shieldK: 0.7, hullK: 1.15,
+    desc: 'Lange Feuerstöße aus großen, langsameren Geschossen – danach ein paar Sekunden nachladen. Hüllenbrecher: gegen Panzerung deutlich stärker, gegen Schilde schwächer.',
     s: { dmg: 18, rate: 14, amt: 1, mag: 66, reload: 3.4, v: 2100, life: 1.3, angle: 0.33 },
     m: { dmg: 32, rate: 11.5, amt: 1, mag: 65, reload: 3.8, v: 2100, life: 1.7, angle: 0.33 },
   },
   schrot: {
-    name: 'Schrotbatterie', group: 'allgemein', color: '#ffc070', w: 1.8,
-    desc: 'Sechs Geschosse je Schuss mit Streuung: hoher Schaden auf kurze Entfernung, vor allem gegen große Ziele.',
-    s: { dmg: 48, rate: 0.9, amt: 6, mag: 8, reload: 5, v: 1800, life: 1.28, angle: 1.16 },
-    m: { dmg: 85, rate: 0.8, amt: 6, mag: 6, reload: 5.5, v: 1900, life: 1.474, angle: 1.16 },
+    // Nahkampf: anderthalbfacher Schaden, aber nur auf kurze Entfernung voll; Wucht schafft Luft gegen Jäger
+    name: 'Schrotbatterie', group: 'allgemein', color: '#ffc070', w: 1.8, falloff: true, knock: 240,
+    desc: 'Sechs Geschosse je Schuss mit Streuung: verheerend aus der Nähe, auf Distanz verpufft die Ladung (ab einem Drittel der Reichweite bis auf 40 %). Die Wucht stößt Jäger zurück.',
+    s: { dmg: 72, rate: 0.9, amt: 6, mag: 8, reload: 5, v: 1800, life: 1.28, angle: 1.16 },
+    m: { dmg: 128, rate: 0.8, amt: 6, mag: 6, reload: 5.5, v: 1900, life: 1.474, angle: 1.16 },
   },
   strahl: {
     name: 'Strahlenemitter', group: 'allgemein', color: '#9ffcff', w: 2, beam: true,

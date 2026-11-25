@@ -247,6 +247,8 @@ interface GameGun {
   flak?: boolean;
   /** Flächenschaden beim Einschlag (Plasmaturm): halber Schaden im Umkreis */
   splash?: number;
+  /** Wirkung auf Schild und Hülle; Schrot: Schaden fällt mit der Entfernung, Wucht gegen S-Schiffe */
+  shieldK?: number; hullK?: number; falloff?: boolean; knock?: number;
   /** Raketenturm: feuert Lenkraketen statt Geschossen */
   missile?: TurretMissile;
 }
@@ -293,7 +295,7 @@ function segDist(x0: number, y0: number, x1: number, y1: number, px: number, py:
   return Math.hypot(x0 + dx * t - px, y0 + dy * t - py);
 }
 
-function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean; splash?: number }): GameGun {
+function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean; splash?: number; shieldK?: number; hullK?: number; falloff?: boolean; knock?: number }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
     const md = TURRET_MISSILES[o.missile.kind], range = md.v * md.life * 0.85 * o.missile.range;
@@ -305,10 +307,11 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
     dmg: g.dmg * DMG_SCALE, interval: beam ? 0 : TIME / g.rate, mag: g.mag, reload: g.reload * TIME * RELOAD,
     speed, life: beam ? 0 : range / speed, range, pellets: g.amt, jitter: g.angle * JITTER,
     beam, hullPierce: o.hullPierce ?? 0, rail: !!o.rail, gimbal: o.gimbal ?? 1, color: o.color, w: o.w, flak: o.flak || undefined, splash: o.splash,
+    shieldK: o.shieldK, hullK: o.hullK, falloff: o.falloff, knock: o.knock,
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number; /** Wirkung auf Schild und Hülle */ kS?: number; kH?: number; /** Schrot: Startpunkt und Reichweite (Schaden fällt mit der Entfernung), Wucht */ x0?: number; y0?: number; reach?: number; knock?: number }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -4760,7 +4763,7 @@ export class ShooterGame implements MiniGame {
           this.logSrc = 'gun'; this.logShot();
           if (w.rail) { this.fireRail(ox, oy, a, this.damage * (s2 === 0 ? 1 : 0.7) * (over ? 2 : 1), w.range, over ? '#ffd27a' : w.color, this.ship.gunSize === 'l' || over, this.c('pierce')); continue; }
           const slug = !!WEAPONS[this.wpnId as WeaponId]?.slug;
-          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', src: 'gun', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce') + (slug ? 1 : 0), hullPierce: w.hullPierce || undefined, splash: Math.max(w.splash ?? 0, this.c('splash') ? 30 + 25 * this.c('splash') : 0) || undefined, slug: slug || undefined });
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * w.speed + this.pvx * 0.3, vy: Math.sin(a) * w.speed + this.pvy * 0.3, dmg: this.damage * (s2 === 0 ? 1 : 0.7), from: 'p', src: 'gun', life: w.life, color: w.color, w: w.w, pierce: this.c('pierce') + (slug ? 1 : 0), hullPierce: w.hullPierce || undefined, splash: Math.max(w.splash ?? 0, this.c('splash') ? 30 + 25 * this.c('splash') : 0) || undefined, slug: slug || undefined, kS: w.shieldK, kH: w.hullK, ...(w.falloff ? { x0: ox, y0: oy, reach: w.range } : {}), knock: w.knock });
           // Mass Driver: Mündungsblitz und kleine Druckwelle an der Mündung
           if (slug) { this.fx.add({ x: ox, y: oy, color: '#dff4ff', size: 7, max: 0.07 }); this.fx.add({ x: ox + Math.cos(a) * 6, y: oy + Math.sin(a) * 6, color: '#9fdcff', size: 5, kind: 'ring', max: 0.16 }); }
         }
@@ -6074,7 +6077,11 @@ export class ShooterGame implements MiniGame {
         if (e) {
           this.logSrc = b.src ?? 'other';
           this.logHit();
-          this.damageEnemy(e, b.dmg, 0.3, b.hullPierce ?? 0);
+          // Schrot: voll bis ein Drittel der Reichweite, dann fallend bis auf 40 %
+          const fall = b.reach && b.x0 != null ? 1 - 0.6 * clamp((Math.hypot(b.x - b.x0, b.y - b.y0!) / b.reach - 1 / 3) * 1.5, 0, 1) : 1;
+          this.damageEnemy(e, b.dmg * fall, 0.3, b.hullPierce ?? 0, b.kS != null || b.kH != null ? { s: b.kS ?? 1, h: b.kH ?? 1 } : undefined);
+          // Wucht: S-Schiffe werden ein Stück zurückgestoßen (je näher, desto kräftiger)
+          if (b.knock && ECLASS[e.kind] === 'S' && !e.parent && this.enemies.includes(e)) { const v = Math.hypot(b.vx, b.vy) || 1; e.vx += (b.vx / v) * b.knock * fall; e.vy += (b.vy / v) * b.knock * fall; }
           // Thermal: glühende Funken, wo die Hitze durch den Schild auf die Hülle schlägt
           if (b.hullPierce) this.fx.burst(b.x, b.y, b.color, 4, 90, 1.4, 'spark', 0.3);
           if (b.splash) {
@@ -6352,7 +6359,8 @@ export class ShooterGame implements MiniGame {
   }
 
   /** toHull: Anteil, der den eigenen Schild umgeht und sofort die Hülle trifft (Thermal-Desintegrator) */
-  private damageEnemy(e: Enemy, dmg: number, bypass = 0.3, toHull = 0): void {
+  /** k: Wirkung auf Schild (s) und Hülle (h) – Pulslaser Schildbrecher, Bolzenrepetierer Hüllenbrecher */
+  private damageEnemy(e: Enemy, dmg: number, bypass = 0.3, toHull = 0, k?: { s: number; h: number }): void {
     if (e.kind === 'boss' && e.shielded) { e.flash = 0.05; return; }
     // vom Störblitz gelähmt: Systeme und Schildregelung ausgefallen – nimmt mehr Schaden
     if (e.stun && e.stun > 0) dmg *= EMP_VULN;
@@ -6365,16 +6373,17 @@ export class ShooterGame implements MiniGame {
     const row = this.logRow();
     row.dmg += Math.min(d, Math.max(0, e.hp) + Math.max(0, e.sh));
     if (e.hp - Math.max(0, d - e.sh) <= 0 && e.hp > 0) row.kills++;
-    if (toHull > 0) { e.hp -= d * toHull; d *= 1 - toHull; }
-    // eigener Schild fängt zuerst ab
+    const ks = k?.s ?? 1, kh = k?.h ?? 1;
+    if (toHull > 0) { e.hp -= d * toHull * kh; d *= 1 - toHull; }
+    // eigener Schild fängt zuerst ab (mit der Schildwirkung der Waffe; was durchgeht, trifft mit der Hüllenwirkung)
     e.shT = 0;
     if (e.sh > 0) {
-      const a = Math.min(e.sh, d);
+      const a = Math.min(e.sh, d * ks);
       e.sh -= a;
-      d -= a;
+      d -= a / ks;
       e.shFlash = 0.18;
     }
-    e.hp -= d;
+    e.hp -= d * kh;
     e.flash = 0.08;
     // Kha'ak: Treffer im Cluster lässt ihn aufbrechen; Abfangjäger springen nach Treffern weg
     if (e.cl != null) this.breakCluster(e.cl);
