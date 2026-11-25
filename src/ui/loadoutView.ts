@@ -5,7 +5,7 @@
 // (vier Mod-Sockel). Navigation: höchstens eine Ebene (Hangar → Schublade); Zurück schließt immer zuerst die Schublade.
 import {
   LTURRET_IDS, LTURRETS, RELOAD, MISSILE_DMG, MISSILE_IDS, MISSILES, SHIELD_IDS, SHIELDS, SHIP_IDS, SHIPS, SPECIALS, TURRET_IDS, TURRETS, WEAPON_IDS, WEAPONS,
-  WING_IDS, X4_LENGTH, flakX4Dmg, loadout, sustainedDps, turretDps, turretOf, weaponGun, wingCount, wingGearOf, wingOptions, wingRoom, type Loadout, type ShipId, type X4Gun,
+  WING_IDS, X4_LENGTH, flakX4Dmg, loadout, rocketCap, sustainedDps, turretDps, turretOf, weaponGun, wingCount, wingGearOf, wingOptions, wingRoom, type Loadout, type ShipId, type X4Gun,
   LO_TAGS, LOADOUT_SLOTS, LTURRET_ROLE, MISSILE_ROLE, ROLES, TURRET_ROLE, WEAPON_ROLE, loadoutChanged, savedLoadouts, type Role,
 } from '../minigames/loadout';
 import { MODS, MOD_IDS, QUALITY, SLOT_INFO, fmtRange, fmtStat, modRange, modState, modStats, refundOf, shipMods, shipSlots, type ModSlot, type ModStat } from '../minigames/mods';
@@ -260,13 +260,19 @@ export function loadoutView(m: LoModal): string {
     // Turmgruppen (Träger, Cobra, Dragon, Klapperschlange): je Gruppe vom Bug zum Heck die Turmart wählen
     title = 'Türme'; sub = ship.name === 'Raptor' ? `${ship.turrets.length} Türme · je Gruppe vom Bug zum Heck · links und rechts gleich` : `${ship.turrets.length} Türme in ${ship.groups.length} Gruppen · je Gruppe eigene Turmart und eigener Befehlsknopf`;
     const groups = ship.groups;
+    // Raketen-Vierlinge: nur L/XL und nur in so vielen Gruppen, wie das Schiff erlaubt (gezählt werden Gruppen)
+    const cap = rocketCap(lo.ship), rocketsUsed = groups.filter((gr, gi) => gr.kind === 'M' && lo.groups?.[gi] === 'rakete').length;
+    const rocketHint = cap ? `Raketen-Vierlinge in höchstens ${cap === 1 ? 'einer Gruppe' : `${cap} Gruppen`} (${rocketsUsed}/${cap} belegt).` : 'Raketen-Vierlinge gibt es nur auf L- und XL-Schiffen.';
     body = `<div class="hgr-groups">${groups.map((gr, gi) => {
       const n = ship.turretGroup!.filter((x) => x === gi).length, cur = lo.groups?.[gi] ?? (gr.kind === 'L' ? 'plasma' : ship.name === 'Raptor' ? 'puls' : lo.turret);
       const ids: string[] = gr.kind === 'L' ? LTURRET_IDS : TURRET_IDS;
       const def = (id: string) => (gr.kind === 'L' ? LTURRETS[id as keyof typeof LTURRETS] : TURRETS[id as keyof typeof TURRETS]);
       return `<div class="hgr-grp"><div class="hgr-grp-h"><b>${esc(gr.name)}</b><small>${n} × ${gr.kind} · ${num(n * turretDps(def(cur)))}/s</small></div>
-        <div class="hgr-chips">${ids.map((id) => `<button class="hgr-chip ${id === cur ? 'on' : ''}" style="--c:${def(id).color}" ${act('loadout-group', { g: gi, value: id })}>${esc(def(id).name.replace(/^Schwerer /, '').replace(/-?[Tt]urm$/, ''))}</button>`).join('')}</div></div>`;
-    }).join('')}</div><div class="hgr-desc">Pulstürme schwenken schnell und holen Raketen und Jäger herunter, Plasma- und Bosonentürme knacken große Ziele. Im Kampf hat jede Gruppe links einen eigenen kleinen Befehlsknopf (M1 … M8 vom Bug zum Heck, L1 … L3): wischen wählt das Ziel – alle, S, M, L oder Strukturen (Türme, Bauteile, Brutstätten).</div>`;
+        <div class="hgr-chips">${ids.map((id) => {
+          const blocked = gr.kind === 'M' && id === 'rakete' && id !== cur && rocketsUsed >= cap;
+          return `<button class="hgr-chip ${id === cur ? 'on' : ''}" style="--c:${def(id).color}" ${blocked ? `disabled title="${esc(rocketHint)}"` : act('loadout-group', { g: gi, value: id })}>${esc(def(id).name.replace(/^Schwerer /, '').replace(/-?[Tt]urm$/, ''))}</button>`;
+        }).join('')}</div></div>`;
+    }).join('')}</div><div class="hgr-desc">${esc(rocketHint)} Pulstürme schwenken schnell und holen Raketen und Jäger herunter, Plasma- und Bosonentürme knacken große Ziele. Im Kampf hat jede Gruppe links einen eigenen kleinen Befehlsknopf (M1 … M8 vom Bug zum Heck, L1 … L3): wischen wählt das Ziel – alle, S, M, L oder Strukturen (Türme, Bauteile, Brutstätten).</div>`;
   } else if (view === 'turret') {
     const n = ship.turrets.length, curDps = n * turretDps(td);
     title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;

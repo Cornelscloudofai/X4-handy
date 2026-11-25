@@ -50,7 +50,7 @@ import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
-import { SHIPS, setEnvTest, modsOff, setModsOff, paleBackdrop, setPaleBackdrop, type EnvTest, applyLoadout, deleteLoadout, editLoadout, savedLoadouts, storeLoadout, type LoTag, broodTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
+import { SHIPS, setEnvTest, modsOff, setModsOff, paleBackdrop, setPaleBackdrop, type EnvTest, applyLoadout, deleteLoadout, editLoadout, savedLoadouts, storeLoadout, takeTurretNote, type LoTag, broodTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode, Place } from '../minigames/common';
 import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
@@ -560,6 +560,9 @@ function modalKey(): string {
 }
 
 function refresh(): void {
+  // Raketen-Vierlinge beim Laden oder Schiffswechsel ersetzt: einmal Bescheid geben
+  const note = takeTurretNote();
+  if (note) toast(note, 'warn');
   dirtyUI = true;
   pointerInUI = false;
   renderUI();

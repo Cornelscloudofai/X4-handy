@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   LOADOUT_SLOTS, applyLoadout, deleteLoadout, editLoadout, loadout, loadoutChanged, loadoutFor, resetLoadoutCache, savedLoadouts, setLoadout, storeLoadout,
-  suggestLoadoutName, suggestLoadoutTag,
+  suggestLoadoutName, suggestLoadoutTag, takeTurretNote, SHIPS,
 } from '../src/minigames/loadout';
 
 let store: Map<string, string>;
@@ -92,5 +92,34 @@ describe('Turmgruppen auf M-Schiffen', () => {
     // nach einem Neustart aus dem Speicher
     resetLoadoutCache();
     expect(loadoutFor('cobra').groups).toEqual(['flak', 'neutron']);
+  });
+});
+
+describe('Raketen-Vierlinge nur auf L und XL, gezählt nach Gruppen', () => {
+  it('Cobra und Drache: keine Vierlinge – alte Stände werden Tau-Türme, mit Hinweis', () => {
+    takeTurretNote();
+    store.set('x4-sektorbau-ausruestung', JSON.stringify({ ship: 'cobra', weapon: 'puls', turret: 'rakete', shield: 'leicht', groups: ['rakete', 'flak'] }));
+    resetLoadoutCache();
+    expect(loadout().groups).toEqual(['tau', 'flak']);
+    expect(loadout().turret).toBe('tau');
+    expect(takeTurretNote()).toContain('nur noch auf L- und XL-Schiffen');
+    expect(takeTurretNote()).toBeNull();
+    setLoadout({ ship: 'dragon', groups: ['rakete', 'rakete'] });
+    expect(loadout().groups).toEqual(['tau', 'tau']);
+  });
+
+  it('Klapperschlange: höchstens eine Gruppe, vom Bug an gezählt', () => {
+    setLoadout({ ship: 'klapperschlange', groups: ['puls', 'rakete', 'rakete'] });
+    expect(loadout().groups).toEqual(['puls', 'rakete', 'tau']);
+    expect(takeTurretNote()).toContain('höchstens einer Gruppe');
+  });
+
+  it('Raptor: höchstens vier M-Cluster, Silos auf den L-Sockeln frei', () => {
+    const gs = SHIPS.raptor.groups!;
+    setLoadout({ ship: 'raptor', groups: gs.map((g) => (g.kind === 'L' ? 'silo' : 'rakete')) });
+    const got = loadout().groups!;
+    expect(got.filter((v, i) => gs[i].kind === 'M' && v === 'rakete').length).toBe(4);
+    expect(got.filter((v, i) => gs[i].kind === 'M' && v === 'tau').length).toBe(gs.filter((g) => g.kind === 'M').length - 4);
+    expect(got.filter((_, i) => gs[i].kind === 'L').every((v) => v === 'silo')).toBe(true);
   });
 });
