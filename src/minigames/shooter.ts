@@ -1352,7 +1352,7 @@ export class ShooterGame implements MiniGame {
       : side === 'pirate'
         ? 'Dein Frachter fliegt zum Sprungtor, Piraten lauern auf der Route. Fang sie ab, bevor sie ihn erreichen – Raketen- und Kanonenboote zuerst. Zum Schluss stellt sich der Piratenträger: erst die Flaktürme, und er startet Jäger von seiner Startbahn.'
         : side === 'xenon'
-          ? 'Dein Frachter fliegt zum Sprungtor, Xenon fallen von allen Seiten ein. Fang sie weit draußen ab.' + (this.finalBigs > 1 ? ' Zum Schluss greifen zwei Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann die Kerne.' : this.finalBigs ? ' Zum Schluss greift ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Fregatten, Korvetten und Schwärmen.')
+          ? 'Dein Frachter fliegt zum Sprungtor, Xenon fallen von allen Seiten ein. Fang sie weit draußen ab.' + (this.midBigWave >= 0 ? ` In Welle ${this.midBigWave + 1} und zum Schluss greift je ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.` : this.finalBigs ? ' Zum Schluss greift ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Fregatten, Korvetten und Schwärmen.')
           : 'Kha’ak fallen über die Route her: Späher kommen als geschlossene Cluster und schwärmen erst kurz vor dem Ziel aus – oder sobald du einen triffst. Jäger feuern Kyon-Strahlen, die Schilde schnell durchbrennen; Abfangjäger springen aus dem Visier. Zum Schluss ein Brutschiff: erst Kyon-Türme und Brutkammern, dann der Kern.';
     if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
@@ -1610,9 +1610,11 @@ export class ShooterGame implements MiniGame {
   private isBossWave(i: number): boolean { return this.mode === 'endless' ? (i + 1) % 5 === 0 : this.counted && i === this.nWaves - 1 && this.finalBigs > 0; }
   /**
    * Großkampfschiffe in der letzten Welle. Xenon: Stufe 1 keines (dort viele kleine Schiffe und Schwärme), ab Stufe 2
-   * ein Xenon K, ab Stufe 4 zwei; die übrigen Seiten eines
+   * ein Xenon K; die übrigen Seiten eines
    */
-  private get finalBigs(): number { return this.side !== 'xenon' || this.mode === 'endless' ? 1 : this.level >= 4 ? 2 : this.level >= 2 ? 1 : 0; }
+  private get finalBigs(): number { return this.side !== 'xenon' || this.mode === 'endless' ? 1 : this.level >= 2 ? 1 : 0; }
+  /** Xenon ab Stufe 4: ein weiterer Xenon K in der mittleren Welle (bei fünf oder sechs Wellen Welle 3), sonst -1 */
+  private get midBigWave(): number { return this.side === 'xenon' && this.mode !== 'endless' && this.counted && this.level >= 4 ? Math.floor((this.nWaves - 1) / 2) : -1; }
 
   resize(w: number, h: number): void {
     const first = this.w === 1;
@@ -3596,10 +3598,8 @@ export class ShooterGame implements MiniGame {
     const boss = this.isBossWave(this.wave);
     if (boss) {
       this.spawnBoss();
-      // zweiter Xenon K (ab Stufe 4): aus einer anderen Richtung, kurz danach
-      for (let b = 1; b < this.finalBigs; b++) this.reinforce.push({ t: 8 + b * 6, kinds: ['boss'], from: 2 + b * 2, full: true });
       this.bannerText = 'BOSS';
-      this.bannerSub = this.side === 'pirate' ? 'Piratenträger – erst die Flaktürme' : this.side === 'xenon' ? (this.finalBigs > 1 ? 'Zwei Xenon K – erst die Türme' : 'Xenon K – erst die Türme') : 'Kha’ak-Brutschiff – erst Kyon-Türme und Brutkammern';
+      this.bannerSub = this.side === 'pirate' ? 'Piratenträger – erst die Flaktürme' : this.side === 'xenon' ? 'Xenon K – erst die Türme' : 'Kha’ak-Brutschiff – erst Kyon-Türme und Brutkammern';
       this.spawnGroup(this.side === 'pirate' ? ['jaeger', 'jaeger'] : this.side === 'xenon' ? ['n', 'n', 'n'] : ['ks', 'ks', 'ks', 'ks', 'ks'], 1 + Math.floor(this.r() * 4), this.side === 'khaak');
     } else {
       // Gegner in zwei bis drei Gruppen aus verschiedenen Richtungen; die späteren kommen einige Sekunden danach
@@ -3637,7 +3637,9 @@ export class ShooterGame implements MiniGame {
       // in Einsätzen ab Stufe 2 auch mit kleinem Schiff ab der zweiten Welle eines (sonst sähe man Fregatte, Piratenträger
       // und Xenon K dort nie)
       // – nie schon in der ersten Welle, die gehört dem Aufwärmen
-      // Xenon: K nur noch in der letzten Welle – dazwischen wachsen Korvetten, Fregatten und Schwärme mit der Stufe
+      // Xenon: K nur in der letzten Welle (ab Stufe 4 auch einer in der mittleren) – dazwischen wachsen Korvetten,
+      // Fregatten und Schwärme mit der Stufe
+      if (this.wave === this.midBigWave) this.reinforce.push({ t: 10 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5), full: true });
       const bigs = this.wave < 1 || this.side === 'xenon' ? 0 : this.power >= 10 ? (this.wave >= 2 ? 2 : 1) : this.power >= 3.5 || (this.mission !== 'geleit' && this.level >= 2) ? 1 : 0;
       // in den Einsätzen gegen Piraten kommt statt der Fregatte manchmal der Piratenträger (ab Stufe 3 öfter)
       for (let b = 0; b < bigs; b++) this.reinforce.push({ t: 12 + b * 14 + this.r() * 4, kinds: ['boss'], from: Math.floor(this.r() * 5), carrier: this.side === 'pirate' && this.mission !== 'geleit' && this.r() < (this.level >= 3 ? 0.5 : 0.3) });

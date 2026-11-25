@@ -1,4 +1,4 @@
-// Xenon-Wellen nach Stufe: Stufe 1 ohne Xenon K, ab Stufe 2 einer am Ende, ab Stufe 4 zwei; dazwischen mehr Korvetten,
+// Xenon-Wellen nach Stufe: Stufe 1 ohne Xenon K, ab Stufe 2 einer am Ende, ab Stufe 4 dazu einer in Welle 3; dazwischen mehr Korvetten,
 // Fregatten und Schwärme. Großkampfschiffe tauchen außerhalb der eigenen Reichweite und mit Platz zum Kartenrand auf.
 import { describe, expect, it } from 'vitest';
 import { ShooterGame } from '../src/minigames/shooter';
@@ -43,12 +43,12 @@ describe('Xenon-Wellen nach Stufe', () => {
       expect(b[b.length - 1]).toBe(1);
     }
   });
-  it('ab Stufe 4: zwei Xenon K in der letzten Welle, beide voll', () => {
-    for (const level of [4, 5]) {
-      const g = game(level), b = bigsPerWave(g);
-      expect(b.slice(0, -1).every((n) => n === 0), `${level}: ${b}`).toBe(true);
-      expect(b[b.length - 1]).toBe(2);
-      expect(g.reinforce.find((r) => r.kinds[0] === 'boss')?.full).toBe(true);
+  it('ab Stufe 4: ein Xenon K in der mittleren Welle (Welle 3) und einer in der letzten – nie beide zugleich', () => {
+    for (const level of [4, 5]) for (const ship of ['dragon', 'mamba'] as const) {
+      const g = game(level, ship), b = bigsPerWave(g);
+      const mid = Math.floor((g.nWaves - 1) / 2);
+      expect(mid, `${ship}: ${g.nWaves} Wellen`).toBe(2);
+      expect(b, `${level}/${ship}`).toEqual(b.map((_, i) => (i === mid || i === b.length - 1 ? 1 : 0)));
     }
   });
   it('mit der Stufe mehr Korvetten und Fregatten, mehr und größere Schwärme', () => {

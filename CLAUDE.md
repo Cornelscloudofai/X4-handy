@@ -28,6 +28,7 @@
     Im Hintergrund laufen lassen und weiterarbeiten; schlägt er fehl, sofort beheben.
   - **Vor jedem `[live]`-Release immer** die volle Reihe `npm run e2e`.
   - Achtung: `npm run build` prüft auch die Tests auf Typfehler – schlägt er fehl, ist `dist/` veraltet.
+- Kampf-Tests und -Messungen im Überlebensmodus (Einsatz `ueberleben`), nicht in den Frachter-Einsätzen.
 - Waffen-Ausgleich messen mit `node scripts/balance.mjs` (feste Testlagen, 12 Zufallsstarts parallel auf allen Kernen,
   Mittel und Spanne, wenige Sekunden). Vorher/Nachher gepaart mit denselben Starts; Ergebnis immer mit Spanne berichten.
 - Screenshots vom Kampf für den Nutzer immer mit der Zwei-Stick-Steuerung (die nutzt er meist): `node scripts/kampf-vorschau.mjs <bild.png> [--quer] [--ship …] [--weapon …]` (setzt sie selbst und hält beide Sticks gedrückt, damit sie zu sehen sind; vorher `npx vite build`).
