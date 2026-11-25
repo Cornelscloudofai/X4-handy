@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretMuzzles, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, fireStaggered, setFireStaggered, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -941,6 +941,9 @@ export class ShooterGame implements MiniGame {
   /** Trägheit beim Schub: anliegender Schub als Vektor (Weltrichtung, Anteil des vollen Schubs) */
   private thrX = 0;
   private thrY = 0;
+  /** Feuerart der Bordkanonen: versetzt (Rohr für Rohr) oder gebündelt (alle zugleich); nächstes Rohr beim Versetzen */
+  private staggered = false;
+  private gunIdx = 0;
   /** Finger auf der Feuertaste (99 = Autopilot) */
   private fireId: number | null = null;
   /**
@@ -1215,6 +1218,7 @@ export class ShooterGame implements MiniGame {
     if (cfg.mission === 'ueberleben') this.controls = this.controls.map((c) => c.replace('Gegner kommen von weit her – fang sie ab, bevor sie den Frachter erreichen', 'Gegner kommen aus allen Richtungen – in Bewegung bleiben, nicht einkreisen lassen'));
     this.ship = SHIPS[lo.ship];
     this.fk = Math.max(1, (SHIPS.cobra.size * (SHIPS.cobra.turretD ?? 0.1)) / F_GAT.size);
+    if (this.ship.guns.length > 1) this.controls = [...this.controls, 'Feuer-Taste links neben dem Auge (am PC: F): Bordkanonen gebündelt (alle Rohre zugleich) oder versetzt (Rohr für Rohr im gleichmäßigen Takt) – je Waffe gemerkt'];
     this.controls = [...this.controls, 'Auge-Taste neben dem Zoom: freie Sicht (ziehen verschiebt, zwei Finger zoomen, Schiff antippen = folgen), nochmal: Beobachter, der dem Gefecht folgt. Radar antippen: taktische Karte in Zeitlupe – dort einen Gegner antippen, und die Staffel greift ihn an'];
     if (this.ship.turrets.length) this.controls = [...this.controls, `Turmbefehle: Knopf ${this.ship.lMounts?.length ? '„M“ bzw. „L“' : '„M“'} links halten und wischen – nach oben alle Ziele, links zuerst S-Schiffe (Jäger), rechts M-Schiffe (Boote), unten L-Schiffe (Fregatte, K-Segment); antippen schaltet weiter. Raketen schießen die M-Türme nur bei „alle“ und „S“ ab`];
     // schwere Waffen nur auf L-Plätzen, sonst der Pulslaser
@@ -1227,6 +1231,7 @@ export class ShooterGame implements MiniGame {
     // Blitzwaffen je Schiff abgestimmt (Cobra: vier Türme decken große Ziele, der Blitz ist dort etwas schwächer)
     if (wd.chain && this.ship.chainK) this.wpnBase.interval /= this.ship.chainK.rate;
     this.wpnId = wOk ? lo.weapon : 'puls';
+    this.staggered = fireStaggered(this.wpnId as WeaponId);
     this.wpn = this.wpnMods();
     this.tw = gameGun(td.gun, td);
     // Drehtempo der Türme aus den Daten (Pulsturm 180°/s = bisheriges Tempo)
@@ -1347,7 +1352,7 @@ export class ShooterGame implements MiniGame {
     this.title = SCHOOL_NAME[c];
     const b = schoolBest(c);
     this.intro = `Übungsflug ohne Gegner und ohne Wertung: fünf Stationen, etwa zwei Minuten. Ringe durchfliegen, Zielbojen abschießen, ${c === 'eins' ? 'auf der Stelle wenden' : 'seitwärts und rückwärts durch ein Tor'}, Rakete und Spezialfähigkeit, zum Schluss ein Testflug auf Zeit.${b != null ? ` Deine Bestzeit: ${fmtTime(b)}.` : ''} Wo du nicht weiterkommst, zeigt ein Schatten-Daumen den Griff.`;
-    if (c === 'pc') this.controls.splice(0, this.controls.length, 'W/A/S/D oder Pfeiltasten: Schub aus Sicht des Jägers – W geradeaus, A/D seitwärts, S rückwärts', 'Maus: der Jäger dreht zum Mauszeiger; linke Taste halten feuert', 'R oder rechte Maustaste: Raketen; Leertaste oder mittlere Taste: Spezialfähigkeit', '+/− oder Mausrad: Zoom');
+    if (c === 'pc') this.controls.splice(0, this.controls.length, 'W/A/S/D oder Pfeiltasten: Schub aus Sicht des Jägers – W geradeaus, A/D seitwärts, S rückwärts', 'Maus: der Jäger dreht zum Mauszeiger; linke Taste halten feuert', 'R oder rechte Maustaste: Raketen; Leertaste oder mittlere Taste: Spezialfähigkeit', 'F: Feuerart der Bordkanonen (gebündelt / versetzt)', '+/− oder Mausrad: Zoom');
     else this.controls.splice(this.controls.length - (this.ship.turrets.length ? 2 : 1));
     this.controls.splice(0, this.controls.length, ...this.controls.filter((q) => !q.startsWith('Gegner kommen')));
   }
@@ -1748,6 +1753,18 @@ export class ShooterGame implements MiniGame {
   private get camZoneY(): number { return this.h * 0.75; }
   /** Taste für die Kamera: links neben den Zoom-Tasten */
   private get btnCam(): [number, number, number] { return [this.zoomRowX - 88, this.zoomRowY, 15]; }
+  /** Feuerart-Taste links neben der Kamerataste (nur mit mehreren Bordkanonen, die Geschosse oder Lanzen feuern) */
+  private get btnFireMode(): [number, number, number] { return [this.zoomRowX - 132, this.zoomRowY, 15]; }
+  private get fireModeShown(): boolean { return this.guns.length > 1 && !this.chainGun && !this.wpn.beam && !this.wpn.missile; }
+  /** versetzt feuern: gewählt und sinnvoll (mehrere Rohre, keine Blitz- oder Strahlwaffe) */
+  private get staggerOn(): boolean { return this.staggered && this.fireModeShown; }
+  private toggleFireMode(): void {
+    this.staggered = !this.staggered;
+    setFireStaggered(this.wpnId as WeaponId, this.staggered);
+    this.gunIdx = 0;
+    this.floats.add(this.px, this.py - 40, this.staggered ? 'Feuer: versetzt' : 'Feuer: gebündelt', '#9ffff0', 13);
+    sfx.tap();
+  }
   /** Radar oben rechts (antippen öffnet die taktische Karte) */
   private get radarRect(): [number, number, number, number] { return [this.w - 102, TOP + 6, 92, 92]; }
   private panId: number | null = null;
@@ -1828,6 +1845,8 @@ export class ShooterGame implements MiniGame {
     if (this.tac) { this.tacTap(x, y); return; }
     const [rx, ry, rw, rh] = this.radarRect;
     if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) { this.openTac(); return; }
+    const [fmx, fmy, fmr] = this.btnFireMode;
+    if (this.fireModeShown && Math.hypot(x - fmx, y - fmy) < fmr + 8) { this.toggleFireMode(); return; }
     const [cbx, cby, cbr] = this.btnCam;
     if (Math.hypot(x - cbx, y - cby) < cbr + 8) { this.setCamMode(this.camMode === 'schiff' ? 'frei' : this.camMode === 'frei' ? 'auto' : 'schiff'); return; }
     const [fbx, fby, fbr] = this.btnFire;
@@ -2234,7 +2253,7 @@ export class ShooterGame implements MiniGame {
   private onButton(x: number, y: number): boolean {
     const near = (b: readonly [number, number, number], pad: number) => Math.hypot(x - b[0], y - b[1]) < b[2] + pad;
     const [rx, ry, rw, rh] = this.radarRect;
-    return this.tac || (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) || near(this.btnCam, 8) || near(this.btnZoomOut, 8) || near(this.btnZoomIn, 8) || this.onPanTrack(x, y) || near(this.btnMissile, 10) || near(this.btnDash, 10) || this.orderBtns.some(([, ox, oy, orr]) => Math.hypot(x - ox, y - oy) < orr + 8);
+    return this.tac || (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) || near(this.btnCam, 8) || (this.fireModeShown && near(this.btnFireMode, 8)) || near(this.btnZoomOut, 8) || near(this.btnZoomIn, 8) || this.onPanTrack(x, y) || near(this.btnMissile, 10) || near(this.btnDash, 10) || this.orderBtns.some(([, ox, oy, orr]) => Math.hypot(x - ox, y - oy) < orr + 8);
   }
 
   /** PC: Maus – zielen mit der Position, Linksklick feuert (gehalten), Rechtsklick Raketen, Mitte Spezialfähigkeit */
@@ -2264,6 +2283,8 @@ export class ShooterGame implements MiniGame {
     if (code === 'Space') { this.usePc(); this.doSpecial(); return true; }
     if (code === 'KeyR') { this.usePc(); this.fireMissiles(); return true; }
     if (code === 'KeyV') { this.setCamMode(this.camMode === 'schiff' ? 'frei' : this.camMode === 'frei' ? 'auto' : 'schiff'); return true; }
+    // Feuerart der Bordkanonen umschalten (gebündelt / versetzt)
+    if (code === 'KeyF' && this.fireModeShown) { this.toggleFireMode(); return true; }
     if (code === 'KeyM' || code === 'Tab') { if (this.tac) this.closeTac(); else this.openTac(); return true; }
     if (code === 'Equal' || code === 'NumpadAdd') { this.setZoom(-1); return true; }
     if (code === 'Minus' || code === 'NumpadSubtract') { this.setZoom(1); return true; }
@@ -4742,8 +4763,11 @@ export class ShooterGame implements MiniGame {
         if (Math.abs(wrapA(la - this.aimA)) < this.aimAssist * w.gimbal) a0 = la;
       }
       const spread = this.c('spread');
+      // versetzt: je Takt nur ein Rohr, der Reihe nach (erst nach allen Rohren zählt der Schuss fürs Magazin)
+      const nG = this.guns.length, stag = this.staggerOn;
+      const guns = stag ? [this.guns[this.gunIdx % nG]] : this.guns;
       // Überladung (Lanze): jeder dritte Salvenschuss, mit zwei Karten jeder zweite
-      this.railN++;
+      if (!stag || this.gunIdx % nG === 0) this.railN++;
       const over = !!w.rail && this.c('overload') > 0 && this.railN % (this.c('overload') >= 2 ? 2 : 3) === 0;
       const c = Math.cos(this.aimA), sn = Math.sin(this.aimA);
       const conv = this.convergeDist(w.range);
@@ -4751,8 +4775,8 @@ export class ShooterGame implements MiniGame {
       if (this.chainGun) {
         const fwd = this.ship.size * (this.ship.gunFwd ?? 0.3);
         this.fireChain(this.px + c * fwd, this.py + sn * fwd, a0);
-      } else for (const gx of this.guns) {
-        // alle Bordkanonen feuern; Lage quer zur Flugrichtung, jede auf den gemeinsamen Punkt geschwenkt
+      } else for (const gx of guns) {
+        // alle Bordkanonen feuern (versetzt: nur das nächste Rohr); Lage quer zur Flugrichtung, jede auf den gemeinsamen Punkt geschwenkt
         const fwd = this.ship.size * (this.ship.gunFwd ?? 0.3);
         const ox = this.px - sn * gx + c * fwd, oy = this.py + c * gx + sn * fwd;
         const ag = this.gunAngle(ox, oy, a0, conv);
@@ -4768,9 +4792,10 @@ export class ShooterGame implements MiniGame {
           if (slug) { this.fx.add({ x: ox, y: oy, color: '#dff4ff', size: 7, max: 0.07 }); this.fx.add({ x: ox + Math.cos(a) * 6, y: oy + Math.sin(a) * 6, color: '#9fdcff', size: 5, kind: 'ring', max: 0.16 }); }
         }
       }
-      // nächster Schuss; ist das Magazin leer, erst nachladen
-      this.fireCd = w.interval * this.tempo;
-      if (w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; this.reloadLeft = this.reloadMax = this.fireCd; this.reloading = true; }
+      // nächster Schuss; ist das Magazin leer, erst nachladen. Versetzt: die Rohre teilen sich die Schusspause
+      this.fireCd = (w.interval * this.tempo) / (stag ? nG : 1);
+      const round = !stag || ++this.gunIdx % nG === 0;
+      if (round && w.mag && --this.mag <= 0) { this.mag = w.mag; this.fireCd = w.reload * this.tempo; this.reloadLeft = this.reloadMax = this.fireCd; this.reloading = true; this.gunIdx = 0; }
     }
     this.updateTurrets(dt);
     this.updateTorpAim(dt);
@@ -9389,6 +9414,26 @@ export class ShooterGame implements MiniGame {
         ctx.fillText('KAMERA ↑   ↓ STEUERN', this.w / 2, yz - 6);
         ctx.restore();
       }
+    }
+    // Feuerart: drei Rohre als Striche – gebündelt gleich lang (alle zugleich), versetzt gestaffelt (der Reihe nach)
+    if (this.fireModeShown) {
+      const [fx, fy, fr] = this.btnFireMode, on = this.staggered;
+      ctx.fillStyle = 'rgba(5,14,22,0.78)';
+      ctx.strokeStyle = on ? 'rgba(255,181,71,0.85)' : 'rgba(110,220,205,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = on ? '#ffd27a' : '#9ffff0';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      for (let k = -1; k <= 1; k++) {
+        const top = on ? fy - 6 + (k + 1) * 3 : fy - 6, bot = on ? top + 5 : fy + 6;
+        ctx.beginPath(); ctx.moveTo(fx + k * 5, bot); ctx.lineTo(fx + k * 5, top); ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = on ? '#ffd27a' : 'rgba(169,195,198,0.7)';
+      ctx.font = '600 10px "Chakra Petch", Barlow, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('FEUER', fx, this.zoomLabelY);
     }
     const [fbx, fby, fbr] = this.btnFire;
     if (this.ctrl === 'eins' && !this.pc && this.fireId !== null && this.fireId !== 99) {
