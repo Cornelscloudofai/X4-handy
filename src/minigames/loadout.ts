@@ -491,8 +491,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     m: { dmg: 92, rate: 1, amt: 6, mag: 6, reload: 3, v: 2800, life: 1, angle: 1.16 },
   },
   strahl: {
-    name: 'Strahlenemitter', group: 'allgemein', color: '#9ffcff', w: 2, beam: true,
-    desc: 'Dauerstrahl: trifft sofort und genau, solange du draufhältst – dafür wenig Schaden pro Sekunde.',
+    // ohne Rückstoß leicht nachzuführen: schwenkt in weitem Bereich (2,5-fach) selbst aufs Ziel und klebt an Jägern
+    name: 'Strahlenemitter', group: 'allgemein', color: '#9ffcff', w: 2, beam: true, gimbal: 2.5,
+    desc: 'Dauerstrahl: trifft sofort und genau – der Emitter schwenkt in weitem Bereich selbst aufs Ziel und bleibt auch an wendigen Jägern dran. Dafür wenig Schaden pro Sekunde.',
     s: { dmg: 82, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0.18 },
     m: { dmg: 135, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0.18 },
   },
