@@ -8991,15 +8991,40 @@ export class ShooterGame implements MiniGame {
     const x0 = this.w - rw - 10, y0 = TOP + 6;
     const sc = rw / (RADAR * 2);
     ctx.save();
-    ctx.fillStyle = 'rgba(5,14,22,0.78)';
-    ctx.fillRect(x0, y0, rw, rh);
-    ctx.strokeStyle = 'rgba(110,220,205,0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x0 + 0.5, y0 + 0.5, rw - 1, rh - 1);
+    // Fassung wie bei den Kampftasten: dunkles Metall mit Fase und Schlagschatten
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 3;
+    const bez = ctx.createLinearGradient(0, y0 - 4, 0, y0 + rh + 4);
+    bez.addColorStop(0, '#33454f'); bez.addColorStop(0.5, '#18242c'); bez.addColorStop(1, '#070e13');
+    ctx.fillStyle = bez;
+    ctx.beginPath(); ctx.roundRect(x0 - 4, y0 - 4, rw + 8, rh + 8, 10); ctx.fill();
+    ctx.restore();
+    const rim = ctx.createLinearGradient(0, y0 - 4, 0, y0 + rh + 4);
+    rim.addColorStop(0, 'rgba(255,255,255,0.3)'); rim.addColorStop(0.45, 'rgba(255,255,255,0.05)'); rim.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.strokeStyle = rim; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x0 - 3.5, y0 - 3.5, rw + 7, rh + 7, 9.5); ctx.stroke();
+    // Bildschirm: dunkles Glas, zur Mitte hin leicht grünlich
     ctx.beginPath();
-    ctx.rect(x0, y0, rw, rh);
+    ctx.roundRect(x0, y0, rw, rh, 6);
     ctx.clip();
     const cx = x0 + rw / 2, cy = y0 + rh / 2;
+    const scr = ctx.createRadialGradient(cx, cy, 2, cx, cy, rw * 0.75);
+    scr.addColorStop(0, 'rgba(18,58,60,0.95)'); scr.addColorStop(1, 'rgba(2,8,12,0.97)');
+    ctx.fillStyle = scr;
+    ctx.fillRect(x0, y0, rw, rh);
+    // feines Raster und Entfernungsringe
+    ctx.strokeStyle = 'rgba(95,240,216,0.07)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const f of [0.25, 0.5, 0.75]) { ctx.moveTo(x0 + rw * f, y0); ctx.lineTo(x0 + rw * f, y0 + rh); ctx.moveTo(x0, y0 + rh * f); ctx.lineTo(x0 + rw, y0 + rh * f); }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(95,240,216,0.1)';
+    for (const f of [0.22, 0.44]) { ctx.beginPath(); ctx.arc(cx, cy, rw * f, 0, Math.PI * 2); ctx.stroke(); }
+    // umlaufender Abtaststrahl mit nachglimmender Spur
+    if (ctx.createConicGradient) {
+      const sa = (this.time * 1.4) % (Math.PI * 2), sw = ctx.createConicGradient(sa - 1.1, cx, cy);
+      sw.addColorStop(0, 'rgba(95,240,216,0)'); sw.addColorStop(0.17, 'rgba(95,240,216,0.13)'); sw.addColorStop(0.175, 'rgba(95,240,216,0)'); sw.addColorStop(1, 'rgba(95,240,216,0)');
+      ctx.fillStyle = sw; ctx.fillRect(x0, y0, rw, rh);
+    }
     const pos = (x: number, y: number, edge = false): [number, number] | null => {
       let rx = (x - this.px) * sc, ry = (y - this.py) * sc;
       const m = Math.max(Math.abs(rx) / (rw / 2 - 3), Math.abs(ry) / (rh / 2 - 3));
@@ -9047,6 +9072,15 @@ export class ShooterGame implements MiniGame {
     ctx.moveTo(0, -4); ctx.lineTo(3, 3); ctx.lineTo(-3, 3);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
+    // Glas: Lichtkante oben und dunkle Innenkante
+    ctx.save();
+    const gl = ctx.createLinearGradient(0, y0, 0, y0 + rh * 0.45);
+    gl.addColorStop(0, 'rgba(255,255,255,0.13)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gl;
+    ctx.beginPath(); ctx.roundRect(x0 + 1, y0 + 1, rw - 2, rh * 0.45, [5, 5, 0, 0]); ctx.fill();
+    ctx.strokeStyle = 'rgba(95,240,216,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x0 + 0.5, y0 + 0.5, rw - 1, rh - 1, 6); ctx.stroke();
     ctx.restore();
     // Hinweis: antippen öffnet die taktische Karte (kleine Ecken unten rechts)
     const [rx, ry, rw2, rh2] = this.radarRect, ex = rx + rw2 - 4, ey = ry + rh2 - 4;
