@@ -140,9 +140,9 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
     eher 3 als 2 solcher Treffer.
   - **Kollisionen:** prallt ein Schwarmmitglied auf ein gelähmtes, werden beide kurz gelähmt.
   - Dauerlähmung ggf. begrenzen (Sperre nach einigen Sekunden Lähmung).
-- Kettenblitz, offene Punkte: Beschreibung nennt 7/9 Sprünge statt 5/7; „Schwere Ladung“ wirkt beim Kettenblitz, bei
-  der Flak nicht; Ausrüstungsstufe ändert seinen Schaden nicht (gewollt, aber nirgends erklärt); Schuss ins Leere
-  verpufft.
+- Kettenblitz, offene Punkte (erledigt bzw. überholt): Sprünge jetzt 2 + je Bordkanone und so beschrieben; „Schwere
+  Ladung“ und Ausrüstungsstufe wirken bei Kettenblitz und Flak gleich (beide aus dem Grundschaden); ein Schuss ins Leere
+  zeigt einen kurzen, zuckenden Blitz.
 
 ## Raketen-Vierling und Blitzwaffen je Schiffsklasse (vorgemerkt)
 

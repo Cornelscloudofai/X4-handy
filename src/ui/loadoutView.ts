@@ -37,7 +37,7 @@ export interface LoModal {
 }
 
 /** Reihenfolge der Rollen beim Sortieren */
-const ROLE_ORDER: Role[] = ['schwarm', 'gross', 'allround', 'abwehr', 'geleit'];
+const ROLE_ORDER: Role[] = ['schwarm', 'gross', 'allround', 'geleit'];
 /** Karten ordnen: nach Rolle (darin nach Feuerkraft) oder nur nach Feuerkraft */
 function ordered<T extends string>(ids: T[], role: (id: T) => Role, fire: (id: T) => number, sort: 'rolle' | 'feuer'): T[] {
   return [...ids].sort((a, b) => (sort === 'rolle' ? ROLE_ORDER.indexOf(role(a)) - ROLE_ORDER.indexOf(role(b)) : 0) || fire(b) - fire(a));
@@ -272,7 +272,7 @@ export function loadoutView(m: LoModal): string {
           const blocked = gr.kind === 'M' && id === 'rakete' && id !== cur && rocketsUsed >= cap;
           return `<button class="hgr-chip ${id === cur ? 'on' : ''}" style="--c:${def(id).color}" ${blocked ? `disabled title="${esc(rocketHint)}"` : act('loadout-group', { g: gi, value: id })}>${esc(def(id).name.replace(/^Schwerer /, '').replace(/-?[Tt]urm$/, ''))}</button>`;
         }).join('')}</div></div>`;
-    }).join('')}</div><div class="hgr-desc">${esc(rocketHint)} Pulstürme schwenken schnell und holen Raketen und Jäger herunter, Plasma- und Bosonentürme knacken große Ziele. Im Kampf hat jede Gruppe links einen eigenen kleinen Befehlsknopf (M1 … M8 vom Bug zum Heck, L1 … L3): wischen wählt das Ziel – alle, S, M, L oder Strukturen (Türme, Bauteile, Brutstätten).</div>`;
+    }).join('')}</div><div class="hgr-desc">${esc(rocketHint)} Flak-, Plasma- und Tau-Türme räumen Schwärme ab, Bosonen- und Tau-Türme knacken große Ziele, Puls- und Strahlentürme treffen wendige Jäger zuverlässig. Im Kampf hat jede Gruppe links einen eigenen kleinen Befehlsknopf (M1 … M8 vom Bug zum Heck, L1 … L3): wischen wählt das Ziel – alle, S, M, L oder Strukturen (Türme, Bauteile, Brutstätten).</div>`;
   } else if (view === 'turret') {
     const n = ship.turrets.length, curDps = n * turretDps(td);
     title = ship.lMounts?.length ? 'M-Türme' : 'Türme'; sub = `${n} × M · schießen von selbst`;

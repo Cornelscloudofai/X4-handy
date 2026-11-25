@@ -587,7 +587,7 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   puls: { name: 'Pulsturm', desc: 'Dauerfeuer ohne Nachladen, schwenkt schnell und trifft genau – wendige Jäger entkommen ihm kaum, gegen dicke Panzerung fehlt die Wucht.', turn: 180, color: '#7ffff0', w: 2,
     gun: { dmg: 44, rate: 3.8, amt: 1, mag: 0, reload: 0, v: 9000, life: 0.39, angle: 0.17 } },
   // Strahlenturm: wie der Strahlenemitter (M) als Dauerstrahl; trifft sofort, solange er auf dem Ziel liegt
-  strahl: { name: 'Strahlenturm', desc: 'Dauerstrahl: trifft sofort, solange er auf dem Ziel liegt – wenig Schaden pro Sekunde, aber nie daneben; gut gegen Jäger und Raketen.', turn: 150, color: '#9ffcff', w: 2, beam: true,
+  strahl: { name: 'Strahlenturm', desc: 'Dauerstrahl: trifft sofort, solange er auf dem Ziel liegt – wenig Schaden pro Sekunde, aber nie daneben; wendige Jäger kommen kaum heran.', turn: 150, color: '#9ffcff', w: 2, beam: true,
     gun: { dmg: 120, rate: 0, amt: 1, mag: 0, reload: 0, v: 0, life: 0, angle: 0 } },
   neutron: { name: 'Neutronen-Gatling-Turm', desc: 'Langer Dauerstrom, dann fünf Sekunden nachladen; feuert erst, wenn er genau auf dem Ziel liegt.', turn: 140, color: '#ff8a3d', w: 2,
     // Nachladen kürzer als in den X4-Daten (8): im Spiel 5 s statt 7,5 s – sonst länger stumm als feuernd
@@ -609,7 +609,7 @@ export const TURRETS: Record<TurretId, TurretDef> = {
     missile: { n: 4, gap: 0, reload: 10, dmg: 0.5, range: 1, salvos: 20 },
     gun: { dmg: 0, rate: 1, amt: 4, mag: 0, reload: 0, v: 400, life: 6.5, angle: 0 } },
   // Flakturm: Sprenggranaten mit Annäherungszünder – zerplatzen zwischen kleinen Schiffen und Raketen
-  flak: { name: 'Flakturm', desc: 'Sprenggranaten mit Annäherungszünder: zerplatzen zwischen kleinen Schiffen und treffen alles im Umkreis – stark gegen Schwärme und Raketen, schwach gegen große Ziele.', turn: 170, color: '#ffb070', w: 2.2, flak: true,
+  flak: { name: 'Flakturm', desc: 'Sprenggranaten mit Annäherungszünder: zerplatzen zwischen kleinen Schiffen und treffen alles im Umkreis – stark gegen Schwärme, schwach gegen große Ziele.', turn: 170, color: '#ffb070', w: 2.2, flak: true,
     // vier Rohre, vier Granaten je Magazin; Nachladen so gewählt, dass die mittlere Feuerrate wie mit sechs bleibt
     // (6 Schuss in 5 Takten + 3 s ≙ 4 Schuss in 3 Takten + 2,25 s); danach Takt und Nachladen um 40 % schneller
     // schnellere Granaten (wie die Gatling) und gut 4 km Reichweite – Flugbahnen und Sprengwolken weiter draußen
@@ -949,12 +949,11 @@ export function setLoadout(patch: Partial<Loadout>): Loadout {
 // ---------- Loadouts: gespeicherte Zusammenstellungen aus Schiff und kompletter Ausrüstung ----------
 
 /** Rolle einer Waffe, eines Turms, einer Rakete – und Kennzeichen eines Loadouts */
-export type Role = 'schwarm' | 'gross' | 'allround' | 'abwehr' | 'geleit';
+export type Role = 'schwarm' | 'gross' | 'allround' | 'geleit';
 export const ROLES: Record<Role, { name: string; color: string }> = {
   schwarm: { name: 'Schwarm', color: '#c77dff' },
   gross: { name: 'Großziel', color: '#ff8a5c' },
   allround: { name: 'Allround', color: '#3fe0c5' },
-  abwehr: { name: 'Raketenabwehr', color: '#7fd8ff' },
   geleit: { name: 'Geleit', color: '#ffd27a' },
 };
 /** Kennzeichen, die ein Loadout tragen kann */
@@ -962,10 +961,10 @@ export const LO_TAGS = ['schwarm', 'gross', 'allround', 'geleit'] as const;
 export type LoTag = (typeof LO_TAGS)[number];
 /** Wofür Waffen, Türme und Raketen taugen (Kennzeichen auf den Karten im Hangar) */
 export const WEAPON_ROLE: Record<WeaponId, Role> = {
-  puls: 'allround', bolzen: 'allround', schrot: 'schwarm', strahl: 'abwehr', plasma: 'gross', neutron: 'schwarm', tau: 'schwarm',
+  puls: 'allround', bolzen: 'allround', schrot: 'schwarm', strahl: 'allround', plasma: 'gross', neutron: 'schwarm', tau: 'schwarm',
   thermal: 'gross', boson: 'gross', massdriver: 'gross', blitz: 'schwarm', stoerblitz: 'allround', schnellplasma: 'gross', plasmasalve: 'gross',
 };
-export const TURRET_ROLE: Record<TurretId, Role> = { puls: 'abwehr', strahl: 'abwehr', neutron: 'schwarm', tau: 'schwarm', plasma: 'gross', boson: 'gross', rakete: 'gross', flak: 'schwarm' };
+export const TURRET_ROLE: Record<TurretId, Role> = { puls: 'allround', strahl: 'allround', neutron: 'schwarm', tau: 'schwarm', plasma: 'gross', boson: 'gross', rakete: 'gross', flak: 'schwarm' };
 export const LTURRET_ROLE: Record<LTurretId, Role> = { plasma: 'gross', tau: 'schwarm', boson: 'gross', neutron: 'schwarm', silo: 'gross' };
 export const MISSILE_ROLE: Record<MissileId, Role> = { lenk: 'allround', schwer: 'gross', schwarm: 'schwarm', stoer: 'allround' };
 
