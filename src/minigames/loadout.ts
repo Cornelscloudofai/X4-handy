@@ -583,7 +583,7 @@ export function weaponFits(w: WeaponDef, size: GunSize): boolean {
  * zugleich), danach reload Sekunden Pause; dmg und range als Vielfaches der Lenkrakete; fixed: dreht sich nicht (Silo);
  * salvos: Vorrat je Turm in vollen Salven (danach schweigt er bis zum Ende der Runde)
  */
-export interface TurretMissile { n: number; gap: number; reload: number; dmg: number; range: number; salvos: number; fixed?: boolean }
+export interface TurretMissile { n: number; gap: number; reload: number; dmg: number; range: number; salvos: number; fixed?: boolean; /** Raketenart (TURRET_MISSILES) */ kind: 'silo' | 'spreng' }
 export interface TurretDef { name: string; desc: string; gun: X4Gun; turn: number; color: string; w: number; rail?: boolean; /** Dauerstrahl (Schaden pro Sekunde) */ beam?: boolean; missile?: TurretMissile; /** Flak: Sprenggranaten mit Annäherungszünder */ flak?: boolean; /** Anteil, der den Schild umgeht */ hullPierce?: number; /** Flächenschaden beim Einschlag (Radius) */ splash?: number }
 export const TURRETS: Record<TurretId, TurretDef> = {
   puls: { name: 'Pulsturm', desc: 'Dauerfeuer ohne Nachladen, schwenkt schnell und trifft genau – wendige Jäger entkommen ihm kaum, gegen dicke Panzerung fehlt die Wucht.', turn: 180, color: '#7ffff0', w: 2,
@@ -607,8 +607,8 @@ export const TURRETS: Record<TurretId, TurretDef> = {
   // Raketen-Vierling (M): vier Lenkraketen auf einmal, dann Pause; Schaden und Takt für die Wertung unten aus der Lenkrakete
   // halber Raketenschaden und zehn Sekunden Pause; jede Salve nur so groß, wie das Ziel braucht (der Rest geht auf
   // das nächste), Ziele mit genug Raketen im Anflug lässt er aus; Nachschub nach jeder Welle
-  rakete: { name: 'Raketen-Vierling', desc: 'Nur auf L- und XL-Schiffen (Klapperschlange: eine Turmgruppe, Raptor: vier). Vier Lenkraketen im Magazin, dann zehn Sekunden Nachladen. Schickt jedem Ziel nur so viele Raketen, wie es braucht, und fliegt um Wracks herum. Große Reichweite, trifft fast immer. Vorrat: 80 Raketen je Turm, nach jeder Welle 16 nach.', turn: 90, color: '#ffb070', w: 2,
-    missile: { n: 4, gap: 0, reload: 10, dmg: 0.5, range: 1, salvos: 20 },
+  rakete: { name: 'Raketen-Vierling', desc: 'Nur auf L- und XL-Schiffen (Klapperschlange: eine Turmgruppe, Raptor: vier). Vier Sprengraketen im Magazin, dann zehn Sekunden Nachladen. Annäherungszünder wie die Flak: zünden neben dem Ziel und treffen alles im Umkreis – stark gegen Schwärme, gegen große gepanzerte Ziele fast wirkungslos. Schickt jedem Ziel nur so viele Raketen, wie es braucht. Vorrat: 80 Raketen je Turm, nach jeder Welle 16 nach.', turn: 90, color: '#ffb070', w: 2,
+    missile: { n: 4, gap: 0, reload: 10, dmg: 0.5, range: 1, salvos: 20, kind: 'spreng' },
     gun: { dmg: 0, rate: 1, amt: 4, mag: 0, reload: 0, v: 400, life: 6.5, angle: 0 } },
   // Flakturm: Sprenggranaten mit Annäherungszünder – zerplatzen zwischen kleinen Schiffen und Raketen
   flak: { name: 'Flakturm', desc: 'Sprenggranaten mit Annäherungszünder: zerplatzen zwischen kleinen Schiffen und treffen alles im Umkreis – stark gegen Schwärme, schwach gegen große Ziele.', turn: 170, color: '#ffb070', w: 2.2, flak: true,
@@ -636,8 +636,8 @@ export const LTURRETS: Record<LTurretId, LTurretDef> = {
   neutron: { name: 'Schwerer Neutronen-Gatling-Turm', desc: 'Langer, dichter Geschossstrom, dann nachladen – viel Druck auf Jäger.', turn: 70, color: '#ff8a3d', w: 2.6, barrel: 'split-lturm-rohr-neutron-ki',
     gun: { dmg: 48, rate: 14, amt: 1, mag: 100, reload: 7, v: 2700, life: 1.7, angle: 0.4 } },
   // Raketensilo (L, fest im Rumpf, dreht nicht): acht schwerere Lenkraketen kurz nacheinander, doppelte Reichweite
-  silo: { name: 'Raketensilo', desc: 'Fest im Rumpf verankert: acht Lenkraketen kurz nacheinander (alle 0,3 s), etwas schwerer und mit doppelter Reichweite, dann sechs Sekunden Nachladen. Nur in einer L-Gruppe des Raptors. Vorrat: 160 Raketen je Silo.', turn: 0, color: '#ff9a4a', w: 2.6, barrel: 'split-lturm-silo-ki',
-    missile: { n: 8, gap: 0.3, reload: 6, dmg: 1.4, range: 2, salvos: 20, fixed: true },
+  silo: { name: 'Raketensilo', desc: 'Fest im Rumpf verankert: acht Lenkraketen kurz nacheinander (alle 0,3 s), schwere, langsame Panzerbrecher mit doppelter Reichweite, dann vier Sekunden Nachladen. Stark gegen Boote und Großziele, gegen wendige Jäger ungenau und ohne Flächenschaden. Nur in einer L-Gruppe des Raptors. Vorrat: 160 Raketen je Silo.', turn: 0, color: '#ff9a4a', w: 2.6, barrel: 'split-lturm-silo-ki',
+    missile: { n: 8, gap: 0.3, reload: 4, dmg: 1.4, range: 2, salvos: 20, fixed: true, kind: 'silo' },
     gun: { dmg: 0, rate: 1, amt: 8, mag: 0, reload: 0, v: 400, life: 13, angle: 0 } },
 };
 export const LTURRET_IDS = Object.keys(LTURRETS) as LTurretId[];
@@ -749,6 +749,10 @@ export interface MissileDef {
   stun?: number;
   /** stört die Waffen des Ziels so lange (s) */
   jam?: number;
+  /** Annäherungszünder (Sprengrakete): zündet so nah am Ziel bzw. am nächsten Punkt des Vorbeiflugs; Wirkradius und
+   * Schaden je Klasse aus vs */
+  prox?: number;
+  blast?: number;
   color: string;
   size: number;
 }
@@ -758,10 +762,21 @@ export interface MissileDef {
  * Schwarmrakete auf kurze Entfernung gegen viele kleine Ziele (an Schilden schwach), Störrakete als Werkzeug.
  */
 export const MISSILES: Record<MissileId, MissileDef> = {
-  lenk: { name: 'Lenkrakete', role: 'Weit und sicher gegen Einzelziele', desc: 'Größte Reichweite: sucht sich, was vor dem Bug liegt – auch weit draußen – und trifft fast immer. Gegen viele kleine Ziele zu wenige.', dmg: 1, v: 400, acc: 1000, turn: 3, life: 6.5, slots: 1, lock: 'aim', color: '#ffb070', size: 20 },
+  lenk: { name: 'Lenkrakete', role: 'Weit und sicher gegen Einzelziele', desc: 'Größte Reichweite: sucht sich, was vor dem Bug liegt – auch weit draußen. Große und langsame Ziele trifft sie sicher; ein wendiger Jäger, der quer abdreht, kann ihr entkommen – vorbeigeflogen verliert sie die Erfassung. Gegen viele kleine Ziele zu wenige.', dmg: 1, v: 400, acc: 1000, turn: 2.5, life: 6.5, slots: 1, lock: 'aim', color: '#ffb070', size: 20 },
   schwer: { name: 'Schwere Rakete', role: 'Panzerbrecher gegen Boote und Großziele', desc: 'Doppelter Schaden, gegen Boote, Türme und Großziele noch mehr, dazu eine Druckwelle. Sucht große Ziele zuerst. Langsam und träge: wendige Jäger weichen aus und nehmen nur wenig Schaden. Belegt zwei Lagerplätze.', dmg: 2, v: 250, acc: 420, turn: 1.5, life: 6, slots: 2, lock: 'big', vs: { S: 0.5, M: 1.4, L: 1.6 }, splash: [70, 0.5], color: '#ff7a3a', size: 26 },
-  schwarm: { name: 'Schwarmrakete', role: 'Nahbereich gegen Schwärme', desc: 'Zerfällt nach dem Start in vier Lenkköpfe, die sich verschiedene Ziele suchen – stark gegen Schwärme kleiner Schiffe. Geringe Reichweite, und Schilde halten die kleinen Ladungen gut ab.', dmg: 0.35, v: 560, acc: 1400, turn: 3.6, life: 1.1, slots: 1, lock: 'near', split: 4, vsShield: 0.5, color: '#ffd27a', size: 16 },
-  stoer: { name: 'Störrakete', role: 'Werkzeug: Schilde und Waffen ausschalten', desc: 'Kaum Schaden, aber sie löscht den Schild des Ziels für fünf Sekunden und stört drei Sekunden lang seine Waffen. Sucht Ziele mit Schild zuerst – ideal vor einer Salve aus den Bordkanonen.', dmg: 0.3, v: 420, acc: 1050, turn: 3, life: 4, slots: 1, lock: 'shield', stun: 5, jam: 3, color: '#8fe0ff', size: 20 },
+  schwarm: { name: 'Schwarmrakete', role: 'Nahbereich gegen Schwärme', desc: 'Zerfällt nach dem Start in vier Lenkköpfe, die sich verschiedene Ziele suchen – stark gegen Schwärme kleiner Schiffe. Die wendigsten Raketen: verfehlt ein Lenkkopf, wendet er und bleibt dran. Geringe Reichweite, und Schilde halten die kleinen Ladungen gut ab.', dmg: 0.35, v: 560, acc: 1400, turn: 5, life: 1.1, slots: 1, lock: 'near', split: 4, vsShield: 0.5, color: '#ffd27a', size: 16 },
+  stoer: { name: 'Störrakete', role: 'Werkzeug: Schilde und Waffen ausschalten', desc: 'Kaum Schaden, aber sie löscht den Schild des Ziels für fünf Sekunden und stört drei Sekunden lang seine Waffen. Sucht Ziele mit Schild zuerst – ideal vor einer Salve aus den Bordkanonen.', dmg: 0.3, v: 420, acc: 1050, turn: 2.6, life: 4, slots: 1, lock: 'shield', stun: 5, jam: 3, color: '#8fe0ff', size: 20 },
+};
+/**
+ * Raketen der Türme (nicht für Werfer wählbar):
+ * Silo-Rakete – Panzerbrecher: langsam, sehr träge, schwerer Sprengkopf ohne Flächenschaden; gegen Boote und Großziele
+ * stark, gegen Jäger schwach (und wendige Jäger fliegen aus ihrem Wendekreis).
+ * Sprengrakete (Vierling) – schnell, mittel wendig, Annäherungszünder wie die Flak: zündet neben dem Ziel und trifft
+ * alles im Umkreis; gegen große gepanzerte Ziele fast wirkungslos.
+ */
+export const TURRET_MISSILES: Record<'silo' | 'spreng', MissileDef> = {
+  silo: { name: 'Silo-Rakete', role: 'Panzerbrecher gegen Großziele', desc: '', dmg: 1, v: 320, acc: 640, turn: 1.4, life: 8.125, slots: 1, lock: 'big', vs: { S: 0.6, M: 2, L: 3.5 }, color: '#ff9a4a', size: 26 },
+  spreng: { name: 'Sprengrakete', role: 'Raketen-Flak gegen Schwärme', desc: '', dmg: 1, v: 520, acc: 1300, turn: 2.4, life: 5, slots: 1, lock: 'near', vs: { S: 1, M: 0.5, L: 0.15 }, prox: 32, blast: 75, color: '#ffd27a', size: 18 },
 };
 export const MISSILE_IDS = Object.keys(MISSILES) as MissileId[];
 

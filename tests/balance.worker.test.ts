@@ -12,7 +12,7 @@ type G = {
   update(d: number): void; resize(w: number, h: number): void; px: number; py: number; enemies: En[]; clusters: Map<unknown, unknown>;
   hull: number; shield: number; fireChain(x: number, y: number, a: number): void; 
   tempo: number; spawnBoss(m?: boolean): void; makeEnemy(k: string, x: number, y: number): En; state: { choosing: boolean }; chooseCard(i: number): void;
-  chainGun: boolean; aimA: number; fireId: number | null; pTur: { L?: boolean; cd: number }[]; wpn: { interval: number; range: number; speed: number };
+  chainGun: boolean; fireMissiles(): boolean; aimA: number; fireId: number | null; pTur: { L?: boolean; cd: number }[]; wpn: { interval: number; range: number; speed: number };
 };
 const env = process.env;
 const DT = 1 / 60;
@@ -20,8 +20,8 @@ const DT = 1 / 60;
 it.skipIf(!env.BALANCE)('Messlauf', () => {
   const store = new Map<string, string>();
   (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) };
-  const o = JSON.parse(env.BALANCE!) as { lagen: string[]; seeds: number[]; ship: string; turret: string; groups?: string[]; weapon: string; gear: 1 | 2 | 3; level: 1 | 2 | 3 | 4 | 5; secs: number; out: string; guns?: boolean; noTurrets?: boolean; onlyL?: boolean; lturret?: string; flank?: boolean };
-  const lo = { ...DEFAULT_LOADOUT, wing: {}, ship: o.ship, turret: o.turret, weapon: o.weapon, ...(o.lturret ? { lturret: o.lturret } : {}), ...(o.groups ? { groups: o.groups } : {}) };
+  const o = JSON.parse(env.BALANCE!) as { lagen: string[]; seeds: number[]; ship: string; turret: string; groups?: string[]; weapon: string; gear: 1 | 2 | 3; level: 1 | 2 | 3 | 4 | 5; secs: number; out: string; guns?: boolean; noTurrets?: boolean; onlyL?: boolean; lturret?: string; flank?: boolean; rockets?: boolean; missile?: string };
+  const lo = { ...DEFAULT_LOADOUT, wing: {}, ship: o.ship, turret: o.turret, weapon: o.weapon, ...(o.lturret ? { lturret: o.lturret } : {}), ...(o.missile ? { missile: o.missile } : {}), ...(o.groups ? { groups: o.groups } : {}) };
   const make = (seed: number, side: string): G => {
     const g = new ShooterGame({ level: o.level, seed, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, mods: {}, gear: { weapon: o.gear, shield: o.gear, engine: o.gear }, loadout: lo } as never, side as never) as unknown as G;
     g.resize(390, 780);
@@ -34,6 +34,8 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
   };
   // Bordwaffe: Blitzwaffen feuern im Takt auf den nächsten Gegner in Reichweite (andere Bordwaffen schweigen)
   const fire = (g: G, i: number, every: number, pick: (e: En) => boolean) => {
+    // Raketenwerfer (--raketen): sobald ein Ziel da ist, feuern, wann immer der Werfer bereit ist (er wählt selbst)
+    if (o.rockets && g.enemies.some(pick)) g.fireMissiles();
     if (o.guns) {
       // Bordkanonen wie ein Spieler: Bug mit Vorhalt auf den nächsten Gegner, Feuer halten, solange er in Reichweite ist
       const n = g.enemies.filter(pick).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0];

@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretMuzzles, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -296,7 +296,7 @@ function segDist(x0: number, y0: number, x1: number, y1: number, px: number, py:
 function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: boolean; slug?: boolean; gimbal?: number; color: string; w: number; missile?: TurretMissile; flak?: boolean; splash?: number }): GameGun {
   // Raketenturm: Reichweite und Tempo der Lenkrakete (Reichweite × range), Ziele wählt der Turm nur innerhalb davon
   if (o.missile) {
-    const md = MISSILES.lenk, range = md.v * md.life * 0.85 * o.missile.range;
+    const md = TURRET_MISSILES[o.missile.kind], range = md.v * md.life * 0.85 * o.missile.range;
     return { dmg: g.dmg * DMG_SCALE, interval: o.missile.reload, mag: 0, reload: 0, speed: md.v, life: md.life * o.missile.range, range, pellets: o.missile.n, jitter: 0, beam: false, hullPierce: 0, rail: false, gimbal: 1, color: o.color, w: o.w, missile: o.missile };
   }
   // Mass Driver: im Spiel deutlich schneller als die übrigen Geschosse (die Tempo-Stauchung gilt für ihn nur halb)
@@ -317,7 +317,9 @@ interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: nu
    * eigener Treffpunkt am Ziel (Anteil des Radius) – so fliegt ein Schwarm nicht wie ein Block */
   tk?: number; vk?: number; wob?: number; wf?: number; ox?: number; oy?: number;
   /** Ausweichen um Wracks: gemerkte Seite (−1/1), damit die Rakete nicht hin- und herpendelt */
-  av?: number }
+  av?: number;
+  /** geringster Abstand zum Ziel bisher (Vorbeiflug erkennen) und: Erfassung verloren (sucht kein neues Ziel) */
+  near?: number; lost?: boolean }
 /** Senkrechtstart aus dem Silo: Steigen und Überkippen (Sekunden) */
 const SILO_RISE = 1.1;
 /** Gegnerische Lenkrakete: kann abgeschossen werden */
@@ -5045,9 +5047,11 @@ export class ShooterGame implements MiniGame {
     if (m.fixed) t.a = this.aimA;
     // gegen Raketen wirkungslos: nur Schiffe und Strukturen als Ziel
     // kein Ziel, das schon genug Raketen im Anflug hat (sonst schicken alle Türme ihre Salven auf denselben Späher)
-    const dmg = MISSILE_DMG * (this.tDmg / 6) * m.dmg, md = MISSILES.lenk;
+    const dmg = MISSILE_DMG * (this.tDmg / 6) * m.dmg, md = TURRET_MISSILES[m.kind];
     const left = (e: Enemy) => (e.hp + e.sh) * 1.1 - this.incoming(e);
-    const aim = this.turretAim(t, x, y, range, order, false, dt, (e) => left(e) > 0);
+    // Silo (Panzerbrecher): Boote und Großziele zuerst – auf Jäger nur, wenn nichts Größeres in Reichweite ist
+    const bigOnly = md.lock === 'big' && this.enemies.some((e) => ECLASS[e.kind] !== 'S' && !(e.kind === 'boss' && e.shielded) && Math.hypot(e.x - x, e.y - y) < range);
+    const aim = this.turretAim(t, x, y, range, order, false, dt, (e) => left(e) > 0 && (!bigOnly || ECLASS[e.kind] !== 'S'));
     const tgt = aim?.tgt as Enemy | undefined;
     // Vorrat verschossen: schweigt, bis Nachschub kommt (nach jeder Welle, Munitionskisten)
     const empty = t.ammo != null && t.ammo <= 0;
@@ -6120,7 +6124,8 @@ export class ShooterGame implements MiniGame {
       }
       // Ziel verloren (zerstört, ausgewichen oder nie eins gehabt): Lenk-, Schwere und Störrakete suchen sich ein neues –
       // bevorzugt vor sich, in Reichweite ihres restlichen Treibstoffs. Schwarmraketen (und ihre Lenkköpfe) nicht.
-      if (!m.target && !m.def.split && m.life > 0.3) m.target = this.missileRetarget(m);
+      // (vorbeigeflogene Raketen haben die Erfassung verloren; Lenkköpfe der Schwarmrakete suchen weiter)
+      if (!m.target && !m.lost && (!m.def.split || m.mini) && m.life > 0.3) { m.target = this.missileRetarget(m); m.near = undefined; }
       if (m.target) {
         const dx = m.target.x - m.x, dy = m.target.y - m.y, d = Math.hypot(dx, dy) || 1;
         // Flinker Elite-Gegner: weicht kurz vor dem Einschlag zur Seite aus, die Rakete verliert ihr Ziel
@@ -6155,8 +6160,20 @@ export class ShooterGame implements MiniGame {
         v = v < want ? Math.min(want, v + m.def.acc * dt) : Math.max(want, v - m.def.acc * 1.5 * dt);
         m.vx = Math.cos(na) * v;
         m.vy = Math.sin(na) * v;
+        // Sprengrakete: Annäherungszünder – zündet neben dem Ziel
+        if (m.def.prox && d < m.target.r + m.def.prox) { this.missileBlast(m); continue; }
         // Schwarmrakete trifft erst als Lenkköpfe (vorher fliegt sie durch)
         if (d < m.target.r + 4 && m.split == null) { this.missileHit(m, m.target); continue; }
+        // Vorbeiflug: der Abstand wächst wieder, nachdem sie dicht dran war – die Rakete verliert die Erfassung (fliegt
+        // geradeaus weiter und zerlegt sich), die Sprengrakete zündet am nächsten Punkt. Lenkköpfe der Schwarmrakete
+        // wenden und bleiben dran.
+        if (!m.mini && m.split == null) {
+          if (m.near == null || d < m.near) m.near = d;
+          else if (m.near < m.target.r + 70 && d > m.near + 20) {
+            if (m.def.prox) { this.missileBlast(m); continue; }
+            m.target = null; m.lost = true; m.life = Math.min(m.life, 0.7);
+          }
+        }
       }
       // Schwarmrakete: kurz nach dem Start in kleine Lenkköpfe zerfallen, die sich verschiedene Ziele suchen
       if (m.split != null && (m.split -= dt) <= 0) {
@@ -6286,6 +6303,22 @@ export class ShooterGame implements MiniGame {
 
   /** bypass: Anteil des Schadens, der durch fremde Schilde dringt (Thermal-Desintegrator: teilweise) */
   /** Raketentreffer: Schaden, bei schweren Raketen Druckwelle, bei Störraketen Schild aus */
+  /** Sprengrakete: Explosion im Umkreis (Schaden je Klasse aus vs, gegen große gepanzerte Ziele fast nichts) */
+  private missileBlast(m: Missile): void {
+    const R = m.def.blast ?? 60;
+    this.logSrc = m.src ?? 'other';
+    this.logHit();
+    for (const q of [...this.enemies]) {
+      if (q.kind === 'boss' && q.shielded) continue;
+      if (Math.hypot(q.x - m.x, q.y - m.y) >= R + q.r) continue;
+      const cls = q.parent || q.nest || q.plat || q.hive ? 'L' : ECLASS[q.kind];
+      this.logSrc = m.src ?? 'other';
+      this.damageEnemy(q, m.dmg * (m.def.vs?.[cls] ?? 1));
+    }
+    this.explode(m.x, m.y, '#ffd27a', 0.9, false);
+    this.fx.add({ x: m.x, y: m.y, color: '#ffd27a', size: R * 0.5, kind: 'ring', max: 0.3 });
+  }
+
   private missileHit(m: Missile, e: Enemy): void {
     const def = m.def;
     // Wirkung je Zielklasse (schwere Raketen gegen große Ziele stark, gegen Jäger schwach)

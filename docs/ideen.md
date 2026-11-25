@@ -154,7 +154,7 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
   gleich stark auf der Cobra (3 Kanonen) und der Drache (6) – die Drache gibt dafür doppelt so viel auf. Vor dem
   Umsetzen Konzept klären (siehe Antwort im Verlauf): eigene Entladung je Kanone(npaar) oder Stärke je Kanonenplatz.
 
-## Raketen nach Rollen (vorgemerkt, Konzept abgestimmt im Verlauf)
+## Raketen nach Rollen (umgesetzt: Erfassung verloren beim Vorbeiflug, Silo-Panzerbrecher, Vierling-Sprengraketen, Schwarm wendet)
 
 Grundregel für alle Lenkraketen außer Schwarmraketen: **vorbeigeflogen = Erfassung verloren** (fliegt geradeaus weiter
 und zerlegt sich). Wendigkeit je Art: Schwarm > Lenk > Sprengrakete > Schwer > Silo. Kein Würfeln – ob eine Rakete
