@@ -154,6 +154,22 @@ Reparatur), Elite-Begegnungen; Schaden und Verbesserungen bleiben über mehrere 
   gleich stark auf der Cobra (3 Kanonen) und der Drache (6) – die Drache gibt dafür doppelt so viel auf. Vor dem
   Umsetzen Konzept klären (siehe Antwort im Verlauf): eigene Entladung je Kanone(npaar) oder Stärke je Kanonenplatz.
 
+## Raketen nach Rollen (vorgemerkt, Konzept abgestimmt im Verlauf)
+
+Grundregel für alle Lenkraketen außer Schwarmraketen: **vorbeigeflogen = Erfassung verloren** (fliegt geradeaus weiter
+und zerlegt sich). Wendigkeit je Art: Schwarm > Lenk > Sprengrakete > Schwer > Silo. Kein Würfeln – ob eine Rakete
+trifft, ergibt sich aus Wendekreis, Tempo und Querflug des Ziels.
+
+- **Raketensilo (L/XL): schwere Panzerbrecher.** Langsam, sehr träge, schwerer Sprengkopf ohne Flächenschaden; stark
+  gegen große, langsame, gepanzerte Ziele (Schaden gegen M/L/Strukturen erhöht), gegen Schwärme ineffizient: trifft
+  höchstens ein Schiff, wendige Jäger fliegen aus dem Wendekreis.
+- **Raketen-Vierling (M-Türme auf L/XL): Sprengraketen.** Schnell, mittel wendig, Annäherungszünder wie die Flak:
+  zünden neben dem Ziel, Flächenschaden (S voll, M halb, L kaum), gegen große gepanzerte Ziele sehr wenig Schaden.
+- **Raketenwerfer (Drache, Jäger):** bestehende Arten mit klareren Rollen – Lenkrakete Allround (etwas träger als
+  heute, verliert die Erfassung beim Vorbeiflug), Schwere Rakete gegen Boote und Großziele, Störrakete als Werkzeug.
+  **Schwarmrakete am wendigsten:** die Lenkköpfe wenden auch nach einem Fehlschuss um 180° und verfolgen weiter.
+- Messen: Silo, Vierling, Drache (alle Raketenarten) gegen Zerstörer, Xenon K, Piratenwelle, 8 Jäger, Brutstrom.
+
 ## Gemischte Loadouts: Waffen und Türme einzeln wählen (Türme umgesetzt, Frontwaffen vorgemerkt)
 
 - **Turmgruppen für M-Schiffe:** umgesetzt (Cobra 2 × 2, Dragon 2 × 1, Klapperschlange 3 × 4).
