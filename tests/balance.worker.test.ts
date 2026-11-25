@@ -7,7 +7,7 @@ declare const process: { env: Record<string, string | undefined> };
 import { ShooterGame, interceptTime } from '../src/minigames/shooter';
 import { DEFAULT_LOADOUT, SHIPS, setBroodTest } from '../src/minigames/loadout';
 
-type En = { x: number; y: number; kind: string; hp: number; sh: number; max: number; shMax: number; parent?: unknown; vx: number; vy: number };
+type En = { x: number; y: number; kind: string; shielded?: boolean; hp: number; sh: number; max: number; shMax: number; parent?: unknown; vx: number; vy: number };
 type G = {
   update(d: number): void; resize(w: number, h: number): void; px: number; py: number; enemies: En[]; clusters: Map<unknown, unknown>;
   hull: number; shield: number; fireChain(x: number, y: number, a: number): void; 
@@ -38,7 +38,8 @@ it.skipIf(!env.BALANCE)('Messlauf', () => {
     if (o.rockets && g.enemies.some(pick)) g.fireMissiles();
     if (o.guns) {
       // Bordkanonen wie ein Spieler: Bug mit Vorhalt auf den nächsten Gegner, Feuer halten, solange er in Reichweite ist
-      const n = g.enemies.filter(pick).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0];
+      // (ein abgeschirmter Kern ist kein Ziel – Schüsse prallen ab, solange seine Türme stehen)
+      const n = g.enemies.filter((e) => pick(e) && !(e.kind === 'boss' && e.shielded)).sort((p, q) => Math.hypot(p.x - g.px, p.y - g.py) - Math.hypot(q.x - g.px, q.y - g.py))[0];
       if (!n) { g.fireId = null; return; }
       const dx = n.x - g.px, dy = n.y - g.py, sp = g.wpn.speed;
       const t = sp > 0 && sp < 1e5 ? interceptTime(dx, dy, n.vx, n.vy, sp) : 0;

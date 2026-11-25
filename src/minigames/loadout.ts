@@ -519,8 +519,10 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     // drei Viertel durch den Schild: die Waffe gegen stark geschilderte Ziele (vorher 40 %, ohne erkennbare Rolle)
     name: 'Thermal-Desintegrator', group: 'split', color: '#ff9d2e', w: 2.6, hullPierce: 0.75,
     desc: 'Split: drei Viertel jedes Treffers umgehen den Schild und gehen sofort auf die Hülle – die Waffe gegen stark geschützte Ziele.',
-    s: { dmg: 47, rate: 4, amt: 1, mag: 8, reload: 2.2, v: 2200, life: 1.1, angle: 0.3 },
-    m: { dmg: 140, rate: 4, amt: 1, mag: 8, reload: 4.5, v: 2200, life: 1.682, angle: 0.3 },
+    // flüssiger: höherer Takt, größeres Magazin, kürzeres Nachladen – Schaden je Schuss so gesenkt, dass die Wirkung
+    // je Magazin samt Pause etwa gleich bleibt
+    s: { dmg: 27, rate: 6, amt: 1, mag: 12, reload: 1.5, v: 2200, life: 1.1, angle: 0.3 },
+    m: { dmg: 69, rate: 6, amt: 1, mag: 12, reload: 2.5, v: 2200, life: 1.682, angle: 0.3 },
   },
   boson: {
     name: 'Bosonenlanze', group: 'split', color: '#e0c3ff', w: 3, gimbal: 0.5, rail: true,
