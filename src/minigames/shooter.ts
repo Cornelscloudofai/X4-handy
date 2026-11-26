@@ -651,30 +651,21 @@ const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
 const SHARD_LIFE = 0.5;
 const SHARD_CLS: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 1, M: 1 / 3, L: 0.1, XL: 0.1 };
-/** Rauchring: Ballen im Schlauch, Schlauchdicke (Punkte), Neigung (kleiner Blickwinkel von hinten: der Ring steht quer zur
- * Flugachse und erscheint als flache Ellipse) */
-const RING_N = 100, RING_TUBE = 5.5, RING_TILT = 0.25;
-/** Rauchballen und Glutballen (einmal gezeichnet): Vorlagen für die Rauchringe */
-let puffCache: HTMLCanvasElement | null | undefined, fireCache: HTMLCanvasElement | null | undefined;
-function blob(stops: [number, string][], hx: number): HTMLCanvasElement | null {
-  if (typeof document === 'undefined') return null;
-  const c = document.createElement('canvas'); c.width = c.height = 96;
-  const g = c.getContext('2d');
-  if (!g) return null;
-  const rg = g.createRadialGradient(48 - hx, 48 - hx, 2, 48, 48, 46);
-  for (const [o, col] of stops) rg.addColorStop(o, col);
-  g.fillStyle = rg; g.fillRect(0, 0, 96, 96);
-  return c;
-}
-/** weicher, grau-brauner Ballen, oben links etwas heller (Licht) */
-function smokePuff(): HTMLCanvasElement | null {
-  if (puffCache === undefined) puffCache = blob([[0, 'rgba(178,168,154,1)'], [0.35, 'rgba(120,110,100,0.85)'], [0.7, 'rgba(70,62,56,0.45)'], [1, 'rgba(40,34,30,0)']], 8);
-  return puffCache;
-}
-/** Glut: der junge Ring ist vom Feuer der Detonation angeleuchtet */
-function firePuff(): HTMLCanvasElement | null {
-  if (fireCache === undefined) fireCache = blob([[0, 'rgba(255,200,120,1)'], [0.5, 'rgba(255,120,40,0.5)'], [1, 'rgba(255,80,20,0)']], 0);
-  return fireCache;
+/** Rauchring: Abschnitte des Schlauchs, Schlauchdicke (Punkte), Neigung (kleiner Blickwinkel von hinten: der Ring steht quer
+ * zur Flugachse und erscheint als flache Ellipse), Lebensdauer (s) */
+const RING_N = 60, RING_TUBE = 5, RING_TILT = 0.25, RING_LIFE = 1.3;
+/** Abschnitte eines Rings (Anfang, Ende, sin des Anfangs), hintere zuerst; je Startwinkel einmal berechnet */
+const segCache = new Map<number, [number, number, number][]>();
+function ringSegs(seed: number): [number, number, number][] {
+  const key = Math.round(seed * 10) % 64;
+  let s = segCache.get(key);
+  if (!s) {
+    s = [];
+    for (let i = 0; i < RING_N; i++) { const t0 = (i / RING_N) * Math.PI * 2 + key * 0.1, t1 = t0 + (1.4 / RING_N) * Math.PI * 2; s.push([t0, t1, Math.sin(t0)]); }
+    s.sort((a, b) => a[2] - b[2]);
+    segCache.set(key, s);
+  }
+  return s;
 }
 /** Glutfarbe eines Splitters nach Alter 0 … 1: hellgelb → orange → dunkelrot */
 function shardColor(age: number): string {
@@ -1224,7 +1215,7 @@ export class ShooterGame implements MiniGame {
    * fast ein Strich quer zur Flugbahn, an den Enden am dichtesten. a = Flugrichtung, R = Radius (wächst), Drift mit dem
    * Schwung der Granate
    */
-  private smokeRings: { x: number; y: number; vx: number; vy: number; a: number; t: number; max: number; R: number; seed: number; /** Ballen im Schlauch: Winkel, Versatz quer und längs, Größe, Helligkeit – hinten zuerst sortiert */ pts: [number, number, number, number, number][] }[] = [];
+  private smokeRings: { x: number; y: number; vx: number; vy: number; a: number; t: number; max: number; R: number; seed: number }[] = [];
   /** Gewitter im Nebel: aufleuchtende Wolkenpartien, manchmal mit sichtbarem Blitz; nächstes Wetterleuchten in stormT s */
   private storms: { x: number; y: number; r: number; t: number; max: number; flick: number; bolt: [number, number][][] | null }[] = [];
   private stormT = 3;
@@ -6434,23 +6425,54 @@ export class ShooterGame implements MiniGame {
    * an den Enden, dort ist der Ring dichter. Anfangs vom Feuer warm angeleuchtet, dann grau; wächst, wird dünner, verweht
    */
   private drawSmokeRings(ctx: CanvasRenderingContext2D): void {
-    const puff = smokePuff(), fire = firePuff();
-    if (!puff || !fire) return;
     ctx.save();
+    ctx.lineCap = 'round';
+    const sm = (e0: number, e1: number, x: number) => { const k = clamp((x - e0) / (e1 - e0), 0, 1); return k * k * (3 - 2 * k); };
+    const mix = (A: number[], B: number[], k: number) => A.map((v, i) => Math.round(v + (B[i] - v) * k));
     for (const r of this.smokeRings) {
-      const q = r.t / r.max, grow = 1 - Math.pow(1 - Math.min(1, r.t / 0.9), 3);
-      const R = r.R * (1 + 1.1 * grow), tube = RING_TUBE * (1 + 0.9 * grow);
-      const fade = q < 0.06 ? q / 0.06 : Math.pow(1 - (q - 0.06) / 0.94, 1.3), warm = Math.max(0, 1 - r.t / 0.3);
-      const ux = Math.cos(r.a), uy = Math.sin(r.a), px = -uy, py = ux;
-      for (const [th, ja, jb, sz, br] of r.pts) {
-        const c = Math.cos(th), sn = Math.sin(th);
-        // im Schlauch versetzt: quer (radial) und flach entlang der Flugachse
-        const rr = R + ja * tube * 0.9, fwd = sn * R * RING_TILT + jb * tube * 0.5;
-        const x = r.x + px * c * rr + ux * fwd, y = r.y + py * c * rr + uy * fwd, s = tube * sz;
-        // vordere Hälfte (zur Kamera) heller, hintere dunkler
-        ctx.globalAlpha = fade * (0.34 + 0.12 * sn + 0.1 * br);
-        ctx.drawImage(puff, x - s, y - s, 2 * s, 2 * s);
-        if (warm > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = fade * warm * 0.3; ctx.drawImage(fire, x - s * 0.7, y - s * 0.7, 1.4 * s, 1.4 * s); ctx.globalCompositeOperation = 'source-over'; }
+      const q = r.t / r.max, grow = 1 - Math.pow(1 - Math.min(1, r.t / 0.7), 3);
+      const R = r.R * (1 + 1.1 * grow), tube = RING_TUBE * (1 + 0.8 * grow);
+      // weich ein- und ausblenden; die Glut des Feuers klingt in knapp einer halben Sekunde ab
+      const fade = sm(0, 0.05, q) * (1 - sm(0.1, 1, q)), warm = 1 - sm(0, 0.45, r.t);
+      if (fade <= 0.003) continue;
+      const ux = Math.cos(r.a), uy = Math.sin(r.a), px = -uy, py = ux, sd = r.seed;
+      // leicht unregelmäßiger Radius und Dicke (verschiedene Wellenzahlen), langsam veränderlich
+      const nz = (th: number, k: number) => Math.sin(th * 3 + sd) * 0.5 + Math.sin(th * 7 + sd * 2.3 + k) * 0.3 + Math.sin(th * 13 + sd * 0.7) * 0.2;
+      const pt = (th: number): [number, number] => {
+        const rr = R * (1 + 0.07 * nz(th, r.t * 2)), c = Math.cos(th), sn = Math.sin(th);
+        return [r.x + px * c * rr + ux * sn * rr * RING_TILT, r.y + py * c * rr + uy * sn * rr * RING_TILT];
+      };
+      // Rauchfarbe: anfangs vom Feuer angeleuchtet (braun-orange), dann grau
+      const smoke = mix([110, 102, 94], [190, 105, 50], warm), light = mix([170, 162, 150], [255, 190, 110], warm);
+      const col = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+      // Abschnitte des Schlauchs, hintere Hälfte zuerst (sin < 0), dann vordere – jeweils weiche Lagen von außen nach innen
+      for (const [t0, t1, sn] of ringSegs(sd)) {
+        const [xa, ya] = pt(t0), [xb, yb] = pt(t1), w = tube * (1 + 0.35 * nz(t0, 5));
+        const lay = (lw: number, c: string) => { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke(); };
+        lay(w * 2.6, col(smoke, 0.07 * fade));
+        lay(w * 1.7, col(smoke, 0.14 * fade));
+        lay(w, col(light, (0.1 + 0.08 * sn) * fade));
+        if (sn > 0) lay(w * 0.5, col(light, 0.12 * sn * fade));
+      }
+      // Rauchstruktur: weiche Ballen unregelmäßig auf dem Schlauch (bricht die glatte Form auf)
+      for (let i = 0; i < 22; i++) {
+        const th = i * 2.39996 + sd, [x, y] = pt(th), j = Math.sin(sd * 5 + i * 1.3), s = tube * (1.1 + 0.5 * j);
+        const cx = x + j * tube * 0.4, cy = y - j * tube * 0.3;
+        const g = ctx.createRadialGradient(cx - s * 0.2, cy - s * 0.2, 0, cx, cy, s);
+        g.addColorStop(0, col(light, 0.16 * fade)); g.addColorStop(1, col(smoke, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, s, 0, Math.PI * 2); ctx.fill();
+      }
+      // Glut: das Feuer der Detonation leuchtet den jungen Ring an
+      if (warm > 0.01) {
+        ctx.globalCompositeOperation = 'lighter';
+        for (const [t0, t1] of ringSegs(sd)) {
+          const [xa, ya] = pt(t0), [xb, yb] = pt(t1);
+          ctx.strokeStyle = `rgba(255,110,30,${0.2 * warm * fade})`; ctx.lineWidth = tube * 2.4;
+          ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+          ctx.strokeStyle = `rgba(255,190,110,${0.12 * warm * warm * fade})`; ctx.lineWidth = tube * 0.8;
+          ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+        }
+        ctx.globalCompositeOperation = 'source-over';
       }
     }
     ctx.restore();
@@ -6487,12 +6509,7 @@ export class ShooterGame implements MiniGame {
     this.fx.add({ x: b.x, y: b.y, color: '#fff4dc', size: 10, max: 0.06 });
     this.fx.add({ x: b.x, y: b.y, color: '#ff9a3a', size: 11, kind: 'fire', max: 0.26 });
     // Rauchringwolke quer zur Flugbahn (statt eines flachen Kreises)
-    if (this.smokeRings.length < 60) {
-      const pts: [number, number, number, number, number][] = [];
-      for (let i = 0; i < RING_N; i++) pts.push([Math.random() * Math.PI * 2, Math.random() - 0.5, Math.random() - 0.5, 0.6 + Math.random() * 0.7, Math.random()]);
-      pts.sort((p, q) => Math.sin(p[0]) - Math.sin(q[0]));
-      this.smokeRings.push({ x: b.x, y: b.y, vx: b.vx * 0.12, vy: b.vy * 0.12, a: a0, t: 0, max: 1.9 + this.r() * 0.5, R: 22 + this.r() * 5, seed: this.r() * 100, pts });
-    }
+    if (this.smokeRings.length < 60) this.smokeRings.push({ x: b.x, y: b.y, vx: b.vx * 0.12, vy: b.vy * 0.12, a: a0, t: 0, max: RING_LIFE * (0.9 + this.r() * 0.2), R: 22 + this.r() * 5, seed: this.r() * 100 });
     this.fx.burst(b.x, b.y, '#ffcf80', 5, 180, 1.2, 'spark', 0.2);
     if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: b.x, y: b.y, r: 100, color: '#ffa04a', t: 0, max: 0.22 });
     if (this.onScreen(b.x, b.y)) sfx.splitterBurst(this.panAt(b.x));
