@@ -38,8 +38,8 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
 - **XL-Drillingsturm** (`heg-turm-xl-ki`, Leuchtmaske `heg-turm-xl-glow`, getrennt mit `scripts/split-glow.mjs`):
   auf den drei XL-Sockeln, Gehäuse so groß wie der Sockel (≈ 94 m). Lädt gemeinsam 12 s (blau-weißes Licht wächst je Rohr
   vom Verschluss zur Mündung), dreht langsam (8°/s), richtet sich 1 s mit Ziellinie aus, feuert Rohr 1 – 2 – 3 im
-  Abstand 0,4 s. Schnelle schwere Granate (1000, Mass Driver 653), Schaden 2 200 × Stufe, Reichweite ≈ 1 km. Ziele:
-  Frachter, Stationen, L/XL-Schiffe – nicht auf S/M. Gehäuse ein Viertel größer als der Sockel, Hülle ×15, Schild ×6.
+  Abstand 0,4 s. Schnelle schwere Granate (1000, Mass Driver 653), Schaden 2 200 × Stufe, Reichweite ≈ 1,5 km. Ziele:
+  Frachter, Stationen und Schiffe ab Klasse M – nicht auf Jäger. Gehäuse ein Viertel größer als der Sockel, Hülle ×15, Schild ×6.
   Effekte: kräftige Ladebeleuchtung (blau mit weißem Kern), kurz vor voll Flackern und Blitze entlang der Rohre; beim Schuss
   Mündungsblitz, blaue Ringwolke quer zum Rohr, Entladungen, Rauch; die Granate zieht eine blau glühende Schneise.
   Werte vorläufig (`XL_*`).
@@ -62,6 +62,12 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
 | Fregatte | ca. 150 m | fehlt |
 | Zerstörer | ca. 950 m | vorhanden |
 | Schlachtschiff | ca. 1,8 km | später (Boss) |
+
+## Idee: Fraktionen gegeneinander (Entwickleroption)
+
+Für Testläufe: neben dem Test-Schalter für den Zerstörer ein Schalter „mit allen verfeindet“ – dann beschießen sich die
+Fraktionen auch gegenseitig (z. B. Hegemonie-Zerstörer gegen Kha'ak-Brutschiff). Aufwand: Gegner müssten Ziele unter den
+anderen Gegnern wählen können und gegnerische Geschosse auch Gegner treffen (bisher nur dich, Frachter und Begleiter).
 
 ## Offen
 

@@ -656,12 +656,13 @@ const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
  * Gehäuses (513, 1 150), Gehäuse 63,6 % der Bildbreite – so groß wie der XL-Sockel (≈ 94 m). Rohre bei x 291 / 513 / 734,
  * Mündungen 73,7 % der Bildgröße vor dem Drehpunkt; Leuchtbahnen vom Verschluss (y 1 153) bis kurz vor die Mündung (y 59).
  * Salve: Rohr 1 – 2 – 3 im Abstand XL_GAP, dann XL_RELOAD s Laden ab dem dritten Schuss. Vorher XL_LOCK s Ausrichten mit
- * Ziellinie (Ankündigung). Dreht langsam (XL_TURN rad/s). Ziele: Frachter, Stationen und große eigene Schiffe (L/XL).
+ * Ziellinie (Ankündigung). Dreht langsam (XL_TURN rad/s). Ziele: Frachter, Stationen und eigene Schiffe ab Klasse M (wer
+ * seine Lage wechselt, entkommt dem langsam drehenden Turm); Reichweite ≈ 1,5 km.
  */
 const XL_SQ = 1536, XL_HOUSING = 0.636, XL_LAT = 0.1445, XL_FWD = 0.737;
 const XL_YB = 1153, XL_YM = 59, XL_BARREL_X = [291, 513, 734].map((x) => x + (1536 - 1024) / 2);
 // Schaden bewusst brachial (20-fach gegenüber dem ersten Entwurf): der Zerstörer soll eine echte Gefahr sein
-const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, XL_V = 1000, XL_DMG = 2200, XL_D = 94 * 1.25, XL_RANGE_M = 1000;
+const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, XL_V = 1000, XL_DMG = 2200, XL_D = 94 * 1.25, XL_RANGE_M = 1500;
 /** Schneise der XL-Granate: Nachglühen (s) */
 const XL_TRAIL = 1.1;
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
@@ -6513,10 +6514,10 @@ export class ShooterGame implements MiniGame {
     if (hw) this.hitWard(hw, b.dmg * this.fScale * 0.6, x, y);
   }
 
-  /** Ziel des XL-Drillingsturms: nächstes Großziel in Reichweite – Frachter/Station oder dein Schiff, wenn es L/XL ist */
+  /** Ziel des XL-Drillingsturms: nächstes Ziel in Reichweite – Frachter/Station oder dein Schiff ab Klasse M (Jäger nicht) */
   private xlTarget(e: Enemy, range: number): { x: number; y: number; vx: number; vy: number; r: number } | null {
     let best: { x: number; y: number; vx: number; vy: number; r: number } | null = null, bd = range;
-    if ((this.ship.cls === 'L' || this.ship.cls === 'XL') && this.outcome !== 'player') {
+    if (this.ship.cls !== 'S' && this.outcome !== 'player') {
       const d = Math.hypot(this.px - e.x, this.py - e.y) - this.ship.size * 0.3;
       if (d < bd) { bd = d; best = { x: this.px, y: this.py, vx: this.pvx, vy: this.pvy, r: this.ship.size * 0.12 }; }
     }

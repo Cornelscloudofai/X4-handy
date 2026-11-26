@@ -138,8 +138,8 @@ describe('XL-Drillingsturm', () => {
     const ring = (196 / 1976) * b.r * 4.7 * (1976 / 1983);
     for (const q of t) { expect((2 * q.r) / ring).toBeGreaterThan(1.1); expect((2 * q.r) / ring).toBeLessThan(1.4); }
   });
-  it('schießt nicht auf Jäger und Korvetten (S/M)', () => {
-    const { g, b } = game('dragon');
+  it('schießt nicht auf Jäger (S)', () => {
+    const { g, b } = game('mamba');
     for (const q of g.enemies) if (q.parent === b && q.weapon === 'splitter') q.cd = 1e9;
     for (const q of xl(g, b)) q.xlCharge = 1;
     let shots = 0;
