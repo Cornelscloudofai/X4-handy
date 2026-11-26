@@ -45,9 +45,9 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
   Werte vorläufig (`XL_*`).
 - **L-Zwillingskanone** (`heg-turm-l-ki`): auf den sechs L-Sockeln, Gehäuse ein Viertel größer als der Sockel (≈ 42 m).
   Elektromagnetisch unterstützte Schiffsabwehrkanone gegen Korvetten, Fregatten und Großziele. Zielvorrang: Klasse M,
-  dann L/XL (auch Frachter, Stationen), Jäger nur ohne anderes Ziel. Feuert abwechselnd links – rechts alle 1,4 s ohne Salvenpause (jedes Rohr alle 2,8 s), Geschoss und
-  Mündungsblitz an der jeweiligen Mündung; schnelle, geschlossene Panzerbrechergranate (800), eng begrenzter Einschlag
-  ohne Garbe oder Wolke. Dreht 20°/s, Schaden 100 × Stufe, Reichweite ≈ 1,2 km, Hülle ×7, Schild ×3. Kein Rückstoß,
+  dann L/XL (auch Frachter, Stationen), Jäger nur ohne anderes Ziel. Feuert abwechselnd links – rechts alle 2 s ohne Salvenpause (jedes Rohr alle 4 s), Geschoss und
+  Mündungsblitz an der jeweiligen Mündung; rote Panzerbrechergranate (800) mit Brandspur (gut von Flak und Splittern zu unterscheiden), eng begrenzter Einschlag
+  ohne Garbe oder Wolke. Dreht 20°/s, Schaden 50 × Stufe, Reichweite ≈ 1,2 km, Hülle ×7, Schild ×3. Kein Rückstoß,
   keine Ladebeleuchtung. Werte vorläufig (`LG_*`).
 - **Test-Schalter** im Kampf-Reiter (Entwicklung): „Test: Zerstörer der Hegemonie“ – in jeder Kampfrunde fliegt von
   Anfang an ein Zerstörer heran. Vorschau: `node scripts/kampf-vorschau.mjs bild.png --heg 900 --zoom 0.4`.

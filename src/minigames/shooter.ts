@@ -678,8 +678,10 @@ const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, 
  */
 export const LG_HOUSING = 684 / 1402, LG_POV = (1060 - 701) / 1402;
 const LG_LAT = 54.5 / 1402, LG_FWD = (1060 - 78) / 1402;
-export const LG_GAP = 1.4;
-const LG_TURN = (20 * Math.PI) / 180, LG_V = 800, LG_DMG = 100, LG_D = (70 / 1976) * 950 * 1.25, LG_RANGE_M = 1200;
+export const LG_GAP = 2;
+const LG_TURN = (20 * Math.PI) / 180, LG_V = 800, LG_DMG = 50, LG_D = (70 / 1976) * 950 * 1.25, LG_RANGE_M = 1200;
+/** Brandspur der L-Panzerbrechergranate: Nachglühen (s) – rot, damit sie sich von Flak und Splittern abhebt */
+const AP_TRAIL = 0.5;
 /** Schneise der XL-Granate: Nachglühen (s) */
 const XL_TRAIL = 1.1;
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
@@ -1348,7 +1350,7 @@ export class ShooterGame implements MiniGame {
   /** elektrische Entladungen (Mündungsblitze der XL-Türme): Mittelpunkt, Richtung, Reichweite, Alter */
   private muzzleZaps: { x: number; y: number; a: number; r: number; t: number; max: number }[] = [];
   /** glühende Schneise der XL-Granaten: Abschnitte mit Alter */
-  private xlTrails: { x1: number; y1: number; x2: number; y2: number; t: number }[] = [];
+  private xlTrails: { x1: number; y1: number; x2: number; y2: number; t: number; red?: boolean }[] = [];
   /** Gewitter im Nebel: aufleuchtende Wolkenpartien, manchmal mit sichtbarem Blitz; nächstes Wetterleuchten in stormT s */
   private storms: { x: number; y: number; r: number; t: number; max: number; flick: number; bolt: [number, number][][] | null }[] = [];
   private stormT = 3;
@@ -4902,7 +4904,7 @@ export class ShooterGame implements MiniGame {
     for (const z of this.muzzleZaps) z.t += dt;
     if (this.muzzleZaps.length) this.muzzleZaps = this.muzzleZaps.filter((z) => z.t < z.max);
     for (const q of this.xlTrails) q.t += dt;
-    if (this.xlTrails.length) this.xlTrails = this.xlTrails.filter((q) => q.t < XL_TRAIL);
+    if (this.xlTrails.length) this.xlTrails = this.xlTrails.filter((q) => q.t < (q.red ? AP_TRAIL : XL_TRAIL));
     this.updateField(dt);
     this.updatePickups(dt);
     this.school?.update(dt);
@@ -6671,7 +6673,7 @@ export class ShooterGame implements MiniGame {
   private lgShot(e: Enemy, i: number, range: number): void {
     const a = e.aimA!, size = e.r * (2 / LG_HOUSING), c = Math.cos(a), sn = Math.sin(a);
     const lat = (i ? 1 : -1) * LG_LAT * size, fwd = LG_FWD * size;
-    this.enemyShot(e, a, LG_V, LG_DMG * this.capTurretDmg * this.tHit(e), '#ffe3b8', 2.4, (range + 100) / LG_V);
+    this.enemyShot(e, a, LG_V, LG_DMG * this.capTurretDmg * this.tHit(e), '#ff4a2a', 2.8, (range + 100) / LG_V);
     const b = this.bullets[this.bullets.length - 1];
     b.x += c * fwd - sn * lat; b.y += sn * fwd + c * lat; b.ap = true; b.slug = true;
     e.lgFlash![i] = 0.12;
@@ -6803,6 +6805,15 @@ export class ShooterGame implements MiniGame {
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     for (const q of this.xlTrails) {
+      if (q.red) {
+        // Brandspur: glühend orange am Geschoss, kühlt nach dunkelrot ab, schmal
+        const f = 1 - q.t / AP_TRAIL, a = f * f;
+        ctx.strokeStyle = rgba('#ff3a1a', 0.3 * a); ctx.lineWidth = 5 + 4 * (1 - f);
+        ctx.beginPath(); ctx.moveTo(q.x1, q.y1); ctx.lineTo(q.x2, q.y2); ctx.stroke();
+        ctx.strokeStyle = rgba(f > 0.6 ? '#ffb070' : '#ff5a30', 0.7 * a); ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(q.x1, q.y1); ctx.lineTo(q.x2, q.y2); ctx.stroke();
+        continue;
+      }
       const f = 1 - q.t / XL_TRAIL, a = f * f;
       ctx.strokeStyle = rgba('#3c8cff', 0.22 * a); ctx.lineWidth = 9 + 10 * (1 - f);
       ctx.beginPath(); ctx.moveTo(q.x1, q.y1); ctx.lineTo(q.x2, q.y2); ctx.stroke();
@@ -7014,7 +7025,7 @@ export class ShooterGame implements MiniGame {
       const bx0 = b.x, by0 = b.y;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      if (b.xl && this.xlTrails.length < 600) this.xlTrails.push({ x1: bx0, y1: by0, x2: b.x, y2: b.y, t: 0 });
+      if ((b.xl || b.ap) && this.xlTrails.length < 600) this.xlTrails.push({ x1: bx0, y1: by0, x2: b.x, y2: b.y, t: 0, red: b.ap });
       b.life -= dt;
       if (this.anomaly) { const [ax, ay] = anomalyPull(this.anomaly, b.x, b.y, 0.35); b.vx += ax * dt; b.vy += ay * dt; }
       // Wrack im Weg: Geschoss bleibt hängen (alle Seiten), Flak zerplatzt dort
