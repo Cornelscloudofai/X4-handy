@@ -59,7 +59,7 @@ await page.evaluate(async (ships) => {
     for (let y = 0; y < c.height; y++) for (let xx = 0; xx < c.width; xx++) if (d[(y * c.width + xx) * 4 + 3] > 24) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     s.im = im; s.crop = [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
   }
-  const W = 2400, PAD = 56, S = 2;
+  const W = 2400, PAD = 56, S = 3; // 7200 px breit: Schrift und Schiffe bleiben auch stark vergrößert scharf
   const bands = [
     { title: 'Großkampfschiffe', sub: 'Träger, Zerstörer, Brutschiff', pick: (s) => s.m >= 250, ref: 'Cobra', H: 760, bar: 500 },
     // Korvetten/Fregatten und Jäger im selben Maßstab (group): so sieht man, wie viel größer eine Fregatte ist
