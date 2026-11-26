@@ -672,7 +672,7 @@ function loop(now: number): void {
     s.subKey = sub;
     (s.root.querySelector('.mg-sub') as HTMLElement).innerHTML = `<span class="mg-pts"><b class="num">${fmtPts(g.points())}</b> Punkte</span>
       ${combo > 1 ? `<span class="mg-combo num" style="--k:${Math.min(1, (combo - 1) / 3)}">×${String(combo).replace('.', ',')}</span>` : ''}
-      <span class="grow"></span>${g.goals.length ? `<span class="mg-goalcount">${g.goals.map((q) => `<i class="${q.done ? 'on' : ''}"></i>`).join('')}</span>` : ''}
+      ${g.goals.length ? `<span class="mg-goalcount">${g.goals.map((q) => `<i class="${q.done ? 'on' : ''}"></i>`).join('')}</span>` : ''}
       ${g.mutator ? `<span class="mg-mut">${esc(g.mutator.name)}</span>` : ''}`;
   }
   s.raf = requestAnimationFrame(loop);

@@ -724,11 +724,13 @@ html.calm #banner.show.still .banner-in { animation-duration: 3.2s !important; }
 @keyframes starPop { 0% { transform: scale(0.2) rotate(-40deg); opacity: 0; } 70% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
 html.calm .mg-stars span.on svg { animation: none; }
 .mg-sub { position: absolute; left: 10px; right: 10px; top: calc(var(--safe-top) + 62px); display: flex; align-items: center; gap: 6px; pointer-events: none; font-size: 13px; color: var(--text-2); }
+/* alles links unter dem Modusnamen (Punkte, Serie, Ziele, Mutator) – rechts unter der Leiste bleibt Platz für Radar und Tasten */
+.mg-sub { right: auto; max-width: calc(100% - 20px); flex-wrap: wrap; }
 .mg-sub .grow { flex: 1; }
 .mg-pts b { font-size: 16px; color: var(--text); font-weight: 600; }
 .mg-combo { padding: 1px 8px; border-radius: 999px; font-weight: 700; color: #1a0f00; background: color-mix(in srgb, #ffd27a calc(100% - var(--k) * 60%), #ff7a4a); box-shadow: 0 0 calc(6px + var(--k) * 14px) rgba(255, 181, 71, 0.6); animation: comboPop 0.25s; }
 .mg-mut { padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(182, 144, 255, 0.55); color: #d6c2ff; background: rgba(40, 20, 70, 0.6); font-size: 12px; white-space: nowrap; }
-.mg-goalcount { display: inline-flex; gap: 3px; }
+.mg-goalcount { display: inline-flex; gap: 3px; margin: 0 4px; }
 .mg-goalcount i { width: 8px; height: 8px; border-radius: 2px; transform: rotate(45deg); border: 1px solid rgba(255, 181, 71, 0.6); }
 .mg-goalcount i.on { background: var(--amber); box-shadow: 0 0 6px rgba(255, 181, 71, 0.7); }
 @keyframes comboPop { from { transform: scale(1.25); } }
