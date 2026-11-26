@@ -651,6 +651,31 @@ const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
 const SHARD_LIFE = 0.5;
 const SHARD_CLS: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 1, M: 1 / 3, L: 0.1, XL: 0.1 };
+/** Rauchring: Ballen im Schlauch, Schlauchdicke (Punkte), Neigung (kleiner Blickwinkel von hinten: der Ring steht quer zur
+ * Flugachse und erscheint als flache Ellipse) */
+const RING_N = 100, RING_TUBE = 5.5, RING_TILT = 0.25;
+/** Rauchballen und Glutballen (einmal gezeichnet): Vorlagen für die Rauchringe */
+let puffCache: HTMLCanvasElement | null | undefined, fireCache: HTMLCanvasElement | null | undefined;
+function blob(stops: [number, string][], hx: number): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas'); c.width = c.height = 96;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  const rg = g.createRadialGradient(48 - hx, 48 - hx, 2, 48, 48, 46);
+  for (const [o, col] of stops) rg.addColorStop(o, col);
+  g.fillStyle = rg; g.fillRect(0, 0, 96, 96);
+  return c;
+}
+/** weicher, grau-brauner Ballen, oben links etwas heller (Licht) */
+function smokePuff(): HTMLCanvasElement | null {
+  if (puffCache === undefined) puffCache = blob([[0, 'rgba(178,168,154,1)'], [0.35, 'rgba(120,110,100,0.85)'], [0.7, 'rgba(70,62,56,0.45)'], [1, 'rgba(40,34,30,0)']], 8);
+  return puffCache;
+}
+/** Glut: der junge Ring ist vom Feuer der Detonation angeleuchtet */
+function firePuff(): HTMLCanvasElement | null {
+  if (fireCache === undefined) fireCache = blob([[0, 'rgba(255,200,120,1)'], [0.5, 'rgba(255,120,40,0.5)'], [1, 'rgba(255,80,20,0)']], 0);
+  return fireCache;
+}
 /** Glutfarbe eines Splitters nach Alter 0 … 1: hellgelb → orange → dunkelrot */
 function shardColor(age: number): string {
   const stops: [number, number, number][] = [[255, 240, 180], [255, 150, 60], [170, 40, 25]];
@@ -1194,6 +1219,12 @@ export class ShooterGame implements MiniGame {
   private fogCv: HTMLCanvasElement[] = [];
   /** Lichtblitze für den Nebel: Explosionen erhellen den Dunst um sich (Weltpunkte, Radius, Farbe, Lebensdauer) */
   private flares: { x: number; y: number; r: number; color: string; t: number; max: number }[] = [];
+  /**
+   * Rauchringe der Splittergranaten: ein Ring senkrecht zur Flugachse – von oben (mit kleinem Blickwinkel von hinten)
+   * fast ein Strich quer zur Flugbahn, an den Enden am dichtesten. a = Flugrichtung, R = Radius (wächst), Drift mit dem
+   * Schwung der Granate
+   */
+  private smokeRings: { x: number; y: number; vx: number; vy: number; a: number; t: number; max: number; R: number; seed: number; /** Ballen im Schlauch: Winkel, Versatz quer und längs, Größe, Helligkeit – hinten zuerst sortiert */ pts: [number, number, number, number, number][] }[] = [];
   /** Gewitter im Nebel: aufleuchtende Wolkenpartien, manchmal mit sichtbarem Blitz; nächstes Wetterleuchten in stormT s */
   private storms: { x: number; y: number; r: number; t: number; max: number; flick: number; bolt: [number, number][][] | null }[] = [];
   private stormT = 3;
@@ -4697,6 +4728,9 @@ export class ShooterGame implements MiniGame {
     this.updateDying(dt);
     this.updateBlasts(dt);
     this.updateShots(dt);
+    // Rauchringe: dehnen sich aus, treiben langsamer werdend weiter, verwehen
+    for (const r of this.smokeRings) { r.t += dt; const k = Math.exp(-2.2 * dt); r.vx *= k; r.vy *= k; r.x += r.vx * dt; r.y += r.vy * dt; }
+    if (this.smokeRings.length) this.smokeRings = this.smokeRings.filter((r) => r.t < r.max);
     this.updateField(dt);
     this.updatePickups(dt);
     this.school?.update(dt);
@@ -6394,6 +6428,34 @@ export class ShooterGame implements MiniGame {
     }
   }
 
+  /**
+   * Rauchringe zeichnen: Ballen auf einem Kreis senkrecht zur Flugachse, von oben gesehen – quer zur Flugbahn verteilt
+   * (cos), in Flugrichtung nur ganz flach (kleiner Blickwinkel von hinten, Anteil RING_TILT); die Projektion häuft die Ballen
+   * an den Enden, dort ist der Ring dichter. Anfangs vom Feuer warm angeleuchtet, dann grau; wächst, wird dünner, verweht
+   */
+  private drawSmokeRings(ctx: CanvasRenderingContext2D): void {
+    const puff = smokePuff(), fire = firePuff();
+    if (!puff || !fire) return;
+    ctx.save();
+    for (const r of this.smokeRings) {
+      const q = r.t / r.max, grow = 1 - Math.pow(1 - Math.min(1, r.t / 0.9), 3);
+      const R = r.R * (1 + 1.1 * grow), tube = RING_TUBE * (1 + 0.9 * grow);
+      const fade = q < 0.06 ? q / 0.06 : Math.pow(1 - (q - 0.06) / 0.94, 1.3), warm = Math.max(0, 1 - r.t / 0.3);
+      const ux = Math.cos(r.a), uy = Math.sin(r.a), px = -uy, py = ux;
+      for (const [th, ja, jb, sz, br] of r.pts) {
+        const c = Math.cos(th), sn = Math.sin(th);
+        // im Schlauch versetzt: quer (radial) und flach entlang der Flugachse
+        const rr = R + ja * tube * 0.9, fwd = sn * R * RING_TILT + jb * tube * 0.5;
+        const x = r.x + px * c * rr + ux * fwd, y = r.y + py * c * rr + uy * fwd, s = tube * sz;
+        // vordere Hälfte (zur Kamera) heller, hintere dunkler
+        ctx.globalAlpha = fade * (0.34 + 0.12 * sn + 0.1 * br);
+        ctx.drawImage(puff, x - s, y - s, 2 * s, 2 * s);
+        if (warm > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = fade * warm * 0.3; ctx.drawImage(fire, x - s * 0.7, y - s * 0.7, 1.4 * s, 1.4 * s); ctx.globalCompositeOperation = 'source-over'; }
+      }
+    }
+    ctx.restore();
+  }
+
   /** auf dem Bildschirm (für Klänge) */
   private onScreen(x: number, y: number, m = 40): boolean {
     const sx = (x - this.camX) * this.zoom, sy = (y - this.camY) * this.zoom;
@@ -6424,8 +6486,13 @@ export class ShooterGame implements MiniGame {
     const a0 = Math.atan2(b.vy, b.vx), v = Math.hypot(b.vx, b.vy) * 0.85;
     this.fx.add({ x: b.x, y: b.y, color: '#fff4dc', size: 10, max: 0.06 });
     this.fx.add({ x: b.x, y: b.y, color: '#ff9a3a', size: 11, kind: 'fire', max: 0.26 });
-    this.fx.add({ x: b.x, y: b.y, color: '#ffd08a', size: 15, kind: 'ring', max: 0.2 });
-    this.fx.add({ x: b.x, y: b.y, color: '#37302a', size: 14, kind: 'smoke', solid: true, max: 1.1, drag: 0.6, vx: b.vx * 0.04, vy: b.vy * 0.04 });
+    // Rauchringwolke quer zur Flugbahn (statt eines flachen Kreises)
+    if (this.smokeRings.length < 60) {
+      const pts: [number, number, number, number, number][] = [];
+      for (let i = 0; i < RING_N; i++) pts.push([Math.random() * Math.PI * 2, Math.random() - 0.5, Math.random() - 0.5, 0.6 + Math.random() * 0.7, Math.random()]);
+      pts.sort((p, q) => Math.sin(p[0]) - Math.sin(q[0]));
+      this.smokeRings.push({ x: b.x, y: b.y, vx: b.vx * 0.12, vy: b.vy * 0.12, a: a0, t: 0, max: 1.9 + this.r() * 0.5, R: 22 + this.r() * 5, seed: this.r() * 100, pts });
+    }
     this.fx.burst(b.x, b.y, '#ffcf80', 5, 180, 1.2, 'spark', 0.2);
     if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: b.x, y: b.y, r: 100, color: '#ffa04a', t: 0, max: 0.22 });
     if (this.onScreen(b.x, b.y)) sfx.splitterBurst(this.panAt(b.x));
@@ -7541,6 +7608,7 @@ export class ShooterGame implements MiniGame {
   }
 
   private drawShots(ctx: CanvasRenderingContext2D): void {
+    if (this.smokeRings.length) this.drawSmokeRings(ctx);
     // Bosonenlanze: kurz aufblitzender Strahl (über den Schiffen, wie die Geschosse)
     if (this.rails.length) {
       ctx.save();
