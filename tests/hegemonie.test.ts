@@ -43,6 +43,17 @@ describe('Zerstörer der Hegemonie (Test)', () => {
     expect(g.enemies.find((e) => e === b) && (b as unknown as { shielded: boolean }).shielded).toBe(true);
   });
 
+  it('Zwillingsgeschütz so groß wie sein M-Sockel und wie die M-Türme der Dragon, nicht wie ein L-Turm', () => {
+    const { g, b } = game();
+    const t = g.enemies.find((e) => e.parent === b)!;
+    // Drehsockel im Bild: 2 × Trefferradius; Sockelring im Rumpfbild: 36 von 1 976 px Rumpflänge
+    const disc = 2 * t.r, ring = (36 / 1976) * b.r * 4.7 * (1976 / 1983);
+    expect(disc / ring).toBeGreaterThan(0.85);
+    expect(disc / ring).toBeLessThan(1.15);
+    const d = SHIPS.dragon, dragonDisc = d.size * (d.turretD ?? 0.1);
+    expect(disc / dragonDisc).toBeLessThan(1.4);
+  });
+
   it('ohne Test-Schalter kein Zerstörer', () => {
     store.delete('x4-sektorbau-hegemonie-test');
     const g = new ShooterGame({ level: 3, seed: 4, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, loadout: { ...DEFAULT_LOADOUT, wing: {} } } as never, 'pirate') as unknown as G;

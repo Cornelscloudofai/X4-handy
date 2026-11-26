@@ -636,9 +636,11 @@ const HEG_Z = { w: 793, h: 1983, hull: 1976, len: 950 };
 const HEG_Z_M: [number, number][] = [[307, 233], [484, 233], [282, 327], [512, 327], [221, 538], [571, 538], [300, 1203], [490, 1203], [214, 1286], [579, 1286]];
 export const HEG_Z_L: [number, number][] = [[193, 623], [598, 623], [183, 745], [611, 745], [183, 867], [611, 867]];
 export const HEG_Z_XL: [number, number][] = [[396, 418], [396, 682], [396, 1330]];
-/** Zwillingsgeschütz (M): Drehsockel 40,8 m wie die M-Türme der Klapperschlange; Rohre ±4,4 % der Bildbreite neben der
- * Mitte, Mündungen 65,8 % der Bildgröße vor dem Drehpunkt */
-const HEG_M_D = 40.8, HEG_M_LAT = 0.044, HEG_M_FWD = 0.658;
+/** Zwillingsgeschütz (M): Drehsockel so groß wie der M-Sockel im Bild (36 px Ring bei 1 976 px Rumpf ≈ 17 m) – etwa wie
+ * die M-Türme von Dragon und Cobra (15 m); Rohre ±4,4 % der Bildbreite neben der Mitte, Mündungen 65,8 % der Bildgröße
+ * vor dem Drehpunkt */
+export const HEG_M_D = (36 / 1976) * 950;
+const HEG_M_LAT = 0.044, HEG_M_FWD = 0.658;
 /**
  * Splittergranate (vorläufige Werte): zwei Stöße zu je einem Schuss aus jedem Rohr kurz nacheinander, dann Pause;
  * das schnelle Geschoss zerlegt sich bei SPLIT_AT der Entfernung zum Vorhaltepunkt in SPLIT_N Splitter, die in einem

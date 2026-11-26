@@ -25,7 +25,8 @@ Stand: 26.11.2026. Grundlage: Konzept mit ChatGPT (Hintergrund, Designsprache, Z
   Sockel im Bild (793 × 1 983 px): 3 XL auf der Mittelachse, 6 L an den Seiten, 10 M in fünf Paaren
   (`HEG_Z_*` in `src/minigames/shooter.ts`). Vorerst nur die M-Sockel bestückt.
   Viel Hülle (×1,5 des Bosswerts), mäßiger Schild (×0,6).
-- **Zwillingsgeschütz M** (`heg-turm-zwilling-ki`): Drehsockel 40,8 m wie die M-Türme der Klapperschlange.
+- **Zwillingsgeschütz M** (`heg-turm-zwilling-ki`): Drehsockel so groß wie der M-Sockel im Bild (≈ 17 m), etwa wie die
+  M-Türme von Dragon und Cobra (15 m). (Die Klapperschlange hat 41 m große M-Türme – größer als alle anderen.)
   Feuer: Stoß – Stoß – Pause (je Stoß ein Schuss aus jedem Rohr). Splittergranate: zerlegt sich bei 85 % der Entfernung
   zum Vorhaltepunkt in 8 Splitter im Kegel ±10°, die nach vorn weiterfliegen. Gegen Jäger voll, M ein Drittel, L kaum.
   Werte vorläufig (`SPLIT_*`).
