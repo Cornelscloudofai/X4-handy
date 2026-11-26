@@ -18,6 +18,11 @@ Stand: 26.11.2026. Grundlage: Konzept mit ChatGPT (Hintergrund, Designsprache, Z
 - Bilder: fast senkrechte Vogelperspektive mit kleinem Blickwinkel von hinten, Bug oben, freigestellt; Rümpfe ohne
   Türme (Sockel frei), Türme einzeln mit Rohren nach oben.
 
+## Grundsatz zur Stärke
+
+Der Zerstörer soll schwer und mächtig sein – eine echte Gefahr. Verliert der Autopilot oder ein Testlauf gegen ihn, ist das
+in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Gegenmittel werden später gemeinsam festgelegt.
+
 ## Im Spiel umgesetzt
 
 - **Zerstörer** (`heg-zerstoerer-ki`, Original in `grafik-vorrat/hegemonie/`): etwa 950 m – aus den M-Sockeln
@@ -30,6 +35,11 @@ Stand: 26.11.2026. Grundlage: Konzept mit ChatGPT (Hintergrund, Designsprache, Z
   Feuer: Stoß – Stoß – Pause (je Stoß ein Schuss aus jedem Rohr). Splittergranate: zerlegt sich bei 85 % der Entfernung
   zum Vorhaltepunkt in 8 Splitter im Kegel ±10°, die nach vorn weiterfliegen. Gegen Jäger voll, M ein Drittel, L kaum.
   Werte vorläufig (`SPLIT_*`).
+- **XL-Drillingsturm** (`heg-turm-xl-ki`, Leuchtmaske `heg-turm-xl-glow`, getrennt mit `scripts/split-glow.mjs`):
+  auf den drei XL-Sockeln, Gehäuse so groß wie der Sockel (≈ 94 m). Lädt gemeinsam 12 s (blau-weißes Licht wächst je Rohr
+  vom Verschluss zur Mündung), dreht langsam (8°/s), richtet sich 1 s mit Ziellinie aus, feuert Rohr 1 – 2 – 3 im
+  Abstand 0,4 s. Schnelle schwere Granate (1000, Mass Driver 653), Schaden 110 × Stufe, Reichweite ≈ 1 km. Ziele: Frachter,
+  Stationen, L/XL-Schiffe – nicht auf S/M. Werte vorläufig (`XL_*`).
 - **Test-Schalter** im Kampf-Reiter (Entwicklung): „Test: Zerstörer der Hegemonie“ – in jeder Kampfrunde fliegt von
   Anfang an ein Zerstörer heran. Vorschau: `node scripts/kampf-vorschau.mjs bild.png --heg 900 --zoom 0.4`.
 
