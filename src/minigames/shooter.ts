@@ -678,8 +678,8 @@ const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, 
  */
 export const LG_HOUSING = 684 / 1402, LG_POV = (1060 - 701) / 1402;
 const LG_LAT = 54.5 / 1402, LG_FWD = (1060 - 78) / 1402;
-export const LG_GAP = 0.8;
-const LG_TURN = (20 * Math.PI) / 180, LG_V = 1300, LG_DMG = 200, LG_D = (70 / 1976) * 950 * 1.25, LG_RANGE_M = 1200;
+export const LG_GAP = 1.4;
+const LG_TURN = (20 * Math.PI) / 180, LG_V = 800, LG_DMG = 100, LG_D = (70 / 1976) * 950 * 1.25, LG_RANGE_M = 1200;
 /** Schneise der XL-Granate: Nachglühen (s) */
 const XL_TRAIL = 1.1;
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */

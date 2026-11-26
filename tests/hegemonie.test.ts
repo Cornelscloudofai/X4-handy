@@ -222,7 +222,6 @@ describe('L-Zwillingskanone', () => {
     for (const x of gaps.slice(2)) expect(x).toBeCloseTo(LG_GAP, 1);
     // Rohre wechseln sich ab
     for (let i = 1; i < shots.length; i++) expect(Math.sign(shots[i].lat)).toBe(-Math.sign(shots[i - 1].lat));
-    // Schaden je Schuss: Grundwert 200 (vorläufig)
     // aus der Mündung: weit vor dem Drehpunkt
     expect(shots.every((s) => Math.abs(s.lat) > t.r * 0.05)).toBe(true);
   });
