@@ -32,6 +32,9 @@
 - Waffen-Ausgleich messen mit `node scripts/balance.mjs` (feste Testlagen, 12 Zufallsstarts parallel auf allen Kernen,
   Mittel und Spanne, wenige Sekunden). Vorher/Nachher gepaart mit denselben Starts; Ergebnis immer mit Spanne berichten.
 - Screenshots vom Kampf für den Nutzer immer mit der Zwei-Stick-Steuerung (die nutzt er meist): `node scripts/kampf-vorschau.mjs <bild.png> [--quer] [--ship …] [--weapon …]` (setzt sie selbst und hält beide Sticks gedrückt, damit sie zu sehen sind; vorher `npx vite build`).
+- **Sparsam mit dem Kontingent:** Bilder nur ansehen, wenn der Nutzer etwas beurteilen soll oder ein Aussehen wirklich geprüft
+  werden muss (dann eines, keine Variantenreihen); gezielt suchen und nur nötige Zeilen lesen; Artifact einmal am Ende einer
+  Aufgabe aktualisieren; Antworten knapp (Ergebnis und Wichtiges), keine Zwischenmeldungen zu kleinen Schritten.
 - Bild-Prompts immer als Codeblock (```text … ```) ausgeben, damit sie per Kopieren-Knopf übernommen werden können – nicht als Zitat.
 - **Texte glaubwürdig, nicht generisch.** Story, Beschreibungen, Kapitel, Fundstücke: konkret und aus der Spielwelt heraus
   (Logbucheinträge, Funksprüche, Notizen, Namen, Zahlen, kleine Details). Keine Werbe- und KI-Floskeln wie „am Rand des
