@@ -297,7 +297,8 @@ export const SHIPS: Record<ShipId, ShipDef> = {
     gunWidth: 18, gunPos: fromImage(RS_IMG, RS_SIZE, [[572, 0], [600, 0], [653, 0], [681, 0]]).map(([x]) => x), gunFwd: 0.47,
     // M-Türme auf den runden Luken der Panzerplatten
     turrets: fromImage(RS_IMG, RS_SIZE, [[565, 307], [689, 307], [565, 387], [689, 387], [557, 580], [697, 580], [549, 692], [705, 692], [541, 792], [713, 792], [538, 919], [716, 919]]),
-    turretD: 0.045,
+    // M-Türme so groß wie die runden Luken im Bild (21 von 1 254 px ≈ 15 m, wie bei Dragon und Cobra)
+    turretD: 21 / 1254,
     // drei Turmgruppen zu je vier: Bug, Mitte, Heck
     turretGroup: [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2], groups: [{ name: 'Bugtürme', kind: 'M' }, { name: 'Mittschiffs', kind: 'M' }, { name: 'Hecktürme', kind: 'M' }],
     lMounts: lMounts(RS_IMG, [

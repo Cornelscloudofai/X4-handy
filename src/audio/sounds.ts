@@ -321,6 +321,27 @@ function enemyShot(pan = 0): void {
   });
 }
 
+/**
+ * Zwillingsgeschütz der Hegemonie: dumpfer Kanonenschlag aus der Ferne – Bolzen-Aufnahme (Sonniss) tief gedreht, mit Raum
+ * und kurzem Bassschlag; eigener Mindestabstand, damit zehn Geschütze nicht zum Dauerrattern werden
+ */
+function splitterShot(pan = 0): void {
+  if (!gate('splitter', 140)) return;
+  play('sfx', { pan: pan * 0.7, verb: 0.24, gain: 0.85 }, (g, o, t) => {
+    const name = variant('splitter', GUNS.bolzen.s);
+    if (!sample(g, weaponEq(g, o, 4, 0.45), name, { t, rate: vary(0.66, 0.06), gain: 0.3 * norm(name), dur: 0.9 })) return;
+    weight(g, o, t, 0.12, 55, 0.12);
+  });
+}
+/** Splittergranate zerlegt sich: kurzes, trockenes Krachen – kleine Explosion (Sonniss) hochgedreht und leise */
+function splitterBurst(pan = 0): void {
+  if (!gate('splitBurst', 100)) return;
+  play('sfx', { pan: pan * 0.7, verb: 0.2, gain: 0.7 }, (g, o, t) => {
+    const name = variant('splitBurst', BOOMS.s);
+    sample(g, weaponEq(g, o, 2, 0.4), name, { t, rate: vary(1.4, 0.08), gain: 0.14 * norm(name), dur: 0.45 });
+  });
+}
+
 /** Rakete startet */
 /** Varianten der übrigen Kampf- und Werkzeugklänge (Sonniss GDC, siehe QUELLEN.md) */
 export const VARIANTS = {
@@ -574,7 +595,7 @@ function place(): void {
 export const sfx = {
   tap, open, close, toggle, deny, tick,
   coin, build, buildDone, success, chapter, warn, ping, launch, dock, accept,
-  shot, turretShot, heavyShot, enemyShot, missile, missileWarn, hit, zap, kyon, phase, explosion, thunder, shield, hull, alarm, boss, pickup, fail,
+  shot, turretShot, heavyShot, enemyShot, splitterShot, splitterBurst, missile, missileWarn, hit, zap, kyon, phase, explosion, thunder, shield, hull, alarm, boss, pickup, fail,
   crack, crystal, valve, flow, boost, chime, thrust, place,
 };
 
@@ -646,6 +667,8 @@ export const SOUND_DEMO: [string, () => void][] = [
   // weitere Schüsse zum Vergleich (gespielt wie der Puls-Laser) – Nummer sagen, für welche Waffe er passen soll
   ...each('Schuss K', KD.schuss, () => shot('puls'), 1, ''),
   ...each('Gegnerschuss', VARIANTS.gegner, () => enemyShot()),
+  ...each('Zwillingsgeschütz', GUNS.bolzen.s, () => splitterShot()),
+  ...each('Splittergranate', BOOMS.s, () => splitterBurst()),
   ...each('Rakete', VARIANTS.rakete, missile),
   ...each('Treffer', VARIANTS.treffer, () => hit()),
   ...each('Schild', VARIANTS.schild, shield),

@@ -648,7 +648,16 @@ const HEG_M_LAT = 0.044, HEG_M_FWD = 0.658;
  */
 const SPLIT_V = 900, SPLIT_AT = 0.85, SPLIT_N = 8, SPLIT_CONE = 0.17, SPLIT_DMG = 9, SPLIT_PAUSE = 2.5;
 const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
+/** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
+const SHARD_LIFE = 0.5;
 const SHARD_CLS: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 1, M: 1 / 3, L: 0.1, XL: 0.1 };
+/** Glutfarbe eines Splitters nach Alter 0 … 1: hellgelb → orange → dunkelrot */
+function shardColor(age: number): string {
+  const stops: [number, number, number][] = [[255, 240, 180], [255, 150, 60], [170, 40, 25]];
+  const f = clamp(age, 0, 1) * 2, i = Math.min(1, Math.floor(f)), t = f - i, [a, b] = [stops[i], stops[i + 1]];
+  const h = (k: number) => Math.round(a[k] + (b[k] - a[k]) * t).toString(16).padStart(2, '0');
+  return `#${h(0)}${h(1)}${h(2)}`;
+}
 const ORDER_KEY = 'x4-sektorbau-turmbefehle';
 /** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
 const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', p: 'M', boss: 'L', turret: 'L', ks: 'S', kj: 'S', ka: 'M', kk: 'M', cargo: 'L' };
@@ -6373,8 +6382,7 @@ export class ShooterGame implements MiniGame {
       const lat = (i % 2 ? 1 : -1) * HEG_M_LAT * size, fwd = HEG_M_FWD * size;
       pb.x += c * fwd - sn * lat; pb.y += sn * fwd + c * lat;
       pb.split = Math.max(0.05, (d * SPLIT_AT - fwd) / SPLIT_V);
-      // Mündungsfeuer
-      this.fx.add({ x: pb.x, y: pb.y, color: '#ffe0a0', size: 5, max: 0.07 });
+      this.splitterMuzzle(pb.x, pb.y, a, size);
       e.salvo!--;
       e.salvoT = SPLIT_SEQ[SPLIT_SEQ.length - e.salvo!] ?? 0;
       return;
@@ -6386,14 +6394,44 @@ export class ShooterGame implements MiniGame {
     }
   }
 
-  /** Splittergranate zerlegt sich: Splitter fliegen im Kegel nach vorn weiter (etwas langsamer, kurzlebig) */
+  /** auf dem Bildschirm (für Klänge) */
+  private onScreen(x: number, y: number, m = 40): boolean {
+    const sx = (x - this.camX) * this.zoom, sy = (y - this.camY) * this.zoom;
+    return sx > -m && sx < this.w + m && sy > -m && sy < this.h + m;
+  }
+
+  /**
+   * Mündungsfeuer des Zwillingsgeschützes: Blitz und kleine Flamme an der Mündung, dazu je Seite ein kurzer Gasstoß quer
+   * aus den Öffnungen der Mündungsbremse und ein feiner Rauchpuff
+   */
+  private splitterMuzzle(x: number, y: number, a: number, size: number): void {
+    const c = Math.cos(a), sn = Math.sin(a), k = Math.max(0.6, size / 20);
+    this.fx.add({ x, y, color: '#fff2d0', size: 5 * k, max: 0.05 });
+    this.fx.add({ x: x + c * 3 * k, y: y + sn * 3 * k, color: '#ffb050', size: 4 * k, kind: 'fire', max: 0.1 });
+    for (const side of [-1, 1]) for (let q = 0; q < 3; q++) {
+      const v = 120 + Math.random() * 80;
+      this.fx.add({ x, y, color: q ? '#ffd9a0' : '#fff0d0', size: 1.3, kind: 'spark', vx: -sn * side * v + c * 50, vy: c * side * v + sn * 50, max: 0.1 + Math.random() * 0.05 });
+    }
+    this.fx.add({ x: x + c * 4 * k, y: y + sn * 4 * k, color: '#4a443e', size: 5 * k, kind: 'smoke', max: 0.55, drag: 0.8, vx: c * 25, vy: sn * 25 });
+    if (this.onScreen(x, y)) sfx.splitterShot(this.panAt(x));
+  }
+
+  /**
+   * Splittergranate zerlegt sich: kleine Detonation (Blitz, Feuerkugel, Druckring, dunkler Rauchpuff, der kurz stehen bleibt –
+   * deutlich kleiner als die Flakwolke), im Nebel ein kurzer Lichtschein; die Splitter fliegen im Kegel nach vorn weiter
+   */
   private splitShell(b: Bullet): void {
     const a0 = Math.atan2(b.vy, b.vx), v = Math.hypot(b.vx, b.vy) * 0.85;
-    this.fx.add({ x: b.x, y: b.y, color: '#fff0c8', size: 7, max: 0.06 });
-    this.fx.burst(b.x, b.y, '#ffcf80', 4, 160, 1.2, 'spark', 0.18);
+    this.fx.add({ x: b.x, y: b.y, color: '#fff4dc', size: 10, max: 0.06 });
+    this.fx.add({ x: b.x, y: b.y, color: '#ff9a3a', size: 11, kind: 'fire', max: 0.26 });
+    this.fx.add({ x: b.x, y: b.y, color: '#ffd08a', size: 15, kind: 'ring', max: 0.2 });
+    this.fx.add({ x: b.x, y: b.y, color: '#37302a', size: 14, kind: 'smoke', solid: true, max: 1.1, drag: 0.6, vx: b.vx * 0.04, vy: b.vy * 0.04 });
+    this.fx.burst(b.x, b.y, '#ffcf80', 5, 180, 1.2, 'spark', 0.2);
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: b.x, y: b.y, r: 100, color: '#ffa04a', t: 0, max: 0.22 });
+    if (this.onScreen(b.x, b.y)) sfx.splitterBurst(this.panAt(b.x));
     for (let q = 0; q < SPLIT_N; q++) {
       const a = a0 + ((q + 0.5) / SPLIT_N - 0.5) * 2 * SPLIT_CONE + (this.r() - 0.5) * 0.04, vv = v * (0.92 + this.r() * 0.16);
-      this.bullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * vv, vy: Math.sin(a) * vv, dmg: b.dmg / SPLIT_N, from: 'e', life: 0.5, color: '#ffc46a', w: 1.3, pierce: 0, shard: true });
+      this.bullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * vv, vy: Math.sin(a) * vv, dmg: b.dmg / SPLIT_N, from: 'e', life: SHARD_LIFE * (0.85 + this.r() * 0.3), color: '#ffc46a', w: 1.3, pierce: 0, shard: true });
     }
   }
 
@@ -6542,7 +6580,13 @@ export class ShooterGame implements MiniGame {
           continue;
         }
       } else {
-        if (this.onHull(b.x, b.y, 0)) { this.damagePlayer(b.dmg * (b.shard ? SHARD_CLS[this.ship.cls] : 1), 1, [b.x, b.y]); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
+        if (this.onHull(b.x, b.y, 0)) {
+          this.damagePlayer(b.dmg * (b.shard ? SHARD_CLS[this.ship.cls] : 1), 1, [b.x, b.y]);
+          this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2);
+          // Splitter: kleiner Funkenregen in Flugrichtung
+          if (b.shard) { const v = Math.hypot(b.vx, b.vy) || 1; for (let q = 0; q < 3; q++) this.fx.add({ x: b.x, y: b.y, color: '#ffe2b0', size: 1.2, kind: 'spark', vx: (b.vx / v) * 90 + (Math.random() - 0.5) * 140, vy: (b.vy / v) * 90 + (Math.random() - 0.5) * 140, max: 0.15 }); }
+          continue;
+        }
         const hitW = this.wingAt(b.x, b.y);
         if (hitW) { this.damageWing(hitW, b.dmg, b.x, b.y); continue; }
         const hw = this.wardAt(b.x, b.y);
@@ -7589,6 +7633,29 @@ export class ShooterGame implements MiniGame {
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.w * 2.2, 0, Math.PI * 2);
         ctx.fill();
+        continue;
+      }
+      if (b.split != null) {
+        // Splittergranate: heller Kopf mit warmem Schweif – man sieht die Doppelstöße kommen, bevor sie zerplatzen
+        const v = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / v, uy = b.vy / v, L = 30;
+        const g = ctx.createLinearGradient(b.x, b.y, b.x - ux * L, b.y - uy * L);
+        g.addColorStop(0, rgba('#ffd27a', 0.55)); g.addColorStop(1, rgba('#ff8a3a', 0));
+        ctx.strokeStyle = g; ctx.lineWidth = b.w * 2.6;
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - ux * L, b.y - uy * L); ctx.stroke();
+        ctx.fillStyle = rgba('#ffd28a', 0.4);
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.w * 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff3d6'; ctx.lineWidth = b.w;
+        ctx.beginPath(); ctx.moveTo(b.x + ux * 2, b.y + uy * 2); ctx.lineTo(b.x - ux * 9, b.y - uy * 9); ctx.stroke();
+        continue;
+      }
+      if (b.shard) {
+        // Splitter: glühender Faden, der im Flug abkühlt (hellgelb → orange → dunkelrot) und verblasst
+        const v = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / v, uy = b.vy / v, age = clamp(1 - b.life / SHARD_LIFE, 0, 1);
+        const col = shardColor(age), a = 1 - age * age, L = 10 + 12 * (1 - age);
+        const g = ctx.createLinearGradient(b.x, b.y, b.x - ux * L, b.y - uy * L);
+        g.addColorStop(0, rgba(col, 0.95 * a)); g.addColorStop(1, rgba(col, 0));
+        ctx.strokeStyle = g; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - ux * L, b.y - uy * L); ctx.stroke();
         continue;
       }
       const v = Math.hypot(b.vx, b.vy) || 1, L = b.pflak ? 22 : b.from === 'p' ? 12 : 8;
