@@ -177,7 +177,10 @@ interface Enemy {
   parent?: Enemy; ox?: number; oy?: number;
   /** Xenon-Türme: Laserstrahl (zielt, lädt auf, feuert einen Strahl) oder dicke Plasmakugeln; Kha'ak-Brutkammer */
   /** Turmart; m = mittlerer Turm (Laser-Repeater, Zweiersalven) an Xenon K und P, flak = Vierlings-Flak des Piratenträgers */
-  weapon?: 'laser' | 'plasma' | 'brut' | 'm' | 'flak' | 'splitter';
+  weapon?: 'laser' | 'plasma' | 'brut' | 'm' | 'flak' | 'splitter' | 'xl';
+  /** XL-Drillingsturm: Richtung des Turms (dreht langsam), Ladung 0 … 1, schon gefeuerte Rohre der Salve, Zielphase (s),
+   * Zeit seit Salvenbeginn, Mündungsblitz je Rohr */
+  aimA?: number; xlCharge?: number; xlFired?: number; xlLock?: number; xlT?: number; xlFlash?: number[];
   /** Bauart eines Großkampfschiffs aus einer anderen Fraktion (heg: Zerstörer der Hegemonie, Test) */
   model?: 'heg';
   /** laufende Salve eines Turms: noch abzugebende Schüsse, Zeit bis zum nächsten */
@@ -313,7 +316,7 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number; /** Wirkung auf Schild und Hülle */ kS?: number; kH?: number; /** Splittergranate: zerlegt sich nach so vielen Sekunden in eine Garbe */ split?: number; /** Splitter der Garbe: Wirkung nach Größe des Getroffenen (Jäger voll, M ein Drittel, L kaum) */ shard?: boolean; /** Schrot: Startpunkt und Reichweite (Schaden fällt mit der Entfernung), Wucht */ x0?: number; y0?: number; reach?: number; knock?: number }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number; /** Wirkung auf Schild und Hülle */ kS?: number; kH?: number; /** Splittergranate: zerlegt sich nach so vielen Sekunden in eine Garbe */ split?: number; /** Granate des XL-Drillingsturms */ xl?: boolean; /** Splitter der Garbe: Wirkung nach Größe des Getroffenen (Jäger voll, M ein Drittel, L kaum) */ shard?: boolean; /** Schrot: Startpunkt und Reichweite (Schaden fällt mit der Entfernung), Wucht */ x0?: number; y0?: number; reach?: number; knock?: number }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -648,9 +651,48 @@ const HEG_M_LAT = 0.044, HEG_M_FWD = 0.658;
  */
 const SPLIT_V = 900, SPLIT_AT = 0.85, SPLIT_N = 8, SPLIT_CONE = 0.17, SPLIT_DMG = 9, SPLIT_PAUSE = 2.5;
 const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
+/**
+ * XL-Drillingsturm (vorläufige Testwerte): Bild 1 024 × 1 536 (quadratisch 1 536 aufgefüllt), Drehpunkt in der Mitte des
+ * Gehäuses (513, 1 150), Gehäuse 63,6 % der Bildbreite – so groß wie der XL-Sockel (≈ 94 m). Rohre bei x 291 / 513 / 734,
+ * Mündungen 73,7 % der Bildgröße vor dem Drehpunkt; Leuchtbahnen vom Verschluss (y 1 153) bis kurz vor die Mündung (y 59).
+ * Salve: Rohr 1 – 2 – 3 im Abstand XL_GAP, dann XL_RELOAD s Laden ab dem dritten Schuss. Vorher XL_LOCK s Ausrichten mit
+ * Ziellinie (Ankündigung). Dreht langsam (XL_TURN rad/s). Ziele: Frachter, Stationen und große eigene Schiffe (L/XL).
+ */
+const XL_SQ = 1536, XL_HOUSING = 0.636, XL_LAT = 0.1445, XL_FWD = 0.737;
+const XL_YB = 1153, XL_YM = 59, XL_BARREL_X = [291, 513, 734].map((x) => x + (1536 - 1024) / 2);
+const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, XL_V = 1000, XL_DMG = 110, XL_D = 94, XL_RANGE_M = 1000;
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
 const SHARD_LIFE = 0.5;
 const SHARD_CLS: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 1, M: 1 / 3, L: 0.1, XL: 0.1 };
+/**
+ * Leuchtmaske des XL-Drillingsturms (heg-turm-xl-glow) in eingefärbte Teile zerlegt – je Rohr ein Streifen (blau und weiß
+ * für den Schussimpuls) und das Gehäuse; einmal erzeugt, sobald das Bild geladen ist
+ */
+type XlPart = { c: HTMLCanvasElement; w: HTMLCanvasElement; x0: number; y0: number; y1: number };
+let xlTexCache: { barrels: XlPart[]; side: XlPart } | null = null;
+function xlGlowTex(): { barrels: XlPart[]; side: XlPart } | null {
+  if (xlTexCache) return xlTexCache;
+  const img = projectileSprite('heg-turm-xl-glow');
+  if (!img || !img.complete || !img.naturalWidth || typeof document === 'undefined') return null;
+  const S = img.naturalWidth / XL_SQ;
+  const part = (x0: number, x1: number, y0: number, y1: number, clip?: (x: number) => boolean): XlPart => {
+    const W = Math.ceil(x1 - x0), H = Math.ceil(y1 - y0);
+    const mk = (col: string) => {
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const g = c.getContext('2d')!;
+      g.drawImage(img, x0 * S, y0 * S, W * S, H * S, 0, 0, W, H);
+      if (clip) { g.globalCompositeOperation = 'destination-out'; for (let x = 0; x < W; x++) if (!clip(x0 + x)) g.fillRect(x, 0, 1, H); }
+      g.globalCompositeOperation = 'source-in'; g.fillStyle = col; g.fillRect(0, 0, W, H);
+      return c;
+    };
+    return { c: mk('#6fc4ff'), w: mk('#eef8ff'), x0, y0, y1 };
+  };
+  const barrels = XL_BARREL_X.map((x) => part(x - 75, x + 75, XL_YM - 10, XL_YB + 10));
+  // Gehäuse: die beiden kleinen Leuchtflächen links und rechts (außerhalb der Rohrstreifen)
+  const side = part(256 + 140, 256 + 890, 790, 860, (x) => x < 256 + 215 || x > 256 + 810);
+  xlTexCache = { barrels, side };
+  return xlTexCache;
+}
 /** weicher Übergang 0 → 1 zwischen e0 und e1 */
 function smooth(e0: number, e1: number, x: number): number { const k = clamp((x - e0) / (e1 - e0), 0, 1); return k * k * (3 - 2 * k); }
 /**
@@ -3995,6 +4037,17 @@ export class ShooterGame implements MiniGame {
       t.cd = 1 + this.r() * 2;
       this.enemies.push(t);
     }
+    // XL-Drillingstürme auf den drei großen Sockeln der Mittelachse (vorn zuerst – der hintere liegt beim Zeichnen oben)
+    const txl = (sc === 'bisher' ? 40 : scaledLength(XL_D, sc)) / 2;
+    for (const [ix, iy] of HEG_Z_XL) {
+      const ox = (ix - HEG_Z.w / 2) * k, oy = (iy - HEG_Z.h / 2) * k;
+      const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
+      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = 'xl'; t.r = txl;
+      t.hp *= 6; t.max *= 6; t.sh *= 3; t.shMax *= 3;
+      // Rohre ab Werk Richtung Bug, Ladung versetzt (nicht alle drei Türme zugleich)
+      t.aimA = b.ang; t.xlCharge = 0.4 + this.r() * 0.5; t.xlFired = 0; t.xlFlash = [0, 0, 0];
+      this.enemies.push(t);
+    }
     b.shielded = true;
     this.floats.add(this.px, this.py - 60, 'Test: Zerstörer der Hegemonie im Anflug', '#ffb3a0', 15);
   }
@@ -4139,6 +4192,8 @@ export class ShooterGame implements MiniGame {
     const len = (e.parent?.r ?? 0) * 4.6;
     if (e.weapon === 'plasma') return Math.max(PLASMA_RANGE, len * 1.05 * RANGE_X);
     if (e.weapon === 'flak') return Math.max(TURRET_RANGE + 60, len * 1.05 * RANGE_X);
+    // XL-Drillingsturm: etwa 1 km
+    if (e.weapon === 'xl') { const sc = sizeScale(); return sc === 'bisher' ? PLASMA_RANGE * 1.4 : scaledLength(XL_RANGE_M, sc); }
     // Zwillingsgeschütz: Abwehr gegen Jäger, etwas weiter als die übrigen M-Türme
     if (e.weapon === 'splitter') return Math.max(TURRET_RANGE + 80, len * 0.5 * RANGE_X);
     return Math.max(TURRET_RANGE, len * 0.4 * RANGE_X);
@@ -5735,6 +5790,7 @@ export class ShooterGame implements MiniGame {
           continue;
         }
         if (e.weapon === 'splitter') { this.fireSplitter(e, tx, ty, range, !!tg, dt); continue; }
+        if (e.weapon === 'xl') { this.fireXl(e, range, dt); continue; }
         if (e.weapon === 'm' || e.weapon === 'flak') {
           // Salventürme: Repeater zwei, Flak vier Schüsse kurz nacheinander aus den Läufen, dann Pause
           const flak = e.weapon === 'flak', a2 = Math.atan2(ty - e.y, tx - e.x);
@@ -6423,6 +6479,81 @@ export class ShooterGame implements MiniGame {
     if (hw) this.hitWard(hw, b.dmg * this.fScale * 0.6, x, y);
   }
 
+  /** Ziel des XL-Drillingsturms: nächstes Großziel in Reichweite – Frachter/Station oder dein Schiff, wenn es L/XL ist */
+  private xlTarget(e: Enemy, range: number): { x: number; y: number; vx: number; vy: number; r: number } | null {
+    let best: { x: number; y: number; vx: number; vy: number; r: number } | null = null, bd = range;
+    if ((this.ship.cls === 'L' || this.ship.cls === 'XL') && this.outcome !== 'player') {
+      const d = Math.hypot(this.px - e.x, this.py - e.y) - this.ship.size * 0.3;
+      if (d < bd) { bd = d; best = { x: this.px, y: this.py, vx: this.pvx, vy: this.pvy, r: this.ship.size * 0.12 }; }
+    }
+    for (const w of this.liveWards) {
+      const x = this.wx(w), y = this.wy(w), d = Math.hypot(x - e.x, y - e.y) - (w.kind === 'station' ? STATION_R : 40);
+      if (d < bd) { bd = d; best = { x, y, vx: 0, vy: 0, r: w.kind === 'station' ? STATION_R * 0.6 : 25 }; }
+    }
+    return best;
+  }
+
+  /**
+   * XL-Drillingsturm: lädt gemeinsam (XL_RELOAD s), dreht langsam auf das Ziel (mit Vorhalt), richtet sich XL_LOCK s fest aus
+   * (Ziellinie als Ankündigung) und feuert Rohr 1 – 2 – 3 im Abstand XL_GAP entlang dieser Richtung
+   */
+  private fireXl(e: Enemy, range: number, dt: number): void {
+    const p = e.parent!;
+    e.aimA ??= p.ang; e.xlFlash ??= [0, 0, 0]; e.xlCharge ??= 0; e.xlFired ??= 0;
+    for (let i = 0; i < 3; i++) e.xlFlash[i] = Math.max(0, e.xlFlash[i] - dt);
+    // Salve läuft
+    if (e.xlT != null) {
+      e.xlT += dt;
+      while (e.xlFired < 3 && e.xlT >= e.xlFired * XL_GAP) { this.xlShot(e, e.xlFired, range); e.xlFired++; }
+      if (e.xlFired >= 3) { e.xlT = undefined; e.xlCharge = 0; }
+      return;
+    }
+    // Ausrichten mit Ziellinie: die Richtung steht fest – wer jetzt ausweicht, entgeht der Salve
+    if (e.xlLock != null) {
+      e.xlLock -= dt;
+      if (e.xlLock <= 0) { e.xlLock = undefined; e.xlT = 0; e.xlFired = 0; }
+      return;
+    }
+    if (e.xlCharge < 1) { e.xlCharge = Math.min(1, e.xlCharge + dt / XL_RELOAD); if (e.xlCharge >= 1) e.xlFired = 0; }
+    const tg = this.xlTarget(e, range);
+    // ohne Ziel langsam zurück Richtung Bug
+    const want = tg ? (() => { const lt = Math.hypot(tg.x - e.x, tg.y - e.y) / XL_V; return Math.atan2(tg.y + tg.vy * lt - e.y, tg.x + tg.vx * lt - e.x); })() : p.ang;
+    e.aimA = turnTo(e.aimA, want, XL_TURN * dt);
+    // ausgerichtet, sobald die Rohre auf das Ziel zeigen (Toleranz nach Zielgröße)
+    if (tg && e.xlCharge >= 1 && Math.abs(wrapA(want - e.aimA)) < Math.max(0.02, Math.atan2(tg.r, Math.hypot(tg.x - e.x, tg.y - e.y)))) e.xlLock = XL_LOCK;
+  }
+
+  /** ein Schuss des XL-Drillingsturms aus Rohr i: schnelle, schwere Granate mit blauem Schweif, Mündungsblitz */
+  private xlShot(e: Enemy, i: number, range: number): void {
+    const a = e.aimA!, size = e.r * (2 / XL_HOUSING), c = Math.cos(a), sn = Math.sin(a);
+    const lat = (i - 1) * XL_LAT * size, fwd = XL_FWD * size;
+    this.enemyShot(e, a, XL_V, XL_DMG * this.capTurretDmg * this.tHit(e), '#a8dcff', 3.2, (range + 120) / XL_V);
+    const b = this.bullets[this.bullets.length - 1];
+    b.x += c * fwd - sn * lat; b.y += sn * fwd + c * lat; b.xl = true; b.slug = true;
+    e.xlFlash![i] = 0.28;
+    // Mündung: gleißender blau-weißer Blitz, kurze Druckwelle, Rauch
+    this.fx.add({ x: b.x, y: b.y, color: '#eaf6ff', size: 16, max: 0.07 });
+    this.fx.add({ x: b.x + c * 6, y: b.y + sn * 6, color: '#7fc6ff', size: 12, kind: 'fire', max: 0.16 });
+    this.fx.burst(b.x, b.y, '#bfe6ff', 6, 220, 1.1, 'spark', 0.2);
+    this.fx.add({ x: b.x + c * 10, y: b.y + sn * 10, color: '#3c4048', size: 14, kind: 'smoke', max: 1.2, drag: 0.7, vx: c * 30, vy: sn * 30 });
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: b.x, y: b.y, r: 170, color: '#9fd0ff', t: 0, max: 0.25 });
+    if (this.onScreen(b.x, b.y, 120)) sfx.heavyShot('massdriver', this.panAt(b.x));
+  }
+
+  /** Einschlag einer XL-Granate: heller Kontaktblitz, kräftige, eng begrenzte Explosion, glühende Trümmer */
+  private xlImpact(x: number, y: number, a: number): void {
+    this.fx.add({ x, y, color: '#f2f9ff', size: 26, max: 0.07 });
+    this.fx.add({ x, y, color: '#ff9a3a', size: 20, kind: 'fire', max: 0.35 });
+    this.fx.add({ x, y, color: '#8fd0ff', size: 14, kind: 'fire', max: 0.18 });
+    for (let q = 0; q < 12; q++) {
+      const aa = a + Math.PI + (Math.random() - 0.5) * 2.4, v = 120 + Math.random() * 260;
+      this.fx.add({ x, y, color: q % 3 ? '#ffb45a' : '#ffe6b0', size: 1.6, kind: 'spark', vx: Math.cos(aa) * v, vy: Math.sin(aa) * v, max: 0.4 + Math.random() * 0.4 });
+    }
+    this.fx.add({ x, y, color: '#2e2a26', size: 18, kind: 'smoke', solid: true, max: 1.4, drag: 0.6 });
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x, y, r: 200, color: '#ffa04a', t: 0, max: 0.35 });
+    if (this.onScreen(x, y)) sfx.explosion(1.2, this.panAt(x));
+  }
+
   /**
    * Zwillingsgeschütz der Hegemonie: Stoß – Stoß – Pause (je Stoß ein Schuss aus jedem Rohr), gezielt auf den
    * Vorhaltepunkt; die Granate zerlegt sich kurz davor in eine Garbe (siehe splitShell)
@@ -6451,6 +6582,65 @@ export class ShooterGame implements MiniGame {
       // Pause gerechnet ab dem letzten Schuss der beiden Stöße
       e.cd = SPLIT_SEQ.reduce((x, y) => x + y, 0) + (SPLIT_PAUSE + this.r() * 0.4) / this.tRate(e);
       e.salvo = SPLIT_SEQ.length; e.salvoT = 0;
+    }
+  }
+
+  /**
+   * Ladebeleuchtung des XL-Drillingsturms (über dem Turmbild, im selben Maßstab): je Rohr wächst das blau-weiße Licht weich
+   * vom Verschluss zur Mündung; geladene Rohre glimmen ruhig, beim Schuss ein heller Impuls, danach dunkel; das Gehäuse
+   * leuchtet dezent mit der mittleren Ladung
+   */
+  private drawXlGlow(ctx: CanvasRenderingContext2D, e: Enemy, size: number, top: number, t: number): void {
+    const tex = xlGlowTex();
+    if (!tex) return;
+    const k = size / XL_SQ, fired = e.xlFired ?? 0, charge = e.xlCharge ?? 0, salvo = e.xlT != null || e.xlLock != null;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    let sum = 0;
+    for (let i = 0; i < 3; i++) {
+      const bt = tex.barrels[i];
+      // Ladung dieses Rohrs: in der Salve geladen bis zum eigenen Schuss, sonst gemeinsamer Ladestand
+      const prog = salvo ? (i < fired ? 0 : 1) : charge >= 1 ? (i < fired ? 0 : 1) : charge;
+      sum += prog;
+      const glowBase = prog >= 1 ? 0.75 + 0.15 * Math.sin(t * 3 + i) : 0.8;
+      if (prog > 0.002) {
+        const yTop = XL_YB - prog * (XL_YB - XL_YM);
+        const part = (y0: number, y1: number, a: number) => {
+          const s0 = Math.max(bt.y0, y0), s1 = Math.min(bt.y1, y1);
+          if (s1 <= s0) return;
+          ctx.globalAlpha = a;
+          ctx.drawImage(bt.c, 0, s0 - bt.y0, bt.c.width, s1 - s0, -size / 2 + bt.x0 * k, top + s0 * k, bt.c.width * k, (s1 - s0) * k);
+        };
+        part(yTop, XL_YB + 20, glowBase);
+        // weiche Vorderkante: zwei schwächere Streifen vor der Ladefront
+        if (prog < 1) { part(yTop - 45, yTop, glowBase * 0.45); part(yTop - 100, yTop - 45, glowBase * 0.18); }
+      }
+      const fl = e.xlFlash?.[i] ?? 0;
+      if (fl > 0) {
+        ctx.globalAlpha = Math.min(1, fl / 0.28) * 1.2;
+        ctx.drawImage(bt.c, -size / 2 + bt.x0 * k, top + bt.y0 * k, bt.c.width * k, bt.c.height * k);
+        ctx.drawImage(bt.w, -size / 2 + bt.x0 * k, top + bt.y0 * k, bt.c.width * k, bt.c.height * k);
+      }
+    }
+    // Gehäuse: dezent im Mittel der drei Rohre
+    ctx.globalAlpha = 0.6 * (sum / 3);
+    ctx.drawImage(tex.side.c, -size / 2 + tex.side.x0 * k, top + tex.side.y0 * k, tex.side.c.width * k, tex.side.c.height * k);
+    ctx.restore();
+  }
+
+  /** Ziellinie der XL-Drillingstürme beim Ausrichten: dünne blaue Linie von den Mündungen zum Zielpunkt, pulsierend */
+  private drawXlAim(ctx: CanvasRenderingContext2D): void {
+    for (const e of this.enemies) {
+      if (e.weapon !== 'xl' || e.xlLock == null) continue;
+      const a = e.aimA!, size = e.r * (2 / XL_HOUSING), fwd = XL_FWD * size, L = this.turretRange(e), c = Math.cos(a), sn = Math.sin(a);
+      const k = 1 - e.xlLock / XL_LOCK, pulse = 0.5 + 0.5 * Math.sin(k * 18);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba('#6fc4ff', 0.18 + 0.32 * k + 0.15 * pulse);
+      ctx.lineWidth = 1.5 + k;
+      ctx.setLineDash([14, 10]);
+      ctx.beginPath(); ctx.moveTo(e.x + c * fwd, e.y + sn * fwd); ctx.lineTo(e.x + c * (fwd + L), e.y + sn * (fwd + L)); ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -6675,6 +6865,7 @@ export class ShooterGame implements MiniGame {
       } else {
         if (this.onHull(b.x, b.y, 0)) {
           this.damagePlayer(b.dmg * (b.shard ? SHARD_CLS[this.ship.cls] : 1), 1, [b.x, b.y]);
+          if (b.xl) this.xlImpact(b.x, b.y, Math.atan2(b.vy, b.vx));
           this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2);
           // Splitter: kleiner Funkenregen in Flugrichtung
           if (b.shard) { const v = Math.hypot(b.vx, b.vy) || 1; for (let q = 0; q < 3; q++) this.fx.add({ x: b.x, y: b.y, color: '#ffe2b0', size: 1.2, kind: 'spark', vx: (b.vx / v) * 90 + (Math.random() - 0.5) * 140, vy: (b.vy / v) * 90 + (Math.random() - 0.5) * 140, max: 0.15 }); }
@@ -6683,7 +6874,7 @@ export class ShooterGame implements MiniGame {
         const hitW = this.wingAt(b.x, b.y);
         if (hitW) { this.damageWing(hitW, b.dmg, b.x, b.y); continue; }
         const hw = this.wardAt(b.x, b.y);
-        if (hw) { this.hitWard(hw, b.dmg * this.fScale * (b.shard ? SHARD_CLS.L : 1), b.x, b.y); continue; }
+        if (hw) { this.hitWard(hw, b.dmg * this.fScale * (b.shard ? SHARD_CLS.L : 1), b.x, b.y); if (b.xl) this.xlImpact(b.x, b.y, Math.atan2(b.vy, b.vx)); continue; }
         // geschleppte und treibende Container (Bergung) gehen zu Bruch
         const cr = this.crates.length ? this.crates.find((c) => !c.done && Math.hypot(c.x - b.x, c.y - b.y) < 11) : undefined;
         if (cr) { this.hitCrate(cr, b.dmg); continue; }
@@ -7635,6 +7826,7 @@ export class ShooterGame implements MiniGame {
 
   private drawShots(ctx: CanvasRenderingContext2D): void {
     if (this.smokeRings.length) this.drawSmokeRings(ctx);
+    this.drawXlAim(ctx);
     // Bosonenlanze: kurz aufblitzender Strahl (über den Schiffen, wie die Geschosse)
     if (this.rails.length) {
       ctx.save();
@@ -8521,7 +8713,7 @@ export class ShooterGame implements MiniGame {
       ctx.stroke();
     }
     // Brutkästen drehen nicht, sie sitzen fest auf dem Rumpf
-    ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.weapon === 'brut' ? e.parent!.ang + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
+    ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.weapon === 'brut' ? e.parent!.ang + Math.PI / 2 : e.weapon === 'xl' ? (e.aimA ?? e.parent!.ang) + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
     const spr = enemySprite(this.spriteKey(e), this.side === 'pirate' ? 'pirat' : this.side);
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen
@@ -8537,6 +8729,7 @@ export class ShooterGame implements MiniGame {
         ctx.globalAlpha = 1;
       }
       ctx.drawImage(spr.img, -size / 2, top, size, size);
+      if (e.weapon === 'xl') this.drawXlGlow(ctx, e, size, top, t);
       if (e.kind === 'schild' || e.kind === 'xs') {
         // Reichweite des Schutzschilds
         ctx.strokeStyle = rgba('#7fd8ff', 0.5);

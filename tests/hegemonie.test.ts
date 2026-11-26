@@ -30,10 +30,10 @@ const game = (ship: ShipId = 'dragon'): { g: G; b: E } => {
 const hold = (g: G, b: E, d: number) => { g.px = b.x + Math.cos(b.ang) * d; g.py = b.y + Math.sin(b.ang) * d; g.pvx = g.pvy = 0; };
 
 describe('Zerstörer der Hegemonie (Test)', () => {
-  it('erscheint mit dem Test-Schalter: etwa 950 m lang, zehn Zwillingsgeschütze auf dem Rumpf, Rumpf geschützt', () => {
+  it('erscheint mit dem Test-Schalter: etwa 950 m lang, zehn Zwillingsgeschütze (dazu drei XL-Türme) auf dem Rumpf, Rumpf geschützt', () => {
     const { b, g } = game();
     expect(b).toBeTruthy();
-    const tur = g.enemies.filter((e) => e.parent === b);
+    const tur = g.enemies.filter((e) => e.parent === b && e.weapon !== 'xl');
     expect(tur.length).toBe(10);
     expect(tur.every((t) => t.weapon === 'splitter')).toBe(true);
     // Bildgröße 4,7 × Trefferradius; der Rumpf füllt 1 976 von 1 983 Bildpunkten
@@ -127,3 +127,49 @@ describe('Zerstörer der Hegemonie (Test)', () => {
     expect(m / s).toBeCloseTo(1 / 3, 2);
   });
 });
+
+describe('XL-Drillingsturm', () => {
+  type X = E & { aimA?: number; xlCharge?: number; xlFired?: number; xlLock?: number; xlT?: number };
+  const xl = (g: G, b: E) => g.enemies.filter((e) => e.parent === b && e.weapon === 'xl') as X[];
+  it('drei Drillingstürme auf den XL-Sockeln, so groß wie ihr Sockel', () => {
+    const { g, b } = game();
+    const t = xl(g, b);
+    expect(t.length).toBe(3);
+    const ring = (196 / 1976) * b.r * 4.7 * (1976 / 1983);
+    for (const q of t) { expect((2 * q.r) / ring).toBeGreaterThan(0.85); expect((2 * q.r) / ring).toBeLessThan(1.15); }
+  });
+  it('schießt nicht auf Jäger und Korvetten (S/M)', () => {
+    const { g, b } = game('dragon');
+    for (const q of g.enemies) if (q.parent === b && q.weapon === 'splitter') q.cd = 1e9;
+    for (const q of xl(g, b)) q.xlCharge = 1;
+    let shots = 0;
+    for (let i = 0; i < 60 * 8; i++) { hold(g, b, 900); g.update(DT); g.hull = g.shield = 100; shots += g.bullets.filter((x) => (x as unknown as { xl?: boolean }).xl).length; }
+    expect(shots).toBe(0);
+  });
+  it('gegen ein L-Schiff: ausrichten mit Ziellinie (1 s), dann Rohr 1 – 2 – 3 im Abstand 0,4 s, danach lange Ladepause', () => {
+    const { g, b } = game('klapperschlange');
+    (b as unknown as { hold: boolean }).hold = true;
+    for (const q of g.enemies) if (q.parent === b && q.weapon === 'splitter') q.cd = 1e9;
+    const ts = xl(g, b), t = ts[0];
+    for (const q of ts) if (q !== t) q.xlCharge = -1e9;
+    t.xlCharge = 1;
+    let lockAt = -1;
+    const shots: number[] = [];
+    const seen = new Set<unknown>();
+    for (let i = 0; i < 60 * 20; i++) {
+      hold(g, b, 900);
+      g.update(DT); g.hull = g.shield = 100;
+      if (t.xlLock != null && lockAt < 0) lockAt = i * DT;
+      for (const x of g.bullets) if ((x as unknown as { xl?: boolean }).xl && !seen.has(x)) { seen.add(x); shots.push(i * DT); }
+      if (shots.length >= 3 && i * DT > shots[2] + 3) break;
+    }
+    expect(lockAt).toBeGreaterThanOrEqual(0);
+    expect(shots.length).toBe(3);
+    expect(shots[0] - lockAt).toBeCloseTo(1, 1);
+    expect(shots[1] - shots[0]).toBeCloseTo(0.4, 1);
+    expect(shots[2] - shots[1]).toBeCloseTo(0.4, 1);
+    // danach lädt der Turm wieder (von vorn)
+    expect(t.xlCharge!).toBeLessThan(0.5);
+  });
+});
+
