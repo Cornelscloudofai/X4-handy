@@ -1250,6 +1250,14 @@ export function setBroodTest(on: boolean): void {
 }
 
 /** Test-Schalter: in jeder Runde taucht zu Beginn ein Zerstörer der Hegemonie (neue Fraktion, Arbeitsname) auf */
+const FOES_TEST_KEY = 'x4-sektorbau-fraktionen-feinde';
+/** Test „Fraktionen gegeneinander“: die Hegemonie und die übrigen Gegner beschießen sich auch gegenseitig */
+export function foesTest(): boolean {
+  try { return globalThis.localStorage?.getItem(FOES_TEST_KEY) === '1'; } catch { return false; }
+}
+export function setFoesTest(on: boolean): void {
+  try { if (on) globalThis.localStorage?.setItem(FOES_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(FOES_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
 const HEG_TEST_KEY = 'x4-sektorbau-hegemonie-test';
 export function hegTest(): boolean {
   try { return globalThis.localStorage?.getItem(HEG_TEST_KEY) === '1'; } catch { return false; }

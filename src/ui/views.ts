@@ -2282,6 +2282,7 @@ function tuneSection(level: 1 | 2 | 3 | 4 | 5): string {
     fog: act('mg-fog-test'),
     brood: act('mg-brood-test'),
     heg: act('mg-heg-test'),
+    foes: act('mg-foes-test'),
     env: (v: string) => act('mg-env-test', { env: v }),
     pale: act('mg-pale-test'),
     mods: act('mg-mods-test'),

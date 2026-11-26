@@ -185,13 +185,18 @@ describe('L-Zwillingskanone', () => {
     const ring = (70 / 1976) * b.r * 4.7 * (1976 / 1983);
     for (const q of t) { expect((2 * q.r) / ring).toBeGreaterThan(1.15); expect((2 * q.r) / ring).toBeLessThan(1.35); }
   });
-  it('schießt nicht auf Jäger (S)', () => {
+  it('Zielvorrang: Klasse M vor L vor Jägern; auf Jäger nur ohne anderes Ziel', () => {
     const { g, b } = game('mamba');
-    quiet(g, b);
-    for (const q of lg(g, b)) q.cd = 0;
-    let shots = 0;
-    for (let i = 0; i < 60 * 6; i++) { hold(g, b, 700); g.update(DT); g.hull = g.shield = 100; shots += g.bullets.filter((x) => (x as unknown as { ap?: boolean }).ap).length; }
-    expect(shots).toBe(0);
+    const t = lg(g, b)[0];
+    const G = g as unknown as { lgTarget(e: E, r: number): { cls: string; foe?: E } | null; hegTargets(e: E, r: number): { cls: string }[] };
+    hold(g, b, 700);
+    // allein mit einem Jäger: der wird beschossen
+    expect(G.lgTarget(t, 5000)?.cls).toBe('S');
+    // Frachter/Station (L) geht vor
+    const list = (cls: string[]) => { G.hegTargets = () => cls.map((c, i) => ({ x: 0, y: 0, vx: 0, vy: 0, r: 5, cls: c, d: 100 - i * 10 })); return G.lgTarget(t, 5000)?.cls; };
+    expect(list(['S', 'L'])).toBe('L');
+    expect(list(['L', 'S', 'M'])).toBe('M');
+    expect(list(['XL', 'S'])).toBe('XL');
   });
   it('gegen ein M-Schiff: abwechselnd links und rechts im festen Takt, ohne Salvenpause, aus den Mündungen', () => {
     const { g, b } = game('dragon');
@@ -217,7 +222,67 @@ describe('L-Zwillingskanone', () => {
     for (const x of gaps.slice(2)) expect(x).toBeCloseTo(LG_GAP, 1);
     // Rohre wechseln sich ab
     for (let i = 1; i < shots.length; i++) expect(Math.sign(shots[i].lat)).toBe(-Math.sign(shots[i - 1].lat));
+    // Schaden je Schuss: Grundwert 200 (vorläufig)
     // aus der Mündung: weit vor dem Drehpunkt
     expect(shots.every((s) => Math.abs(s.lat) > t.r * 0.05)).toBe(true);
+  });
+});
+
+describe('Splittergranate: Annäherungszünder', () => {
+  const burstGap = (dist: number, vx = 0) => {
+    const { g, b } = game('mamba');
+    for (const q of g.enemies) if (q.parent === b) { q.cd = 1e9; (q as unknown as { xlCharge: number }).xlCharge = -1e9; }
+    const t = g.enemies.find((e) => e.parent === b && e.weapon === 'splitter')!;
+    t.cd = 0;
+    let gap = -1;
+    const G = g as unknown as { splitShell(b: B): void; gapOr(x: number, y: number, r: number): number; ship: { r: number } };
+    const orig = G.splitShell.bind(g);
+    G.splitShell = (s: B) => { if (gap < 0) gap = G.gapOr(s.x, s.y, G.ship.r); orig(s); };
+    for (let i = 0; i < 60 * 4 && gap < 0; i++) { hold(g, b, dist); g.pvx = vx; g.update(DT); g.hull = g.shield = 100; }
+    return gap;
+  };
+  it('zerlegt sich kurz vor der Hülle – unabhängig von der Entfernung beim Abschuss', () => {
+    for (const d of [800, 1000, 1200]) {
+      const gap = burstGap(d);
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThan(80);
+    }
+  });
+});
+
+describe('Fraktionen gegeneinander (Test)', () => {
+  it('ohne Schalter treffen Hegemonie-Geschosse keine anderen Gegner', () => {
+    const { g, b } = game();
+    const other = { ...b, model: undefined, parent: undefined, kind: 'm', x: b.x + 3000, y: b.y, r: 20, hp: 50, max: 50, sh: 0 } as unknown as E;
+    g.enemies.push(other);
+    g.bullets.push({ x: other.x - 30, y: other.y, vx: 900, vy: 0, dmg: 10, from: 'e', life: 1, color: '#fff', w: 1, pierce: 0, fac: 'heg' } as unknown as B);
+    g.update(DT);
+    expect(other.hp).toBe(50);
+  });
+  it('mit Schalter: Hegemonie-Geschosse treffen andere Gegner, deren Geschosse die Türme der Hegemonie', () => {
+    store.set('x4-sektorbau-fraktionen-feinde', '1');
+    const { g, b } = game();
+    for (const q of g.enemies) if (q.parent === b) { q.cd = 1e9; (q as unknown as { xlCharge: number }).xlCharge = -1e9; }
+    const other = { ...b, model: undefined, parent: undefined, kind: 'm', x: b.x + 3000, y: b.y, r: 20, hp: 50, max: 50, sh: 0, shMax: 0, vx: 0, vy: 0 } as unknown as E;
+    g.enemies.push(other);
+    g.bullets.push({ x: other.x - 30, y: other.y, vx: 900, vy: 0, dmg: 10, from: 'e', life: 1, color: '#fff', w: 1, pierce: 0, fac: 'heg' } as unknown as B);
+    g.update(DT);
+    expect(other.hp).toBeLessThan(50);
+    const t = g.enemies.find((e) => e.parent === b && e.weapon === 'lgun')!;
+    const hp0 = t.hp + t.sh;
+    g.bullets.push({ x: t.x - 30, y: t.y, vx: 900, vy: 0, dmg: 10, from: 'e', life: 1, color: '#fff', w: 1, pierce: 0 } as unknown as B);
+    g.update(DT);
+    expect(t.hp + t.sh).toBeLessThan(hp0);
+  });
+  it('mit Schalter: Hegemonie-Türme nehmen andere Gegner ins Ziel', () => {
+    store.set('x4-sektorbau-fraktionen-feinde', '1');
+    const { g, b } = game('dragon');
+    const t = g.enemies.find((e) => e.parent === b && e.weapon === 'lgun')!;
+    g.px = b.x + 20000; g.py = b.y;
+    const other = { ...b, model: undefined, parent: undefined, kind: 'm', x: t.x + 400, y: t.y, r: 20, hp: 50, max: 50, sh: 0, shMax: 0, vx: 0, vy: 0 } as unknown as E;
+    g.enemies.push(other);
+    g.update(DT);
+    const G = g as unknown as { lgTarget(e: E, r: number): { foe?: E } | null };
+    expect(G.lgTarget(t, 5000)?.foe).toBe(other);
   });
 });
