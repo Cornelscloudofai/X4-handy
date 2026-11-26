@@ -1,6 +1,7 @@
 // Neue Fraktion (Arbeitsname Hegemonie), Testgegner: Zerstörer mit zehn Zwillingsgeschützen (Splittergranate)
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ShooterGame } from '../src/minigames/shooter';
+import { LG_GAP } from '../src/minigames/shooter';
 import { DEFAULT_LOADOUT, SHIPS, scaledLength, sizeScale, type ShipId } from '../src/minigames/loadout';
 
 const DT = 1 / 60;
@@ -33,7 +34,7 @@ describe('Zerstörer der Hegemonie (Test)', () => {
   it('erscheint mit dem Test-Schalter: etwa 950 m lang, zehn Zwillingsgeschütze (dazu drei XL-Türme) auf dem Rumpf, Rumpf geschützt', () => {
     const { b, g } = game();
     expect(b).toBeTruthy();
-    const tur = g.enemies.filter((e) => e.parent === b && e.weapon !== 'xl');
+    const tur = g.enemies.filter((e) => e.parent === b && e.weapon === 'splitter');
     expect(tur.length).toBe(10);
     expect(tur.every((t) => t.weapon === 'splitter')).toBe(true);
     // Bildgröße 4,7 × Trefferradius; der Rumpf füllt 1 976 von 1 983 Bildpunkten
@@ -173,3 +174,50 @@ describe('XL-Drillingsturm', () => {
   });
 });
 
+
+describe('L-Zwillingskanone', () => {
+  const lg = (g: G, b: E) => g.enemies.filter((e) => e.parent === b && e.weapon === 'lgun');
+  const quiet = (g: G, b: E, keep?: E) => { for (const q of g.enemies) if (q.parent === b && q !== keep) { q.cd = 1e9; (q as unknown as { xlCharge: number }).xlCharge = -1e9; } };
+  it('sechs Kanonen auf den L-Sockeln, ein Viertel größer als ihr Sockel', () => {
+    const { g, b } = game();
+    const t = lg(g, b);
+    expect(t.length).toBe(6);
+    const ring = (70 / 1976) * b.r * 4.7 * (1976 / 1983);
+    for (const q of t) { expect((2 * q.r) / ring).toBeGreaterThan(1.15); expect((2 * q.r) / ring).toBeLessThan(1.35); }
+  });
+  it('schießt nicht auf Jäger (S)', () => {
+    const { g, b } = game('mamba');
+    quiet(g, b);
+    for (const q of lg(g, b)) q.cd = 0;
+    let shots = 0;
+    for (let i = 0; i < 60 * 6; i++) { hold(g, b, 700); g.update(DT); g.hull = g.shield = 100; shots += g.bullets.filter((x) => (x as unknown as { ap?: boolean }).ap).length; }
+    expect(shots).toBe(0);
+  });
+  it('gegen ein M-Schiff: abwechselnd links und rechts im festen Takt, ohne Salvenpause, aus den Mündungen', () => {
+    const { g, b } = game('dragon');
+    (b as unknown as { hold: boolean }).hold = true;
+    const t = lg(g, b)[0] as E & { aimA?: number };
+    quiet(g, b, t);
+    // lange ohne Schuss (Wartezeit aufgelaufen): der Takt beginnt trotzdem sauber neu
+    t.cd = -5;
+    const shots: { t: number; lat: number }[] = [];
+    const seen = new Set<unknown>();
+    for (let i = 0; i < 60 * 12; i++) {
+      hold(g, b, 700);
+      g.update(DT); g.hull = g.shield = 100;
+      for (const x of g.bullets) if ((x as unknown as { ap?: boolean }).ap && !seen.has(x)) {
+        seen.add(x);
+        // seitlicher Versatz zur Rohrrichtung: links negativ, rechts positiv
+        const a = t.aimA!, dx = x.x - t.x, dy = x.y - t.y;
+        shots.push({ t: i * DT, lat: -Math.sin(a) * dx + Math.cos(a) * dy });
+      }
+    }
+    expect(shots.length).toBeGreaterThanOrEqual(6);
+    const gaps = shots.slice(1).map((s, i) => s.t - shots[i].t);
+    for (const x of gaps.slice(2)) expect(x).toBeCloseTo(LG_GAP, 1);
+    // Rohre wechseln sich ab
+    for (let i = 1; i < shots.length; i++) expect(Math.sign(shots[i].lat)).toBe(-Math.sign(shots[i - 1].lat));
+    // aus der Mündung: weit vor dem Drehpunkt
+    expect(shots.every((s) => Math.abs(s.lat) > t.r * 0.05)).toBe(true);
+  });
+});

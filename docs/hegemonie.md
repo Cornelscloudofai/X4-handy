@@ -28,7 +28,7 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
 - **Zerstörer** (`heg-zerstoerer-ki`, Original in `grafik-vorrat/hegemonie/`): etwa 950 m – aus den M-Sockeln
   abgeleitet, die genauso groß sind wie die der Klapperschlange (1,82 % bzw. 1,75 % der Rumpflänge).
   Sockel im Bild (793 × 1 983 px): 3 XL auf der Mittelachse, 6 L an den Seiten, 10 M in fünf Paaren
-  (`HEG_Z_*` in `src/minigames/shooter.ts`). Vorerst nur die M-Sockel bestückt.
+  (`HEG_Z_*` in `src/minigames/shooter.ts`). Alle Sockel bestückt.
   Viel Hülle (×1,5 des Bosswerts), mäßiger Schild (×0,6).
 - **Zwillingsgeschütz M** (`heg-turm-zwilling-ki`): Drehsockel so groß wie der M-Sockel im Bild (≈ 17 m), etwa wie die
   M-Türme von Dragon und Cobra (15 m). (Die Klapperschlange hat 41 m große M-Türme – größer als alle anderen.)
@@ -43,6 +43,12 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
   Effekte: kräftige Ladebeleuchtung (blau mit weißem Kern), kurz vor voll Flackern und Blitze entlang der Rohre; beim Schuss
   Mündungsblitz, blaue Ringwolke quer zum Rohr, Entladungen, Rauch; die Granate zieht eine blau glühende Schneise.
   Werte vorläufig (`XL_*`).
+- **L-Zwillingskanone** (`heg-turm-l-ki`): auf den sechs L-Sockeln, Gehäuse ein Viertel größer als der Sockel (≈ 42 m).
+  Elektromagnetisch unterstützte Schiffsabwehrkanone gegen Korvetten, Fregatten und Großziele (Ziele wie XL, nicht auf
+  Jäger). Feuert abwechselnd links – rechts alle 0,8 s ohne Salvenpause (jedes Rohr alle 1,6 s), Geschoss und
+  Mündungsblitz an der jeweiligen Mündung; schnelle, geschlossene Panzerbrechergranate (1 300), eng begrenzter Einschlag
+  ohne Garbe oder Wolke. Dreht 20°/s, Schaden 500 × Stufe, Reichweite ≈ 1,2 km, Hülle ×7, Schild ×3. Kein Rückstoß,
+  keine Ladebeleuchtung. Werte vorläufig (`LG_*`).
 - **Test-Schalter** im Kampf-Reiter (Entwicklung): „Test: Zerstörer der Hegemonie“ – in jeder Kampfrunde fliegt von
   Anfang an ein Zerstörer heran. Vorschau: `node scripts/kampf-vorschau.mjs bild.png --heg 900 --zoom 0.4`.
 
@@ -73,4 +79,4 @@ anderen Gegnern wählen können und gegnerische Geschosse auch Gegner treffen (b
 
 - Namen, Geschichte, Personen.
 - Weitere Schiffe (Bilder), danach eigene Gegnerseite mit Wellen, Einsätzen, Menübild.
-- L- und XL-Geschütze (schwere Schiffsartillerie), Rückstoß der Rohre (Turmbild in Teilen), Balance.
+- Balance aller Türme (Schaden, Reichweite, Tempo).

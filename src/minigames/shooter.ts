@@ -177,10 +177,12 @@ interface Enemy {
   parent?: Enemy; ox?: number; oy?: number;
   /** Xenon-Türme: Laserstrahl (zielt, lädt auf, feuert einen Strahl) oder dicke Plasmakugeln; Kha'ak-Brutkammer */
   /** Turmart; m = mittlerer Turm (Laser-Repeater, Zweiersalven) an Xenon K und P, flak = Vierlings-Flak des Piratenträgers */
-  weapon?: 'laser' | 'plasma' | 'brut' | 'm' | 'flak' | 'splitter' | 'xl';
+  weapon?: 'laser' | 'plasma' | 'brut' | 'm' | 'flak' | 'splitter' | 'xl' | 'lgun';
   /** XL-Drillingsturm: Richtung des Turms (dreht langsam), Ladung 0 … 1, schon gefeuerte Rohre der Salve, Zielphase (s),
    * Zeit seit Salvenbeginn, Mündungsblitz je Rohr */
   aimA?: number; xlCharge?: number; xlFired?: number; xlLock?: number; xlT?: number; xlFlash?: number[];
+  /** L-Zwillingskanone: nächstes Rohr (0 links, 1 rechts), Mündungsblitz je Rohr */
+  lgSide?: number; lgFlash?: number[];
   /** Bauart eines Großkampfschiffs aus einer anderen Fraktion (heg: Zerstörer der Hegemonie, Test) */
   model?: 'heg';
   /** laufende Salve eines Turms: noch abzugebende Schüsse, Zeit bis zum nächsten */
@@ -316,7 +318,7 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number; /** Wirkung auf Schild und Hülle */ kS?: number; kH?: number; /** Splittergranate: zerlegt sich nach so vielen Sekunden in eine Garbe */ split?: number; /** Granate des XL-Drillingsturms */ xl?: boolean; /** Splitter der Garbe: Wirkung nach Größe des Getroffenen (Jäger voll, M ein Drittel, L kaum) */ shard?: boolean; /** Schrot: Startpunkt und Reichweite (Schaden fällt mit der Entfernung), Wucht */ x0?: number; y0?: number; reach?: number; knock?: number }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number; /** Wirkung auf Schild und Hülle */ kS?: number; kH?: number; /** Splittergranate: zerlegt sich nach so vielen Sekunden in eine Garbe */ split?: number; /** Granate des XL-Drillingsturms */ xl?: boolean; /** Panzerbrechergranate der L-Zwillingskanone */ ap?: boolean; /** Splitter der Garbe: Wirkung nach Größe des Getroffenen (Jäger voll, M ein Drittel, L kaum) */ shard?: boolean; /** Schrot: Startpunkt und Reichweite (Schaden fällt mit der Entfernung), Wucht */ x0?: number; y0?: number; reach?: number; knock?: number }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -633,7 +635,7 @@ const WING_REPAIR = 14;
 /**
  * Hegemonie (neue Fraktion, Arbeitsname) – Zerstörer: Bild 793 × 1 983 px (Bug oben, Rumpf 1 976 px), etwa 950 m lang
  * (aus den M-Sockeln: gleich groß wie die der Klapperschlange). Sockel gemessen im Bild: 3 XL auf der Mittelachse,
- * 6 L an den Seiten, 10 M in fünf Paaren. Vorerst sind nur die M-Sockel bestückt (Zwillingsgeschütze).
+ * 6 L an den Seiten, 10 M in fünf Paaren. Bestückt: M Zwillingsgeschütze, L Zwillingskanonen, XL Drillingstürme.
  */
 const HEG_Z = { w: 793, h: 1983, hull: 1976, len: 950 };
 const HEG_Z_M: [number, number][] = [[307, 233], [484, 233], [282, 327], [512, 327], [221, 538], [571, 538], [300, 1203], [490, 1203], [214, 1286], [579, 1286]];
@@ -663,6 +665,18 @@ const XL_SQ = 1536, XL_HOUSING = 0.636, XL_LAT = 0.1445, XL_FWD = 0.737;
 const XL_YB = 1153, XL_YM = 59, XL_BARREL_X = [291, 513, 734].map((x) => x + (1536 - 1024) / 2);
 // Schaden bewusst brachial (20-fach gegenüber dem ersten Entwurf): der Zerstörer soll eine echte Gefahr sein
 const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, XL_V = 1000, XL_DMG = 2200, XL_D = 94 * 1.25, XL_RANGE_M = 1500;
+/**
+ * L-Zwillingskanone (vorläufige Testwerte): elektromagnetisch unterstützte Schiffsabwehrkanone gegen Korvetten, Fregatten
+ * und Großziele. Bild 1 122 × 1 402 (quadratisch 1 402 aufgefüllt), Drehpunkt in der Mitte des runden Sockels (561, 1 060),
+ * Gehäuse 684 px breit (48,8 % der Bildgröße); Rohre ±54,5 px neben der Mitte, Mündungen bei y 78 (70 % vor dem Drehpunkt).
+ * Feuer abwechselnd links – rechts im Abstand LG_GAP, ohne Salvenpause (jedes Rohr alle 2 × LG_GAP). Schnelle, geschlossene
+ * Panzerbrechergranate mit eng begrenzter Wirkung (keine Garbe, keine Wolke). Gehäuse ein Viertel größer als der L-Sockel
+ * (70 px bei 1 976 px Rumpf ≈ 34 m).
+ */
+export const LG_HOUSING = 684 / 1402, LG_POV = (1060 - 701) / 1402;
+const LG_LAT = 54.5 / 1402, LG_FWD = (1060 - 78) / 1402;
+export const LG_GAP = 0.8;
+const LG_TURN = (20 * Math.PI) / 180, LG_V = 1300, LG_DMG = 500, LG_D = (70 / 1976) * 950 * 1.25, LG_RANGE_M = 1200;
 /** Schneise der XL-Granate: Nachglühen (s) */
 const XL_TRAIL = 1.1;
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
@@ -4079,6 +4093,16 @@ export class ShooterGame implements MiniGame {
       t.aimA = b.ang; t.xlCharge = 0.4 + this.r() * 0.5; t.xlFired = 0; t.xlFlash = [0, 0, 0];
       this.enemies.push(t);
     }
+    // L-Zwillingskanonen auf den sechs Seitensockeln
+    const tl = (sc === 'bisher' ? 16 : scaledLength(LG_D, sc)) / 2;
+    for (const [ix, iy] of HEG_Z_L) {
+      const ox = (ix - HEG_Z.w / 2) * k, oy = (iy - HEG_Z.h / 2) * k;
+      const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
+      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = 'lgun'; t.r = tl;
+      t.hp *= 7; t.max *= 7; t.sh *= 3; t.shMax *= 3;
+      t.aimA = b.ang; t.lgSide = 0; t.lgFlash = [0, 0]; t.cd = this.r() * LG_GAP * 2;
+      this.enemies.push(t);
+    }
     b.shielded = true;
     this.floats.add(this.px, this.py - 60, 'Test: Zerstörer der Hegemonie im Anflug', '#ffb3a0', 15);
   }
@@ -4225,6 +4249,7 @@ export class ShooterGame implements MiniGame {
     if (e.weapon === 'flak') return Math.max(TURRET_RANGE + 60, len * 1.05 * RANGE_X);
     // XL-Drillingsturm: etwa 1 km
     if (e.weapon === 'xl') { const sc = sizeScale(); return sc === 'bisher' ? PLASMA_RANGE * 1.4 : scaledLength(XL_RANGE_M, sc); }
+    if (e.weapon === 'lgun') { const sc = sizeScale(); return sc === 'bisher' ? PLASMA_RANGE * 1.2 : scaledLength(LG_RANGE_M, sc); }
     // Zwillingsgeschütz: Abwehr gegen Jäger, etwas weiter als die übrigen M-Türme
     if (e.weapon === 'splitter') return Math.max(TURRET_RANGE + 80, len * 0.5 * RANGE_X);
     return Math.max(TURRET_RANGE, len * 0.4 * RANGE_X);
@@ -5826,6 +5851,7 @@ export class ShooterGame implements MiniGame {
         }
         if (e.weapon === 'splitter') { this.fireSplitter(e, tx, ty, range, !!tg, dt); continue; }
         if (e.weapon === 'xl') { this.fireXl(e, range, dt); continue; }
+        if (e.weapon === 'lgun') { this.fireLgun(e, range, dt); continue; }
         if (e.weapon === 'm' || e.weapon === 'flak') {
           // Salventürme: Repeater zwei, Flak vier Schüsse kurz nacheinander aus den Läufen, dann Pause
           const flak = e.weapon === 'flak', a2 = Math.atan2(ty - e.y, tx - e.x);
@@ -6578,6 +6604,55 @@ export class ShooterGame implements MiniGame {
     if (this.onScreen(b.x, b.y, 120)) sfx.heavyShot('massdriver', this.panAt(b.x));
   }
 
+  /**
+   * L-Zwillingskanone: dreht mittelschnell auf das Ziel (mit Vorhalt; Ziele wie beim XL-Turm: ab Klasse M, Frachter,
+   * Stationen) und feuert, sobald die Rohre darauf zeigen, abwechselnd links und rechts im festen Takt LG_GAP
+   */
+  private fireLgun(e: Enemy, range: number, dt: number): void {
+    const p = e.parent!;
+    e.aimA ??= p.ang; e.lgFlash ??= [0, 0]; e.lgSide ??= 0;
+    for (let i = 0; i < 2; i++) e.lgFlash[i] = Math.max(0, e.lgFlash[i] - dt);
+    const tg = this.xlTarget(e, range);
+    let want = p.ang, d = 0;
+    if (tg) { d = Math.hypot(tg.x - e.x, tg.y - e.y); const lt = d / LG_V; want = Math.atan2(tg.y + tg.vy * lt - e.y, tg.x + tg.vx * lt - e.x); }
+    e.aimA = turnTo(e.aimA, want, LG_TURN * dt);
+    if (!tg || e.cd > 0 || Math.abs(wrapA(want - e.aimA)) > Math.max(0.03, Math.atan2(tg.r, d))) return;
+    // fester Takt: der Überhang eines Bildes zählt mit (kein Aufschlag durch die Bildrate); nach einer Wartezeit ohne Ziel
+    // beginnt der Takt neu
+    e.cd = Math.max(e.cd, -dt) + LG_GAP;
+    this.lgShot(e, e.lgSide, range);
+    e.lgSide = 1 - e.lgSide;
+  }
+
+  /** ein Schuss der L-Zwillingskanone aus Rohr i (0 links, 1 rechts): Mündungsblitz und kurzer Rauch an genau dieser Mündung */
+  private lgShot(e: Enemy, i: number, range: number): void {
+    const a = e.aimA!, size = e.r * (2 / LG_HOUSING), c = Math.cos(a), sn = Math.sin(a);
+    const lat = (i ? 1 : -1) * LG_LAT * size, fwd = LG_FWD * size;
+    this.enemyShot(e, a, LG_V, LG_DMG * this.capTurretDmg * this.tHit(e), '#ffe3b8', 2.4, (range + 100) / LG_V);
+    const b = this.bullets[this.bullets.length - 1];
+    b.x += c * fwd - sn * lat; b.y += sn * fwd + c * lat; b.ap = true; b.slug = true;
+    e.lgFlash![i] = 0.12;
+    this.fx.add({ x: b.x, y: b.y, color: '#fff4dc', size: 15, max: 0.06 });
+    this.fx.add({ x: b.x + c * 7, y: b.y + sn * 7, color: '#ffb35a', size: 12, kind: 'fire', max: 0.14 });
+    this.fx.add({ x: b.x + c * 5, y: b.y + sn * 5, color: '#9fd4ff', size: 8, kind: 'ring', max: 0.12 });
+    this.fx.burst(b.x, b.y, '#ffd9a0', 5, 220, 1, 'spark', 0.18);
+    this.fx.add({ x: b.x + c * 10, y: b.y + sn * 10, color: '#2d3038', size: 14, kind: 'smoke', max: 0.9, drag: 0.7, vx: c * 30, vy: sn * 30 });
+    if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: b.x, y: b.y, r: 110, color: '#ffc880', t: 0, max: 0.16 });
+    if (this.onScreen(b.x, b.y, 120)) sfx.heavyShot('massdriver', this.panAt(b.x));
+  }
+
+  /** Einschlag der Panzerbrechergranate: kurzer, gleißender Durchschlag, enger Feuerkern, Funkenkegel nach vorn */
+  private apImpact(x: number, y: number, a: number): void {
+    this.fx.add({ x, y, color: '#fff6e6', size: 14, max: 0.06 });
+    this.fx.add({ x, y, color: '#ff8c32', size: 10, kind: 'fire', max: 0.25 });
+    for (let q = 0; q < 8; q++) {
+      const aa = a + (Math.random() - 0.5) * 1.1, v = 160 + Math.random() * 260;
+      this.fx.add({ x, y, color: q % 2 ? '#ffc070' : '#fff0c8', size: 1.3, kind: 'spark', vx: Math.cos(aa) * v, vy: Math.sin(aa) * v, max: 0.25 + Math.random() * 0.25 });
+    }
+    this.fx.add({ x, y, color: '#2a2724', size: 10, kind: 'smoke', solid: true, max: 0.9, drag: 0.6 });
+    if (this.onScreen(x, y)) sfx.explosion(0.7, this.panAt(x));
+  }
+
   /** Einschlag einer XL-Granate: heller Kontaktblitz, kräftige, eng begrenzte Explosion, glühende Trümmer */
   private xlImpact(x: number, y: number, a: number): void {
     this.fx.add({ x, y, color: '#f2f9ff', size: 26, max: 0.07 });
@@ -6942,6 +7017,7 @@ export class ShooterGame implements MiniGame {
         if (this.onHull(b.x, b.y, 0)) {
           this.damagePlayer(b.dmg * (b.shard ? SHARD_CLS[this.ship.cls] : 1), 1, [b.x, b.y]);
           if (b.xl) this.xlImpact(b.x, b.y, Math.atan2(b.vy, b.vx));
+          if (b.ap) this.apImpact(b.x, b.y, Math.atan2(b.vy, b.vx));
           this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2);
           // Splitter: kleiner Funkenregen in Flugrichtung
           if (b.shard) { const v = Math.hypot(b.vx, b.vy) || 1; for (let q = 0; q < 3; q++) this.fx.add({ x: b.x, y: b.y, color: '#ffe2b0', size: 1.2, kind: 'spark', vx: (b.vx / v) * 90 + (Math.random() - 0.5) * 140, vy: (b.vy / v) * 90 + (Math.random() - 0.5) * 140, max: 0.15 }); }
@@ -6950,7 +7026,7 @@ export class ShooterGame implements MiniGame {
         const hitW = this.wingAt(b.x, b.y);
         if (hitW) { this.damageWing(hitW, b.dmg, b.x, b.y); continue; }
         const hw = this.wardAt(b.x, b.y);
-        if (hw) { this.hitWard(hw, b.dmg * this.fScale * (b.shard ? SHARD_CLS.L : 1), b.x, b.y); if (b.xl) this.xlImpact(b.x, b.y, Math.atan2(b.vy, b.vx)); continue; }
+        if (hw) { this.hitWard(hw, b.dmg * this.fScale * (b.shard ? SHARD_CLS.L : 1), b.x, b.y); if (b.xl) this.xlImpact(b.x, b.y, Math.atan2(b.vy, b.vx)); if (b.ap) this.apImpact(b.x, b.y, Math.atan2(b.vy, b.vx)); continue; }
         // geschleppte und treibende Container (Bergung) gehen zu Bruch
         const cr = this.crates.length ? this.crates.find((c) => !c.done && Math.hypot(c.x - b.x, c.y - b.y) < 11) : undefined;
         if (cr) { this.hitCrate(cr, b.dmg); continue; }
@@ -8791,7 +8867,7 @@ export class ShooterGame implements MiniGame {
       ctx.stroke();
     }
     // Brutkästen drehen nicht, sie sitzen fest auf dem Rumpf
-    ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.weapon === 'brut' ? e.parent!.ang + Math.PI / 2 : e.weapon === 'xl' ? (e.aimA ?? e.parent!.ang) + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
+    ctx.rotate(e.beamT && e.beamT > 0 ? e.beamA! + Math.PI / 2 : e.weapon === 'brut' ? e.parent!.ang + Math.PI / 2 : e.weapon === 'xl' || e.weapon === 'lgun' ? (e.aimA ?? e.parent!.ang) + Math.PI / 2 : e.parent ? Math.atan2(this.py - e.y, this.px - e.x) + Math.PI / 2 : a);
     const spr = enemySprite(this.spriteKey(e), this.side === 'pirate' ? 'pirat' : this.side);
     if (spr) {
       // Bild-Grafik: flackernde Triebwerke, Schiff, bei Treffern kurz hell aufblitzen

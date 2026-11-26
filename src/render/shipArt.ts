@@ -213,6 +213,7 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   'turret-splitter': { name: 'heg-turm-zwilling-ki', scale: 2 / 0.628, oy: 0.1775 },
   // XL-Drillingsturm: Drehpunkt in der Mitte des Gehäuses (Bild 1 536, Punkt 769 / 1 150), Gehäuse 63,6 % der Bildbreite
   'turret-xl': { name: 'heg-turm-xl-ki', scale: 2 / 0.636, oy: (1150 - 768) / 1536 },
+  'turret-lgun': { name: 'heg-turm-l-ki', scale: 2 / (684 / 1402), oy: (1060 - 701) / 1402 },
   // Kyon-Turm: Drehpunkt ist die runde Scheibe unter der Bildmitte
   'khaak:turret-laser': { name: 'khaak-turm-ki', scale: 3.1, oy: 0.07 },
   'khaak:turret-brut': { name: 'khaak-brutkasten-ki', scale: 2.3 },
