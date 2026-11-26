@@ -70,13 +70,20 @@ describe('Kampftasten anordnen', () => {
     g.pointerUp(7);
   });
 
-  it('nie unter die Kopfzeile, auch nicht mit Beschriftung', () => {
-    const g = game();
+  it('gesperrt ist oben nur die Leiste selbst (auch nicht mit Beschriftung darunter) – direkt darunter ist alles frei', () => {
+    const g = game() as G & { topBar: number };
+    g.topBar = 60;
     g.layoutEdit(true);
     const [x, y] = g.btnMissile;
     drag(g, [x, y], [x, -400]);
     const it = g.layoutItems.find((i) => i.id === 'missile')!;
-    expect(it.b[1]).toBeGreaterThan(0);
+    expect(it.b[1]).toBeGreaterThanOrEqual(60);
+    // das Radar lässt sich bis dicht unter die Leiste schieben (früher blieb oben ein Streifen bis 120 frei)
+    const r = g.layoutItems.find((i) => i.id === 'radar')!;
+    drag(g, r.a, [r.a[0], -400]);
+    const r2 = g.layoutItems.find((i) => i.id === 'radar')!;
+    expect(r2.b[1]).toBeGreaterThanOrEqual(60);
+    expect(r2.b[1]).toBeLessThan(70);
   });
 
   it('hochkant und quer getrennt gemerkt, und nach dem Neustart wieder da', () => {

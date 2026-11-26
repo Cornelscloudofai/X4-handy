@@ -999,6 +999,8 @@ export class ShooterGame implements MiniGame {
   private ringFlash = 0;
   /** Linker Sicherheitsrand des Geräts im Spielfeld (vom Host gesetzt) */
   safeL = 0;
+  /** Unterkante der Leiste oben (vom Spielrahmen gemessen); bis dahin reicht die Sperre für verschobene Tasten */
+  topBar = 56;
   /** Zielmarkierung nach einem Turmbefehl: Restzeit und Befehl (die passenden Gegner leuchten kurz auf) */
   private markT = 0;
   private markOrder: TurretOrder = 'alle';
@@ -1827,8 +1829,8 @@ export class ShooterGame implements MiniGame {
     const o = layoutOf(this.quer)[id];
     if (!o) return base;
     const r = base[2] * o.s, pad = 4, [l, t, rr, b] = ext ? ext.map((v) => v * o.s) : [r, r, r, r];
-    // nie über den Rand hinaus und nicht unter die Kopfzeile (samt Beschriftung)
-    const x = clamp(base[0] + o.dx, l + pad, this.w - rr - pad), y = clamp(base[1] + o.dy, TOP + t + pad, this.h - b - pad);
+    // nie über den Rand hinaus und nicht unter die Leiste oben (samt Beschriftung) – der Rest oben ist frei nutzbar
+    const x = clamp(base[0] + o.dx, l + pad, this.w - rr - pad), y = clamp(base[1] + o.dy, this.topBar + t + pad, this.h - b - pad);
     return [x, y, r];
   }
   /** Turmbefehle: Ausdehnung der Gruppe um den ersten Knopf */

@@ -286,6 +286,9 @@ function resize(): void {
   const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-left')) || 0;
   const g = s.game as { safeL?: number };
   if ('safeL' in g) g.safeL = rotOf(s) ? 0 : Math.max(0, inset - r.left) / s.k;
+  // Unterkante der Leiste oben (Titel, Anzeigen, Pause; samt Sicherheitsrand) – nur darüber bleiben Tasten gesperrt
+  const bar = s.root.querySelector('.mg-top') as HTMLElement | null, gt = s.game as { topBar?: number };
+  if (bar && 'topBar' in gt) gt.topBar = (bar.offsetTop + bar.offsetHeight) / s.k;
   s.game.resize(s.w / s.k, s.h / s.k);
 }
 
