@@ -17,8 +17,8 @@ await page.click('text=Loslegen');
 await page.evaluate(() => { const g = window.__game; g.state.help = { coachOff: true }; g.ui.modal = { type: 'minigames' }; g.refresh(); });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${out}/mg-0-menu.png` });
-// Simulator: Heute-Leiste mit neun Tagesaufgaben, Reiter Arbeit (sechs Spiele) und Kampf (Geleitschutz, Einsätze, Endlos)
-if ((await page.locator('#modal .sim-day[data-act="mg-daily"]').count()) !== 9) fail('Heute-Leiste: Tagesaufgaben fehlen');
+// Simulator: Heute-Leiste mit zehn Tagesaufgaben, Reiter Arbeit (sechs Spiele) und Kampf (Geleitschutz, Einsätze, Endlos)
+if ((await page.locator('#modal .sim-day[data-act="mg-daily"]').count()) !== 10) fail('Heute-Leiste: Tagesaufgaben fehlen');
 if ((await page.locator('#modal [data-act="mg-game"]').count()) !== 6) fail('Reiter „Arbeit“: Spiele fehlen');
 await simTab(page, 'combat');
 await page.waitForTimeout(200);
