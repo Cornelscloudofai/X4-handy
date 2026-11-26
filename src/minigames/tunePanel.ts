@@ -39,8 +39,8 @@ export function tunePanel(level: Level, o: { levelPicker?: string; reset: string
       <div class="sub wrap">Kha'ak-Runden: ein Brutschiff liegt von Anfang an am Kartenrand und brütet sofort. Gilt ab dem nächsten Start.</div></div>
       <div class="toggle"><button class="plain ${broodTest() ? 'on' : ''}" ${o.brood}>${broodTest() ? 'An' : 'Aus'}</button></div></div>` : ''}
     ${o.heg ? `<div class="title" style="font-weight:500;margin-top:12px">Test: Hegemonie</div>
-      <div class="sub wrap">Neue Fraktion (Arbeitsname): in jeder Kampfrunde fliegen von Anfang an Schiffe der Hegemonie heran – Korvette (150 m), Fregatte (420 m), Zerstörer (950 m) oder ein Verband aus allen. Gilt ab dem nächsten Start.</div>
-      <div class="segment" style="margin-top:6px">${([['', 'Aus'], ['k', 'Korvette'], ['f', 'Fregatte'], ['z', 'Zerstörer'], ['alle', 'Verband']] as const).map(([v, l]) => `<button class="${hegTestMode() === v ? 'on' : ''}" ${o.heg!(v)}>${l}</button>`).join('')}</div>` : ''}
+      <div class="sub wrap">Neue Fraktion (Arbeitsname): in jeder Kampfrunde fliegen von Anfang an Schiffe der Hegemonie heran – Jägerstaffel (10 im Dreieck), Korvette (150 m), Fregatte (420 m), Zerstörer (950 m) oder ein Verband aus allen. Gilt ab dem nächsten Start.</div>
+      <div class="segment" style="margin-top:6px">${([['', 'Aus'], ['j', 'Staffel'], ['k', 'Korvette'], ['f', 'Fregatte'], ['z', 'Zerstörer'], ['alle', 'Verband']] as const).map(([v, l]) => `<button class="${hegTestMode() === v ? 'on' : ''}" ${o.heg!(v)}>${l}</button>`).join('')}</div>` : ''}
     ${o.foes ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Fraktionen gegeneinander</div>
       <div class="sub wrap">Mit dem Hegemonie-Test: Hegemonie und die übrigen Gegner beschießen sich auch gegenseitig. Abschüsse durch die andere Seite bringen dir nichts. Gilt sofort.</div></div>
       <div class="toggle"><button class="plain ${foesTest() ? 'on' : ''}" ${o.foes}>${foesTest() ? 'An' : 'Aus'}</button></div></div>` : ''}

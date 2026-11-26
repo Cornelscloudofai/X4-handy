@@ -15,7 +15,7 @@ import { hudScale } from '../ui/hudScale';
 import { SCHOOL_CTRLS, SCHOOL_NAME, SCHOOL_SUB, type SchoolCtrl } from './flightSchool';
 import { best, bestPoints, dailyBest, hasBadge, recordResult, today, totalStars, UNLOCK, type RecordOutcome } from './records';
 
-export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon' | 'khaak';
+export type MiniKind = 'pipes' | 'ore' | 'gas' | 'cargo' | 'highway' | 'orbit' | 'pirates' | 'xenon' | 'khaak' | 'heg';
 
 export interface MiniOpts {
   level: Level;
@@ -50,6 +50,7 @@ export const MINI_INFO: Record<MiniKind, { name: string; sub: string; icon: stri
   pirates: { name: 'Piratenangriff', sub: 'Kampf: Den Frachter bis zum Sprungtor beschützen', icon: 'warn', endless: 'Endloser Geleitschutz: Wie viele Wellen hältst du?' },
   xenon: { name: 'Xenon-Schwarm', sub: 'Kampf: Xenon greifen in Schwärmen an', icon: 'target', endless: 'Endlose Xenon-Abwehr: Wie viele Wellen hältst du?' },
   khaak: { name: 'Kha’ak-Invasion', sub: 'Kampf: Späher-Cluster, Kyon-Strahlen und ein Brutschiff', icon: 'target', endless: 'Endlose Kha’ak-Invasion: Wie viele Wellen hältst du?' },
+  heg: { name: 'Hegemonie-Vorstoß', sub: 'Kampf: Jägerstaffeln im Dreieck, Korvetten, Fregatten und ein Zerstörer', icon: 'target', endless: 'Endloser Hegemonie-Vorstoß: Wie viele Wellen hältst du?' },
 };
 export const MINI_KINDS = Object.keys(MINI_INFO) as MiniKind[];
 
@@ -100,6 +101,7 @@ const LOAD: Record<MiniKind, () => Promise<Factory>> = {
   pirates: () => import('./shooter').then((m) => (c) => new m.ShooterGame(c, 'pirate')),
   xenon: () => import('./shooter').then((m) => (c) => new m.ShooterGame(c, 'xenon')),
   khaak: () => import('./shooter').then((m) => (c) => new m.ShooterGame(c, 'khaak')),
+  heg: () => import('./shooter').then((m) => (c) => new m.ShooterGame(c, 'heg')),
 };
 const ready: Partial<Record<MiniKind, Factory>> = {};
 const loading: Partial<Record<MiniKind, Promise<Factory>>> = {};
@@ -215,7 +217,7 @@ export function openMinigame(kind: MiniKind, opts: MiniOpts, onDone?: (r: GameRe
   setPhase('intro');
   if (opts.layout) startLayout(cur);
   cur.raf = requestAnimationFrame(loop);
-  if (kind === 'pirates' || kind === 'xenon' || kind === 'khaak') allowTurn(true);
+  if (kind === 'pirates' || kind === 'xenon' || kind === 'khaak' || kind === 'heg') allowTurn(true);
   sfx.open();
   (window as unknown as { __mg: unknown }).__mg = { get game() { return cur?.game; }, get phase() { return cur?.phase; }, get cfg() { return cur?.cfg; }, start: () => setPhase('play') };
 }
@@ -229,7 +231,7 @@ function allowTurn(on: boolean): void {
   try { o?.lock?.(on ? 'any' : 'portrait')?.catch?.(() => undefined); } catch { /* nicht unterstützt */ }
 }
 
-const combat = (kind: MiniKind) => kind === 'pirates' || kind === 'xenon' || kind === 'khaak';
+const combat = (kind: MiniKind) => kind === 'pirates' || kind === 'xenon' || kind === 'khaak' || kind === 'heg';
 
 /**
  * Querformat per Knopf: Viele Hüllen (Claude-App, installierte App auf dem iPhone, Drehsperre) lassen die Seite
@@ -262,7 +264,7 @@ function close(r: GameResult | null): void {
   if (!s) return;
   s.game.phase?.('end');
   cancelAnimationFrame(s.raf);
-  if (s.kind === 'pirates' || s.kind === 'xenon' || s.kind === 'khaak') allowTurn(false);
+  if (s.kind === 'pirates' || s.kind === 'xenon' || s.kind === 'khaak' || s.kind === 'heg') allowTurn(false);
   s.root.remove();
   cur = null;
   s.onDone?.(r);

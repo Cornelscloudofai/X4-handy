@@ -49,7 +49,7 @@ import { paleBackdrop } from './loadout';
 import { drawBlurred } from '../render/canvasFx';
 import type { Mission } from './missions';
 
-export type BattleSide = 'pirate' | 'xenon' | 'khaak';
+export type BattleSide = 'pirate' | 'xenon' | 'khaak' | 'heg';
 
 /** Teil einer Tiefenebene: Bild, Größe in Ebenen-Einheiten, Gewicht bei der Auswahl, Eigendrehung erlaubt */
 interface Piece { src: string; size: number; w?: number; spin?: boolean }
@@ -115,6 +115,20 @@ const THEMES: Record<BattleSide, Theme> = {
       { E: 3.5, cell: 3200, fill: 0.3, light: 0.45, tint: '#140a24', pieces: [{ src: splitter, size: 750, spin: true }, { src: astEis1, size: 650, spin: true }] },
     ],
     motes: { rgb: '190,160,255', n: 3 },
+  },
+  // Hegemonie: Aufmarschgebiet – kühler, stahlblauer Nebel über einem Gasriesen, Gesteinsbrocken und Wracks früherer
+  // Gefechte
+  heg: {
+    sky: ['#0b1118', '#020304'], star: '#dce8ff',
+    haze: [{ src: nebelAusblick, a: 0.32, rot: 0.4, x: 0.5, y: 0.3, s: 1.5 }, { src: wasserstoff, a: 0.25, rot: 3.1, x: 0.4, y: 0.85, s: 1.4 }],
+    far: { src: gasriese, x: 0.26, y: 0.18, w: 0.8, light: 0.5, tint: '#0a1420' },
+    layers: [
+      { E: 24, cell: 9000, fill: 0.5, light: 0.3, tint: '#0a0f16', pieces: [{ src: ast2, size: 4000, spin: true }, { src: ast3, size: 3400, spin: true }, { src: wrackBruecke, size: 4200 }] },
+      { E: 13, cell: 15000, fill: 0.45, light: 0.38, tint: '#0c1a2c', blend: 'screen', pieces: [{ src: nebelAusblick, size: 17000 }, { src: wasserstoff, size: 15000 }] },
+      { E: 9, cell: 5200, fill: 0.5, light: 0.42, tint: '#0a0f16', pieces: [{ src: wrackHeck, size: 3000 }, { src: wrackMitte, size: 2800 }, { src: ast4, size: 2000, spin: true }, { src: astErz3, size: 1800, spin: true }] },
+      { E: 3.5, cell: 3300, fill: 0.3, light: 0.42, tint: '#0a0f16', pieces: [{ src: ast2, size: 700, spin: true }, { src: wrackMitte, size: 1100 }] },
+    ],
+    motes: { rgb: '170,200,255', n: 2 },
   },
 };
 
@@ -201,6 +215,7 @@ const FOG_SRC: Record<BattleSide, string[]> = {
   pirate: [nebelRhak, staubAsche, helium, methan, staubTkr, nebelGlut],
   xenon: [nebelRhy, nebelAusblick, wasserstoff, staubAsche, helium, nebelRhak],
   khaak: [nebelZhin, nebelRhy, methan, wasserstoff, helium, nebelAusblick],
+  heg: [wasserstoff, nebelAusblick, helium, staubAsche, methan, nebelRhy],
 };
 const VEILS = new Map<string, HTMLCanvasElement | null>();
 export const FOG_VEILS = 6;

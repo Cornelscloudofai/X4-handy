@@ -21,9 +21,9 @@ export type SimMission = Mission;
 export interface SimHome { type: 'minigames'; tab?: SimTab }
 export interface SimGame { type: 'mgGame'; kind: MiniKind; mission?: SimMission; level: Level }
 
-export const COMBAT_KINDS: MiniKind[] = ['pirates', 'xenon', 'khaak'];
+export const COMBAT_KINDS: MiniKind[] = ['pirates', 'xenon', 'khaak', 'heg'];
 export const WORK_KINDS: MiniKind[] = MINI_KINDS.filter((k) => !COMBAT_KINDS.includes(k));
-const SIDE_NAME: Record<string, string> = { pirates: 'Piraten', xenon: 'Xenon', khaak: 'Kha’ak' };
+const SIDE_NAME: Record<string, string> = { pirates: 'Piraten', xenon: 'Xenon', khaak: 'Kha’ak', heg: 'Hegemonie' };
 const LEVELS = [1, 2, 3, 4, 5] as const;
 
 /** Endlos-Varianten: mit Frachter (Geleitschutz) und ohne (Überleben) */

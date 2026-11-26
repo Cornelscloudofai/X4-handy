@@ -5,8 +5,8 @@ import { best, recordResult, resetRecords, totalStars, unlocked } from '../src/m
 import type { GameResult, Level } from '../src/minigames/common';
 
 const DT = 1 / 60;
-type Side = 'pirate' | 'xenon' | 'khaak';
-const sideOf = { pirates: 'pirate', xenon: 'xenon', khaak: 'khaak' } as const;
+type Side = 'pirate' | 'xenon' | 'khaak' | 'heg';
+const sideOf = { pirates: 'pirate', xenon: 'xenon', khaak: 'khaak', heg: 'heg' } as const;
 
 function game(mission: Mission, side: Side, seed = 1, level: Level = 1): ShooterGame {
   const g = new ShooterGame({ level, seed, mutator: null, mode: 'normal', mission }, side);

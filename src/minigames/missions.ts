@@ -9,7 +9,7 @@
 export type Mission = 'geleit' | 'station' | 'konvoi' | 'ueberfall' | 'bergung' | 'nest' | 'flucht' | 'ueberleben';
 
 /** Gegnerseite des Kampfs, wie im Menü (Spielkennung) */
-export type CombatKind = 'pirates' | 'xenon' | 'khaak';
+export type CombatKind = 'pirates' | 'xenon' | 'khaak' | 'heg';
 
 export interface MissionInfo {
   name: string;
@@ -20,12 +20,12 @@ export interface MissionInfo {
 }
 
 export const MISSIONS: Record<Exclude<Mission, 'geleit'>, MissionInfo> = {
-  station: { name: 'Station verteidigen', sub: 'Angriffe aus allen Richtungen – zerstörte Stationstürme mit Fundstücken reparieren', sides: ['pirates', 'xenon', 'khaak'] },
-  konvoi: { name: 'Konvoi', sub: 'Drei Frachter, weit auseinander – nicht alle sind zu retten. Wen schützt du?', sides: ['pirates', 'xenon', 'khaak'] },
-  flucht: { name: 'Flucht', sub: 'Ein beschädigter Frachter lädt den Sprungantrieb – halte durch, bis er springt', sides: ['pirates', 'xenon', 'khaak'] },
-  bergung: { name: 'Bergung unter Beschuss', sub: 'Container mit dem Traktorstrahl aus dem Wrackfeld zum Bergungsschiff schleppen', sides: ['pirates', 'xenon', 'khaak'] },
+  station: { name: 'Station verteidigen', sub: 'Angriffe aus allen Richtungen – zerstörte Stationstürme mit Fundstücken reparieren', sides: ['pirates', 'xenon', 'khaak', 'heg'] },
+  konvoi: { name: 'Konvoi', sub: 'Drei Frachter, weit auseinander – nicht alle sind zu retten. Wen schützt du?', sides: ['pirates', 'xenon', 'khaak', 'heg'] },
+  flucht: { name: 'Flucht', sub: 'Ein beschädigter Frachter lädt den Sprungantrieb – halte durch, bis er springt', sides: ['pirates', 'xenon', 'khaak', 'heg'] },
+  bergung: { name: 'Bergung unter Beschuss', sub: 'Container mit dem Traktorstrahl aus dem Wrackfeld zum Bergungsschiff schleppen', sides: ['pirates', 'xenon', 'khaak', 'heg'] },
   ueberfall: { name: 'Überfall', sub: 'Rollentausch: den Piratenkonvoi abfangen, bevor er das Sprungtor erreicht', sides: ['pirates'] },
-  ueberleben: { name: 'Überleben', sub: 'Kein Frachter, keine Station – nur dein Jäger. Die Wellen kommen von allen Seiten und werden dichter', sides: ['pirates', 'xenon', 'khaak'] },
+  ueberleben: { name: 'Überleben', sub: 'Kein Frachter, keine Station – nur dein Jäger. Die Wellen kommen von allen Seiten und werden dichter', sides: ['pirates', 'xenon', 'khaak', 'heg'] },
   nest: { name: 'Nest ausheben', sub: 'Ein Nest spuckt Drohnen aus – erst die Brutöffnungen, dann der Kern', sides: ['xenon', 'khaak'] },
 };
 

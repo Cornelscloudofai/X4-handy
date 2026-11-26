@@ -57,8 +57,18 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
   wie ihre Sockel), dazu vier Bugkanonen mit mittlerem Tempo (abwechselnd alle 0,3 s, Reichweite ≈ 750 m). Rumpf direkt
   verwundbar, Hülle und Schild ×0,25 des Bosswerts. Dreht den Bug zum Ziel.
   Schiffsdaten (Sockel, Mündungen, Werte) in `HEG_SHIPS` in `src/minigames/shooter.ts`.
-- **Test-Schalter** im Kampf-Reiter (Entwicklung): „Test: Hegemonie“ – Aus, Korvette, Fregatte, Zerstörer oder Verband
-  (Zerstörer, Fregatte, zwei Korvetten); fliegen in jeder Kampfrunde von Anfang an heran. Vorschau:
+- **Jäger** (`heg-jaeger-ki`, ≈ 30 m, S): zwei Laser-Repeater im Bug mit sehr hoher Feuerrate (angelehnt an ein schnelles
+  MG: abwechselnd links/rechts alle 0,06 s, leichte rote Geschosse, Reichweite ≈ 430 px). Fliegen **nur in Staffeln** als
+  sauberes Dreieck: 6 (3 Reihen), 10 (4) oder 15 (5). Der Staffelführer an der Spitze fliegt den Angriff (Anflug –
+  Durchziehen – Ausholen in einem Bogen – neuer Anflug), alle halten ihren Platz und feuern im Anflug gebündelt auf
+  dasselbe Ziel. Fällt der Führer, übernimmt das nächste Schiff (die Plätze rücken auf). Werte `HJ_*`.
+- **Eigene Gegnerfraktion** „Hegemonie-Vorstoß“ in allen Kampfeinsätzen (außer Nest und Überfall) und im Endlos-Modus,
+  Kulisse „Aufmarschgebiet“ (stahlblauer Nebel, Gasriese, Wracks). Wellen: Stufe 1 eine Staffel (6), dann mehr und größere
+  Staffeln je Stufe (Stufe 5: 15 + 10 + 6 und mehr), ab der zweiten Welle Korvetten (ab Stufe 2), Fregatten (ab Stufe 3
+  oder mit starkem Schiff); in der letzten Welle der Zerstörer (Stufe 1 mit einem Jäger: eine Fregatte). Zusammenstellung
+  vorläufig (`hegWave`).
+- **Test-Schalter** im Kampf-Reiter (Entwicklung, auch in Runden gegen andere Fraktionen): „Test: Hegemonie“ – Aus,
+  Staffel (10), Korvette, Fregatte, Zerstörer oder Verband (Zerstörer, Fregatte, zwei Korvetten, eine Staffel aus 6); fliegen in jeder Kampfrunde von Anfang an heran. Vorschau:
   `node scripts/kampf-vorschau.mjs bild.png --heg 900 --heg-typ f --zoom 0.4`.
 
 ## Vorschlag Spielweise (noch nicht umgesetzt)
@@ -72,7 +82,7 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
 
 | Rolle | Länge | Bild |
 |---|---|---|
-| Jäger | ca. 30 m | fehlt |
+| Jäger | ca. 30 m | vorhanden |
 | Korvette | ca. 150 m | vorhanden |
 | Fregatte | ca. 420 m | vorhanden |
 | Zerstörer | ca. 950 m | vorhanden |
@@ -89,5 +99,5 @@ nichts. Noch nicht: Strahlen (Laser, Kyon), Raketen und Flak der übrigen Gegner
 ## Offen
 
 - Namen, Geschichte, Personen.
-- Weitere Schiffe (Bilder), danach eigene Gegnerseite mit Wellen, Einsätzen, Menübild.
+- Eigenes Menübild und eigene Klänge; Balance der Wellen.
 - Balance aller Türme (Schaden, Reichweite, Tempo).

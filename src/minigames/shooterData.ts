@@ -34,7 +34,7 @@ export const SPEC: Record<EKind, { hp: number; sh: number; speed: number; r: num
 
 
 /** Seite der Gegner im Kampf */
-export type ESide = 'pirate' | 'xenon' | 'khaak';
+export type ESide = 'pirate' | 'xenon' | 'khaak' | 'heg';
 
 /**
  * Gegnergrößen nach X4 (Länge in m, X4 5.00): Vorbild und bisherige Bildgröße in Punkten (Trefferradius × Bildmaßstab).

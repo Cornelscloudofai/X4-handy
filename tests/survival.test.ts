@@ -11,8 +11,8 @@ const make = (mode: 'normal' | 'endless', side: 'pirate' | 'xenon' | 'khaak' = '
 const run = (g: ShooterGame, sec: number) => { for (let t = 0; t < sec && !g.result(); t += DT) { g.autopilot(); g.update(DT); } };
 
 describe('Einsatz Überleben', () => {
-  it('steht im Menü mit allen drei Gegnerseiten', () => {
-    expect(MISSIONS.ueberleben.sides).toEqual(['pirates', 'xenon', 'khaak']);
+  it('steht im Menü mit allen vier Gegnerseiten (mit der Hegemonie)', () => {
+    expect(MISSIONS.ueberleben.sides).toEqual(['pirates', 'xenon', 'khaak', 'heg']);
     expect(recordKey('xenon', 'ueberleben')).toBe('xenon@ueberleben');
   });
 

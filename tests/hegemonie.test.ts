@@ -1,7 +1,7 @@
 // Neue Fraktion (Arbeitsname Hegemonie), Testgegner: Zerstörer mit zehn Zwillingsgeschützen (Splittergranate)
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ShooterGame } from '../src/minigames/shooter';
-import { LG_GAP } from '../src/minigames/shooter';
+import { LG_GAP, sqSlot } from '../src/minigames/shooter';
 import { DEFAULT_LOADOUT, SHIPS, scaledLength, sizeScale, type ShipId } from '../src/minigames/loadout';
 
 const DT = 1 / 60;
@@ -319,8 +319,9 @@ describe('Korvette und Fregatte der Hegemonie', () => {
   it('Verband: Zerstörer, Fregatte und zwei Korvetten', () => {
     const g = spawn('alle');
     for (let i = 0; i < 5; i++) g.update(DT);
-    const m = g.enemies.filter((e) => e.model).map((e) => e.model).sort();
+    const m = g.enemies.filter((e) => e.model && e.model !== 'heg-j').map((e) => e.model).sort();
     expect(m).toEqual(['heg', 'heg-f', 'heg-k', 'heg-k']);
+    expect(g.enemies.filter((e) => e.model === 'heg-j').length).toBe(6);
   });
   for (const [mode, model, n] of [['k', 'heg-k', 4], ['f', 'heg-f', 2]] as const) {
     it(`Bugwaffen (${mode === 'k' ? 'Korvette: vier Geschütze' : 'Fregatte: zwei L-Gatlings'}) feuern aus den Mündungen nach vorn`, () => {
@@ -346,4 +347,78 @@ describe('Korvette und Fregatte der Hegemonie', () => {
       expect(muz.size).toBeGreaterThanOrEqual(n);
     });
   }
+});
+
+describe('Hegemonie-Jäger in Staffeln', () => {
+  type J = E & { sq?: number };
+  const staffel = () => {
+    store.set('x4-sektorbau-hegemonie-test', 'j');
+    const g = new ShooterGame({ level: 3, seed: 4, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, loadout: { ...DEFAULT_LOADOUT, wing: {}, ship: 'dragon' } } as never, 'pirate') as unknown as G;
+    g.resize(390, 780);
+    for (let i = 0; i < 60 * 20 && !g.enemies.some((e) => e.model === 'heg-j'); i++) g.update(DT);
+    const j = g.enemies.filter((e) => e.model === 'heg-j') as J[];
+    g.enemies = [...j]; g.reinforce.length = 0; g.clusters.clear();
+    return { g, j };
+  };
+  it('Dreieck: 6, 10 und 15 Plätze füllen 3, 4 und 5 Reihen vollständig', () => {
+    for (const [n, rows] of [[6, 3], [10, 4], [15, 5]]) {
+      const s = Array.from({ length: n }, (_, i) => sqSlot(i));
+      expect(Math.max(...s.map((q) => q.row)) + 1).toBe(rows);
+      // letzte Reihe voll besetzt
+      expect(s.filter((q) => q.row === rows - 1).length).toBe(rows);
+    }
+  });
+  it('eine Staffel aus 10 Jägern fliegt geschlossen im Dreieck und greift gebündelt an', () => {
+    const { g, j } = staffel();
+    expect(j.length).toBe(10);
+    expect(new Set(j.map((q) => q.sq)).size).toBe(1);
+    // eine Weile fliegen lassen: die Staffel bleibt beisammen (alle nahe beim Führer)
+    let shots = 0;
+    for (let i = 0; i < 60 * 12; i++) { g.update(DT); g.hull = g.shield = 100; shots += g.bullets.filter((b) => b.from === 'e').length; }
+    const live = g.enemies.filter((e) => e.model === 'heg-j');
+    const cx = live.reduce((a, q) => a + q.x, 0) / live.length, cy = live.reduce((a, q) => a + q.y, 0) / live.length;
+    for (const q of live) expect(Math.hypot(q.x - cx, q.y - cy)).toBeLessThan(live[0].r * 4.6 * 4);
+    expect(shots).toBeGreaterThan(0);
+  });
+  it('fällt der Staffelführer, übernimmt der nächste – die Staffel fliegt weiter zusammen', () => {
+    const { g, j } = staffel();
+    const lead = j[0];
+    (g as unknown as { killEnemy(e: E, p: boolean): void }).killEnemy(lead, true);
+    for (let i = 0; i < 60 * 4; i++) { g.update(DT); g.hull = g.shield = 100; }
+    const live = g.enemies.filter((e) => e.model === 'heg-j') as J[];
+    expect(live.length).toBe(9);
+    const sqs = (g as unknown as { hegSqs: Map<number, { m: E[] }> }).hegSqs;
+    expect(sqs.get(live[0].sq!)!.m[0]).toBe(j[1]);
+    const cx = live.reduce((a, q) => a + q.x, 0) / live.length, cy = live.reduce((a, q) => a + q.y, 0) / live.length;
+    for (const q of live) expect(Math.hypot(q.x - cx, q.y - cy)).toBeLessThan(live[0].r * 4.6 * 4);
+  });
+});
+
+describe('Hegemonie als Gegnerfraktion', () => {
+  const run = (level: number, ship: ShipId = 'dragon') => {
+    store.clear();
+    const g = new ShooterGame({ level, seed: 7, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, loadout: { ...DEFAULT_LOADOUT, wing: {}, ship } } as never, 'heg') as unknown as G & { reinforce: { hegSq?: number; heg?: string }[]; hegSqs: Map<number, { m: E[] }> };
+    g.resize(390, 780);
+    for (let i = 0; i < 60 * 3; i++) g.update(DT);
+    return g;
+  };
+  it('Stufe 1: erste Welle eine Staffel aus 6 Jägern im Dreieck, keine anderen Gegner', () => {
+    const g = run(1, 'mamba');
+    const j = g.enemies.filter((e) => e.model === 'heg-j');
+    expect(j.length).toBe(6);
+    expect(g.enemies.length).toBe(6);
+    expect(g.reinforce.length).toBe(0);
+  });
+  it('Stufe 5: mehrere Staffeln (nur 6, 10 oder 15 groß), dazu Nachschub', () => {
+    const g = run(5);
+    const sizes = [...g.hegSqs.values()].map((s) => s.m.length).concat((g.reinforce as { hegSq?: number }[]).filter((r) => r.hegSq).map((r) => r.hegSq!));
+    expect(sizes.length).toBeGreaterThanOrEqual(3);
+    for (const n of sizes) expect([6, 10, 15]).toContain(n);
+  });
+  it('alle Schiffe der Wellen gehören zur Hegemonie (keine Piraten, Xenon oder Kha’ak)', () => {
+    const g = run(4);
+    for (let i = 0; i < 60 * 40; i++) { g.update(DT); g.hull = g.shield = 100; }
+    expect(g.enemies.length).toBeGreaterThan(0);
+    for (const e of g.enemies) expect(e.model ?? e.parent?.model).toMatch(/^heg/);
+  });
 });

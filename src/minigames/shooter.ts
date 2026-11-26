@@ -33,7 +33,7 @@ export { SHOOTER_MUTATORS, SHOOTER_GOALS };
 
 export type { Gear } from './common';
 
-type Side = 'pirate' | 'xenon' | 'khaak';
+type Side = 'pirate' | 'xenon' | 'khaak' | 'heg';
 /**
  * Elite-Gegner (leuchtende farbige Umrandung): Gepanzert (doppelter Schild, langsam), Flink (schnell, weicht Raketen aus), Splitter
  * (zerfällt beim Abschuss in zwei kleine), Kommandant (lädt Schilde naher Verbündeter; fällt er, löst sich die Gruppe
@@ -186,7 +186,9 @@ interface Enemy {
   /** Zwillingsgeschütz: letztes Ziel (für den laufenden Stoß) */
   splitTg?: { x: number; y: number; vx: number; vy: number };
   /** Bauart eines Großkampfschiffs aus einer anderen Fraktion (heg: Zerstörer der Hegemonie, Test) */
-  model?: 'heg' | 'heg-f' | 'heg-k';
+  model?: 'heg' | 'heg-f' | 'heg-k' | 'heg-j';
+  /** Hegemonie-Jäger: Staffel (Nummer), Takt der Repeater, nächstes Rohr */
+  sq?: number; hjCd?: number; hjSide?: number;
   /** Bugwaffen der Hegemonie-Korvette und -Fregatte: Takt, nächste Mündung, Schuss im Feuerstoß */
   bowCd?: number; bowI?: number; bowN?: number;
   /** laufende Salve eines Turms: noch abzugebende Schüsse, Zeit bis zum nächsten */
@@ -664,6 +666,25 @@ const HEG_SHIPS: Record<HegKind, { model: 'heg' | 'heg-f' | 'heg-k'; w: number; 
     bow: { muz: [[270, 280], [460, 280], [305, 280], [494, 280]], gap: 0.3, pause: 0, v: 520, dmg: 3.5, range: 750, cone: 0.3, spread: 0.04, color: '#ffb46a', w: 2.4, flash: 7 },
   },
 };
+/**
+ * Hegemonie-Jäger (S, ≈ 30 m; Bild 1 122 × 1 402, quadratisch 1 402, Schiff 88 % der Bildhöhe): zwei Laser-Repeater im Bug
+ * (Mündungen ±6,3 % seitlich, 40 % vor der Mitte), sehr hohe Feuerrate wie ein schnelles MG – abwechselnd links/rechts alle
+ * HJ_GAP s, leichte Geschosse. Fliegen nur in Staffeln als sauberes Dreieck (6, 10 oder 15 Jäger): der Staffelführer
+ * fliegt den Angriff (Anflug – Durchziehen – Ausholen), alle halten ihren Platz und feuern gebündelt auf dasselbe Ziel.
+ * Fällt der Führer, übernimmt der nächste. Werte vorläufig.
+ */
+/** Anzeigenamen der Hegemonie-Schiffe */
+const HEG_NAME: Record<HegKind, string> = { z: 'Zerstörer', f: 'Fregatte', k: 'Korvette' };
+const HJ_SCALE = 3.6, HJ_FILL = 0.88, HJ_LEN = 30, HJ_LAT = 0.063, HJ_FWD = 0.4;
+const HJ_GAP = 0.06, HJ_V = 650, HJ_DMG = 0.7, HJ_RANGE = 430, HJ_CONE = 0.2, HJ_BREAK = 200, HJ_TURN = 1.7, HJ_SPEED = 1.1;
+/** Staffelgrößen (Dreieckszahlen: 3, 4 oder 5 Reihen) */
+export const HJ_SIZES = [6, 10, 15] as const;
+/** Platz im Dreieck: Reihe und Stelle in der Reihe (Reihe r hat r + 1 Plätze; der Führer an der Spitze) */
+export function sqSlot(i: number): { row: number; col: number } {
+  let row = 0;
+  while (((row + 1) * (row + 2)) / 2 <= i) row++;
+  return { row, col: i - (row * (row + 1)) / 2 };
+}
 /** Zwillingsgeschütz (M): Drehsockel so groß wie der M-Sockel im Bild (36 px Ring bei 1 976 px Rumpf ≈ 17 m) – etwa wie
  * die M-Türme von Dragon und Cobra (15 m); Rohre ±4,4 % der Bildbreite neben der Mitte, Mündungen 65,8 % der Bildgröße
  * vor dem Drehpunkt */
@@ -1093,7 +1114,9 @@ export class ShooterGame implements MiniGame {
       ? `Abschüsse: Jäger 100, Raketenboot 200, Kanonenboot und Schildträger 250, Geschützturm 200, Piratenträger 1.500, als Großziel mitten in der Welle 750 (meist die Fregatte, in Einsätzen auch der Träger)${bounty}`
       : this.side === 'xenon'
         ? `Abschüsse: Xenon N 60, Xenon M und Schirmdrohne 250, Xenon P 500, Geschützturm 200, Xenon K 1.500 (als Großziel 750)${bounty}`
-        : `Abschüsse: Kha’ak-Späher 70, Jäger 130, Abfangjäger 220, Korvette 300, Kyon-Turm und Brutkammer 200, Brutschiff 1.500 (als Großziel 750)${bounty}`;
+        : this.side === 'heg'
+          ? `Abschüsse: Jäger 100, Geschützturm 200, Korvette, Fregatte und Zerstörer je 750 – die Jäger fliegen in Staffeln (6, 10 oder 15 im Dreieck); fällt der Staffelführer, übernimmt der nächste${bounty}`
+          : `Abschüsse: Kha’ak-Späher 70, Jäger 130, Abfangjäger 220, Korvette 300, Kyon-Turm und Brutkammer 200, Brutschiff 1.500 (als Großziel 750)${bounty}`;
     const common = [
       foes,
       'Abgeschossene Rakete 30, gesprengte Mine 20',
@@ -1340,6 +1363,12 @@ export class ShooterGame implements MiniGame {
   private gateX = 0;
   private gateY = 0;
   private grpN = 0;
+  /**
+   * Staffeln der Hegemonie-Jäger: Mitglieder in Reihenfolge (das erste ist der Staffelführer; fällt er, rückt das nächste
+   * nach), Angriffsphase des Führers (Anflug – Durchziehen – Ausholen) und der Punkt, zu dem er ausholt
+   */
+  private hegSqs = new Map<number, { m: Enemy[]; phase: 'run' | 'pass' | 'extend'; t: number; ex: number; ey: number; side: 1 | -1 }>();
+  private sqN = 0;
   /** Kha'ak-Cluster: Mitte, Tempo, Drehung der Wabe, Flugrichtung */
   private clusters = new Map<number, { x: number; y: number; vx: number; vy: number; ang: number; kind: EKind; mass: [number, number][][] }>();
   // Welt-Objekte
@@ -1405,7 +1434,7 @@ export class ShooterGame implements MiniGame {
   private bigCd = 0;
   /** Verstärkung einer Welle: kommt einige Sekunden später von anderer Seite */
   /** full: volles Großkampfschiff (zweiter Xenon K der letzten Welle), sonst Großziel */
-  private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean; carrier?: boolean; full?: boolean }[] = [];
+  private reinforce: { t: number; kinds: EKind[]; from: number; swarm?: boolean; carrier?: boolean; full?: boolean; /** Hegemonie: Jägerstaffel (Größe) bzw. Schiff */ hegSq?: number; heg?: HegKind }[] = [];
   /** Elite-Gegner, die in dieser Welle noch kommen, und dafür in Frage kommende Gegner */
   private eliteLeft = 0;
   private eliteRest = 0;
@@ -1543,9 +1572,9 @@ export class ShooterGame implements MiniGame {
     this.score = new Score(this.mutator?.mult ?? 1, 6);
     this.goals = pickGoals(this.mode === 'endless' ? ENDLESS_GOALS : this.mission === 'geleit' ? NORMAL_GOALS : MISSION_GOALS[this.mission === 'nest' ? 'nestKhaak' : this.mission], rng(cfg.seed ^ 0x77));
     this.shield = this.shieldMax;
-    this.eyebrow = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : 'Kha’ak';
-    this.title = this.mode === 'endless' ? 'Endlos' : this.mission === 'bergung' ? 'Bergung' : this.mission !== 'geleit' ? MISSIONS[this.mission].name : side === 'pirate' ? 'Geleitschutz' : side === 'xenon' ? 'Abwehr' : 'Invasion';
-    const foe = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : 'Kha’ak';
+    this.eyebrow = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : side === 'heg' ? 'Hegemonie' : 'Kha’ak';
+    this.title = this.mode === 'endless' ? 'Endlos' : this.mission === 'bergung' ? 'Bergung' : this.mission !== 'geleit' ? MISSIONS[this.mission].name : side === 'pirate' ? 'Geleitschutz' : side === 'xenon' ? 'Abwehr' : side === 'heg' ? 'Vorstoß' : 'Invasion';
+    const foe = side === 'pirate' ? 'Piraten' : side === 'xenon' ? 'Xenon' : side === 'heg' ? 'Schiffe der Hegemonie' : 'Kha’ak';
     this.intro = this.mission === 'station'
       ? `Deine Station wird angegriffen – ${foe} kommen in Wellen aus allen Richtungen. Sechs Stationstürme helfen dir; zerstörte Türme setzt du mit Reparatur-Fundstücken wieder instand. Zum Schluss greift ein Großkampfschiff an.`
       : this.mission === 'konvoi'
@@ -1568,7 +1597,9 @@ export class ShooterGame implements MiniGame {
         ? 'Dein Frachter fliegt zum Sprungtor, Piraten lauern auf der Route. Fang sie ab, bevor sie ihn erreichen – Raketen- und Kanonenboote zuerst. Zum Schluss stellt sich der Piratenträger: erst die Flaktürme, und er startet Jäger von seiner Startbahn.'
         : side === 'xenon'
           ? 'Dein Frachter fliegt zum Sprungtor, Xenon fallen von allen Seiten ein. Fang sie weit draußen ab.' + (this.midBigWave >= 0 ? ` In Welle ${this.midBigWave + 1} und zum Schluss greift je ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.` : this.finalBigs ? ' Zum Schluss greift ein Xenon K an: erst Laser-, Plasma- und Repeatertürme, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Fregatten, Korvetten und Schwärmen.')
-          : 'Kha’ak fallen über die Route her: Späher kommen als geschlossene Cluster und schwärmen erst kurz vor dem Ziel aus – oder sobald du einen triffst. Jäger feuern Kyon-Strahlen, die Schilde schnell durchbrennen; Abfangjäger springen aus dem Visier.' + (this.finalBigs ? ' Zum Schluss ein Brutschiff: erst Kyon-Türme und Brutkammern, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Korvetten, Abfangjägern und Clustern.');
+          : side === 'heg'
+            ? 'Dein Frachter fliegt zum Sprungtor, die Hegemonie stößt auf die Route vor. Ihre Jäger fliegen in Staffeln zu 6, 10 oder 15 im Dreieck und feuern gebündelt auf ein Ziel; fällt der Staffelführer, übernimmt der nächste. Korvetten und Fregatten haben feste Bugwaffen – nicht frontal vor ihnen bleiben.' + (this.finalBigs ? ' Zum Schluss ein Zerstörer: erst die Türme, dann der Rumpf.' : ' Zum Schluss eine Fregatte mit Begleitstaffeln.')
+            : 'Kha’ak fallen über die Route her: Späher kommen als geschlossene Cluster und schwärmen erst kurz vor dem Ziel aus – oder sobald du einen triffst. Jäger feuern Kyon-Strahlen, die Schilde schnell durchbrennen; Abfangjäger springen aus dem Visier.' + (this.finalBigs ? ' Zum Schluss ein Brutschiff: erst Kyon-Türme und Brutkammern, dann der Kern.' : ' Zum Schluss eine dichte Welle aus Korvetten, Abfangjägern und Clustern.');
     if (this.place) this.intro = `Schauplatz: ${this.place.name}.${this.place.note ? ' ' + this.place.note + '.' : ''} ${this.intro}`;
     // Abschnitte: Welle 2 und 3 mit Asteroiden oder Minen
     for (let i = 0; i < 40; i++) this.sectionPlan.push(this.mutator?.id === 'mines' ? 'mines' : i === 0 ? 'none' : this.r() < 0.45 ? (this.r() < 0.5 ? 'rocks' : 'mines') : 'none');
@@ -1829,7 +1860,7 @@ export class ShooterGame implements MiniGame {
    */
   private get finalBigs(): number {
     if (this.mode === 'endless' || this.level >= 2) return 1;
-    return this.side === 'xenon' || (this.side === 'khaak' && this.ship.cls === 'S') ? 0 : 1;
+    return this.side === 'xenon' || ((this.side === 'khaak' || this.side === 'heg') && this.ship.cls === 'S') ? 0 : 1;
   }
   /** Xenon ab Stufe 4: ein weiterer Xenon K in der mittleren Welle (bei fünf oder sechs Wellen Welle 3), sonst -1 */
   private get midBigWave(): number { return this.side === 'xenon' && this.mode !== 'endless' && this.counted && this.level >= 4 ? Math.floor((this.nWaves - 1) / 2) : -1; }
@@ -3815,7 +3846,8 @@ export class ShooterGame implements MiniGame {
     if (this.anomaly && this.section !== 'anomalie') this.anomaly.fade = Math.min(this.anomaly.fade, 2);
     if (this.section === 'anomalie') this.spawnAnomaly();
     const boss = this.isBossWave(this.wave);
-    if (boss) {
+    if (this.side === 'heg') this.hegWave(this.wave, boss);
+    else if (boss) {
       this.spawnBoss();
       this.bannerText = 'BOSS';
       this.bannerSub = this.side === 'pirate' ? 'Piratenträger – erst die Flaktürme' : this.side === 'xenon' ? 'Xenon K – erst die Türme' : 'Kha’ak-Brutschiff – erst Kyon-Türme und Brutkammern';
@@ -4093,15 +4125,143 @@ export class ShooterGame implements MiniGame {
 
   /**
    * Test der neuen Fraktion: Schiffe der Hegemonie tauchen voraus auf (außerhalb der eigenen Reichweite) und fliegen heran –
-   * je nach Einstellung Korvette, Fregatte, Zerstörer oder ein Verband (Zerstörer, Fregatte, zwei Korvetten nebeneinander)
+   * je nach Einstellung Jägerstaffel, Korvette, Fregatte, Zerstörer oder ein Verband (Zerstörer, Fregatte, zwei Korvetten
+   * nebeneinander, dazu eine Staffel)
    */
   private spawnHegTest(): void {
     const mode = hegTestMode();
     const a = -Math.PI / 2 + (this.r() - 0.5) * 0.8;
     const list: [HegKind, number][] = mode === 'alle' ? [['z', 0], ['f', -1.3], ['k', 1.2], ['k', 1.8]] : [[mode === 'k' || mode === 'f' ? mode : 'z', 0]];
-    for (const [kind, lat] of list) this.spawnHeg(kind, a, lat);
-    const name = { k: 'Korvette', f: 'Fregatte', z: 'Zerstörer', alle: 'Verband' }[mode || 'z'];
+    if (mode === 'j' || mode === 'alle') this.spawnHegSquadron(mode === 'j' ? 10 : 6, Math.floor(this.r() * 5));
+    if (mode !== 'j') for (const [kind, lat] of list) this.spawnHeg(kind, a, lat);
+    const name = { j: 'Jägerstaffel', k: 'Korvette', f: 'Fregatte', z: 'Zerstörer', alle: 'Verband' }[mode || 'z'];
     this.floats.add(this.px, this.py - 60, `Test: ${name} der Hegemonie im Anflug`, '#ffb3a0', 15);
+  }
+
+  /**
+   * Welle gegen die Hegemonie: Jägerstaffeln (6, 10, 15 im Dreieck; mit Stufe und Welle mehr und größer), ab Stufe 2
+   * Korvetten, ab Stufe 3 Fregatten; in der Bosswelle der Zerstörer. Die erste Staffel sofort, der Rest gestaffelt aus
+   * anderen Richtungen. Vorläufige Zusammenstellung.
+   */
+  private hegWave(i: number, boss: boolean): void {
+    const L = this.level, late = this.mode === 'endless' ? Math.floor(i / 2) : i >= Math.max(2, this.nWaves - 2) ? 1 : 0;
+    const strong = this.power >= 4 || this.big > 1 ? 1 : 0;
+    const sqs: number[] = [[6], [6, 6], [10, 6], [15, 10], [15, 10, 6]][L - 1].slice();
+    if (i >= 1 && L >= 2) sqs.push(6);
+    if (late) sqs.push(L >= 4 ? 10 : 6);
+    if (strong) sqs.push(10);
+    if (this.mode === 'endless') for (let q = 0; q < Math.floor(i / 3); q++) sqs.push(HJ_SIZES[Math.min(2, q)]);
+    // Wellen 1 und 2 auf Stufe 1: etwas leichter (Aufwärmen)
+    if (L === 1 && i === 0) sqs.splice(1);
+    const ships: HegKind[] = [];
+    const corv = i < 1 ? 0 : Math.min(3, (L >= 2 ? 1 : 0) + (L >= 4 ? 1 : 0) + late + strong);
+    for (let q = 0; q < corv; q++) ships.push('k');
+    if (i >= 1 && (L >= 3 || strong)) ships.push('f');
+    if (late && L >= 5) ships.push('f');
+    if (boss) ships.push(L === 1 && this.ship.cls === 'S' ? 'f' : 'z');
+    const first = Math.floor(this.r() * 5);
+    this.spawnHegSquadron(sqs[0], first);
+    for (let q = 1; q < sqs.length; q++) this.reinforce.push({ t: 3 + q * 4 + this.r() * 2, kinds: ['jaeger'], from: (first + q * 2) % 5, hegSq: sqs[q] });
+    for (const [q, k] of ships.entries()) this.reinforce.push({ t: (k === 'k' ? 6 : 10) + q * 5 + this.r() * 3, kinds: ['boss'], from: (first + 1 + q * 2) % 5, heg: k });
+    this.bannerText = boss ? 'BOSS' : this.mode === 'endless' || !this.counted ? `WELLE ${i + 1}` : `WELLE ${i + 1} VON ${this.nWaves}`;
+    const nk = ships.filter((k) => k === 'k').length, nf = ships.filter((k) => k === 'f').length;
+    this.bannerSub = [`Jägerstaffel${sqs.length > 1 ? 'n' : ''} ${sqs.join(' + ')}`, nk ? `${nk > 1 ? `${nk} Korvetten` : 'Korvette'}` : '', nf ? `${nf > 1 ? `${nf} Fregatten` : 'Fregatte'}` : '', ships.includes('z') ? 'Zerstörer – erst die Türme' : '']
+      .filter(Boolean).join(' · ') + (this.section === 'rocks' ? ' · Asteroidenfeld' : this.section === 'mines' ? ' · Minenfeld' : this.section === 'wracks' ? ' · Wrackfeld (Deckung)' : this.section === 'anomalie' ? ' · Gravitationsanomalie' : this.fogged && i === 0 ? ' · Nebelfeld' : '');
+    if (i === 0 && this.place) this.bannerSub = `${this.place.name} · ${this.bannerSub}`;
+  }
+
+  /** Staffel Hegemonie-Jäger (6, 10 oder 15) als Dreieck, Spitze zum Ziel; from: Anflugrichtung wie bei den Gruppen */
+  private spawnHegSquadron(n: number, from: number): void {
+    const [x0, y0] = this.farPoint(from);
+    const id = ++this.sqN, m: Enemy[] = [];
+    const a = Math.atan2(this.fY - y0, this.fX - x0), c = Math.cos(a), sn = Math.sin(a);
+    const sc = sizeScale(), r = sc === 'bisher' ? 10 : scaledLength(HJ_LEN, sc) / (HJ_SCALE * HJ_FILL), gap = Math.max(46, r * 4.6);
+    for (let i = 0; i < n; i++) {
+      const { row, col } = sqSlot(i), lat = (col - row / 2) * gap, back = row * gap * 0.87;
+      const e = this.makeEnemy('jaeger', x0 - c * back - sn * lat, y0 - sn * back + c * lat);
+      e.model = 'heg-j'; e.sq = id; e.r = r; e.ang = a; e.hjCd = this.r() * 0.3; e.hjSide = 0;
+      this.enemies.push(e);
+      m.push(e);
+    }
+    this.hegSqs.set(id, { m, phase: 'run', t: 0, ex: 0, ey: 0, side: this.r() < 0.5 ? 1 : -1 });
+  }
+
+  /** Ziel einer Staffel: dein Schiff, ein näherer Begleiter, in Schutzeinsätzen ihr Frachter (bis du ihr zu nahe kommst) */
+  private hegSqTarget(lead: Enemy): { x: number; y: number; vx: number; vy: number } {
+    const toP = Math.hypot(this.px - lead.x, this.py - lead.y), ew = this.wardOf(lead);
+    if (ew && toP > AGGRO) return { x: this.wx(ew), y: this.wy(ew), vx: 0, vy: this.moving ? this.fVy : 0 };
+    const w = this.wingFor(lead, toP);
+    return w ? { x: w.x, y: w.y, vx: w.vx, vy: w.vy } : { x: this.px, y: this.py, vx: this.pvx, vy: this.pvy };
+  }
+
+  /**
+   * Hegemonie-Jäger: der Staffelführer fliegt die Angriffe, die anderen halten ihren Platz im Dreieck (Geschwindigkeit des
+   * Führers plus Korrektur zum Platz); im Anflug drehen alle die Nase aufs Ziel und feuern gebündelt
+   */
+  private updateHegJ(e: Enemy, dt: number): void {
+    const sq = e.sq != null ? this.hegSqs.get(e.sq) : undefined;
+    const m = sq?.m.filter((q) => q.hp > 0 && this.enemies.includes(q)) ?? [e];
+    if (sq) sq.m = m;
+    const lead = m[0] ?? e, i = Math.max(0, m.indexOf(e));
+    const sp = SPEC.jaeger.speed * HJ_SPEED;
+    const T = this.hegSqTarget(lead);
+    const tdx = T.x - lead.x, tdy = T.y - lead.y, td = Math.hypot(tdx, tdy) || 1;
+    if (e === lead) {
+      // Angriff in Anflügen: anfliegen, durchziehen, in einem Bogen ausholen, neuer Anflug
+      const st = sq ?? { phase: 'run' as const, t: 0, ex: 0, ey: 0, side: 1 as const };
+      st.t += dt;
+      let want: number;
+      if (st.phase === 'run') {
+        const lt = td / HJ_V;
+        want = Math.atan2(T.y + T.vy * lt - lead.y, T.x + T.vx * lt - lead.x);
+        if (td < HJ_BREAK) { st.phase = 'pass'; st.t = 0; }
+      } else if (st.phase === 'pass') {
+        want = lead.ang;
+        if (st.t > 0.6) {
+          st.phase = 'extend'; st.t = 0; st.side = st.side === 1 ? -1 : 1;
+          const a = lead.ang + st.side * 0.7;
+          st.ex = T.x + Math.cos(a) * 850; st.ey = T.y + Math.sin(a) * 850;
+        }
+      } else {
+        want = Math.atan2(st.ey - lead.y, st.ex - lead.x);
+        if (td > 700 || st.t > 4.5) { st.phase = 'run'; st.t = 0; }
+      }
+      // am Kartenrand umkehren
+      if (e.x < 80 || e.x > this.WW - 80 || e.y < 80 || e.y > this.WH - 80) want = Math.atan2(this.WH / 2 - e.y, this.WW / 2 - e.x);
+      e.ang = wrapA(turnTo(e.ang, want, HJ_TURN * dt));
+      const k = Math.min(1, dt * 3);
+      e.vx += (Math.cos(e.ang) * sp - e.vx) * k; e.vy += (Math.sin(e.ang) * sp - e.vy) * k;
+    } else {
+      // Platz im Dreieck hinter dem Führer
+      const { row, col } = sqSlot(i), gap = Math.max(46, e.r * 4.6), f = lead.ang, c = Math.cos(f), sn = Math.sin(f);
+      const lat = (col - row / 2) * gap, back = row * gap * 0.87;
+      const gx = lead.x - c * back - sn * lat - e.x, gy = lead.y - sn * back + c * lat - e.y;
+      let vx = lead.vx + gx * 2.2, vy = lead.vy + gy * 2.2;
+      const v = Math.hypot(vx, vy), vm = sp * 1.45;
+      if (v > vm) { vx *= vm / v; vy *= vm / v; }
+      const k = Math.min(1, dt * 4);
+      e.vx += (vx - e.vx) * k; e.vy += (vy - e.vy) * k;
+      const run = sq?.phase === 'run', aim = Math.atan2(T.y - e.y, T.x - e.x);
+      e.ang = wrapA(turnTo(e.ang, run && Math.abs(wrapA(aim - f)) < 0.7 ? aim : f, HJ_TURN * 1.6 * dt));
+    }
+    e.x = clamp(e.x + e.vx * dt, 20, this.WW - 20);
+    e.y = clamp(e.y + e.vy * dt, 20, this.WH - 20);
+    // Feuer: nur im Anflug, alle gebündelt auf das Ziel der Staffel
+    e.hjCd = (e.hjCd ?? 0) - dt;
+    const dist = Math.hypot(T.x - e.x, T.y - e.y), lt = dist / HJ_V;
+    const aimAt = Math.atan2(T.y + T.vy * lt - e.y, T.x + T.vx * lt - e.x);
+    if ((sq?.phase ?? 'run') !== 'extend' && dist < HJ_RANGE && Math.abs(wrapA(aimAt - e.ang)) < HJ_CONE && e.hjCd <= 0 && this.outcome !== 'player') {
+      e.hjCd = Math.max(e.hjCd, -dt) + HJ_GAP;
+      const side = e.hjSide ?? 0;
+      e.hjSide = 1 - side;
+      const size = e.r * HJ_SCALE, a = e.ang, c = Math.cos(a), sn = Math.sin(a);
+      const lat = (side ? 1 : -1) * HJ_LAT * size, fwd = HJ_FWD * size;
+      this.enemyShot(e, a + (this.r() - 0.5) * 0.05, HJ_V, HJ_DMG, '#ff4636', 1.5, (HJ_RANGE + 80) / HJ_V);
+      const b = this.bullets[this.bullets.length - 1];
+      b.x += c * fwd - sn * lat; b.y += sn * fwd + c * lat;
+      b.vx += e.vx; b.vy += e.vy;
+      if (this.r() < 0.5) this.fx.add({ x: b.x, y: b.y, color: '#ffb0a0', size: 3, max: 0.04 });
+    }
   }
 
   /** ein Schiff der Hegemonie mit allen Türmen auf seinen Sockeln; lat: Platz im Verband (seitlich versetzt) */
@@ -4360,7 +4520,7 @@ export class ShooterGame implements MiniGame {
   /** Bildname eines Gegners (wie beim Zeichnen) */
   private spriteKey(e: Enemy): string {
     const kh = this.side === 'khaak';
-    if (e.model) return { heg: 'heg-zerstoerer', 'heg-f': 'heg-fregatte', 'heg-k': 'heg-korvette' }[e.model];
+    if (e.model) return { heg: 'heg-zerstoerer', 'heg-f': 'heg-fregatte', 'heg-k': 'heg-korvette', 'heg-j': 'heg-jaeger' }[e.model];
     return e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && !e.carrier && (kh || this.side === 'pirate') ? 'boss-mini' : e.kind;
   }
 
@@ -4716,7 +4876,7 @@ export class ShooterGame implements MiniGame {
    * Frachter und nehmen ihn ins Visier, wenn du außer Reichweite bist
    */
   private spawnMissionPlats(): void {
-    if (this.side === 'pirate') return;
+    if (this.side === 'pirate' || this.side === 'heg') return;
     const kh = this.side === 'khaak';
     if (this.mission === 'bergung') {
       const x = this.fX, y = this.fY - 1200;
@@ -4922,10 +5082,12 @@ export class ShooterGame implements MiniGame {
       this.pendingSpawn -= dt;
       if (this.pendingSpawn < 0) { this.pendingSpawn = -1; this.spawnWave(); }
     } else if (due) {
-      if (due.kinds[0] === 'boss') this.spawnBoss(!due.full, due.from, due.carrier, due.full);
+      if (due.hegSq) this.spawnHegSquadron(due.hegSq, due.from);
+      else if (due.heg) { const [fx, fy] = this.farPoint(due.from); this.spawnHeg(due.heg, Math.atan2(fy - this.fY, fx - this.fX), 0); }
+      else if (due.kinds[0] === 'boss') this.spawnBoss(!due.full, due.from, due.carrier, due.full);
       else this.spawnGroup(due.kinds, due.from, due.swarm);
       this.reinforce = this.reinforce.filter((g) => g !== due);
-      this.floats.add(this.px, this.py - 40, due.kinds[0] === 'boss' ? (this.side === 'pirate' ? (due.carrier ? 'Piratenträger im Anflug!' : 'Piratenfregatte im Anflug!') : this.side === 'xenon' ? 'Xenon K im Anflug!' : 'Brutschiff im Anflug!') : due.swarm ? (this.side === 'khaak' ? `Cluster im Anflug! (${due.kinds.length})` : `Schwarm im Anflug! (${due.kinds.length})`) : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
+      this.floats.add(this.px, this.py - 40, due.hegSq ? `Jägerstaffel im Anflug! (${due.hegSq})` : due.heg ? `${HEG_NAME[due.heg]} im Anflug!` : due.kinds[0] === 'boss' ? (this.side === 'pirate' ? (due.carrier ? 'Piratenträger im Anflug!' : 'Piratenfregatte im Anflug!') : this.side === 'xenon' ? 'Xenon K im Anflug!' : 'Brutschiff im Anflug!') : due.swarm ? (this.side === 'khaak' ? `Cluster im Anflug! (${due.kinds.length})` : `Schwarm im Anflug! (${due.kinds.length})`) : 'Weitere Gruppe im Anflug!', '#ff9aa4', 14);
       sfx.alarm();
     } else if (this.wave >= 0 && this.waveCleared && !this.reinforce.length) {
       // Welle besiegt
@@ -5147,7 +5309,8 @@ export class ShooterGame implements MiniGame {
       if (this.charge >= 0.62 && !this.fluchtBoss) {
         this.fluchtBoss = true;
         // Xenon (bzw. Kha'ak gegen einen Jäger) auf Stufe 1: statt des Großkampfschiffs zwei Fregatten bzw. Korvetten
-        if (!this.finalBigs) this.reinforce.push({ t: this.waveT, kinds: this.side === 'khaak' ? ['kk', 'kk', 'ka'] : ['p', 'p', 'm'], from: Math.floor(this.r() * 5) });
+        if (this.side === 'heg') this.reinforce.push({ t: this.waveT, kinds: ['boss'], from: Math.floor(this.r() * 5), heg: this.finalBigs ? 'z' : 'f' });
+        else if (!this.finalBigs) this.reinforce.push({ t: this.waveT, kinds: this.side === 'khaak' ? ['kk', 'kk', 'ka'] : ['p', 'p', 'm'], from: Math.floor(this.r() * 5) });
         else this.reinforce.push({ t: this.waveT, kinds: ['boss'], from: Math.floor(this.r() * 5) });
       }
       if (this.charge >= 1 && this.liveWards.length) { this.winRound(); return; }
@@ -6054,6 +6217,8 @@ export class ShooterGame implements MiniGame {
       if (e.kind === 'cargo') { this.updateCargo(e, dt); continue; }
       // Nest: steht still; ohne Brutöffnungen feuert der Kern Ringe
       if (e.nest) { this.updateNest(e, dt); continue; }
+      // Hegemonie-Jäger: fliegen und feuern nur im Verband ihrer Staffel
+      if (e.model === 'heg-j') { this.updateHegJ(e, dt); continue; }
       // Abfangen: wer dem Jäger nahe kommt, kämpft mit ihm; Raketen- und Kanonenboote bleiben stur am Frachter
       const toP = Math.hypot(this.px - e.x, this.py - e.y);
       const ew = this.wardOf(e);
@@ -9862,7 +10027,7 @@ export class ShooterGame implements MiniGame {
   }
 
   /** Farbe der Nebelschwaden je Gegner */
-  private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [168, 140, 116] : this.side === 'xenon' ? [178, 98, 106] : [136, 112, 190]; }
+  private get veilRgb(): [number, number, number] { return this.side === 'pirate' ? [168, 140, 116] : this.side === 'xenon' ? [178, 98, 106] : this.side === 'heg' ? [112, 136, 168] : [136, 112, 190]; }
   /** Sichtweite im Nebel (Spielpunkte um dein Schiff); ohne Nebel unbegrenzt */
   private get fogSee(): number { return this.fog > 0.05 ? this.seeR : Infinity; }
   /**
@@ -9978,7 +10143,7 @@ export class ShooterGame implements MiniGame {
       f.fillStyle = g;
       f.beginPath(); f.arc(sx, sy, R, 0, Math.PI * 2); f.fill();
     };
-    const tint = this.side === 'pirate' ? [52, 43, 38] : this.side === 'xenon' ? [56, 32, 36] : [40, 32, 56];
+    const tint = this.side === 'pirate' ? [52, 43, 38] : this.side === 'xenon' ? [56, 32, 36] : this.side === 'heg' ? [32, 40, 52] : [40, 32, 56];
     // 1. Dunst: schluckt Licht – was weiter weg ist, verschwindet allmählich in der Nebelfarbe (breiter Übergang,
     //    keine Kante), nah bei dir nur ein Hauch
     const d = layer(0);
