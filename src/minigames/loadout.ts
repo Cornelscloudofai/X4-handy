@@ -1248,6 +1248,15 @@ export function setBroodTest(on: boolean): void {
   try { if (on) globalThis.localStorage?.setItem(BROOD_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(BROOD_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
 }
 
+/** Test-Schalter: in jeder Runde taucht zu Beginn ein Zerstörer der Hegemonie (neue Fraktion, Arbeitsname) auf */
+const HEG_TEST_KEY = 'x4-sektorbau-hegemonie-test';
+export function hegTest(): boolean {
+  try { return globalThis.localStorage?.getItem(HEG_TEST_KEY) === '1'; } catch { return false; }
+}
+export function setHegTest(on: boolean): void {
+  try { if (on) globalThis.localStorage?.setItem(HEG_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(HEG_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
+
 export function enemyTuneVersion(): number {
   return tuneVer;
 }

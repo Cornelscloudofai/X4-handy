@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretMuzzles, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { broodTest, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, fireStaggered, setFireStaggered, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { broodTest, hegTest, scaledLength, sizeScale, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, fireStaggered, setFireStaggered, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, drawKnob, drawStick, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -177,7 +177,9 @@ interface Enemy {
   parent?: Enemy; ox?: number; oy?: number;
   /** Xenon-Türme: Laserstrahl (zielt, lädt auf, feuert einen Strahl) oder dicke Plasmakugeln; Kha'ak-Brutkammer */
   /** Turmart; m = mittlerer Turm (Laser-Repeater, Zweiersalven) an Xenon K und P, flak = Vierlings-Flak des Piratenträgers */
-  weapon?: 'laser' | 'plasma' | 'brut' | 'm' | 'flak';
+  weapon?: 'laser' | 'plasma' | 'brut' | 'm' | 'flak' | 'splitter';
+  /** Bauart eines Großkampfschiffs aus einer anderen Fraktion (heg: Zerstörer der Hegemonie, Test) */
+  model?: 'heg';
   /** laufende Salve eines Turms: noch abzugebende Schüsse, Zeit bis zum nächsten */
   salvo?: number; salvoT?: number;
   /** Xenon P: Türme schon montiert; Piratenträger: Zeit bis zum nächsten Jägerstart, gestartete Jäger */
@@ -311,7 +313,7 @@ function gameGun(g: X4Gun, o: { beam?: boolean; hullPierce?: number; rail?: bool
   };
 }
 
-interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number; /** Wirkung auf Schild und Hülle */ kS?: number; kH?: number; /** Schrot: Startpunkt und Reichweite (Schaden fällt mit der Entfernung), Wucht */ x0?: number; y0?: number; reach?: number; knock?: number }
+interface Bullet { /** Kampfprotokoll: Quelle des eigenen Schusses */ src?: string; x: number; y: number; vx: number; vy: number; dmg: number; from: 'p' | 'e'; life: number; color: string; w: number; pierce: number; hit?: Set<Enemy>; /** Flächenschaden beim Einschlag (Torpedo) */ splash?: number; /** Anteil, der den Schild umgeht und sofort auf die Hülle geht (Thermal-Desintegrator) */ hullPierce?: number; /** Flakgranate: zündet in der Nähe des Ziels oder am Ende ihrer Flugbahn und trifft im Umkreis */ flak?: boolean; /** Mass-Driver-Projektil: lange Leuchtspur, beim Durchschlag halbe Wucht */ slug?: boolean; /** eigene Flakgranate (Flakturm) */ pflak?: boolean; /** Flak: bisher geringster Abstand zu einem Gegner (Annäherungszünder) */ near?: number; /** Wirkung auf Schild und Hülle */ kS?: number; kH?: number; /** Splittergranate: zerlegt sich nach so vielen Sekunden in eine Garbe */ split?: number; /** Splitter der Garbe: Wirkung nach Größe des Getroffenen (Jäger voll, M ein Drittel, L kaum) */ shard?: boolean; /** Schrot: Startpunkt und Reichweite (Schaden fällt mit der Entfernung), Wucht */ x0?: number; y0?: number; reach?: number; knock?: number }
 /** Eigene Rakete: Art (Schaden, Tempo, Lenkkraft, Besonderheit), Schwarmrakete zerfällt nach split Sekunden */
 interface Missile { /** Kampfprotokoll: Quelle */ src?: string; x: number; y: number; vx: number; vy: number; target: Enemy | null; life: number; def: MissileDef; dmg: number; split?: number; mini?: boolean;
   /** Silo: Senkrechtstart – rise Sekunden bis zum Abflug (erst auf die Kamera zu, dann im Bogen über), ra = Abflugrichtung */
@@ -625,6 +627,26 @@ const BAY_T1 = 0.9, BAY_T2 = 1.1;
 const CAT_T0 = 0.6;
 /** Reparatur im Hangar: von 0 auf voll in so vielen Sekunden */
 const WING_REPAIR = 14;
+/**
+ * Hegemonie (neue Fraktion, Arbeitsname) – Zerstörer: Bild 793 × 1 983 px (Bug oben, Rumpf 1 976 px), etwa 950 m lang
+ * (aus den M-Sockeln: gleich groß wie die der Klapperschlange). Sockel gemessen im Bild: 3 XL auf der Mittelachse,
+ * 6 L an den Seiten, 10 M in fünf Paaren. Vorerst sind nur die M-Sockel bestückt (Zwillingsgeschütze).
+ */
+const HEG_Z = { w: 793, h: 1983, hull: 1976, len: 950 };
+const HEG_Z_M: [number, number][] = [[307, 233], [484, 233], [282, 327], [512, 327], [221, 538], [571, 538], [300, 1203], [490, 1203], [214, 1286], [579, 1286]];
+export const HEG_Z_L: [number, number][] = [[193, 623], [598, 623], [183, 745], [611, 745], [183, 867], [611, 867]];
+export const HEG_Z_XL: [number, number][] = [[396, 418], [396, 682], [396, 1330]];
+/** Zwillingsgeschütz (M): Drehsockel 40,8 m wie die M-Türme der Klapperschlange; Rohre ±4,4 % der Bildbreite neben der
+ * Mitte, Mündungen 65,8 % der Bildgröße vor dem Drehpunkt */
+const HEG_M_D = 40.8, HEG_M_LAT = 0.044, HEG_M_FWD = 0.658;
+/**
+ * Splittergranate (vorläufige Werte): zwei Stöße zu je einem Schuss aus jedem Rohr kurz nacheinander, dann Pause;
+ * das schnelle Geschoss zerlegt sich bei SPLIT_AT der Entfernung zum Vorhaltepunkt in SPLIT_N Splitter, die in einem
+ * Kegel von ±SPLIT_CONE weiterfliegen. Schaden je Granate (alle Splitter zusammen); gegen Jäger voll, M ein Drittel, L kaum
+ */
+const SPLIT_V = 900, SPLIT_AT = 0.85, SPLIT_N = 8, SPLIT_CONE = 0.17, SPLIT_DMG = 9, SPLIT_PAUSE = 2.5;
+const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
+const SHARD_CLS: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 1, M: 1 / 3, L: 0.1, XL: 0.1 };
 const ORDER_KEY = 'x4-sektorbau-turmbefehle';
 /** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
 const ECLASS: Record<EKind, 'S' | 'M' | 'L'> = { jaeger: 'S', n: 'S', kanone: 'M', rakete: 'M', schild: 'M', m: 'M', xs: 'M', p: 'M', boss: 'L', turret: 'L', ks: 'S', kj: 'S', ka: 'M', kk: 'M', cargo: 'L' };
@@ -3592,6 +3614,7 @@ export class ShooterGame implements MiniGame {
     // Einsatzbeginn: Nest bzw. Piratenkonvoi erscheinen mit der ersten Welle
     if (this.wave === 0 && this.mission === 'nest') this.spawnNest();
     if (this.wave === 0 && this.side === 'khaak' && broodTest() && !this.schoolCfg) this.spawnBroodTest();
+    if (this.wave === 0 && hegTest() && !this.schoolCfg) this.spawnHegTest();
     if (this.wave === 0 && this.mission === 'ueberfall') this.spawnConvoy();
     if (this.wave === 0 && (this.mission === 'bergung' || this.mission === 'flucht')) this.spawnMissionPlats();
     if (this.section === 'rocks') this.spawnRocks();
@@ -3877,6 +3900,37 @@ export class ShooterGame implements MiniGame {
     this.floats.add(this.px, this.py - 60, `Test: Brutschiff am Kartenrand (${b.x < this.fX ? 'links' : 'rechts'} voraus)`, '#d9a6ff', 15);
   }
 
+  /**
+   * Test der neuen Fraktion: ein Zerstörer der Hegemonie taucht voraus auf (außerhalb der eigenen Reichweite) und fliegt
+   * heran; zehn Zwillingsgeschütze auf den M-Sockeln. Schwer gepanzert: viel Hülle, mäßiger Schild.
+   */
+  private spawnHegTest(): void {
+    const sc = sizeScale(), len = sc === 'bisher' ? 420 : scaledLength(HEG_Z.len, sc);
+    const size = (len * HEG_Z.h) / HEG_Z.hull, k = size / HEG_Z.h;
+    const a = -Math.PI / 2 + (this.r() - 0.5) * 0.8;
+    const dist = Math.max(2200, len * 0.6 + this.ownReach + this.ship.size * 0.5 + 500), m = len * 0.6 + 500;
+    const x = clamp(this.fX + Math.cos(a) * dist, m, this.WW - m), y = clamp(this.fY + Math.sin(a) * dist, m, this.WH - m);
+    const b = this.makeEnemy('boss', x, y);
+    b.model = 'heg';
+    b.mini = true;
+    b.r = size / 4.7;
+    b.ang = Math.atan2(this.fY - y, this.fX - x);
+    const bs = enemyStats('boss', this.level, { tune: this.tune });
+    b.hp = b.max = bs.hp * 1.5;
+    b.sh = b.shMax = bs.sh * 0.6;
+    this.enemies.push(b);
+    const tr = (sc === 'bisher' ? 18 : scaledLength(HEG_M_D, sc)) / 2;
+    for (const [ix, iy] of HEG_Z_M) {
+      const ox = (ix - HEG_Z.w / 2) * k, oy = (iy - HEG_Z.h / 2) * k;
+      const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
+      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = 'splitter'; t.r = tr;
+      t.cd = 1 + this.r() * 2;
+      this.enemies.push(t);
+    }
+    b.shielded = true;
+    this.floats.add(this.px, this.py - 60, 'Test: Zerstörer der Hegemonie im Anflug', '#ffb3a0', 15);
+  }
+
   private spawnBoss(mini = false, from = 0, carrier = false, side = false): void {
     // Piratenträger als Großziel (in Einsätzen): sieht aus und kämpft wie der Boss, zählt aber als Großziel
     const small = mini && !carrier;
@@ -4017,6 +4071,8 @@ export class ShooterGame implements MiniGame {
     const len = (e.parent?.r ?? 0) * 4.6;
     if (e.weapon === 'plasma') return Math.max(PLASMA_RANGE, len * 1.05 * RANGE_X);
     if (e.weapon === 'flak') return Math.max(TURRET_RANGE + 60, len * 1.05 * RANGE_X);
+    // Zwillingsgeschütz: Abwehr gegen Jäger, etwas weiter als die übrigen M-Türme
+    if (e.weapon === 'splitter') return Math.max(TURRET_RANGE + 80, len * 0.5 * RANGE_X);
     return Math.max(TURRET_RANGE, len * 0.4 * RANGE_X);
   }
 
@@ -4034,6 +4090,7 @@ export class ShooterGame implements MiniGame {
   /** Bildname eines Gegners (wie beim Zeichnen) */
   private spriteKey(e: Enemy): string {
     const kh = this.side === 'khaak';
+    if (e.model === 'heg') return 'heg-zerstoerer';
     return e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && !e.carrier && (kh || this.side === 'pirate') ? 'boss-mini' : e.kind;
   }
 
@@ -5606,6 +5663,7 @@ export class ShooterGame implements MiniGame {
           }
           continue;
         }
+        if (e.weapon === 'splitter') { this.fireSplitter(e, tx, ty, range, !!tg, dt); continue; }
         if (e.weapon === 'm' || e.weapon === 'flak') {
           // Salventürme: Repeater zwei, Flak vier Schüsse kurz nacheinander aus den Läufen, dann Pause
           const flak = e.weapon === 'flak', a2 = Math.atan2(ty - e.y, tx - e.x);
@@ -5860,7 +5918,10 @@ export class ShooterGame implements MiniGame {
           e.cd = 2.6;
           // erst ohne Türme feuert der Kern: Fächer bzw. Ring
           if (!e.shielded) {
-            if (this.side === 'khaak') {
+            if (e.model === 'heg') {
+              // Hegemonie-Zerstörer ohne Türme: gezielter Fächer aus dem Bug
+              for (let q = 0; q < 5; q++) this.enemyShot(e, aimAt + (q - 2) * 0.12, 300, 9, '#ffd27a', 2.6);
+            } else if (this.side === 'khaak') {
               // Brutschiff-Kern: Ring aus Kyon-Strahlen, leicht versetzt
               const o = this.r() * Math.PI;
               for (let q = 0; q < 8; q++) this.fireKyon(e, o + (q / 8) * Math.PI * 2, 10, KYON_LEN + 200);
@@ -6291,6 +6352,49 @@ export class ShooterGame implements MiniGame {
     if (hw) this.hitWard(hw, b.dmg * this.fScale * 0.6, x, y);
   }
 
+  /**
+   * Zwillingsgeschütz der Hegemonie: Stoß – Stoß – Pause (je Stoß ein Schuss aus jedem Rohr), gezielt auf den
+   * Vorhaltepunkt; die Granate zerlegt sich kurz davor in eine Garbe (siehe splitShell)
+   */
+  private fireSplitter(e: Enemy, tx: number, ty: number, range: number, has: boolean, dt: number): void {
+    if ((e.salvo ?? 0) > 0) {
+      e.salvoT = (e.salvoT ?? 0) - dt;
+      if (e.salvoT > 0) return;
+      const i = SPLIT_SEQ.length - e.salvo!;
+      // Vorhaltepunkt: wo das Ziel ist, wenn die Garbe ankommt
+      const d0 = Math.hypot(tx - e.x, ty - e.y), lt = d0 / SPLIT_V;
+      const near = Math.hypot(tx - this.px, ty - this.py) < 5;
+      const ax = tx + (near ? this.pvx * lt : 0), ay = ty + (near ? this.pvy * lt : 0);
+      const a = Math.atan2(ay - e.y, ax - e.x) + (this.r() - 0.5) * 0.02, d = Math.min(range, Math.hypot(ax - e.x, ay - e.y));
+      this.enemyShot(e, a, SPLIT_V, SPLIT_DMG * this.capTurretDmg * this.tHit(e), '#ffd27a', 2.6, (range + 80) / SPLIT_V);
+      const pb = this.bullets[this.bullets.length - 1], size = e.r * (2 / 0.628), c = Math.cos(a), sn = Math.sin(a);
+      const lat = (i % 2 ? 1 : -1) * HEG_M_LAT * size, fwd = HEG_M_FWD * size;
+      pb.x += c * fwd - sn * lat; pb.y += sn * fwd + c * lat;
+      pb.split = Math.max(0.05, (d * SPLIT_AT - fwd) / SPLIT_V);
+      // Mündungsfeuer
+      this.fx.add({ x: pb.x, y: pb.y, color: '#ffe0a0', size: 5, max: 0.07 });
+      e.salvo!--;
+      e.salvoT = SPLIT_SEQ[SPLIT_SEQ.length - e.salvo!] ?? 0;
+      return;
+    }
+    if (e.cd <= 0 && has) {
+      // Pause gerechnet ab dem letzten Schuss der beiden Stöße
+      e.cd = SPLIT_SEQ.reduce((x, y) => x + y, 0) + (SPLIT_PAUSE + this.r() * 0.4) / this.tRate(e);
+      e.salvo = SPLIT_SEQ.length; e.salvoT = 0;
+    }
+  }
+
+  /** Splittergranate zerlegt sich: Splitter fliegen im Kegel nach vorn weiter (etwas langsamer, kurzlebig) */
+  private splitShell(b: Bullet): void {
+    const a0 = Math.atan2(b.vy, b.vx), v = Math.hypot(b.vx, b.vy) * 0.85;
+    this.fx.add({ x: b.x, y: b.y, color: '#fff0c8', size: 7, max: 0.06 });
+    this.fx.burst(b.x, b.y, '#ffcf80', 4, 160, 1.2, 'spark', 0.18);
+    for (let q = 0; q < SPLIT_N; q++) {
+      const a = a0 + ((q + 0.5) / SPLIT_N - 0.5) * 2 * SPLIT_CONE + (this.r() - 0.5) * 0.04, vv = v * (0.92 + this.r() * 0.16);
+      this.bullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * vv, vy: Math.sin(a) * vv, dmg: b.dmg / SPLIT_N, from: 'e', life: 0.5, color: '#ffc46a', w: 1.3, pierce: 0, shard: true });
+    }
+  }
+
   private enemyShot(e: Enemy, a: number, v: number, dmg: number, color: string, w = 2, life = 1.8): void {
     this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, dmg: dmg * this.enemyDmg, from: 'e', life, color, w, pierce: 0 });
     // nur hörbar, wenn der Schütze im Bild ist
@@ -6391,6 +6495,8 @@ export class ShooterGame implements MiniGame {
           continue;
         }
       }
+      // Splittergranate: zerlegt sich kurz vor dem Ziel (vorher trifft sie nichts)
+      if (b.split != null) { b.split -= dt; if (b.split <= 0 || b.life <= 0) { this.splitShell(b); continue; } keep.push(b); continue; }
       // Flak: Annäherungszünder – zündet nahe dem Ziel oder spätestens am Ende der Flugbahn
       if (b.flak && (b.life <= 0 || this.flakFuse(b.x, b.y))) { this.flakBurst(b); continue; }
       if (b.pflak && (b.life <= 0 || this.pflakFuse(b))) { this.pflakBurst(b); continue; }
@@ -6434,11 +6540,11 @@ export class ShooterGame implements MiniGame {
           continue;
         }
       } else {
-        if (this.onHull(b.x, b.y, 0)) { this.damagePlayer(b.dmg, 1, [b.x, b.y]); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
+        if (this.onHull(b.x, b.y, 0)) { this.damagePlayer(b.dmg * (b.shard ? SHARD_CLS[this.ship.cls] : 1), 1, [b.x, b.y]); this.fx.burst(b.x, b.y, b.color, 4, 120, 1.2, 'spark', 0.2); continue; }
         const hitW = this.wingAt(b.x, b.y);
         if (hitW) { this.damageWing(hitW, b.dmg, b.x, b.y); continue; }
         const hw = this.wardAt(b.x, b.y);
-        if (hw) { this.hitWard(hw, b.dmg * this.fScale, b.x, b.y); continue; }
+        if (hw) { this.hitWard(hw, b.dmg * this.fScale * (b.shard ? SHARD_CLS.L : 1), b.x, b.y); continue; }
         // geschleppte und treibende Container (Bergung) gehen zu Bruch
         const cr = this.crates.length ? this.crates.find((c) => !c.done && Math.hypot(c.x - b.x, c.y - b.y) < 11) : undefined;
         if (cr) { this.hitCrate(cr, b.dmg); continue; }

@@ -19,6 +19,8 @@ const SUFFIX: Record<ShipArt, string> = { ai: '-ki', render: '', vector: '' };
  * die Flammen zeichnet das Spiel selbst, damit sie mit dem Schub flackern.
  */
 const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
+  // Hegemonie-Zerstörer: zwei große Antriebsgondeln und ein kleiner Hilfsantrieb in der Mitte, kühles Cyan
+  'heg-zerstoerer-ki': { xs: [-0.0764, 0, 0.0764], y: 0.49, color: '#7fe8ff' },
   'split-jaeger-s': { xs: [-0.041, 0.041], y: 0.435, color: '#ffb070' },
   'split-jaeger-s-ki': { xs: [-0.056, 0.056], y: 0.41, color: '#ff9a4a' },
   'argon-jaeger-s': { xs: [-0.091, 0.091], y: 0.39, color: '#9fe6ff' },
@@ -205,6 +207,10 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   // Brutschiff (Boss, 163 px) und Zerstörer (Großziel, 146 px); Türme und Brutkästen sitzen auf ihren Sockeln (siehe shooter.ts)
   'khaak:boss': { name: 'khaak-brutschiff-ki', scale: 4.8 },
   'khaak:boss-mini': { name: 'khaak-zerstoerer-ki', scale: 4.3 },
+  // Hegemonie (neue Fraktion, Arbeitsname): Zerstörer, Bild 1 983 px hoch (quadratisch aufgefüllt), Rumpf 99,6 % der Höhe
+  'heg-zerstoerer': { name: 'heg-zerstoerer-ki', scale: 4.7 },
+  // Zwillingsgeschütz (M): Drehpunkt ist die Mitte des runden Drehsockels unter der Bildmitte; Sockel 63 % der Bildbreite
+  'turret-splitter': { name: 'heg-turm-zwilling-ki', scale: 2 / 0.628, oy: 0.1775 },
   // Kyon-Turm: Drehpunkt ist die runde Scheibe unter der Bildmitte
   'khaak:turret-laser': { name: 'khaak-turm-ki', scale: 3.1, oy: 0.07 },
   'khaak:turret-brut': { name: 'khaak-brutkasten-ki', scale: 2.3 },
