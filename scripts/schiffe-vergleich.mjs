@@ -1,6 +1,5 @@
 // Größenvergleich aller Schiffe im Spiel (eigene und gegnerische), nach X4-Länge (Kha'ak geschätzt): drei Bänder –
-// Großkampfschiffe, Korvetten und Fregatten, Jäger – jedes in eigenem Maßstab mit Maßstabsleiste; im jeweils größeren
-// Band steht das größte Schiff des kleineren Bands als Bezug mit drin.
+// Großkampfschiffe in eigenem Maßstab (Cobra als Bezug), darunter Korvetten/Fregatten und Jäger im selben Maßstab.
 // node scripts/schiffe-vergleich.mjs <ausgabe.png>
 import { chromium } from 'playwright';
 import { readFile } from 'node:fs/promises';
@@ -63,9 +62,29 @@ await page.evaluate(async (ships) => {
   const W = 2400, PAD = 56, S = 2;
   const bands = [
     { title: 'Großkampfschiffe', sub: 'Träger, Zerstörer, Brutschiff', pick: (s) => s.m >= 250, ref: 'Cobra', H: 760, bar: 500 },
-    { title: 'Korvetten, Fregatten und Frachter', sub: '50 bis 150 m', pick: (s) => s.m >= 50 && s.m < 250, ref: 'Mamba', H: 430, bar: 50 },
-    { title: 'Jäger', sub: 'unter 40 m', pick: (s) => s.m < 50, ref: null, H: 300, bar: 10 },
+    // Korvetten/Fregatten und Jäger im selben Maßstab (group): so sieht man, wie viel größer eine Fregatte ist
+    { title: 'Korvetten, Fregatten und Frachter', sub: '50 bis 150 m', pick: (s) => s.m >= 50 && s.m < 250, ref: null, H: 430, bar: 50, group: 'mf' },
+    { title: 'Jäger', sub: 'unter 40 m · gleicher Maßstab wie die Korvetten und Fregatten darüber', pick: (s) => s.m < 50, ref: null, H: 430, bar: 10, group: 'mf' },
   ];
+  // Maßstab je Band: höchstes Schiff füllt H; passt die Breite nicht (Platz je Schiff mindestens so breit wie seine
+  // Beschriftung), kleiner. Bänder einer Gruppe bekommen den kleinsten Maßstab der Gruppe.
+  const gap = 22, avail = W - 2 * PAD;
+  const mc = document.createElement('canvas').getContext('2d');
+  const label = (s) => { mc.font = '600 17px Barlow, sans-serif'; const a = mc.measureText(s.isRef ? `${s.name} (Bezug)` : s.name).width; mc.font = '400 14px Barlow, sans-serif'; return Math.max(a, mc.measureText(s.role).width) + 16; };
+  for (const b of bands) {
+    b.list = ships.filter(b.pick).sort((a, c) => c.m - a.m);
+    const ref = b.ref ? ships.find((s) => s.name === b.ref) : null;
+    b.all = ref ? [...b.list, { ...ref, isRef: true }] : b.list;
+    for (const s of b.all) s.lw = label(s);
+    const slot = (s, kk) => Math.max(s.crop[2] * (s.m * kk / s.crop[3]), s.lw);
+    b.widthAt = (kk) => b.all.reduce((a, s) => a + slot(s, kk) + gap, -gap);
+    b.slot = slot;
+    let k = b.H / Math.max(...b.list.map((s) => s.m));
+    for (let i = 0; i < 200 && b.widthAt(k) > avail; i++) k *= 0.98;
+    b.k = k;
+  }
+  for (const b of bands) if (b.group) b.k = Math.min(...bands.filter((c) => c.group === b.group).map((c) => c.k));
+  for (const b of bands) b.H = Math.max(...b.list.map((s) => s.m)) * b.k;
   // Höhe: Kopf + Bänder (Band: Titelzeile 70, Schiffe H, Beschriftung 92, Abstand 40)
   const head = 150, total = head + bands.reduce((a, b) => a + 70 + b.H + 92 + 40, 0) + 40;
   const cv = document.getElementById('c'); cv.width = W * S; cv.height = total * S;
@@ -77,7 +96,7 @@ await page.evaluate(async (ships) => {
   for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(200,230,255,${0.08 + rnd() * 0.35})`; g.fillRect(rnd() * W, rnd() * total, rnd() < 0.1 ? 1.6 : 1, rnd() < 0.1 ? 1.6 : 1); }
   g.fillStyle = '#e4f3f0'; g.font = '600 44px "Chakra Petch", Barlow, sans-serif'; g.fillText('Schiffe im Größenvergleich', PAD, 74);
   g.fillStyle = 'rgba(169,195,198,0.9)'; g.font = '400 20px Barlow, sans-serif';
-  g.fillText('Rumpflänge nach X4 (Kha’ak geschätzt). Jedes Band hat seinen eigenen Maßstab – das größte Schiff des nächstkleineren Bands steht als Bezug mit drin (gestrichelt).', PAD, 110);
+  g.fillText('Rumpflänge nach X4 (Kha’ak geschätzt). Großkampfschiffe in eigenem Maßstab (die Cobra steht als Bezug mit drin, gestrichelt); Korvetten, Fregatten und Jäger darunter im selben Maßstab.', PAD, 110);
   // Legende der Seiten
   let lx = PAD;
   for (const [n, c] of [['Split (eigene Schiffe)', '#5ff0d8'], ['Piraten', '#ff9a4a'], ['Xenon', '#ff4a5a'], ['Kha’ak', '#c77dff']]) {
@@ -86,18 +105,7 @@ await page.evaluate(async (ships) => {
   const fmt = (m) => (m >= 1000 ? (m / 1000).toFixed(2).replace('.', ',') + ' km' : (m >= 100 ? Math.round(m) : m.toFixed(1).replace('.', ',').replace(',0', '')) + ' m');
   let y = head;
   for (const b of bands) {
-    const list = ships.filter(b.pick).sort((a, c) => c.m - a.m);
-    const ref = b.ref ? ships.find((s) => s.name === b.ref) : null;
-    const all = ref ? [...list, { ...ref, isRef: true }] : list;
-    // Maßstab: höchstes Schiff füllt H; passt die Breite nicht, kleiner
-    // Platz je Schiff: so breit wie das Schiff, mindestens so breit wie seine Beschriftung
-    const gap = 22, avail = W - 2 * PAD;
-    const label = (s) => { g.font = '600 17px Barlow, sans-serif'; const a = g.measureText(s.isRef ? `${s.name} (Bezug)` : s.name).width; g.font = '400 14px Barlow, sans-serif'; return Math.max(a, g.measureText(s.role).width) + 16; };
-    for (const s of all) s.lw = label(s);
-    const slot = (s, kk) => Math.max(s.crop[2] * (s.m * kk / s.crop[3]), s.lw);
-    const widthAt = (kk) => all.reduce((a, s) => a + slot(s, kk) + gap, -gap);
-    let k = b.H / Math.max(...list.map((s) => s.m));
-    for (let i = 0; i < 200 && widthAt(k) > avail; i++) k *= 0.98;
+    const { all, slot, widthAt, k } = b;
     // Bandkopf
     g.strokeStyle = 'rgba(110,220,205,0.25)'; g.lineWidth = 1; g.beginPath(); g.moveTo(PAD, y + 8); g.lineTo(W - PAD, y + 8); g.stroke();
     g.fillStyle = '#e4f3f0'; g.font = '600 28px "Chakra Petch", Barlow, sans-serif'; g.fillText(b.title, PAD, y + 46);
