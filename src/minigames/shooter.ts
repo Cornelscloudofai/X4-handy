@@ -660,7 +660,10 @@ const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
  */
 const XL_SQ = 1536, XL_HOUSING = 0.636, XL_LAT = 0.1445, XL_FWD = 0.737;
 const XL_YB = 1153, XL_YM = 59, XL_BARREL_X = [291, 513, 734].map((x) => x + (1536 - 1024) / 2);
-const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, XL_V = 1000, XL_DMG = 110, XL_D = 94, XL_RANGE_M = 1000;
+// Schaden bewusst brachial (20-fach gegenüber dem ersten Entwurf): der Zerstörer soll eine echte Gefahr sein
+const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, XL_V = 1000, XL_DMG = 2200, XL_D = 94 * 1.25, XL_RANGE_M = 1000;
+/** Schneise der XL-Granate: Nachglühen (s) */
+const XL_TRAIL = 1.1;
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
 const SHARD_LIFE = 0.5;
 const SHARD_CLS: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 1, M: 1 / 3, L: 0.1, XL: 0.1 };
@@ -693,6 +696,25 @@ function xlGlowTex(): { barrels: XlPart[]; side: XlPart } | null {
   xlTexCache = { barrels, side };
   return xlTexCache;
 }
+/** zuckender Blitz zwischen zwei Punkten: Zickzack mit zufälligen Ausschlägen, Schein und heller Kern, ab und zu ein Ast */
+function zapLine(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, amp: number, col: string): void {
+  const n = 7, dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1, px = -dy / L, py = dx / L;
+  const pts: [number, number][] = [[x1, y1]];
+  for (let i = 1; i < n; i++) { const t = i / n, o = (Math.random() - 0.5) * 2 * amp; pts.push([x1 + dx * t + px * o, y1 + dy * t + py * o]); }
+  pts.push([x2, y2]);
+  const path = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const [x, y] of pts.slice(1)) ctx.lineTo(x, y); };
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  path(); ctx.strokeStyle = rgba('#4aa8ff', 0.35); ctx.lineWidth = Math.max(2, amp * 0.9); ctx.stroke();
+  path(); ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.8, amp * 0.25); ctx.stroke();
+  if (Math.random() < 0.5) {
+    const [bx, by] = pts[2 + Math.floor(Math.random() * (n - 3))], ba = Math.atan2(dy, dx) + (Math.random() < 0.5 ? 0.7 : -0.7), bl = L * 0.35;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + Math.cos(ba) * bl * 0.5 + px * amp * 0.5, by + Math.sin(ba) * bl * 0.5 + py * amp * 0.5); ctx.lineTo(bx + Math.cos(ba) * bl, by + Math.sin(ba) * bl);
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.6, amp * 0.18); ctx.stroke();
+  }
+  ctx.restore();
+}
 /** weicher Übergang 0 → 1 zwischen e0 und e1 */
 function smooth(e0: number, e1: number, x: number): number { const k = clamp((x - e0) / (e1 - e0), 0, 1); return k * k * (3 - 2 * k); }
 /**
@@ -703,9 +725,10 @@ function smooth(e0: number, e1: number, x: number): number { const k = clamp((x 
  */
 const RING_TILT = 0.25, RING_LIFE = 1.3, RING_VARIANTS = 6, RING_TEX_R = 150;
 const ringCache = new Map<number, { smoke: HTMLCanvasElement; warm: HTMLCanvasElement; glow: HTMLCanvasElement } | null>();
-function ringTex(v: number): { smoke: HTMLCanvasElement; warm: HTMLCanvasElement; glow: HTMLCanvasElement } | null {
-  if (ringCache.has(v)) return ringCache.get(v)!;
-  if (typeof document === 'undefined') { ringCache.set(v, null); return null; }
+function ringTex(v: number, blue = false): { smoke: HTMLCanvasElement; warm: HTMLCanvasElement; glow: HTMLCanvasElement } | null {
+  const key = v + (blue ? 100 : 0);
+  if (ringCache.has(key)) return ringCache.get(key)!;
+  if (typeof document === 'undefined') { ringCache.set(key, null); return null; }
   const R = RING_TEX_R, tube = R * 0.21, W = Math.ceil(2 * R + 4 * tube), H = Math.ceil(2 * R * RING_TILT + 4 * tube), sd = v * 1.7 + 0.4;
   const nz = (th: number, k: number) => Math.sin(th * 3 + sd) * 0.5 + Math.sin(th * 7 + sd * 2.3 + k) * 0.3 + Math.sin(th * 13 + sd * 0.7) * 0.2;
   const pt = (th: number): [number, number] => { const rr = R * (1 + 0.07 * nz(th, 0)); return [W / 2 + Math.cos(th) * rr, H / 2 - Math.sin(th) * rr * RING_TILT]; };
@@ -731,17 +754,20 @@ function ringTex(v: number): { smoke: HTMLCanvasElement; warm: HTMLCanvasElement
     }
     return c;
   };
-  const smoke = paint([110, 102, 94], [170, 162, 150]), warm = paint([190, 105, 50], [255, 190, 110]);
+  // blaue Mündungswolke (XL-Turm): kühles Blaugrau, anfangs von der Entladung blau-weiß angeleuchtet
+  const smoke = blue ? paint([70, 92, 125], [150, 182, 220]) : paint([110, 102, 94], [170, 162, 150]);
+  const warm = blue ? paint([70, 140, 240], [200, 232, 255]) : paint([190, 105, 50], [255, 190, 110]);
+  const G1 = blue ? 'rgba(60,150,255,0.24)' : 'rgba(255,110,30,0.2)', G2 = blue ? 'rgba(210,240,255,0.16)' : 'rgba(255,190,110,0.12)';
   const glow = document.createElement('canvas'); glow.width = W; glow.height = H;
   const gg = glow.getContext('2d')!;
   gg.lineCap = 'round';
   for (const [t0, t1] of segs) {
     const [xa, ya] = pt(t0), [xb, yb] = pt(t1);
-    gg.strokeStyle = 'rgba(255,110,30,0.2)'; gg.lineWidth = tube * 2.4; gg.beginPath(); gg.moveTo(xa, ya); gg.lineTo(xb, yb); gg.stroke();
-    gg.strokeStyle = 'rgba(255,190,110,0.12)'; gg.lineWidth = tube * 0.8; gg.beginPath(); gg.moveTo(xa, ya); gg.lineTo(xb, yb); gg.stroke();
+    gg.strokeStyle = G1; gg.lineWidth = tube * 2.4; gg.beginPath(); gg.moveTo(xa, ya); gg.lineTo(xb, yb); gg.stroke();
+    gg.strokeStyle = G2; gg.lineWidth = tube * 0.8; gg.beginPath(); gg.moveTo(xa, ya); gg.lineTo(xb, yb); gg.stroke();
   }
   const t = { smoke, warm, glow };
-  ringCache.set(v, t);
+  ringCache.set(key, t);
   return t;
 }
 /** Glutfarbe eines Splitters nach Alter 0 … 1: hellgelb → orange → dunkelrot */
@@ -1292,7 +1318,11 @@ export class ShooterGame implements MiniGame {
    * fast ein Strich quer zur Flugbahn, an den Enden am dichtesten. a = Flugrichtung, R = Radius (wächst), Drift mit dem
    * Schwung der Granate
    */
-  private smokeRings: { x: number; y: number; vx: number; vy: number; a: number; t: number; max: number; R: number; seed: number }[] = [];
+  private smokeRings: { x: number; y: number; vx: number; vy: number; a: number; t: number; max: number; R: number; seed: number; /** blaue Mündungswolke des XL-Turms */ blue?: boolean }[] = [];
+  /** elektrische Entladungen (Mündungsblitze der XL-Türme): Mittelpunkt, Richtung, Reichweite, Alter */
+  private muzzleZaps: { x: number; y: number; a: number; r: number; t: number; max: number }[] = [];
+  /** glühende Schneise der XL-Granaten: Abschnitte mit Alter */
+  private xlTrails: { x1: number; y1: number; x2: number; y2: number; t: number }[] = [];
   /** Gewitter im Nebel: aufleuchtende Wolkenpartien, manchmal mit sichtbarem Blitz; nächstes Wetterleuchten in stormT s */
   private storms: { x: number; y: number; r: number; t: number; max: number; flick: number; bolt: [number, number][][] | null }[] = [];
   private stormT = 3;
@@ -4043,7 +4073,7 @@ export class ShooterGame implements MiniGame {
       const ox = (ix - HEG_Z.w / 2) * k, oy = (iy - HEG_Z.h / 2) * k;
       const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
       t.parent = b; t.ox = ox; t.oy = oy; t.weapon = 'xl'; t.r = txl;
-      t.hp *= 6; t.max *= 6; t.sh *= 3; t.shMax *= 3;
+      t.hp *= 15; t.max *= 15; t.sh *= 6; t.shMax *= 6;
       // Rohre ab Werk Richtung Bug, Ladung versetzt (nicht alle drei Türme zugleich)
       t.aimA = b.ang; t.xlCharge = 0.4 + this.r() * 0.5; t.xlFired = 0; t.xlFlash = [0, 0, 0];
       this.enemies.push(t);
@@ -4812,6 +4842,10 @@ export class ShooterGame implements MiniGame {
     // Rauchringe: dehnen sich aus, treiben langsamer werdend weiter, verwehen
     for (const r of this.smokeRings) { r.t += dt; const k = Math.exp(-2.2 * dt); r.vx *= k; r.vy *= k; r.x += r.vx * dt; r.y += r.vy * dt; }
     if (this.smokeRings.length) this.smokeRings = this.smokeRings.filter((r) => r.t < r.max);
+    for (const z of this.muzzleZaps) z.t += dt;
+    if (this.muzzleZaps.length) this.muzzleZaps = this.muzzleZaps.filter((z) => z.t < z.max);
+    for (const q of this.xlTrails) q.t += dt;
+    if (this.xlTrails.length) this.xlTrails = this.xlTrails.filter((q) => q.t < XL_TRAIL);
     this.updateField(dt);
     this.updatePickups(dt);
     this.school?.update(dt);
@@ -6531,11 +6565,14 @@ export class ShooterGame implements MiniGame {
     const b = this.bullets[this.bullets.length - 1];
     b.x += c * fwd - sn * lat; b.y += sn * fwd + c * lat; b.xl = true; b.slug = true;
     e.xlFlash![i] = 0.28;
-    // Mündung: gleißender blau-weißer Blitz, kurze Druckwelle, Rauch
-    this.fx.add({ x: b.x, y: b.y, color: '#eaf6ff', size: 16, max: 0.07 });
-    this.fx.add({ x: b.x + c * 6, y: b.y + sn * 6, color: '#7fc6ff', size: 12, kind: 'fire', max: 0.16 });
-    this.fx.burst(b.x, b.y, '#bfe6ff', 6, 220, 1.1, 'spark', 0.2);
-    this.fx.add({ x: b.x + c * 10, y: b.y + sn * 10, color: '#3c4048', size: 14, kind: 'smoke', max: 1.2, drag: 0.7, vx: c * 30, vy: sn * 30 });
+    // Mündung: gleißender blau-weißer Blitz, Feuerzunge, blaue Wolke als Ring quer zum Rohr (wie die Ringe der Splittergranate,
+    // nur größer und blau), Rauch, dazu elektrische Entladungen um die Mündung
+    this.fx.add({ x: b.x, y: b.y, color: '#f0f8ff', size: 26, max: 0.08 });
+    this.fx.add({ x: b.x + c * 10, y: b.y + sn * 10, color: '#7fc6ff', size: 20, kind: 'fire', max: 0.22 });
+    this.fx.burst(b.x, b.y, '#bfe6ff', 10, 280, 1.1, 'spark', 0.25);
+    this.fx.add({ x: b.x + c * 14, y: b.y + sn * 14, color: '#2c3a4e', size: 26, kind: 'smoke', max: 1.6, drag: 0.7, vx: c * 40, vy: sn * 40 });
+    if (this.smokeRings.length < 60) this.smokeRings.push({ x: b.x + c * 8, y: b.y + sn * 8, vx: c * 70, vy: sn * 70, a, t: 0, max: RING_LIFE * 1.5, R: size * 0.09, seed: this.r() * 100, blue: true });
+    for (let q = 0; q < 4; q++) this.muzzleZaps.push({ x: b.x, y: b.y, a: a + (this.r() - 0.5) * 2.6, r: size * (0.12 + this.r() * 0.12), t: -q * 0.04, max: 0.35 + this.r() * 0.15 });
     if (this.fog > 0.05 && this.flares.length < 40) this.flares.push({ x: b.x, y: b.y, r: 170, color: '#9fd0ff', t: 0, max: 0.25 });
     if (this.onScreen(b.x, b.y, 120)) sfx.heavyShot('massdriver', this.panAt(b.x));
   }
@@ -6602,7 +6639,9 @@ export class ShooterGame implements MiniGame {
       // Ladung dieses Rohrs: in der Salve geladen bis zum eigenen Schuss, sonst gemeinsamer Ladestand
       const prog = salvo ? (i < fired ? 0 : 1) : charge >= 1 ? (i < fired ? 0 : 1) : charge;
       sum += prog;
-      const glowBase = prog >= 1 ? 0.75 + 0.15 * Math.sin(t * 3 + i) : 0.8;
+      // kurz vor voller Ladung und beim Ausrichten: unruhiges Flackern und Entladungen entlang des Rohrs
+      const crackle = (!salvo && charge > 0.85 && charge < 1) || (e.xlLock != null && i >= fired);
+      const glowBase = crackle ? 0.9 + Math.random() * 0.6 : prog >= 1 ? 1.05 + 0.2 * Math.sin(t * 3 + i) : 1.1;
       if (prog > 0.002) {
         const yTop = XL_YB - prog * (XL_YB - XL_YM);
         const part = (y0: number, y1: number, a: number) => {
@@ -6611,9 +6650,17 @@ export class ShooterGame implements MiniGame {
           ctx.globalAlpha = a;
           ctx.drawImage(bt.c, 0, s0 - bt.y0, bt.c.width, s1 - s0, -size / 2 + bt.x0 * k, top + s0 * k, bt.c.width * k, (s1 - s0) * k);
         };
-        part(yTop, XL_YB + 20, glowBase);
+        part(yTop, XL_YB + 20, Math.min(1, glowBase));
+        // zweite Lage: weißer Kern, macht das Licht kräftiger
+        ctx.globalAlpha = Math.min(1, glowBase * 0.55);
+        { const s0 = Math.max(bt.y0, yTop), s1 = Math.min(bt.y1, XL_YB + 20); if (s1 > s0) ctx.drawImage(bt.w, 0, s0 - bt.y0, bt.w.width, s1 - s0, -size / 2 + bt.x0 * k, top + s0 * k, bt.w.width * k, (s1 - s0) * k); }
         // weiche Vorderkante: zwei schwächere Streifen vor der Ladefront
-        if (prog < 1) { part(yTop - 45, yTop, glowBase * 0.45); part(yTop - 100, yTop - 45, glowBase * 0.18); }
+        if (prog < 1) { part(yTop - 45, yTop, Math.min(1, glowBase * 0.5)); part(yTop - 100, yTop - 45, Math.min(1, glowBase * 0.2)); }
+        if (crackle && Math.random() < 0.6) {
+          const bx = -size / 2 + XL_BARREL_X[i] * k, y0 = top + XL_YB * k, y1 = top + Math.max(XL_YM, yTop) * k;
+          const ya = y0 + (y1 - y0) * Math.random(), yb = ya + (y1 - y0) * (0.15 + Math.random() * 0.3);
+          zapLine(ctx, bx + (Math.random() - 0.5) * size * 0.05, ya, bx + (Math.random() - 0.5) * size * 0.05, yb, size * 0.02, '#bfe8ff');
+        }
       }
       const fl = e.xlFlash?.[i] ?? 0;
       if (fl > 0) {
@@ -6625,6 +6672,33 @@ export class ShooterGame implements MiniGame {
     // Gehäuse: dezent im Mittel der drei Rohre
     ctx.globalAlpha = 0.6 * (sum / 3);
     ctx.drawImage(tex.side.c, -size / 2 + tex.side.x0 * k, top + tex.side.y0 * k, tex.side.c.width * k, tex.side.c.height * k);
+    ctx.restore();
+  }
+
+  /** glühende Schneise der XL-Granaten: breiter blauer Schein und heller Kern, die langsam verglühen */
+  private drawXlTrails(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const q of this.xlTrails) {
+      const f = 1 - q.t / XL_TRAIL, a = f * f;
+      ctx.strokeStyle = rgba('#3c8cff', 0.22 * a); ctx.lineWidth = 9 + 10 * (1 - f);
+      ctx.beginPath(); ctx.moveTo(q.x1, q.y1); ctx.lineTo(q.x2, q.y2); ctx.stroke();
+      ctx.strokeStyle = rgba('#bfe6ff', 0.55 * a * f); ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(q.x1, q.y1); ctx.lineTo(q.x2, q.y2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** elektrische Entladung an der Mündung: zuckende Blitze vom Mittelpunkt nach außen, jedes Bild neu verästelt */
+  private drawZap(ctx: CanvasRenderingContext2D, z: { x: number; y: number; a: number; r: number; t: number; max: number }): void {
+    const f = 1 - z.t / z.max;
+    if (Math.random() > 0.35 + 0.65 * f) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5 + 0.5 * f;
+    const a = z.a + (Math.random() - 0.5) * 0.6, L = z.r * (0.6 + Math.random() * 0.6);
+    zapLine(ctx, z.x, z.y, z.x + Math.cos(a) * L, z.y + Math.sin(a) * L, L * 0.15, '#c8ecff');
     ctx.restore();
   }
 
@@ -6656,7 +6730,7 @@ export class ShooterGame implements MiniGame {
       // weich ein- und ausblenden; die Glut des Feuers klingt in knapp einer halben Sekunde ab
       const fade = smooth(0, 0.05, q) * (1 - smooth(0.1, 1, q)), warm = 1 - smooth(0, 0.45, r.t);
       if (fade <= 0.003) continue;
-      const tex = ringTex(Math.floor(r.seed) % RING_VARIANTS);
+      const tex = ringTex(Math.floor(r.seed) % RING_VARIANTS, !!r.blue);
       if (!tex) continue;
       // Vorlage: Ring mit Radius RING_TEX_R quer, Vorderseite oben (−y) → gedreht, sodass oben in Flugrichtung zeigt
       const k = (r.R * (1 + 1.1 * grow)) / RING_TEX_R;
@@ -6802,6 +6876,7 @@ export class ShooterGame implements MiniGame {
       const bx0 = b.x, by0 = b.y;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
+      if (b.xl && this.xlTrails.length < 600) this.xlTrails.push({ x1: bx0, y1: by0, x2: b.x, y2: b.y, t: 0 });
       b.life -= dt;
       if (this.anomaly) { const [ax, ay] = anomalyPull(this.anomaly, b.x, b.y, 0.35); b.vx += ax * dt; b.vy += ay * dt; }
       // Wrack im Weg: Geschoss bleibt hängen (alle Seiten), Flak zerplatzt dort
@@ -7827,6 +7902,8 @@ export class ShooterGame implements MiniGame {
   private drawShots(ctx: CanvasRenderingContext2D): void {
     if (this.smokeRings.length) this.drawSmokeRings(ctx);
     this.drawXlAim(ctx);
+    if (this.xlTrails.length) this.drawXlTrails(ctx);
+    if (this.muzzleZaps.length) for (const z of this.muzzleZaps) if (z.t >= 0) this.drawZap(ctx, z);
     // Bosonenlanze: kurz aufblitzender Strahl (über den Schiffen, wie die Geschosse)
     if (this.rails.length) {
       ctx.save();

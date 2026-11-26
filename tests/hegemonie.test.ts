@@ -131,12 +131,12 @@ describe('Zerstörer der Hegemonie (Test)', () => {
 describe('XL-Drillingsturm', () => {
   type X = E & { aimA?: number; xlCharge?: number; xlFired?: number; xlLock?: number; xlT?: number };
   const xl = (g: G, b: E) => g.enemies.filter((e) => e.parent === b && e.weapon === 'xl') as X[];
-  it('drei Drillingstürme auf den XL-Sockeln, so groß wie ihr Sockel', () => {
+  it('drei Drillingstürme auf den XL-Sockeln, ein Viertel größer als ihr Sockel', () => {
     const { g, b } = game();
     const t = xl(g, b);
     expect(t.length).toBe(3);
     const ring = (196 / 1976) * b.r * 4.7 * (1976 / 1983);
-    for (const q of t) { expect((2 * q.r) / ring).toBeGreaterThan(0.85); expect((2 * q.r) / ring).toBeLessThan(1.15); }
+    for (const q of t) { expect((2 * q.r) / ring).toBeGreaterThan(1.1); expect((2 * q.r) / ring).toBeLessThan(1.4); }
   });
   it('schießt nicht auf Jäger und Korvetten (S/M)', () => {
     const { g, b } = game('dragon');
