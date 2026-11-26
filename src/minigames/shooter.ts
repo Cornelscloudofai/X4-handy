@@ -651,21 +651,56 @@ const SPLIT_SEQ = [0, 0.06, 0.24, 0.06];
 /** Flugzeit der Splitter (s); im Flug kühlen sie ab: hellgelb → orange → dunkelrot */
 const SHARD_LIFE = 0.5;
 const SHARD_CLS: Record<'S' | 'M' | 'L' | 'XL', number> = { S: 1, M: 1 / 3, L: 0.1, XL: 0.1 };
-/** Rauchring: Abschnitte des Schlauchs, Schlauchdicke (Punkte), Neigung (kleiner Blickwinkel von hinten: der Ring steht quer
- * zur Flugachse und erscheint als flache Ellipse), Lebensdauer (s) */
-const RING_N = 60, RING_TUBE = 5, RING_TILT = 0.25, RING_LIFE = 1.3;
-/** Abschnitte eines Rings (Anfang, Ende, sin des Anfangs), hintere zuerst; je Startwinkel einmal berechnet */
-const segCache = new Map<number, [number, number, number][]>();
-function ringSegs(seed: number): [number, number, number][] {
-  const key = Math.round(seed * 10) % 64;
-  let s = segCache.get(key);
-  if (!s) {
-    s = [];
-    for (let i = 0; i < RING_N; i++) { const t0 = (i / RING_N) * Math.PI * 2 + key * 0.1, t1 = t0 + (1.4 / RING_N) * Math.PI * 2; s.push([t0, t1, Math.sin(t0)]); }
-    s.sort((a, b) => a[2] - b[2]);
-    segCache.set(key, s);
+/** weicher Übergang 0 → 1 zwischen e0 und e1 */
+function smooth(e0: number, e1: number, x: number): number { const k = clamp((x - e0) / (e1 - e0), 0, 1); return k * k * (3 - 2 * k); }
+/**
+ * Rauchring: einmal vorgezeichnete Vorlagen (je Form drei Bilder: Rauch grau, Rauch vom Feuer angeleuchtet, Glut), im Kampf
+ * nur noch gedreht, skaliert und überblendet. Der Ring steht quer zur Flugachse; von oben (kleiner Blickwinkel von hinten)
+ * erscheint er als flache Ellipse (Neigung RING_TILT). Schlauch aus weichen Lagen mit unregelmäßigem Radius und Dicke,
+ * dazu ein paar Rauchbäusche. Lebensdauer RING_LIFE s.
+ */
+const RING_TILT = 0.25, RING_LIFE = 1.3, RING_VARIANTS = 6, RING_TEX_R = 150;
+const ringCache = new Map<number, { smoke: HTMLCanvasElement; warm: HTMLCanvasElement; glow: HTMLCanvasElement } | null>();
+function ringTex(v: number): { smoke: HTMLCanvasElement; warm: HTMLCanvasElement; glow: HTMLCanvasElement } | null {
+  if (ringCache.has(v)) return ringCache.get(v)!;
+  if (typeof document === 'undefined') { ringCache.set(v, null); return null; }
+  const R = RING_TEX_R, tube = R * 0.21, W = Math.ceil(2 * R + 4 * tube), H = Math.ceil(2 * R * RING_TILT + 4 * tube), sd = v * 1.7 + 0.4;
+  const nz = (th: number, k: number) => Math.sin(th * 3 + sd) * 0.5 + Math.sin(th * 7 + sd * 2.3 + k) * 0.3 + Math.sin(th * 13 + sd * 0.7) * 0.2;
+  const pt = (th: number): [number, number] => { const rr = R * (1 + 0.07 * nz(th, 0)); return [W / 2 + Math.cos(th) * rr, H / 2 - Math.sin(th) * rr * RING_TILT]; };
+  const segs: [number, number, number][] = [];
+  for (let i = 0; i < 72; i++) { const t0 = (i / 72) * Math.PI * 2, t1 = t0 + (1.4 / 72) * Math.PI * 2; segs.push([t0, t1, Math.sin(t0)]); }
+  segs.sort((a, b) => a[2] - b[2]);
+  const col = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const paint = (smoke: number[], light: number[]): HTMLCanvasElement => {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d')!;
+    g.lineCap = 'round';
+    for (const [t0, t1, sn] of segs) {
+      const [xa, ya] = pt(t0), [xb, yb] = pt(t1), w = tube * (1 + 0.35 * nz(t0, 5));
+      const lay = (lw: number, cs: string) => { g.strokeStyle = cs; g.lineWidth = lw; g.beginPath(); g.moveTo(xa, ya); g.lineTo(xb, yb); g.stroke(); };
+      lay(w * 2.6, col(smoke, 0.07)); lay(w * 1.7, col(smoke, 0.14)); lay(w, col(light, 0.1 + 0.08 * sn));
+      if (sn > 0) lay(w * 0.5, col(light, 0.12 * sn));
+    }
+    for (let i = 0; i < 22; i++) {
+      const th = i * 2.39996 + sd, [x, y] = pt(th), j = Math.sin(sd * 5 + i * 1.3), s = tube * (1.1 + 0.5 * j), cx = x + j * tube * 0.4, cy = y - j * tube * 0.3;
+      const rg = g.createRadialGradient(cx - s * 0.2, cy - s * 0.2, 0, cx, cy, s);
+      rg.addColorStop(0, col(light, 0.16)); rg.addColorStop(1, col(smoke, 0));
+      g.fillStyle = rg; g.beginPath(); g.arc(cx, cy, s, 0, Math.PI * 2); g.fill();
+    }
+    return c;
+  };
+  const smoke = paint([110, 102, 94], [170, 162, 150]), warm = paint([190, 105, 50], [255, 190, 110]);
+  const glow = document.createElement('canvas'); glow.width = W; glow.height = H;
+  const gg = glow.getContext('2d')!;
+  gg.lineCap = 'round';
+  for (const [t0, t1] of segs) {
+    const [xa, ya] = pt(t0), [xb, yb] = pt(t1);
+    gg.strokeStyle = 'rgba(255,110,30,0.2)'; gg.lineWidth = tube * 2.4; gg.beginPath(); gg.moveTo(xa, ya); gg.lineTo(xb, yb); gg.stroke();
+    gg.strokeStyle = 'rgba(255,190,110,0.12)'; gg.lineWidth = tube * 0.8; gg.beginPath(); gg.moveTo(xa, ya); gg.lineTo(xb, yb); gg.stroke();
   }
-  return s;
+  const t = { smoke, warm, glow };
+  ringCache.set(v, t);
+  return t;
 }
 /** Glutfarbe eines Splitters nach Alter 0 … 1: hellgelb → orange → dunkelrot */
 function shardColor(age: number): string {
@@ -6426,54 +6461,28 @@ export class ShooterGame implements MiniGame {
    */
   private drawSmokeRings(ctx: CanvasRenderingContext2D): void {
     ctx.save();
-    ctx.lineCap = 'round';
-    const sm = (e0: number, e1: number, x: number) => { const k = clamp((x - e0) / (e1 - e0), 0, 1); return k * k * (3 - 2 * k); };
-    const mix = (A: number[], B: number[], k: number) => A.map((v, i) => Math.round(v + (B[i] - v) * k));
     for (const r of this.smokeRings) {
       const q = r.t / r.max, grow = 1 - Math.pow(1 - Math.min(1, r.t / 0.7), 3);
-      const R = r.R * (1 + 1.1 * grow), tube = RING_TUBE * (1 + 0.8 * grow);
       // weich ein- und ausblenden; die Glut des Feuers klingt in knapp einer halben Sekunde ab
-      const fade = sm(0, 0.05, q) * (1 - sm(0.1, 1, q)), warm = 1 - sm(0, 0.45, r.t);
+      const fade = smooth(0, 0.05, q) * (1 - smooth(0.1, 1, q)), warm = 1 - smooth(0, 0.45, r.t);
       if (fade <= 0.003) continue;
-      const ux = Math.cos(r.a), uy = Math.sin(r.a), px = -uy, py = ux, sd = r.seed;
-      // leicht unregelmäßiger Radius und Dicke (verschiedene Wellenzahlen), langsam veränderlich
-      const nz = (th: number, k: number) => Math.sin(th * 3 + sd) * 0.5 + Math.sin(th * 7 + sd * 2.3 + k) * 0.3 + Math.sin(th * 13 + sd * 0.7) * 0.2;
-      const pt = (th: number): [number, number] => {
-        const rr = R * (1 + 0.07 * nz(th, r.t * 2)), c = Math.cos(th), sn = Math.sin(th);
-        return [r.x + px * c * rr + ux * sn * rr * RING_TILT, r.y + py * c * rr + uy * sn * rr * RING_TILT];
-      };
-      // Rauchfarbe: anfangs vom Feuer angeleuchtet (braun-orange), dann grau
-      const smoke = mix([110, 102, 94], [190, 105, 50], warm), light = mix([170, 162, 150], [255, 190, 110], warm);
-      const col = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-      // Abschnitte des Schlauchs, hintere Hälfte zuerst (sin < 0), dann vordere – jeweils weiche Lagen von außen nach innen
-      for (const [t0, t1, sn] of ringSegs(sd)) {
-        const [xa, ya] = pt(t0), [xb, yb] = pt(t1), w = tube * (1 + 0.35 * nz(t0, 5));
-        const lay = (lw: number, c: string) => { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke(); };
-        lay(w * 2.6, col(smoke, 0.07 * fade));
-        lay(w * 1.7, col(smoke, 0.14 * fade));
-        lay(w, col(light, (0.1 + 0.08 * sn) * fade));
-        if (sn > 0) lay(w * 0.5, col(light, 0.12 * sn * fade));
-      }
-      // Rauchstruktur: weiche Ballen unregelmäßig auf dem Schlauch (bricht die glatte Form auf)
-      for (let i = 0; i < 22; i++) {
-        const th = i * 2.39996 + sd, [x, y] = pt(th), j = Math.sin(sd * 5 + i * 1.3), s = tube * (1.1 + 0.5 * j);
-        const cx = x + j * tube * 0.4, cy = y - j * tube * 0.3;
-        const g = ctx.createRadialGradient(cx - s * 0.2, cy - s * 0.2, 0, cx, cy, s);
-        g.addColorStop(0, col(light, 0.16 * fade)); g.addColorStop(1, col(smoke, 0));
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, s, 0, Math.PI * 2); ctx.fill();
-      }
-      // Glut: das Feuer der Detonation leuchtet den jungen Ring an
-      if (warm > 0.01) {
+      const tex = ringTex(Math.floor(r.seed) % RING_VARIANTS);
+      if (!tex) continue;
+      // Vorlage: Ring mit Radius RING_TEX_R quer, Vorderseite oben (−y) → gedreht, sodass oben in Flugrichtung zeigt
+      const k = (r.R * (1 + 1.1 * grow)) / RING_TEX_R;
+      ctx.save();
+      ctx.translate(r.x, r.y); ctx.rotate(r.a + Math.PI / 2); ctx.scale(k, k);
+      const w = tex.smoke.width, h = tex.smoke.height;
+      ctx.globalAlpha = fade * (1 - warm);
+      if (ctx.globalAlpha > 0.003) ctx.drawImage(tex.smoke, -w / 2, -h / 2);
+      if (warm > 0.003) {
+        ctx.globalAlpha = fade * warm;
+        ctx.drawImage(tex.warm, -w / 2, -h / 2);
         ctx.globalCompositeOperation = 'lighter';
-        for (const [t0, t1] of ringSegs(sd)) {
-          const [xa, ya] = pt(t0), [xb, yb] = pt(t1);
-          ctx.strokeStyle = `rgba(255,110,30,${0.2 * warm * fade})`; ctx.lineWidth = tube * 2.4;
-          ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
-          ctx.strokeStyle = `rgba(255,190,110,${0.12 * warm * warm * fade})`; ctx.lineWidth = tube * 0.8;
-          ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
-        }
+        ctx.drawImage(tex.glow, -w / 2, -h / 2);
         ctx.globalCompositeOperation = 'source-over';
       }
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -7737,10 +7746,11 @@ export class ShooterGame implements MiniGame {
         // Splitter: glühender Faden, der im Flug abkühlt (hellgelb → orange → dunkelrot) und verblasst
         const v = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / v, uy = b.vy / v, age = clamp(1 - b.life / SHARD_LIFE, 0, 1);
         const col = shardColor(age), a = 1 - age * age, L = 10 + 12 * (1 - age);
-        const g = ctx.createLinearGradient(b.x, b.y, b.x - ux * L, b.y - uy * L);
-        g.addColorStop(0, rgba(col, 0.95 * a)); g.addColorStop(1, rgba(col, 0));
-        ctx.strokeStyle = g; ctx.lineWidth = 1.6;
+        // langer, schwacher Nachglüh-Faden, darüber der kurze helle Kopf (ohne Farbverlauf – schnell)
+        ctx.strokeStyle = rgba(col, 0.35 * a); ctx.lineWidth = 1.6;
         ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - ux * L, b.y - uy * L); ctx.stroke();
+        ctx.strokeStyle = rgba(col, 0.95 * a); ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - ux * L * 0.4, b.y - uy * L * 0.4); ctx.stroke();
         continue;
       }
       const v = Math.hypot(b.vx, b.vy) || 1, L = b.pflak ? 22 : b.from === 'p' ? 12 : 8;
