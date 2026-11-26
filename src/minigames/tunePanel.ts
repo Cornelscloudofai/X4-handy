@@ -2,7 +2,7 @@
 // die im Spiel herauskommen. Steht im Minispiel-Menü (Reiter Kampf) und im Pausenmenü eines laufenden Kampfs.
 import { esc } from '../ui/dom';
 import type { Level } from './common';
-import { broodTest, hegTest, foesTest, envTest, modsOff, paleBackdrop, enemyTune, fogTest, tuneToSlider, type EnemyTune } from './loadout';
+import { broodTest, hegTestMode, foesTest, envTest, modsOff, paleBackdrop, enemyTune, fogTest, tuneToSlider, type EnemyTune } from './loadout';
 export { tuneFromSlider, tuneToSlider } from './loadout';
 import { enemyStatTable } from './shooterData';
 
@@ -21,7 +21,7 @@ export function tuneValue(v: number): string {
  * Ganzer Abschnitt; levelPicker: Knöpfe zur Wahl der Stufe (Menü) oder leer (Pause: Stufe der laufenden Runde);
  * reset: Attribut für den Zurücksetzen-Knopf; note: Hinweis unter der Tabelle
  */
-export function tunePanel(level: Level, o: { levelPicker?: string; reset: string; fog: string; brood?: string; heg?: string; foes?: string; env?: (v: string) => string; pale?: string; mods?: string; note: string }): string {
+export function tunePanel(level: Level, o: { levelPicker?: string; reset: string; fog: string; brood?: string; heg?: (v: string) => string; foes?: string; env?: (v: string) => string; pale?: string; mods?: string; note: string }): string {
   const t = enemyTune();
   const slider = (key: 'hull' | 'shield', label: string) => `<div class="tune-row"><span class="tune-label">${label}</span>
     <input type="range" min="0" max="1000" step="1" value="${tuneToSlider(t[key])}" data-change="enemy-tune" data-key="${key}" aria-label="${label}-Faktor">
@@ -38,11 +38,11 @@ export function tunePanel(level: Level, o: { levelPicker?: string; reset: string
     ${o.brood ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Brutschiff ab Welle 1</div>
       <div class="sub wrap">Kha'ak-Runden: ein Brutschiff liegt von Anfang an am Kartenrand und brütet sofort. Gilt ab dem nächsten Start.</div></div>
       <div class="toggle"><button class="plain ${broodTest() ? 'on' : ''}" ${o.brood}>${broodTest() ? 'An' : 'Aus'}</button></div></div>` : ''}
-    ${o.heg ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Zerstörer der Hegemonie</div>
-      <div class="sub wrap">Neue Fraktion (Arbeitsname): in jeder Kampfrunde fliegt von Anfang an ein Zerstörer (Zwillingsgeschütze, L-Kanonen, XL-Drillingstürme) heran. Gilt ab dem nächsten Start.</div></div>
-      <div class="toggle"><button class="plain ${hegTest() ? 'on' : ''}" ${o.heg}>${hegTest() ? 'An' : 'Aus'}</button></div></div>` : ''}
+    ${o.heg ? `<div class="title" style="font-weight:500;margin-top:12px">Test: Hegemonie</div>
+      <div class="sub wrap">Neue Fraktion (Arbeitsname): in jeder Kampfrunde fliegen von Anfang an Schiffe der Hegemonie heran – Korvette (150 m), Fregatte (420 m), Zerstörer (950 m) oder ein Verband aus allen. Gilt ab dem nächsten Start.</div>
+      <div class="segment" style="margin-top:6px">${([['', 'Aus'], ['k', 'Korvette'], ['f', 'Fregatte'], ['z', 'Zerstörer'], ['alle', 'Verband']] as const).map(([v, l]) => `<button class="${hegTestMode() === v ? 'on' : ''}" ${o.heg!(v)}>${l}</button>`).join('')}</div>` : ''}
     ${o.foes ? `<div class="row" style="margin-top:12px;gap:10px;align-items:center"><div class="grow"><div class="title" style="font-weight:500">Test: Fraktionen gegeneinander</div>
-      <div class="sub wrap">Mit dem Zerstörer: Hegemonie und die übrigen Gegner beschießen sich auch gegenseitig. Abschüsse durch die andere Seite bringen dir nichts. Gilt sofort.</div></div>
+      <div class="sub wrap">Mit dem Hegemonie-Test: Hegemonie und die übrigen Gegner beschießen sich auch gegenseitig. Abschüsse durch die andere Seite bringen dir nichts. Gilt sofort.</div></div>
       <div class="toggle"><button class="plain ${foesTest() ? 'on' : ''}" ${o.foes}>${foesTest() ? 'An' : 'Aus'}</button></div></div>` : ''}
     ${o.env ? `<div class="title" style="font-weight:500;margin-top:12px">Test: Umgebung in jeder Welle ab Welle 1</div>
       <div class="segment" style="margin-top:6px">${([['', 'Zufall'], ['wracks', 'Wracks'], ['anomalie', 'Anomalie'], ['rocks', 'Felsen'], ['mines', 'Minen']] as const).map(([v, l]) => `<button class="${envTest() === v ? 'on' : ''}" ${o.env!(v)}>${l}</button>`).join('')}</div>` : ''}

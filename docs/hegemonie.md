@@ -47,10 +47,19 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
   Elektromagnetisch unterstützte Schiffsabwehrkanone gegen Korvetten, Fregatten und Großziele. Zielvorrang: Klasse M,
   dann L/XL (auch Frachter, Stationen), Jäger nur ohne anderes Ziel. Feuert abwechselnd links – rechts alle 2 s ohne Salvenpause (jedes Rohr alle 4 s), Geschoss und
   Mündungsblitz an der jeweiligen Mündung; rote Panzerbrechergranate (800) mit Brandspur (gut von Flak und Splittern zu unterscheiden), eng begrenzter Einschlag
-  ohne Garbe oder Wolke. Dreht 20°/s, Schaden 50 × Stufe, Reichweite ≈ 1,2 km, Hülle ×7, Schild ×3. Kein Rückstoß,
+  ohne Garbe oder Wolke. Dreht 20°/s, Schaden 35 × Stufe, Reichweite ≈ 1,2 km, Hülle ×4, Schild ×2. Kein Rückstoß,
   keine Ladebeleuchtung. Werte vorläufig (`LG_*`).
-- **Test-Schalter** im Kampf-Reiter (Entwicklung): „Test: Zerstörer der Hegemonie“ – in jeder Kampfrunde fliegt von
-  Anfang an ein Zerstörer heran. Vorschau: `node scripts/kampf-vorschau.mjs bild.png --heg 900 --zoom 0.4`.
+- **Fregatte** (`heg-fregatte-ki`, Bild 793 × 1 983, Rumpf 1 889 px): ≈ 420 m – L-Sockel so groß wie beim Zerstörer.
+  4 M-Zwillingsgeschütze, 2 L-Zwillingskanonen, dazu zwei L-Gatlings fest im Bug: Feuerstöße (24 Schuss, alle 0,07 s,
+  dann 2,2 s Pause), Reichweite ≈ 900 m, schwenken ±0,35 rad. Rumpf direkt verwundbar (kein Schutz durch die Türme),
+  Hülle ×0,6 und Schild ×0,4 des Bosswerts. Dreht den Bug zum Ziel.
+- **Korvette** (`heg-korvette-ki`, Bild 763 × 2 060, Rumpf 1 967 px): ≈ 150 m. 4 M-Zwillingsgeschütze (≈ 13 m, so groß
+  wie ihre Sockel), dazu vier Bugkanonen mit mittlerem Tempo (abwechselnd alle 0,3 s, Reichweite ≈ 750 m). Rumpf direkt
+  verwundbar, Hülle und Schild ×0,25 des Bosswerts. Dreht den Bug zum Ziel.
+  Schiffsdaten (Sockel, Mündungen, Werte) in `HEG_SHIPS` in `src/minigames/shooter.ts`.
+- **Test-Schalter** im Kampf-Reiter (Entwicklung): „Test: Hegemonie“ – Aus, Korvette, Fregatte, Zerstörer oder Verband
+  (Zerstörer, Fregatte, zwei Korvetten); fliegen in jeder Kampfrunde von Anfang an heran. Vorschau:
+  `node scripts/kampf-vorschau.mjs bild.png --heg 900 --heg-typ f --zoom 0.4`.
 
 ## Vorschlag Spielweise (noch nicht umgesetzt)
 
@@ -64,8 +73,8 @@ in Ordnung und **kein Grund, ihn abzuschwächen**. Balance, genaue Rolle und Geg
 | Rolle | Länge | Bild |
 |---|---|---|
 | Jäger | ca. 30 m | fehlt |
-| Korvette | ca. 90 m | fehlt |
-| Fregatte | ca. 150 m | fehlt |
+| Korvette | ca. 150 m | vorhanden |
+| Fregatte | ca. 420 m | vorhanden |
 | Zerstörer | ca. 950 m | vorhanden |
 | Schlachtschiff | ca. 1,8 km | später (Boss) |
 

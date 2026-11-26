@@ -1259,8 +1259,20 @@ export function setFoesTest(on: boolean): void {
   try { if (on) globalThis.localStorage?.setItem(FOES_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(FOES_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
 }
 const HEG_TEST_KEY = 'x4-sektorbau-hegemonie-test';
+/** Test der Hegemonie: welche Schiffe auftauchen – Korvette, Fregatte, Zerstörer oder ein Verband aus allen ('' = aus) */
+export type HegTestMode = '' | 'k' | 'f' | 'z' | 'alle';
+export function hegTestMode(): HegTestMode {
+  try {
+    const v = globalThis.localStorage?.getItem(HEG_TEST_KEY) ?? '';
+    // früher nur an/aus: '1' war der Zerstörer
+    return v === '1' ? 'z' : v === 'k' || v === 'f' || v === 'z' || v === 'alle' ? v : '';
+  } catch { return ''; }
+}
+export function setHegTestMode(m: HegTestMode): void {
+  try { if (m) globalThis.localStorage?.setItem(HEG_TEST_KEY, m); else globalThis.localStorage?.removeItem(HEG_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }
+}
 export function hegTest(): boolean {
-  try { return globalThis.localStorage?.getItem(HEG_TEST_KEY) === '1'; } catch { return false; }
+  return hegTestMode() !== '';
 }
 export function setHegTest(on: boolean): void {
   try { if (on) globalThis.localStorage?.setItem(HEG_TEST_KEY, '1'); else globalThis.localStorage?.removeItem(HEG_TEST_KEY); } catch { /* Speicher nicht verfügbar */ }

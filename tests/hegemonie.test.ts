@@ -285,3 +285,65 @@ describe('Fraktionen gegeneinander (Test)', () => {
     expect(G.lgTarget(t, 5000)?.foe).toBe(other);
   });
 });
+
+describe('Korvette und Fregatte der Hegemonie', () => {
+  const spawn = (mode: string, ship: ShipId = 'dragon') => {
+    store.set('x4-sektorbau-hegemonie-test', mode);
+    const g = new ShooterGame({ level: 3, seed: 4, mutator: null, mode: 'normal', mission: 'ueberleben', fog: false, loadout: { ...DEFAULT_LOADOUT, wing: {}, ship } } as never, 'pirate') as unknown as G;
+    g.resize(390, 780);
+    for (let i = 0; i < 60 * 20 && !g.enemies.some((e) => e.model?.startsWith('heg')); i++) g.update(DT);
+    return g;
+  };
+  it('Korvette: etwa 150 m, vier M-Zwillingsgeschütze, Rumpf direkt verwundbar', () => {
+    const g = spawn('k');
+    const b = g.enemies.find((e) => e.model === 'heg-k')!;
+    expect(b).toBeTruthy();
+    expect(b.r * 4.7 * (1967 / 2060)).toBeCloseTo(scaledLength(150, sizeScale()), 0);
+    const t = g.enemies.filter((e) => e.parent === b);
+    expect(t.length).toBe(4);
+    expect(t.every((q) => q.weapon === 'splitter')).toBe(true);
+    g.update(DT);
+    expect((b as unknown as { shielded: boolean }).shielded).toBe(false);
+  });
+  it('Fregatte: etwa 420 m, vier M und zwei L, L-Kanone so groß wie beim Zerstörer', () => {
+    const g = spawn('f');
+    const b = g.enemies.find((e) => e.model === 'heg-f')!;
+    expect(b.r * 4.7 * (1889 / 1983)).toBeCloseTo(scaledLength(420, sizeScale()), 0);
+    const t = g.enemies.filter((e) => e.parent === b);
+    expect(t.filter((q) => q.weapon === 'splitter').length).toBe(4);
+    expect(t.filter((q) => q.weapon === 'lgun').length).toBe(2);
+    const z = spawn('z'), zb = z.enemies.find((e) => e.model === 'heg')!;
+    const zl = z.enemies.find((e) => e.parent === zb && e.weapon === 'lgun')!;
+    expect(t.find((q) => q.weapon === 'lgun')!.r).toBeCloseTo(zl.r, 3);
+  });
+  it('Verband: Zerstörer, Fregatte und zwei Korvetten', () => {
+    const g = spawn('alle');
+    for (let i = 0; i < 5; i++) g.update(DT);
+    const m = g.enemies.filter((e) => e.model).map((e) => e.model).sort();
+    expect(m).toEqual(['heg', 'heg-f', 'heg-k', 'heg-k']);
+  });
+  for (const [mode, model, n] of [['k', 'heg-k', 4], ['f', 'heg-f', 2]] as const) {
+    it(`Bugwaffen (${mode === 'k' ? 'Korvette: vier Geschütze' : 'Fregatte: zwei L-Gatlings'}) feuern aus den Mündungen nach vorn`, () => {
+      const g = spawn(mode);
+      const b = g.enemies.find((e) => e.model === model)!;
+      g.enemies = g.enemies.filter((e) => e === b); g.reinforce.length = 0; g.clusters.clear();
+      (b as unknown as { hold: boolean }).hold = true;
+      const muz = new Set<string>();
+      let shots = 0;
+      for (let i = 0; i < 60 * 6; i++) {
+        g.px = b.x + Math.cos(b.ang) * 400; g.py = b.y + Math.sin(b.ang) * 400; g.pvx = g.pvy = 0;
+        const n0 = g.bullets.length;
+        g.update(DT); g.hull = g.shield = 100;
+        for (const x of g.bullets.slice(n0)) if (x.from === 'e') {
+          shots++;
+          // Lage relativ zum Bug: vor der Mitte, seitlich versetzt
+          const c = Math.cos(b.ang), sn = Math.sin(b.ang), dx = x.x - b.x, dy = x.y - b.y;
+          expect(dx * c + dy * sn).toBeGreaterThan(b.r);
+          muz.add((-dx * sn + dy * c).toFixed(0));
+        }
+      }
+      expect(shots).toBeGreaterThan(5);
+      expect(muz.size).toBeGreaterThanOrEqual(n);
+    });
+  }
+});

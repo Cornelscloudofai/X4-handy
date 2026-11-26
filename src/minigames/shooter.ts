@@ -13,7 +13,7 @@ import invasionUrl from '../assets/music/kampf-invasion.mp3';
 import { enemySprite, fighterKind, preloadSprites, projectileSprite, shipArt, shipSprite, turretMuzzles, turretSprite } from '../render/shipArt';
 import { modStats, type ModStats } from './mods';
 import { MISSIONS, type Mission } from './missions';
-import { broodTest, hegTest, foesTest, scaledLength, sizeScale, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, fireStaggered, setFireStaggered, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
+import { broodTest, hegTest, hegTestMode, foesTest, scaledLength, sizeScale, envTest, fogTest, modsOff, DMG_SCALE, RANGE_X, LTURRETS, RELOAD, MISSILE_DMG, MISSILES, TURRET_MISSILES, fireStaggered, setFireStaggered, weaponFits, enemyBars, enemyTune, enemyTuneVersion, SHIELDS, SHIPS, SPECIALS, TIME, TURRETS, WEAPONS, gameRange, gameSpeed, loadout, controlMode, lenkSetup, effectiveDps, sustainedDps, weaponGun, turretOf, validWing, wingCount, wingGearOf, type ControlMode, type LenkSetup, type TurretId, type WeaponId, type Loadout, type LTurretId, type ShipId, type MissileDef, type ShieldDef, type ShipDef, type X4Gun, type TurretMissile } from './loadout';
 import {
   buzz, clamp, drawButton, drawKnob, drawStick, findMutator, Floaters, Particles, pickGoals, rgba, rng, Score, setGoal, Starfield, TOP,
   type GameCfg, type GameResult, type ReportRow, type Gear, type Goal, type HudItem, type Level, type MiniGame, type Mode, type Mutator, type Rules,
@@ -186,7 +186,9 @@ interface Enemy {
   /** Zwillingsgeschütz: letztes Ziel (für den laufenden Stoß) */
   splitTg?: { x: number; y: number; vx: number; vy: number };
   /** Bauart eines Großkampfschiffs aus einer anderen Fraktion (heg: Zerstörer der Hegemonie, Test) */
-  model?: 'heg';
+  model?: 'heg' | 'heg-f' | 'heg-k';
+  /** Bugwaffen der Hegemonie-Korvette und -Fregatte: Takt, nächste Mündung, Schuss im Feuerstoß */
+  bowCd?: number; bowI?: number; bowN?: number;
   /** laufende Salve eines Turms: noch abzugebende Schüsse, Zeit bis zum nächsten */
   salvo?: number; salvoT?: number;
   /** Xenon P: Türme schon montiert; Piratenträger: Zeit bis zum nächsten Jägerstart, gestartete Jäger */
@@ -639,10 +641,29 @@ const WING_REPAIR = 14;
  * (aus den M-Sockeln: gleich groß wie die der Klapperschlange). Sockel gemessen im Bild: 3 XL auf der Mittelachse,
  * 6 L an den Seiten, 10 M in fünf Paaren. Bestückt: M Zwillingsgeschütze, L Zwillingskanonen, XL Drillingstürme.
  */
-const HEG_Z = { w: 793, h: 1983, hull: 1976, len: 950 };
 const HEG_Z_M: [number, number][] = [[307, 233], [484, 233], [282, 327], [512, 327], [221, 538], [571, 538], [300, 1203], [490, 1203], [214, 1286], [579, 1286]];
 export const HEG_Z_L: [number, number][] = [[193, 623], [598, 623], [183, 745], [611, 745], [183, 867], [611, 867]];
 export const HEG_Z_XL: [number, number][] = [[396, 418], [396, 682], [396, 1330]];
+type HegKind = 'z' | 'f' | 'k';
+type HegBow = { muz: [number, number][]; gap: number; burst?: number; pause: number; v: number; dmg: number; range: number; cone: number; spread: number; color: string; w: number; flash: number };
+/**
+ * Schiffe der Hegemonie (Bildmaße, Rumpflänge im Bild, Länge in m, Sockel, Bugwaffen; vorläufige Werte):
+ * - Zerstörer 950 m: 10 M, 6 L, 3 XL
+ * - Fregatte 420 m (L-Sockel so groß wie beim Zerstörer): 4 M, 2 L, dazu zwei L-Gatlings fest im Bug (Feuerstöße)
+ * - Korvette 150 m: 4 M, dazu vier Bugkanonen mit mittlerem Tempo
+ * mD: Durchmesser der M-Sockel in m (Turm so groß wie sein Sockel); hp, sh: Anteil am Bosswert
+ */
+const HEG_SHIPS: Record<HegKind, { model: 'heg' | 'heg-f' | 'heg-k'; w: number; h: number; hull: number; len: number; M: [number, number][]; L: [number, number][]; XL: [number, number][]; mD: number; hp: number; sh: number; bow?: HegBow }> = {
+  z: { model: 'heg', w: 793, h: 1983, hull: 1976, len: 950, M: HEG_Z_M, L: HEG_Z_L, XL: HEG_Z_XL, mD: (36 / 1976) * 950, hp: 1.5, sh: 0.6 },
+  f: {
+    model: 'heg-f', w: 793, h: 1983, hull: 1889, len: 420, M: [[256, 555], [535, 556], [247, 1313], [546, 1313]], L: [[206, 1007], [589, 1007]], XL: [], mD: (70 / 1889) * 420, hp: 0.6, sh: 0.4,
+    bow: { muz: [[266, 40], [527, 40]], gap: 0.07, burst: 24, pause: 2.2, v: 650, dmg: 1.6, range: 900, cone: 0.35, spread: 0.07, color: '#ffcf6a', w: 2, flash: 9 },
+  },
+  k: {
+    model: 'heg-k', w: 763, h: 2060, hull: 1967, len: 150, M: [[270, 720], [493, 720], [208, 1408], [552, 1408]], L: [], XL: [], mD: (175 / 1967) * 150, hp: 0.25, sh: 0.25,
+    bow: { muz: [[270, 280], [460, 280], [305, 280], [494, 280]], gap: 0.3, pause: 0, v: 520, dmg: 3.5, range: 750, cone: 0.3, spread: 0.04, color: '#ffb46a', w: 2.4, flash: 7 },
+  },
+};
 /** Zwillingsgeschütz (M): Drehsockel so groß wie der M-Sockel im Bild (36 px Ring bei 1 976 px Rumpf ≈ 17 m) – etwa wie
  * die M-Türme von Dragon und Cobra (15 m); Rohre ±4,4 % der Bildbreite neben der Mitte, Mündungen 65,8 % der Bildgröße
  * vor dem Drehpunkt */
@@ -679,7 +700,9 @@ const XL_GAP = 0.4, XL_RELOAD = 12, XL_LOCK = 1, XL_TURN = (8 * Math.PI) / 180, 
 export const LG_HOUSING = 684 / 1402, LG_POV = (1060 - 701) / 1402;
 const LG_LAT = 54.5 / 1402, LG_FWD = (1060 - 78) / 1402;
 export const LG_GAP = 2;
-const LG_TURN = (20 * Math.PI) / 180, LG_V = 800, LG_DMG = 50, LG_D = (70 / 1976) * 950 * 1.25, LG_RANGE_M = 1200;
+/** Hülle und Schild der L-Kanone gegenüber einem gewöhnlichen Turm */
+const LG_HP = 4, LG_SH = 2;
+const LG_TURN = (20 * Math.PI) / 180, LG_V = 800, LG_DMG = 35, LG_D = (70 / 1976) * 950 * 1.25, LG_RANGE_M = 1200;
 /** Brandspur der L-Panzerbrechergranate: Nachglühen (s) – rot, damit sie sich von Flak und Splittern abhebt */
 const AP_TRAIL = 0.5;
 /** Schneise der XL-Granate: Nachglühen (s) */
@@ -800,7 +823,7 @@ function shardColor(age: number): string {
 const ORDER_KEY = 'x4-sektorbau-turmbefehle';
 /** Gegnerklasse je Art: S Jäger, M Boote, Schildträger und Xenon M, L Fregatte/K-Segment samt Türmen */
 /** gehört zur Hegemonie (Zerstörer oder einer seiner Türme) */
-const isHeg = (e: Enemy): boolean => e.model === 'heg' || e.parent?.model === 'heg';
+const isHeg = (e: Enemy): boolean => !!(e.model ?? e.parent?.model)?.startsWith('heg');
 /** Größenklasse eines Gegners als Ziel (Türme, Nester, Plattformen wie L) */
 const eCls = (e: Enemy): 'S' | 'M' | 'L' => (e.parent || e.nest || e.plat || e.hive ? 'L' : ECLASS[e.kind]);
 /** Ziel eines Hegemonie-Turms: Ort, Bewegung, Zielgröße (für die Ausricht-Toleranz), Klasse, Abstand zur Hülle */
@@ -4069,55 +4092,91 @@ export class ShooterGame implements MiniGame {
   }
 
   /**
-   * Test der neuen Fraktion: ein Zerstörer der Hegemonie taucht voraus auf (außerhalb der eigenen Reichweite) und fliegt
-   * heran; zehn Zwillingsgeschütze auf den M-Sockeln. Schwer gepanzert: viel Hülle, mäßiger Schild.
+   * Test der neuen Fraktion: Schiffe der Hegemonie tauchen voraus auf (außerhalb der eigenen Reichweite) und fliegen heran –
+   * je nach Einstellung Korvette, Fregatte, Zerstörer oder ein Verband (Zerstörer, Fregatte, zwei Korvetten nebeneinander)
    */
   private spawnHegTest(): void {
-    const sc = sizeScale(), len = sc === 'bisher' ? 420 : scaledLength(HEG_Z.len, sc);
-    const size = (len * HEG_Z.h) / HEG_Z.hull, k = size / HEG_Z.h;
+    const mode = hegTestMode();
     const a = -Math.PI / 2 + (this.r() - 0.5) * 0.8;
-    const dist = Math.max(2200, len * 0.6 + this.ownReach + this.ship.size * 0.5 + 500), m = len * 0.6 + 500;
-    const x = clamp(this.fX + Math.cos(a) * dist, m, this.WW - m), y = clamp(this.fY + Math.sin(a) * dist, m, this.WH - m);
+    const list: [HegKind, number][] = mode === 'alle' ? [['z', 0], ['f', -1.3], ['k', 1.2], ['k', 1.8]] : [[mode === 'k' || mode === 'f' ? mode : 'z', 0]];
+    for (const [kind, lat] of list) this.spawnHeg(kind, a, lat);
+    const name = { k: 'Korvette', f: 'Fregatte', z: 'Zerstörer', alle: 'Verband' }[mode || 'z'];
+    this.floats.add(this.px, this.py - 60, `Test: ${name} der Hegemonie im Anflug`, '#ffb3a0', 15);
+  }
+
+  /** ein Schiff der Hegemonie mit allen Türmen auf seinen Sockeln; lat: Platz im Verband (seitlich versetzt) */
+  private spawnHeg(kind: HegKind, a: number, lat: number): void {
+    const S = HEG_SHIPS[kind];
+    const sc = sizeScale(), len = sc === 'bisher' ? 420 * (S.len / 950) : scaledLength(S.len, sc);
+    const size = (len * S.h) / S.hull, k = size / S.h;
+    const big = sc === 'bisher' ? 420 : scaledLength(950, sc);
+    const dist = Math.max(2200, big * 0.6 + this.ownReach + this.ship.size * 0.5 + 500) + (kind === 'z' ? 0 : big * 0.3), m = len * 0.6 + 500;
+    const sx = -Math.sin(a) * lat * big * 0.35, sy = Math.cos(a) * lat * big * 0.35;
+    const x = clamp(this.fX + Math.cos(a) * dist + sx, m, this.WW - m), y = clamp(this.fY + Math.sin(a) * dist + sy, m, this.WH - m);
     const b = this.makeEnemy('boss', x, y);
-    b.model = 'heg';
+    b.model = S.model;
     b.mini = true;
     b.r = size / 4.7;
     b.ang = Math.atan2(this.fY - y, this.fX - x);
     const bs = enemyStats('boss', this.level, { tune: this.tune });
-    b.hp = b.max = bs.hp * 1.5;
-    b.sh = b.shMax = bs.sh * 0.6;
+    b.hp = b.max = bs.hp * S.hp;
+    b.sh = b.shMax = bs.sh * S.sh;
+    b.bowCd = 1 + this.r();
     this.enemies.push(b);
-    const tr = (sc === 'bisher' ? 18 : scaledLength(HEG_M_D, sc)) / 2;
-    for (const [ix, iy] of HEG_Z_M) {
-      const ox = (ix - HEG_Z.w / 2) * k, oy = (iy - HEG_Z.h / 2) * k;
+    const at = (ix: number, iy: number, weapon: Enemy['weapon'], r: number) => {
+      const ox = (ix - S.w / 2) * k, oy = (iy - S.h / 2) * k;
       const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
-      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = 'splitter'; t.r = tr;
-      t.cd = 1 + this.r() * 2;
+      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = weapon; t.r = r;
       this.enemies.push(t);
-    }
-    // XL-Drillingstürme auf den drei großen Sockeln der Mittelachse (vorn zuerst – der hintere liegt beim Zeichnen oben)
+      return t;
+    };
+    // M-Zwillingsgeschütze: Drehsockel so groß wie der Sockel im Bild
+    const tr = (sc === 'bisher' ? 18 * (S.mD / HEG_M_D) : scaledLength(S.mD, sc)) / 2;
+    for (const [ix, iy] of S.M) at(ix, iy, 'splitter', tr).cd = 1 + this.r() * 2;
+    // XL-Drillingstürme (vorn zuerst – der hintere liegt beim Zeichnen oben)
     const txl = (sc === 'bisher' ? 40 : scaledLength(XL_D, sc)) / 2;
-    for (const [ix, iy] of HEG_Z_XL) {
-      const ox = (ix - HEG_Z.w / 2) * k, oy = (iy - HEG_Z.h / 2) * k;
-      const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
-      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = 'xl'; t.r = txl;
+    for (const [ix, iy] of S.XL) {
+      const t = at(ix, iy, 'xl', txl);
       t.hp *= 15; t.max *= 15; t.sh *= 6; t.shMax *= 6;
       // Rohre ab Werk Richtung Bug, Ladung versetzt (nicht alle drei Türme zugleich)
       t.aimA = b.ang; t.xlCharge = 0.4 + this.r() * 0.5; t.xlFired = 0; t.xlFlash = [0, 0, 0];
-      this.enemies.push(t);
     }
-    // L-Zwillingskanonen auf den sechs Seitensockeln
+    // L-Zwillingskanonen
     const tl = (sc === 'bisher' ? 16 : scaledLength(LG_D, sc)) / 2;
-    for (const [ix, iy] of HEG_Z_L) {
-      const ox = (ix - HEG_Z.w / 2) * k, oy = (iy - HEG_Z.h / 2) * k;
-      const t = this.makeEnemy('turret', b.x + ox, b.y + oy);
-      t.parent = b; t.ox = ox; t.oy = oy; t.weapon = 'lgun'; t.r = tl;
-      t.hp *= 7; t.max *= 7; t.sh *= 3; t.shMax *= 3;
+    for (const [ix, iy] of S.L) {
+      const t = at(ix, iy, 'lgun', tl);
+      t.hp *= LG_HP; t.max *= LG_HP; t.sh *= LG_SH; t.shMax *= LG_SH;
       t.aimA = b.ang; t.lgSide = 0; t.lgFlash = [0, 0]; t.cd = this.r() * LG_GAP * 2;
-      this.enemies.push(t);
     }
-    b.shielded = true;
-    this.floats.add(this.px, this.py - 60, 'Test: Zerstörer der Hegemonie im Anflug', '#ffb3a0', 15);
+    // nur der Zerstörer ist geschützt, solange er Türme hat; Fregatte und Korvette sind direkt verwundbar
+    b.shielded = kind === 'z';
+  }
+
+  /**
+   * Bugwaffen von Korvette (vier Geschütze, mittleres Tempo) und Fregatte (zwei L-Gatlings, Feuerstöße): fest nach vorn,
+   * feuern, wenn das Ziel ungefähr voraus liegt und in Reichweite ist; aus den Mündungen im Bild
+   */
+  private hegBow(e: Enemy, dt: number, aimAt: number, d: number): void {
+    const S = HEG_SHIPS[e.model === 'heg-f' ? 'f' : 'k'], bow = S.bow!;
+    e.bowCd = (e.bowCd ?? 1) - dt;
+    if (e.bowCd > 0) return;
+    const sc = sizeScale(), range = sc === 'bisher' ? bow.range * 0.6 : scaledLength(bow.range, sc);
+    const off = Math.abs(wrapA(aimAt - e.ang));
+    if (d > range || off > bow.cone || this.outcome === 'player') { e.bowCd = 0.2; return; }
+    const i = (e.bowI ?? 0) % bow.muz.length;
+    e.bowI = i + 1;
+    // Feuerstoß (Gatling): nach bow.burst Schuss eine Pause
+    const shot = (e.bowN ?? 0) + 1;
+    e.bowN = bow.burst && shot >= bow.burst ? 0 : shot;
+    e.bowCd = bow.burst && shot >= bow.burst ? bow.pause : bow.gap;
+    const size = e.r * 4.7, k = size / S.h, [ix, iy] = bow.muz[i];
+    const ox = (ix - S.w / 2) * k, oy = (iy - S.h / 2) * k, ra = e.ang + Math.PI / 2, c = Math.cos(ra), sn = Math.sin(ra);
+    // fest eingebaut: etwas Schwenk zum Ziel (60 % der Abweichung), sonst geradeaus
+    this.enemyShot(e, wrapA(e.ang + wrapA(aimAt - e.ang) * 0.6) + (this.r() - 0.5) * bow.spread, bow.v, bow.dmg * this.capTurretDmg, bow.color, bow.w, (range + 60) / bow.v);
+    const pb = this.bullets[this.bullets.length - 1];
+    pb.x = e.x + ox * c - oy * sn; pb.y = e.y + ox * sn + oy * c;
+    this.fx.add({ x: pb.x, y: pb.y, color: '#fff0c8', size: bow.flash, max: 0.05 });
+    this.fx.add({ x: pb.x, y: pb.y, color: bow.color, size: bow.flash * 0.8, kind: 'fire', max: 0.1 });
   }
 
   private spawnBoss(mini = false, from = 0, carrier = false, side = false): void {
@@ -4301,7 +4360,7 @@ export class ShooterGame implements MiniGame {
   /** Bildname eines Gegners (wie beim Zeichnen) */
   private spriteKey(e: Enemy): string {
     const kh = this.side === 'khaak';
-    if (e.model === 'heg') return 'heg-zerstoerer';
+    if (e.model) return { heg: 'heg-zerstoerer', 'heg-f': 'heg-fregatte', 'heg-k': 'heg-korvette' }[e.model];
     return e.weapon ? `turret-${e.weapon}` : e.kind === 'boss' && e.mini && !e.carrier && (kh || this.side === 'pirate') ? 'boss-mini' : e.kind;
   }
 
@@ -5816,7 +5875,7 @@ export class ShooterGame implements MiniGame {
     if (alone) return;
     for (const e of this.enemies) {
       if (e.parent) { e.shielded = false; continue; }
-      e.shielded = e.kind === 'boss' ? this.enemies.some((q) => q.parent === e) : shielders.some((s) => s !== e && Math.hypot(s.x - e.x, s.y - e.y) < 115);
+      e.shielded = e.kind === 'boss' ? e.model !== 'heg-f' && e.model !== 'heg-k' && this.enemies.some((q) => q.parent === e) : shielders.some((s) => s !== e && Math.hypot(s.x - e.x, s.y - e.y) < 115);
     }
     for (const e of this.enemies) {
       const s = SPEC[e.kind];
@@ -6092,6 +6151,8 @@ export class ShooterGame implements MiniGame {
             else if (d < keep * 1.1) e.appr = false;
             face = e.appr ? aimAt : e.ang;
           }
+          // Korvette und Fregatte der Hegemonie: Bug zum Ziel (dort sitzen die festen Bugwaffen)
+          if (e.model === 'heg-f' || e.model === 'heg-k') face = aimAt;
         }
         const wl = Math.hypot(wx, wy);
         want = Math.atan2(wy, wx);
@@ -6134,6 +6195,7 @@ export class ShooterGame implements MiniGame {
           for (let q = 0; q < sm.n; q++) this.launchEMissile(e, e.ang + (q - (sm.n - 1) / 2) * 0.3, false);
         }
       }
+      if (e.model === 'heg-f' || e.model === 'heg-k') this.hegBow(e, dt, aimAt, d);
       if (e.kind !== 'rakete' && e.cd <= 0 && !breaking && e.kyT == null && d < range && (e.kind === 'boss' || off < cone)) {
         const a = e.ang + (this.r() - 0.5) * (fighter ? 0.14 : 0.06);
         if (e.kind === 'jaeger') { e.cd = 0.3; e.shots = (e.shots ?? 0) + 1; this.enemyShot(e, a, 300, 6, '#ffb070'); }
@@ -6148,8 +6210,8 @@ export class ShooterGame implements MiniGame {
         else if (e.kind === 'kk') { e.cd = 2.6; e.kyT = 0.6; }
         else if (e.kind === 'boss') {
           e.cd = 2.6;
-          // erst ohne Türme feuert der Kern: Fächer bzw. Ring
-          if (!e.shielded) {
+          // erst ohne Türme feuert der Kern: Fächer bzw. Ring (Korvette und Fregatte der Hegemonie haben dafür Bugwaffen)
+          if (!e.shielded && e.model !== 'heg-f' && e.model !== 'heg-k') {
             if (e.model === 'heg') {
               // Hegemonie-Zerstörer ohne Türme: gezielter Fächer aus dem Bug
               for (let q = 0; q < 5; q++) this.enemyShot(e, aimAt + (q - 2) * 0.12, 300, 9, '#ffd27a', 2.6);

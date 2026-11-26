@@ -21,6 +21,8 @@ const SUFFIX: Record<ShipArt, string> = { ai: '-ki', render: '', vector: '' };
 const ENGINES: Record<string, { xs: number[]; y: number; color: string }> = {
   // Hegemonie-Zerstörer: zwei große Antriebsgondeln und ein kleiner Hilfsantrieb in der Mitte, kühles Cyan
   'heg-zerstoerer-ki': { xs: [-0.0764, 0, 0.0764], y: 0.49, color: '#7fe8ff' },
+  'heg-fregatte-ki': { xs: [-0.097, 0.097], y: 0.445, color: '#7fe8ff' },
+  'heg-korvette-ki': { xs: [-0.0648, 0.0648], y: 0.455, color: '#7fe8ff' },
   'split-jaeger-s': { xs: [-0.041, 0.041], y: 0.435, color: '#ffb070' },
   'split-jaeger-s-ki': { xs: [-0.056, 0.056], y: 0.41, color: '#ff9a4a' },
   'argon-jaeger-s': { xs: [-0.091, 0.091], y: 0.39, color: '#9fe6ff' },
@@ -209,6 +211,8 @@ const ENEMY_SPRITES: Record<string, { name: string; scale: number; oy?: number }
   'khaak:boss-mini': { name: 'khaak-zerstoerer-ki', scale: 4.3 },
   // Hegemonie (neue Fraktion, Arbeitsname): Zerstörer, Bild 1 983 px hoch (quadratisch aufgefüllt), Rumpf 99,6 % der Höhe
   'heg-zerstoerer': { name: 'heg-zerstoerer-ki', scale: 4.7 },
+  'heg-fregatte': { name: 'heg-fregatte-ki', scale: 4.7 },
+  'heg-korvette': { name: 'heg-korvette-ki', scale: 4.7 },
   // Zwillingsgeschütz (M): Drehpunkt ist die Mitte des runden Drehsockels unter der Bildmitte; Sockel 63 % der Bildbreite
   'turret-splitter': { name: 'heg-turm-zwilling-ki', scale: 2 / 0.628, oy: 0.1775 },
   // XL-Drillingsturm: Drehpunkt in der Mitte des Gehäuses (Bild 1 536, Punkt 769 / 1 150), Gehäuse 63,6 % der Bildbreite

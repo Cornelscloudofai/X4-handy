@@ -50,7 +50,7 @@ import { tuneFromSlider } from '../minigames/tunePanel';
 import { setFrameStyle, setMenuStyle } from './hudStyle';
 import { earnParts } from '../minigames/mods';
 import { boardFor, finishTask, incidentById, incidentGame, resolveIncident } from '../engine/incidents';
-import { SHIPS, setEnvTest, modsOff, setModsOff, paleBackdrop, setPaleBackdrop, type EnvTest, applyLoadout, deleteLoadout, editLoadout, savedLoadouts, storeLoadout, takeTurretNote, type LoTag, broodTest, hegTest, setHegTest, foesTest, setFoesTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
+import { SHIPS, setEnvTest, modsOff, setModsOff, paleBackdrop, setPaleBackdrop, type EnvTest, applyLoadout, deleteLoadout, editLoadout, savedLoadouts, storeLoadout, takeTurretNote, type LoTag, broodTest, setHegTestMode, type HegTestMode, foesTest, setFoesTest, fogTest, setBroodTest, setFogTest, loadout, setControlMode, setLenkSetup, setEnemyBars, setEnemyTune, setLoadout, setSizeScale, type SizeScale, type ControlMode, type Loadout, type ShipId } from '../minigames/loadout';
 import type { Level, Mode, Place } from '../minigames/common';
 import { stormNow } from '../engine/phenomena';
 import { FACTIONS } from '../data/sectors';
@@ -1552,7 +1552,7 @@ function onClick(e: MouseEvent): void {
       case 'hud-frame': setFrameStyle(d.id!); refresh(); window.dispatchEvent(new Event('resize')); break;
       case 'mg-fog-test': setFogTest(!fogTest()); refresh(); break;
       case 'mg-brood-test': setBroodTest(!broodTest()); refresh(); break;
-      case 'mg-heg-test': setHegTest(!hegTest()); refresh(); break;
+      case 'mg-heg-test': setHegTestMode((d.heg ?? '') as HegTestMode); refresh(); break;
       case 'mg-foes-test': setFoesTest(!foesTest()); refresh(); break;
       case 'mg-env-test': setEnvTest((d.env ?? '') as EnvTest); refresh(); break;
       case 'mg-pale-test': setPaleBackdrop(!paleBackdrop()); refresh(); break;
