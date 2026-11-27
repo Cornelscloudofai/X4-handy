@@ -1,0 +1,36 @@
+{
+  "stand": "2026-11-27",
+  "fraktion": "Hegemonie",
+  "status": "Vom Nutzer endgültig ausgewählte Originalbilder; noch keine Spieleinbindung.",
+  "assets": [
+    {
+      "id": "heg-bomber",
+      "file": "bomber-original.png",
+      "selection": "Variante 3, überarbeitet mit größeren Torpedoklappen im Stil von Variante 2",
+      "length_m": 45,
+      "width_px": 1024,
+      "height_px": 1536,
+      "sha256": "a650e613dc1ebd95c38810f92428f68dcb6e1f6ee3ef31f1be3ad60c9a684843",
+      "path": "grafik-vorrat/hegemonie/bomber-original.png"
+    },
+    {
+      "id": "heg-torpedo",
+      "file": "torpedo-original.png",
+      "selection": "Allererster Torpedoentwurf, vor den drei zusätzlichen Varianten",
+      "width_px": 1024,
+      "height_px": 1536,
+      "sha256": "cd76dedc1163f8b32ea51b7f3a00390841fd6284124ea3bf76819ace024337ff",
+      "path": "grafik-vorrat/hegemonie/torpedo-original.png"
+    },
+    {
+      "id": "heg-traeger",
+      "file": "traeger-original.png",
+      "selection": "Bestätigter Entwurf mit je zwei seitlichen Start- und Landebuchten und geschlossenem Panzerdeck",
+      "length_m": 1050,
+      "width_px": 793,
+      "height_px": 1983,
+      "sha256": "408095cfafa77e48a0246e3d1b6d16a73adaf6b314306e3ea0b05b7fefbf5dba",
+      "path": "grafik-vorrat/hegemonie/traeger-original.png"
+    }
+  ]
+}
